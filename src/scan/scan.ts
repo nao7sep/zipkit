@@ -101,6 +101,8 @@ function makeEntry(
     type,
     size: Number(stats.size),
     mtimeNs: stats.mtimeNs,
+    atimeNs: stats.atimeNs,
+    ctimeNs: stats.ctimeNs,
     birthtimeNs: stats.birthtimeNs,
     mode: Number(stats.mode),
   };

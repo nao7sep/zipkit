@@ -29,6 +29,16 @@ export interface MetadataEntryInput {
   sha256?: string;
 }
 
+/**
+ * A UTC instant as both its lossless nanosecond count and an ISO-8601 string.
+ * The `ns` field is authoritative; `iso` (millisecond resolution) is for human
+ * and tool readability. The ZIP fields lose precision and the DOS field its
+ * zone, but this record never does.
+ */
+function utcTime(ns: bigint): { ns: string; iso: string } {
+  return { ns: ns.toString(), iso: new Date(Number(ns / 1_000_000n)).toISOString() };
+}
+
 function metadataEntry(input: MetadataEntryInput, deterministic: boolean): Record<string, unknown> {
   const entry = input.writeEntry;
   const out: Record<string, unknown> = {
@@ -47,8 +57,13 @@ function metadataEntry(input: MetadataEntryInput, deterministic: boolean): Recor
     compressedSize: input.compressedSize,
   };
   if (!deterministic) {
-    out.mtimeNs = entry.mtimeNs.toString();
-    out.birthtimeNs = entry.birthtimeNs.toString();
+    // All four stat times the scan captured, in UTC: modification, access,
+    // inode-change, and creation. `ctime` (inode change) has no ZIP field and
+    // survives only here.
+    out.mtime = utcTime(entry.mtimeNs);
+    out.atime = utcTime(entry.atimeNs);
+    out.ctime = utcTime(entry.ctimeNs);
+    out.btime = utcTime(entry.birthtimeNs);
   }
   out.crc32 = input.crc32;
   if (input.sha256 !== undefined) out.sha256 = input.sha256;
@@ -64,6 +79,7 @@ export function buildMetadata(
   policy: ArchivePolicy,
   entries: MetadataEntryInput[],
   createdNs: bigint,
+  timeZone: string,
 ): Record<string, unknown> {
   const deterministic = policy.deterministic;
   const document: Record<string, unknown> = {
@@ -71,10 +87,11 @@ export function buildMetadata(
     version: VERSION,
   };
   if (!deterministic) {
-    document.createdUtc = {
-      ns: createdNs.toString(),
-      iso: new Date(Number(createdNs / 1_000_000n)).toISOString(),
-    };
+    document.createdUtc = utcTime(createdNs);
+    // The IANA zone the archive's DOS local-time fields were rendered in, so the
+    // lossy local field stays interpretable. Omitted under deterministic output,
+    // where the DOS field is fixed and zone-independent.
+    document.timeZone = timeZone;
   }
   document.policy = policy;
   document.summary = plan.summary;

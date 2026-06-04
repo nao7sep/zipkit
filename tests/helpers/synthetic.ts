@@ -17,6 +17,8 @@ export function scanEntry(over: Partial<ScanEntry> & { archivePath: string }): S
     type: over.type ?? "file",
     size: over.size ?? 10,
     mtimeNs: over.mtimeNs ?? Y2020_NS,
+    atimeNs: over.atimeNs ?? Y2020_NS,
+    ctimeNs: over.ctimeNs ?? Y2020_NS,
     birthtimeNs: over.birthtimeNs ?? Y2020_NS,
     mode: over.mode ?? 0o644,
   };

@@ -21,7 +21,21 @@ export interface ReadEntry {
   externalAttr: number;
   centralExtraLength: number;
   localExtraLength: number;
+  centralExtra: Buffer;
+  localExtra: Buffer;
   content: Buffer;
+}
+
+/** Locate an extra field by its 2-byte header id within an extra-field blob. */
+export function findExtra(extra: Buffer, id: number): Buffer | null {
+  let p = 0;
+  while (p + 4 <= extra.length) {
+    const tag = extra.readUInt16LE(p);
+    const size = extra.readUInt16LE(p + 2);
+    if (tag === id) return extra.subarray(p + 4, p + 4 + size);
+    p += 4 + size;
+  }
+  return null;
 }
 
 export interface ReadZip {
@@ -62,10 +76,15 @@ export function readZip(buf: Buffer): ReadZip {
     const externalAttr = buf.readUInt32LE(p + 38);
     const localOffset = buf.readUInt32LE(p + 42);
     const name = buf.toString("utf8", p + 46, p + 46 + nameLen);
+    const centralExtra = buf.subarray(p + 46 + nameLen, p + 46 + nameLen + centralExtraLength);
 
     if (buf.readUInt32LE(localOffset) !== 0x04034b50) throw new Error("bad local header signature");
     const localNameLen = buf.readUInt16LE(localOffset + 26);
     const localExtraLength = buf.readUInt16LE(localOffset + 28);
+    const localExtra = buf.subarray(
+      localOffset + 30 + localNameLen,
+      localOffset + 30 + localNameLen + localExtraLength,
+    );
     const dataStart = localOffset + 30 + localNameLen + localExtraLength;
     const raw = buf.subarray(dataStart, dataStart + compSize);
     const content = method === 8 ? zlib.inflateRawSync(raw) : Buffer.from(raw);
@@ -84,6 +103,8 @@ export function readZip(buf: Buffer): ReadZip {
       externalAttr,
       centralExtraLength,
       localExtraLength,
+      centralExtra,
+      localExtra,
       content,
     });
 

@@ -55,7 +55,15 @@ export interface ArchivePolicy {
   // Entry data
   symlinks: "ignore" | "preserve" | "follow";
   followExternal: boolean;
-  timestamps: "clamp" | "preserve";
+  timestamps: "preserve" | "clamp";
+  /**
+   * IANA timezone name (e.g. `"Asia/Tokyo"`, `"UTC"`) the ZIP DOS local-time
+   * field is rendered in. The DOS field stores local wall-clock with no zone, so
+   * a same-zone reader sees the file's real time. Defaults to the host zone.
+   * Affects only the DOS field — the extended-timestamp and NTFS extras and the
+   * metadata record are always UTC. Ignored under `deterministic`.
+   */
+  timezone?: string;
   compression: CompressionPolicy;
 
   // Companion output

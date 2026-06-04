@@ -7,10 +7,15 @@
  * - Version-made-by uses host byte 0 (FAT), so no Unix mode leaks; external
  *   attributes carry only the DOS attribute byte (`0x10` for a directory).
  * - The extra-field length is zero except the Zip64 extra (`0x0001`) when
- *   genuinely needed and the extended-timestamp extra (`0x5455`) only under
- *   timestamp preservation.
- * - Modification times are DOS times, floored to 1980; under deterministic
- *   output a fixed time is used.
+ *   genuinely needed and, only under timestamp preservation, the Info-ZIP
+ *   extended-timestamp extra (`0x5455`, UTC seconds) and the NTFS extra
+ *   (`0x000a`, UTC 100-ns FILETIME). Both carry modification, access, and
+ *   creation times so a reader on any platform recovers the right instant.
+ * - The DOS date/time field holds *local* wall-clock time, rendered in the
+ *   configured timezone (the host zone by default), clamped to the 1980–2107
+ *   window; under deterministic output a fixed time is used. DOS time carries
+ *   no zone, so it is only a same-zone convenience — the absolute truth lives
+ *   in the two UTC extras above and in the metadata record.
  * - The path separator is always a forward slash.
  *
  * The single deliberate exception is a preserved symlink: it carries a Unix
@@ -18,6 +23,7 @@
  */
 
 import { DOS_EPOCH_NS, DOS_LIMIT_NS } from "../internal/dosTime.js";
+import { wallClockInZone } from "../internal/timeZone.js";
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
@@ -47,6 +53,8 @@ export interface PreparedEntry {
   data: Buffer; // bytes to write (compressed or stored; empty for a directory)
   uncompressedSize: number;
   mtimeNs: bigint;
+  atimeNs: bigint;
+  birthtimeNs: bigint; // creation time; the NTFS/UT "creation" field
   mode: number; // used only for a preserved symlink's external attributes
 }
 
@@ -55,6 +63,8 @@ export interface ZipWriterOptions {
   zip64: boolean;
   deterministic: boolean;
   preserveTimestamps: boolean;
+  /** IANA zone the DOS local-time field is rendered in (already resolved). */
+  timeZone: string;
 }
 
 export interface ZipResult {
@@ -65,37 +75,103 @@ export interface ZipResult {
 function dosFor(entry: PreparedEntry, options: ZipWriterOptions): { date: number; time: number } {
   if (options.deterministic) return FIXED_DOS;
   // Clamp into the representable window using the bigint bounds, so the Date
-  // constructed below is always valid and the packed fields never overflow.
+  // rendered below is always valid and the packed fields never overflow. The
+  // bounds are UTC instants and the field is local, so the clamp is exact only
+  // to within one zone offset of the 1980/2108 edges — immaterial in practice.
   if (entry.mtimeNs < DOS_EPOCH_NS) return FIXED_DOS;
   if (entry.mtimeNs >= DOS_LIMIT_NS) return MAX_DOS;
-  const d = new Date(Number(entry.mtimeNs / 1_000_000n));
+  // The DOS field is local wall-clock time with no zone stored. Render the
+  // absolute instant into the configured zone so a same-zone reader sees the
+  // file's real modification time rather than a UTC-shifted one.
+  const w = wallClockInZone(Number(entry.mtimeNs / 1_000_000n), options.timeZone);
   return {
-    date: ((d.getUTCFullYear() - 1980) << 9) | ((d.getUTCMonth() + 1) << 5) | d.getUTCDate(),
-    time: (d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | (d.getUTCSeconds() >> 1),
+    date: ((w.year - 1980) << 9) | (w.month << 5) | w.day,
+    time: (w.hour << 11) | (w.minute << 5) | (w.second >> 1),
   };
 }
 
+// 100-ns ticks between the FILETIME epoch (1601) and the Unix epoch (1970).
+const NTFS_EPOCH_OFFSET = 116_444_736_000_000_000n;
+const U64_MAX = (1n << 64n) - 1n;
+
 /** Unix seconds floored toward negative infinity (bigint division truncates). */
-function unixSecondsFloor(mtimeNs: bigint): bigint {
-  const quotient = mtimeNs / 1_000_000_000n;
-  return mtimeNs % 1_000_000_000n < 0n ? quotient - 1n : quotient;
+function unixSecondsFloor(ns: bigint): bigint {
+  const quotient = ns / 1_000_000_000n;
+  return ns % 1_000_000_000n < 0n ? quotient - 1n : quotient;
+}
+
+/** A time as signed 32-bit Unix seconds, or null when outside the UT field. */
+function utSeconds(ns: bigint): number | null {
+  const seconds = unixSecondsFloor(ns);
+  if (seconds < BigInt(INT32_MIN) || seconds > BigInt(INT32_MAX)) return null;
+  return Number(seconds);
+}
+
+/** A time as a Windows FILETIME (100-ns ticks since 1601 UTC), clamped to u64. */
+function filetime(ns: bigint): bigint {
+  const ticks = ns / 100n + NTFS_EPOCH_OFFSET;
+  return ticks < 0n ? 0n : ticks > U64_MAX ? U64_MAX : ticks;
 }
 
 /**
- * The Info-ZIP extended-timestamp extra (0x5455). Returns null when the time
- * falls outside the field's signed 32-bit range (roughly before 1901 or after
- * 2038), since writing a clamped value would silently misrepresent the time;
- * the metadata file remains the lossless record.
+ * The Info-ZIP extended-timestamp extra (0x5455), carrying modification,
+ * access, and creation times as UTC seconds. The local-header copy holds every
+ * time whose seconds fit the field's signed 32-bit range (roughly 1901–2038);
+ * the central copy holds only the modification time per the field's convention,
+ * sharing the same flags byte. Returns null when no time is representable, so a
+ * value is never silently misrepresented — the metadata file stays lossless.
  */
-function extendedTimestamp(mtimeNs: bigint): Buffer | null {
-  const seconds = unixSecondsFloor(mtimeNs);
-  if (seconds < BigInt(INT32_MIN) || seconds > BigInt(INT32_MAX)) return null;
-  const b = Buffer.alloc(9);
-  b.writeUInt16LE(0x5455, 0); // "UT"
-  b.writeUInt16LE(5, 2); // data size: flags + 4-byte mtime
-  b.writeUInt8(0x01, 4); // flags: modification time present
-  b.writeInt32LE(Number(seconds), 5);
+function extendedTimestamp(entry: PreparedEntry): { local: Buffer; central: Buffer } | null {
+  const m = utSeconds(entry.mtimeNs);
+  const a = utSeconds(entry.atimeNs);
+  const c = utSeconds(entry.birthtimeNs);
+  const flags = (m !== null ? 1 : 0) | (a !== null ? 2 : 0) | (c !== null ? 4 : 0);
+  if (flags === 0) return null;
+
+  const present = [m, a, c].filter((v): v is number => v !== null);
+  const local = Buffer.alloc(5 + present.length * 4);
+  local.writeUInt16LE(0x5455, 0); // "UT"
+  local.writeUInt16LE(1 + present.length * 4, 2);
+  local.writeUInt8(flags, 4);
+  present.forEach((v, i) => local.writeInt32LE(v, 5 + i * 4));
+
+  const central = Buffer.alloc(m !== null ? 9 : 5);
+  central.writeUInt16LE(0x5455, 0);
+  central.writeUInt16LE(m !== null ? 5 : 1, 2);
+  central.writeUInt8(flags, 4);
+  if (m !== null) central.writeInt32LE(m, 5);
+
+  return { local, central };
+}
+
+/**
+ * The NTFS extra (0x000a): modification, access, and creation times as 64-bit
+ * Windows FILETIME, identical in the local and central records. Windows Explorer
+ * prefers this field, so it is what restores full-precision, zone-correct times
+ * there. Unlike the DOS field it represents the full Unix range, so it is always
+ * written under preservation.
+ */
+function ntfsTimestamp(entry: PreparedEntry): Buffer {
+  const b = Buffer.alloc(36);
+  b.writeUInt16LE(0x000a, 0); // tag
+  b.writeUInt16LE(32, 2); // TSize: reserved(4) + attr header(4) + three 8-byte times
+  b.writeUInt32LE(0, 4); // reserved
+  b.writeUInt16LE(0x0001, 8); // attribute tag 1
+  b.writeUInt16LE(24, 10); // attribute size
+  b.writeBigUInt64LE(filetime(entry.mtimeNs), 12);
+  b.writeBigUInt64LE(filetime(entry.atimeNs), 20);
+  b.writeBigUInt64LE(filetime(entry.birthtimeNs), 28);
   return b;
+}
+
+/** The combined timestamp extras (UT + NTFS) for the local and central records. */
+function timestampExtras(entry: PreparedEntry): { local: Buffer; central: Buffer } {
+  const ut = extendedTimestamp(entry);
+  const ntfs = ntfsTimestamp(entry);
+  return {
+    local: ut ? Buffer.concat([ut.local, ntfs]) : ntfs,
+    central: ut ? Buffer.concat([ut.central, ntfs]) : ntfs,
+  };
 }
 
 function zip64LocalExtra(uncompressed: number, compressed: number): Buffer {
@@ -206,14 +282,12 @@ export function buildZip(entries: PreparedEntry[], options: ZipWriterOptions): Z
 
     const info = hostInfo(entry);
     const versionNeeded = useZip64 ? 45 : info.baseVersion;
-    const timestamp =
-      options.preserveTimestamps && !options.deterministic
-        ? extendedTimestamp(entry.mtimeNs)
-        : null;
+    const times =
+      options.preserveTimestamps && !options.deterministic ? timestampExtras(entry) : null;
 
     const localExtra = Buffer.concat([
       ...(useZip64 ? [zip64LocalExtra(uncompSize, compSize)] : []),
-      ...(timestamp ? [timestamp] : []),
+      ...(times ? [times.local] : []),
     ]);
     const localExtraBuf = localExtra.length > 0 ? localExtra : EMPTY;
 
@@ -237,7 +311,7 @@ export function buildZip(entries: PreparedEntry[], options: ZipWriterOptions): Z
 
     const centralExtra = Buffer.concat([
       ...(useZip64 ? [zip64CentralExtra(uncompSize, compSize, localHeaderOffset)] : []),
-      ...(timestamp ? [timestamp] : []),
+      ...(times ? [times.central] : []),
     ]);
     const centralExtraBuf = centralExtra.length > 0 ? centralExtra : EMPTY;
 

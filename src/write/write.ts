@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import writeFileAtomic from "write-file-atomic";
 import { throwIfAborted, toAbortError, WriteError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
+import { machineTimeZone } from "../internal/timeZone.js";
 import type { WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import type { Plan, WriteResult } from "../types.js";
@@ -60,6 +61,8 @@ async function prepareEntry(
         data: EMPTY,
         uncompressedSize: 0,
         mtimeNs: source.mtimeNs,
+        atimeNs: source.atimeNs,
+        birthtimeNs: source.birthtimeNs,
         mode: source.mode,
       },
       source,
@@ -79,6 +82,8 @@ async function prepareEntry(
         data: compressed.data,
         uncompressedSize: compressed.size,
         mtimeNs: source.mtimeNs,
+        atimeNs: source.atimeNs,
+        birthtimeNs: source.birthtimeNs,
         mode: source.mode,
       },
       source,
@@ -107,6 +112,8 @@ async function prepareEntry(
       data: compressed.data,
       uncompressedSize: compressed.size,
       mtimeNs: source.mtimeNs,
+      atimeNs: source.atimeNs,
+      birthtimeNs: source.birthtimeNs,
       mode: source.mode,
     },
     source,
@@ -132,6 +139,10 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
   }
 
   const { policy, writeEntries } = internals;
+  // The zone the DOS local-time field is rendered in: the explicit policy zone,
+  // or the host's. Resolved once and recorded in the metadata so the local
+  // field is interpretable; the UTC extras and metadata times need no zone.
+  const effectiveTimeZone = policy.timezone ?? machineTimeZone();
   const signal = deps.signal;
   throwIfAborted(signal);
 
@@ -168,7 +179,7 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
       return input;
     });
     const createdNs = BigInt(Date.now()) * 1_000_000n;
-    const document = buildMetadata(plan, policy, metadataEntries, createdNs);
+    const document = buildMetadata(plan, policy, metadataEntries, createdNs, effectiveTimeZone);
     const json = Buffer.from(JSON.stringify(document, null, 2), "utf8");
 
     if (policy.metadata.placement === "inside") {
@@ -181,6 +192,8 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
         data: compressed.data,
         uncompressedSize: compressed.size,
         mtimeNs: createdNs,
+        atimeNs: createdNs,
+        birthtimeNs: createdNs,
         mode: 0,
       });
     } else {
@@ -213,6 +226,7 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
     zip64: policy.zip64 === "always" || zip64Needed,
     deterministic: policy.deterministic,
     preserveTimestamps: policy.timestamps === "preserve",
+    timeZone: effectiveTimeZone,
   });
 
   try {

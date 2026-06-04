@@ -33,7 +33,16 @@ export interface ScanEntry {
   sourcePath: string;
   type: "file" | "dir" | "symlink";
   size: number;
+  /**
+   * The four nanosecond stat times the platform exposes, all UTC instants:
+   * modification, access, inode-change, and creation (birth). `ctimeNs` (inode
+   * change) has no ZIP field and rides only into the metadata record; the
+   * others map to the DOS field and the timestamp extras. On filesystems that
+   * do not track birth time it may be zero.
+   */
   mtimeNs: bigint;
+  atimeNs: bigint;
+  ctimeNs: bigint;
   birthtimeNs: bigint;
   mode: number;
   /** For symlinks: the raw link target as read from disk. */
@@ -85,6 +94,8 @@ export interface WriteEntry {
   absolutePath: string; // "" for synthetic directory entries
   size: number;
   mtimeNs: bigint;
+  atimeNs: bigint;
+  ctimeNs: bigint;
   birthtimeNs: bigint;
   mode: number;
   linkTarget?: string;

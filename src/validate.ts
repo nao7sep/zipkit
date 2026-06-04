@@ -11,6 +11,7 @@ import { PolicyError } from "./errors.js";
 import { resolveSegments, toForwardSlash } from "./internal/path.js";
 import { formatZodError } from "./internal/zodError.js";
 import { fixSegment } from "./plan/nameFix.js";
+import { isValidTimeZone } from "./internal/timeZone.js";
 import type { ArchivePolicy, ArchiveSpec } from "./types.js";
 
 /**
@@ -73,7 +74,15 @@ const partialPolicySchema = z.strictObject({
     }),
   symlinks: z.enum(["ignore", "preserve", "follow"]).optional(),
   followExternal: z.boolean().optional(),
-  timestamps: z.enum(["clamp", "preserve"]).optional(),
+  timestamps: z.enum(["preserve", "clamp"]).optional(),
+  // An IANA Time Zone Database name the runtime accepts (offsets and POSIX TZ
+  // strings are rejected, so DST is always handled correctly).
+  timezone: z
+    .string()
+    .optional()
+    .refine((tz) => tz === undefined || isValidTimeZone(tz), {
+      error: "timezone must be a valid IANA time zone name (e.g. 'Asia/Tokyo', 'UTC')",
+    }),
   compression: z
     .strictObject({
       mode: z.enum(["auto", "store-all", "compress-all"]).optional(),

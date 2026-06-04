@@ -36,6 +36,7 @@ interface CreateOpts {
   symlinks?: "ignore" | "preserve" | "follow";
   followExternal?: boolean;
   timestamps?: "clamp" | "preserve";
+  timezone?: string;
   storeExt?: string | false;
   storeAll?: boolean;
   compressAll?: boolean;
@@ -76,6 +77,7 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
   if (opts.symlinks) policy.symlinks = opts.symlinks;
   if (opts.followExternal) policy.followExternal = true;
   if (opts.timestamps) policy.timestamps = opts.timestamps;
+  if (opts.timezone !== undefined) policy.timezone = opts.timezone;
 
   const mode = opts.compressAll ? "compress-all" : opts.storeAll ? "store-all" : undefined;
   const storeExtensions =
@@ -220,7 +222,14 @@ export function registerCreate(
   // Entry data
   cmd.option("--symlinks <ignore|preserve|follow>", "symlink handling (default ignore)");
   cmd.option("--follow-external", "under follow, allow links that escape the input tree");
-  cmd.option("--timestamps <clamp|preserve>", "timestamp policy (default clamp)");
+  cmd.option(
+    "--timestamps <preserve|clamp>",
+    "timestamp policy (default preserve): preserve writes the UTC extras, clamp writes only the DOS field",
+  );
+  cmd.option(
+    "--timezone <iana>",
+    "IANA zone for the DOS local-time field, e.g. Asia/Tokyo (default: host zone)",
+  );
   cmd.option("--store-ext <list>", "comma-separated extensions to store without deflating");
   cmd.option("--no-store-ext", "deflate everything (clear the store list)");
   cmd.option("--store-all", "store every entry");

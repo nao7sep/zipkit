@@ -28,6 +28,8 @@ const symlink: WriteEntry = {
   absolutePath: "",
   size: 6,
   mtimeNs: 1_577_836_800_000_000_000n,
+  atimeNs: 1_577_836_800_000_000_000n,
+  ctimeNs: 1_577_836_800_000_000_000n,
   birthtimeNs: 1_577_836_800_000_000_000n,
   mode: 0o120777,
   transformations: [],
@@ -39,10 +41,23 @@ function metaEntries(doc: Record<string, unknown>): Array<Record<string, unknown
 }
 
 describe("buildMetadata", () => {
-  it("records a symlink's classification losslessly", () => {
-    const doc = buildMetadata(plan, DEFAULT_POLICY, [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }], 0n);
-    expect(metaEntries(doc)[0]?.type).toBe("symlink");
+  it("records a symlink's classification and all four UTC times losslessly", () => {
+    const doc = buildMetadata(
+      plan,
+      DEFAULT_POLICY,
+      [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }],
+      0n,
+      "Asia/Tokyo",
+    );
+    const entry = metaEntries(doc)[0]!;
+    expect(entry.type).toBe("symlink");
     expect(doc.createdUtc).toBeDefined();
+    expect(doc.timeZone).toBe("Asia/Tokyo");
+    // Each time is recorded as lossless ns plus an ISO-8601 string, in UTC.
+    expect(entry.mtime).toEqual({ ns: "1577836800000000000", iso: "2020-01-01T00:00:00.000Z" });
+    for (const key of ["mtime", "atime", "ctime", "btime"]) {
+      expect((entry[key] as { ns: string }).ns).toBe("1577836800000000000");
+    }
   });
 
   it("omits volatile fields under deterministic output", () => {
@@ -51,8 +66,10 @@ describe("buildMetadata", () => {
       { ...DEFAULT_POLICY, deterministic: true },
       [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }],
       1n,
+      "Asia/Tokyo",
     );
     expect(doc.createdUtc).toBeUndefined();
-    expect(metaEntries(doc)[0]?.mtimeNs).toBeUndefined();
+    expect(doc.timeZone).toBeUndefined();
+    expect(metaEntries(doc)[0]?.mtime).toBeUndefined();
   });
 });

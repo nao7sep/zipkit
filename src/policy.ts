@@ -74,7 +74,7 @@ export const DEFAULT_POLICY: ArchivePolicy = {
   // Entry data
   symlinks: "ignore",
   followExternal: false,
-  timestamps: "clamp",
+  timestamps: "preserve",
   compression: { mode: "auto", storeExtensions: [...DEFAULT_STORE_EXTENSIONS] },
 
   // Companion output

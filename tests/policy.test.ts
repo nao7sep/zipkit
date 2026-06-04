@@ -19,7 +19,7 @@ describe("DEFAULT_POLICY", () => {
     expect(DEFAULT_POLICY.emptyDirDefinition).toBe("recursive");
     expect(DEFAULT_POLICY.invalidCharReplacement).toBe("_");
     expect(DEFAULT_POLICY.symlinks).toBe("ignore");
-    expect(DEFAULT_POLICY.timestamps).toBe("clamp");
+    expect(DEFAULT_POLICY.timestamps).toBe("preserve");
     expect(DEFAULT_POLICY.compression.mode).toBe("auto");
     expect(DEFAULT_POLICY.metadata).toBe(false);
     expect(DEFAULT_POLICY.zip64).toBe("auto");
