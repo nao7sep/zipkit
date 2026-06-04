@@ -105,7 +105,6 @@ const partialPolicySchema = z.strictObject({
     ])
     .optional(),
   zip64: z.enum(["auto", "never", "always"]).optional(),
-  deterministic: z.boolean().optional(),
   strict: z.boolean().optional(),
 });
 

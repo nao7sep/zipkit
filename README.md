@@ -51,10 +51,10 @@ The dry-run extract re-reads `out.zip` *from disk*, decompresses every entry, an
 
 **Archive, then safely delete the originals.**
 ```sh
-zipkit create ./my-project -o out.zip --metadata
+zipkit create ./my-project -o out.zip
 zipkit extract out.zip --dry-run --check-metadata
 ```
-`--metadata` records a SHA-256 per file (on by default). The dry-run `--check-metadata` verifies every entry's CRC **and** SHA against the manifest, plus completeness (no missing or extra entry). Exit `0` ⇒ the archive faithfully and completely captures what `create` read — the gate to clear before removing the source. zipkit never auto-validates its own output; this step is yours to run when it matters.
+The embedded metadata (on by default) records a SHA-256 per file. The dry-run `--check-metadata` verifies every entry's CRC **and** SHA against the manifest, plus completeness (no missing or extra entry). Exit `0` ⇒ the archive faithfully and completely captures what `create` read — the gate to clear before removing the source. zipkit never auto-validates its own output; this step is yours to run when it matters.
 
 **Extract to a directory.**
 ```sh
@@ -132,7 +132,7 @@ NFC normalization, the other name fixes, and collision detection are uncondition
 | `--symlinks <ignore\|preserve\|follow>` | `ignore` | Symlink handling. `ignore` drops the link (a warning, visible in the plan); `preserve` keeps it as a Unix link entry — it is *not* replaced by its target, but Windows extracts such entries as text files, breaking the clean-byte guarantee; `follow` replaces each link with the real file or directory it points to. Windows `.lnk` shortcut files are ordinary files, not symlinks, and are archived as-is regardless of this flag. |
 | `--follow-external` | off | Under `follow`, allow links that escape the input tree. |
 | `--timestamps <preserve\|clamp>` | `preserve` | Timestamp policy. `preserve` (default) writes the DOS local-time field *and* two absolute-UTC extras: the NTFS extra (`0x000a`) carries modification, access, and creation times at 100-ns precision across the full date range (what Windows restores), and the Info-ZIP extended-timestamp (`0x5455`) carries the same three times as 1-second UTC values *where each fits its signed 32-bit range* (~1901–2038) — times outside that range are kept only in the NTFS extra and the metadata. A creation time the OS doesn't actually track is omitted rather than fabricated. Unknown extras are skipped by every conforming reader, so this is safe for old tools. `clamp` writes only the DOS local-time field (2-second resolution, clamped to 1980–2107) for a minimal, zero-extra archive. |
-| `--timezone <iana>` | host zone | IANA zone (e.g. `Asia/Tokyo`, `UTC`) the DOS local-time field is rendered in. The DOS field stores local wall-clock with no zone attached, so a same-zone reader sees the file's real modification time. Affects only the DOS field — the UTC extras and the metadata record are always UTC. Ignored under `--deterministic`. |
+| `--timezone <iana>` | host zone | IANA zone (e.g. `Asia/Tokyo`, `UTC`) the DOS local-time field is rendered in. The DOS field stores local wall-clock with no zone attached, so a same-zone reader sees the file's real modification time. Affects only the DOS field — the UTC extras and the metadata record are always UTC. |
 | `--store-ext <list>` | (built-in list) | Comma-separated extensions stored without deflating. |
 | `--no-store-ext` | | Deflate everything (clear the store list). |
 | `--store-all` | | Store every entry. |
@@ -144,11 +144,18 @@ The store list names already-compressed formats, where attempting deflate is was
 
 | Flag | Default | Description |
 |---|---|---|
-| `--metadata` | off | Emit the metadata file (serialized plan plus raw scan data). Includes a SHA-256 per file by default — the manifest exists to establish content identity. |
+| `--no-metadata` | (metadata on) | Do not embed the metadata file — produce a plain archive. Metadata is embedded by default (it's why zipkit exists: faithful, high-precision persistence), with a SHA-256 per file. |
 | `--metadata-no-hash` | off | Omit the per-file SHA-256, recording CRC-32 only. |
 | `--metadata-name <name>` | `_metadata.json` | Metadata entry name. Must be a single path component (no slashes). |
 
-The metadata file is a JSON record of the run: a header (`tool`, `version`, `createdUtc`, `timeZone` — the IANA zone the DOS fields were rendered in — the resolved `policy`, the plan `summary`, and aggregate `totals` of uncompressed and compressed bytes); one record per written entry (`archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size` and `compressedSize`, `crc32`, `sha256` (unless `--metadata-no-hash`), `mode`, the four stat times `mtime`/`atime`/`ctime`/`btime` — each an object of lossless `ns` and an ISO-8601 `iso` string, all UTC — `linkTarget` for preserved symlinks, and the `transformations` applied); the list of `excluded` entries with their `reason`; and all `findings`. It never stores absolute source paths, and under `--deterministic` the volatile time fields (`createdUtc`, `timeZone`, and the per-entry times) are omitted so the record is reproducible.
+The metadata file is a JSON record of the run, in four parts:
+
+- **Header** — `tool`, `version`, `createdUtc`, `timeZone` (the IANA zone the DOS fields were rendered in), the resolved `policy`, the plan `summary`, and aggregate `totals` (uncompressed and compressed bytes).
+- **`entries`** — one record per written entry: `archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size`, `compressedSize`, `crc32`, `sha256` (unless `--metadata-no-hash`), `mode`, the four stat times `mtime`/`atime`/`ctime`/`btime` (each `{ ns, iso }`, UTC; `btime` is `null` when the platform doesn't track it), `linkTarget` for preserved symlinks, and the `transformations` applied.
+- **`excluded`** — dropped entries, each with its `reason`.
+- **`findings`** — every finding from the run.
+
+It never stores absolute source paths. The same document is returned from every `create` as `WriteResult.metadata` (typed `Metadata`), so a caller has the full record — timestamps and findings included — without reading the archive back, even when `--no-metadata` skips embedding it.
 
 The metadata file is **always embedded** as an entry at the archive root — a ZIP is a container, so the manifest rides inside it rather than as a loose file that could be separated from the archive or drift out of sync with it. It is therefore covered by the archive's own CRC, and `extract --check-metadata` reads it straight from the zip.
 
@@ -157,7 +164,6 @@ The metadata file is **always embedded** as an entry at the archive root — a Z
 | Flag | Default | Description |
 |---|---|---|
 | `--zip64 <auto\|never\|always>` | `auto` | Zip64 policy. |
-| `--deterministic` | off | Reproducible output: entries sorted lexically, a fixed modification time. |
 
 ### Diagnostics and control
 
@@ -206,7 +212,9 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
 | `--json` | | Emit the `ExtractReport` as JSON; suppress the human renderer. |
 
-Creation/birth time is not restored — no portable cross-platform API sets it. The exit code is `0` when the report is `ok`, else `1`, so validation scripts cleanly. zipkit deliberately does **not** validate its own output automatically after `create`: a tested compressor is trusted, and `extract --dry-run` is there for when you have a reason to check an archive.
+- **Creation/birth time is not restored** — no portable cross-platform API sets it.
+- **Exit code** is `0` when the report is `ok`, else `1`, so validation scripts cleanly.
+- **No automatic self-validation** — zipkit does not validate its own output after `create` (a tested compressor is trusted); `extract --dry-run` is there for when you have a reason to check an archive.
 
 ## Rules and severity contract
 
@@ -287,17 +295,29 @@ if (!report.ok) console.error(report.findings);
 await zip.extract({ archive: "out.zip", dest: "./restored", overwrite: true });
 ```
 
-The committed export surface is the `ZipKit` class; the types `ZipKitOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `Plan`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `WriteResult`, `ExtractSpec`, `ExtractReport`, `ExtractEntryResult`, `LogEvent`; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
+The committed export surface is the `ZipKit` class; the types `ZipKitOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `Plan`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `WriteResult`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractReport`, `ExtractEntryResult`, `LogEvent`; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
 
 Progress is observed in real time through the optional `logger` callback, which receives a `LogEvent` stream as the pipeline works. The same stream feeds the SDK callback, the CLI console renderer, and the `--log` JSONL sink.
 
 ## The clean-byte guarantee
 
-Archives carry the UTF-8 name flag (general-purpose bit 11, so non-ASCII names survive across locales) and a FAT host byte (no Unix mode leaks). The extra field is minimal: the Zip64 extra when genuinely needed, and — under timestamp preservation, the default — the Info-ZIP extended-timestamp extra (`0x5455`) and the NTFS extra (`0x000a`). Both are standard extras that any conforming reader either understands or skips, so they are safe for old tools; `--timestamps clamp` drops them for a zero-extra archive. The DOS date/time field holds *local* wall-clock time in the configured zone (the host zone by default); because that field carries no zone, the absolute UTC truth lives in those two extras and in the metadata record. Compression is Deflate via the platform `zlib`, with a store fallback when deflate does not shrink and store for already-compressed extensions. Output is atomic: a temporary file is written in the same directory, then renamed. When the output lives inside the input tree, the archive never contains itself: the resolved output is excluded by file identity (`dev:ino`) — exact on every filesystem, so a case-insensitive volume that aliases `Out.zip` to `out.zip` excludes it while a case-sensitive one keeps a same-named neighbour. Identity is the *only* self-exclusion: zipkit never guesses from a name that a file is a stale atomic-write temp, so a real neighbour such as `archive.zip.notes` or a dated `archive.zip.20240604` is always archived. (The current run's temp never exists during the scan, and a temp orphaned by a hard crash is rare and harmlessly archived as an ordinary file.)
+Every archive holds to a fixed byte contract, so it reads cleanly across platforms and old tools:
+
+- **Names.** The UTF-8 flag (general-purpose bit 11) is always set, so non-ASCII names survive across locales; the host byte is FAT, so no Unix mode leaks.
+- **Minimal extra fields.** Only the Zip64 extra when genuinely needed, plus — under timestamp preservation (the default) — the Info-ZIP extended-timestamp (`0x5455`) and NTFS (`0x000a`) extras. Both are standard extras any conforming reader understands or skips, so they are safe for old tools; `--timestamps clamp` drops them for a zero-extra archive.
+- **Timestamps.** The DOS date/time field holds *local* wall-clock time in the configured zone (the host zone by default). That field carries no zone, so the absolute UTC truth lives in the two extras above and in the metadata record.
+- **Compression.** Deflate via the platform `zlib`, falling back to Store when Deflate does not shrink, and Store for already-compressed extensions.
+- **Atomic output.** A temporary file is written in the same directory, then renamed — a reader never sees a half-written archive.
+- **Self-exclusion.** When the output lives inside the input tree, the archive never contains itself: the output is excluded by file identity (`dev:ino`), exact on every filesystem — a case-insensitive volume that aliases `Out.zip` to `out.zip` excludes it, a case-sensitive one keeps a same-named neighbour. Identity is the *only* self-exclusion; zipkit never guesses from a name that a file is a stale temp, so a real neighbour such as `archive.zip.notes` or a dated `archive.zip.20240604` is always archived.
 
 ## Scope
 
-v1 is creation of clean archives from a source tree. Out of scope: reading, auditing, or repairing existing archives; encryption; compression methods beyond Store and Deflate; multi-volume or split archives; and streaming of individual large files via data descriptors.
+In scope:
+
+- Creating clean, portable archives from a source tree.
+- Reading them back — extraction, and validation (CRC always; against the embedded manifest, completeness and SHA-256).
+
+Out of scope: repairing or re-writing existing archives; encryption; compression methods beyond Store and Deflate; multi-volume or split archives; and streaming of individual large files (each entry is buffered whole in memory — see concurrency).
 
 ## Development
 

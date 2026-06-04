@@ -74,17 +74,4 @@ describe("buildMetadata", () => {
     // The reliable times are still present.
     expect((entry.mtime as { ns: string }).ns).toBe("1577836800000000000");
   });
-
-  it("omits volatile fields under deterministic output", () => {
-    const doc = buildMetadata(
-      plan,
-      { ...DEFAULT_POLICY, deterministic: true },
-      [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }],
-      1n,
-      "Asia/Tokyo",
-    );
-    expect(doc.createdUtc).toBeUndefined();
-    expect(doc.timeZone).toBeUndefined();
-    expect(metaEntries(doc)[0]?.mtime).toBeUndefined();
-  });
 });

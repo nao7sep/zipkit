@@ -13,9 +13,9 @@
  *   creation times so a reader on any platform recovers the right instant.
  * - The DOS date/time field holds *local* wall-clock time, rendered in the
  *   configured timezone (the host zone by default), clamped to the 1980–2107
- *   window; under deterministic output a fixed time is used. DOS time carries
- *   no zone, so it is only a same-zone convenience — the absolute truth lives
- *   in the two UTC extras above and in the metadata record.
+ *   window. DOS time carries no zone, so it is only a same-zone convenience —
+ *   the absolute truth lives in the two UTC extras above and in the metadata
+ *   record.
  * - The path separator is always a forward slash.
  *
  * The single deliberate exception is a preserved symlink: it carries a Unix
@@ -64,7 +64,6 @@ export interface PreparedEntry {
 export interface ZipWriterOptions {
   /** Force Zip64 structures (the policy's `always`, or an auto-detected need). */
   zip64: boolean;
-  deterministic: boolean;
   preserveTimestamps: boolean;
   /** IANA zone the DOS local-time field is rendered in (already resolved). */
   timeZone: string;
@@ -76,7 +75,6 @@ export interface ZipResult {
 }
 
 function dosFor(entry: PreparedEntry, options: ZipWriterOptions): { date: number; time: number } {
-  if (options.deterministic) return FIXED_DOS;
   const ms = Number(entry.mtimeNs / 1_000_000n);
   if (!Number.isFinite(ms) || ms < -DATE_MS_LIMIT) return FIXED_DOS;
   if (ms > DATE_MS_LIMIT) return MAX_DOS;
@@ -291,8 +289,7 @@ export function buildZip(entries: PreparedEntry[], options: ZipWriterOptions): Z
 
     const info = hostInfo(entry);
     const versionNeeded = useZip64 ? 45 : info.baseVersion;
-    const times =
-      options.preserveTimestamps && !options.deterministic ? timestampExtras(entry) : null;
+    const times = options.preserveTimestamps ? timestampExtras(entry) : null;
 
     const localExtra = Buffer.concat([
       ...(useZip64 ? [zip64LocalExtra(uncompSize, compSize)] : []),

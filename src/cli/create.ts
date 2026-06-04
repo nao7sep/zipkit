@@ -41,11 +41,10 @@ interface CreateOpts {
   storeExt?: string | false;
   storeAll?: boolean;
   compressAll?: boolean;
-  metadata?: boolean;
+  metadata?: boolean; // commander's --no-metadata sets this false (default true)
   metadataNoHash?: boolean;
   metadataName?: string;
   zip64?: "auto" | "never" | "always";
-  deterministic?: boolean;
   dryRun?: boolean;
   strict?: boolean;
   log?: string;
@@ -93,7 +92,12 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
     };
   }
 
-  if (opts.metadata || opts.metadataNoHash || opts.metadataName) {
+  // Metadata is embedded by default (the policy default). `--no-metadata` sets
+  // `opts.metadata` false and turns it off; the sub-options only refine the
+  // default-on record, so leaving them unset keeps the default.
+  if (opts.metadata === false) {
+    policy.metadata = false;
+  } else if (opts.metadataNoHash || opts.metadataName) {
     policy.metadata = {
       name: opts.metadataName ?? METADATA_DEFAULTS.name,
       hash: opts.metadataNoHash !== true,
@@ -101,7 +105,6 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
   }
 
   if (opts.zip64) policy.zip64 = opts.zip64;
-  if (opts.deterministic) policy.deterministic = true;
   if (opts.strict) policy.strict = true;
 
   return policy;
@@ -220,7 +223,7 @@ export function registerCreate(
   cmd.option("--compress-all", "deflate every entry");
 
   // Companion output
-  cmd.option("--metadata", "emit the metadata file (includes a SHA-256 per file)");
+  cmd.option("--no-metadata", "do not embed the metadata file (produce a plain archive)");
   cmd.option("--metadata-no-hash", "omit the per-file SHA-256 (CRC-32 is always recorded)");
   cmd.option(
     "--metadata-name <name>",
@@ -229,7 +232,6 @@ export function registerCreate(
 
   // Container format
   cmd.option("--zip64 <auto|never|always>", "Zip64 policy (default auto)");
-  cmd.option("--deterministic", "reproducible output: sorted entries, fixed time");
 
   // Diagnostics and control
   cmd.option("--dry-run", "compute and render the plan; write nothing");

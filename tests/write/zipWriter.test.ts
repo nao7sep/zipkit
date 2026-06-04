@@ -36,7 +36,6 @@ function fileEntry(name: string, content: Buffer, deflate: boolean): PreparedEnt
 
 const baseOptions: ZipWriterOptions = {
   zip64: false,
-  deterministic: false,
   preserveTimestamps: false,
   timeZone: "UTC",
 };
@@ -128,19 +127,6 @@ describe("timestamps", () => {
     expect(dosHour(pdt!.dosTime)).toBe(17);
     expect(dosDay(pdt!.dosDate)).toBe(31);
     expect(dosMonth(pdt!.dosDate)).toBe(5);
-  });
-
-  it("uses a fixed time and is byte-identical under deterministic output", () => {
-    const entry = fileEntry("a.txt", Buffer.from("data"), false);
-    // The zone must not perturb deterministic output: the DOS field is fixed.
-    const a = buildZip([entry], { ...baseOptions, deterministic: true, timeZone: "Asia/Tokyo" });
-    const b = buildZip([entry], {
-      ...baseOptions,
-      deterministic: true,
-      timeZone: "America/Los_Angeles",
-    });
-    expect(a.bytes.equals(b.bytes)).toBe(true);
-    expect(readZip(a.bytes).entries[0]?.dosDate).toBe((1 << 5) | 1);
   });
 
   it("writes the UT and NTFS extras with all three times under preservation", () => {

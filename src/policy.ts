@@ -78,12 +78,13 @@ export const DEFAULT_POLICY: ArchivePolicy = {
   timestamps: "preserve",
   compression: { mode: "auto", storeExtensions: [...DEFAULT_STORE_EXTENSIONS] },
 
-  // Companion output
-  metadata: false,
+  // Companion output — the embedded metadata record is zipkit's reason to
+  // exist (faithful, high-precision persistence), so it is on by default;
+  // `metadata: false` (CLI `--no-metadata`) opts into a plain archive.
+  metadata: { ...METADATA_DEFAULTS },
 
   // Container format
   zip64: "auto",
-  deterministic: false,
 
   // Gating
   strict: false,

@@ -43,7 +43,8 @@ describe("output resolution and round-trip", () => {
 
     const { entries } = readZip(await readFile(result.output));
     const names = entries.map((e) => e.name).sort();
-    expect(names).toEqual(["a.txt", "sub/b.bin"]);
+    // Metadata is embedded by default, so it rides along with the flattened content.
+    expect(names).toEqual(["_metadata.json", "a.txt", "sub/b.bin"]);
     expect(entries.find((e) => e.name === "a.txt")?.content.toString()).toBe(
       "hello hello hello hello",
     );
@@ -121,6 +122,44 @@ describe("metadata", () => {
     expect(zfinding.path).toBe("z64.zip");
   });
 
+  it("embeds metadata by default and returns the complete record", async () => {
+    const proj = await makeTree();
+    const result = await new ZipKit().create({ inputs: [proj], output: path.join(dir, "d.zip") });
+
+    // Embedded by default.
+    const names = readZip(await readFile(result.output)).entries.map((e) => e.name);
+    expect(names).toContain("_metadata.json");
+
+    // The full structured record is returned regardless.
+    expect(result.metadata.tool).toBe("zipkit");
+    expect(result.metadata.timeZone).toBeTypeOf("string");
+    expect(Array.isArray(result.metadata.findings)).toBe(true);
+    const a = result.metadata.entries.find((e) => e.archivePath === "a.txt");
+    expect(a?.sha256).toBeTypeOf("string"); // hashing on by default
+    expect(a?.mtime.ns).toBeTypeOf("string"); // times always present in the return
+  });
+
+  it("produces a plain archive under metadata:false but still returns the record", async () => {
+    const proj = await makeTree();
+    const result = await new ZipKit().create({
+      inputs: [proj],
+      output: path.join(dir, "plain.zip"),
+      policy: { metadata: false },
+    });
+
+    // No metadata entry in the archive.
+    const names = readZip(await readFile(result.output)).entries.map((e) => e.name);
+    expect(names).not.toContain("_metadata.json");
+    expect(names.sort()).toEqual(["a.txt", "sub/b.bin"]);
+
+    // The record is still returned (the run's state), with times but no SHA
+    // (hashing wasn't requested), so a caller can still inspect the run.
+    expect(result.metadata.entries.find((e) => e.archivePath === "a.txt")?.mtime.ns).toBeTypeOf(
+      "string",
+    );
+    expect(result.metadata.entries.find((e) => e.archivePath === "a.txt")?.sha256).toBeUndefined();
+  });
+
   it("records a SHA-256 that matches the file content", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "hash.zip");
@@ -168,14 +207,3 @@ describe("overwrite gate", () => {
   });
 });
 
-describe("deterministic output", () => {
-  it("produces byte-identical archives across runs", async () => {
-    const proj = await makeTree();
-    const a = path.join(dir, "a.zip");
-    const b = path.join(dir, "b.zip");
-    const zip = new ZipKit({ policy: { deterministic: true } });
-    await zip.create({ inputs: [proj], output: a });
-    await zip.create({ inputs: [proj], output: b });
-    expect((await readFile(a)).equals(await readFile(b))).toBe(true);
-  });
-});

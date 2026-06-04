@@ -166,22 +166,24 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
 
   const zipEntries: PreparedEntry[] = prepared.map((p) => p.entry);
 
-  if (policy.metadata !== false) {
-    const metadataEntries: MetadataEntryInput[] = prepared.map((p) => {
-      const input: MetadataEntryInput = {
-        writeEntry: p.source,
-        crc32: p.crc32,
-        compressedSize: p.entry.data.length,
-      };
-      if (p.sha256 !== undefined) input.sha256 = p.sha256;
-      return input;
-    });
-    const createdNs = BigInt(Date.now()) * 1_000_000n;
-    const document = buildMetadata(plan, policy, metadataEntries, createdNs, effectiveTimeZone);
-    const json = Buffer.from(JSON.stringify(document, null, 2), "utf8");
+  // The structured record is always built and returned — it is the run's full
+  // state. Embedding it as `_metadata.json` is the only part gated by policy.
+  const metadataEntries: MetadataEntryInput[] = prepared.map((p) => {
+    const input: MetadataEntryInput = {
+      writeEntry: p.source,
+      crc32: p.crc32,
+      compressedSize: p.entry.data.length,
+    };
+    if (p.sha256 !== undefined) input.sha256 = p.sha256;
+    return input;
+  });
+  const createdNs = BigInt(Date.now()) * 1_000_000n;
+  const metadata = buildMetadata(plan, policy, metadataEntries, createdNs, effectiveTimeZone);
 
-    // The metadata is always embedded as an entry: a ZIP is a container, so the
-    // manifest rides inside it rather than as a loose file that could drift away.
+  if (policy.metadata !== false) {
+    // A ZIP is a container, so the manifest rides inside it rather than as a
+    // loose file that could drift away from the archive.
+    const json = Buffer.from(JSON.stringify(metadata, null, 2), "utf8");
     const compressed = await compress(json, "deflate");
     zipEntries.push({
       name: policy.metadata.name,
@@ -195,10 +197,6 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
       birthtimeNs: createdNs,
       mode: 0,
     });
-  }
-
-  if (policy.deterministic) {
-    zipEntries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   }
 
   // Decide Zip64 over the final entry set, which includes the injected metadata
@@ -216,7 +214,6 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
   }
   const { bytes, zip64 } = buildZip(zipEntries, {
     zip64: policy.zip64 === "always" || zip64Needed,
-    deterministic: policy.deterministic,
     preserveTimestamps: policy.timestamps === "preserve",
     timeZone: effectiveTimeZone,
   });
@@ -235,6 +232,7 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
     entries: zipEntries.length,
     excluded: plan.summary.excluded,
     bytes: bytes.length,
+    metadata,
     plan,
   };
 }

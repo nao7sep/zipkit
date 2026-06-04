@@ -70,7 +70,7 @@ export interface ArchivePolicy {
    * field is rendered in. The DOS field stores local wall-clock with no zone, so
    * a same-zone reader sees the file's real time. Defaults to the host zone.
    * Affects only the DOS field — the extended-timestamp and NTFS extras and the
-   * metadata record are always UTC. Ignored under `deterministic`.
+   * metadata record are always UTC.
    */
   timezone?: string;
   compression: CompressionPolicy;
@@ -80,7 +80,6 @@ export interface ArchivePolicy {
 
   // Container format
   zip64: "auto" | "never" | "always";
-  deterministic: boolean;
 
   // Gating
   strict: boolean;
@@ -158,7 +157,80 @@ export interface WriteResult {
   entries: number; // quantities
   excluded: number;
   bytes: number;
+  /**
+   * The complete structured record of the run — the same document embedded as
+   * `_metadata.json` (unless `metadata` is `false`). Always present, regardless
+   * of whether it was embedded, so a caller can inspect the run without reading
+   * the archive back.
+   */
+  metadata: Metadata;
   plan: Plan; // nested detail
+}
+
+// ---------------------------------------------------------------------------
+// Metadata record
+// ---------------------------------------------------------------------------
+
+/** A UTC instant as both its lossless nanosecond count and an ISO-8601 string. */
+export interface UtcTime {
+  ns: string;
+  iso: string;
+}
+
+/** One name fix applied to an entry. `rule` is a `RuleId`. */
+export interface Transformation {
+  rule: string;
+  before: string;
+  after: string;
+}
+
+/** One written entry's record in the {@link Metadata} document. */
+export interface MetadataEntry {
+  archivePath: string; // identity
+  originalPath: string;
+  sourcePath: string;
+  type: "file" | "dir" | "symlink"; // classification
+  method: "store" | "deflate";
+  size: number; // quantities
+  compressedSize: number;
+  crc32: number;
+  /** Present when hashing was enabled (the default). */
+  sha256?: string;
+  mode: number;
+  mtime: UtcTime; // subject attributes (UTC)
+  atime: UtcTime;
+  ctime: UtcTime;
+  /** Creation time, or `null` when the platform does not track it. */
+  btime: UtcTime | null;
+  linkTarget?: string;
+  transformations: Transformation[]; // nested detail
+}
+
+/** A dropped entry's record in the {@link Metadata} document. */
+export interface MetadataExcluded {
+  archivePath: string;
+  originalPath: string;
+  type: "file" | "dir" | "symlink";
+  reason?: string;
+}
+
+/**
+ * The lossless structured record of an archive run: header, per-entry records,
+ * dropped entries, and findings. Returned from every `create` and embedded as
+ * `_metadata.json` unless disabled.
+ */
+export interface Metadata {
+  tool: string; // identity
+  version: string; // provenance
+  createdUtc: UtcTime;
+  /** The IANA zone the DOS local-time fields were rendered in. */
+  timeZone: string;
+  policy: ArchivePolicy; // configuration
+  summary: PlanSummary; // quantities (aggregate)
+  totals: { uncompressedBytes: number; compressedBytes: number };
+  entries: MetadataEntry[]; // nested detail
+  excluded: MetadataExcluded[];
+  findings: Finding[];
 }
 
 // ---------------------------------------------------------------------------
