@@ -15,8 +15,10 @@ import type { WriteEntry } from "./types.js";
 export interface PlanInternals {
   /** Included entries, in plan order, ready for the writer. */
   writeEntries: WriteEntry[];
-  /** The resolved policy governing timestamps, metadata, zip64, determinism. */
+  /** The resolved policy governing timestamps, metadata, zip64, names. */
   policy: ArchivePolicy;
+  /** The archive comment from the spec, written to the EOCD and the metadata. */
+  comment?: string;
 }
 
 const CARRIER = Symbol("zipkit.internals");

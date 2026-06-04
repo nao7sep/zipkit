@@ -1,53 +1,27 @@
 /**
- * The registry invariants. These lock the severity contract: the tier of
- * a rule is coupled exactly to its blocking behaviour, so a tier cannot be
- * changed without a visible, tested change. Together with the planner tests
- * (which assert that error findings drive `writable = false`), these enforce
- * the three registry invariants.
+ * The registry invariants. Severity alone gates: an `error` blocks the write, a
+ * `warning` and an `info` never do (the planner tests assert error findings
+ * drive `writable = false`). `finding()` stamps the registry tier by default and
+ * accepts an explicit severity only for the configurable name rules.
  */
 
 import { describe, expect, it } from "vitest";
-import { finding, isKnownRule, RULE_ORDER, RULE_REGISTRY, ruleBlocks } from "../src/registry.js";
-import type { RuleId } from "../src/registry.js";
+import { finding, isKnownRule, RULE_ORDER, RULE_REGISTRY } from "../src/registry.js";
 
 const ALL_RULES = RULE_ORDER;
 
 describe("RULE_REGISTRY", () => {
-  it("couples blocksNormally to the error tier exactly", () => {
+  it("gives every rule a severity and a disposition", () => {
     for (const rule of ALL_RULES) {
       const spec = RULE_REGISTRY[rule];
-      expect(spec.blocksNormally, rule).toBe(spec.severity === "error");
+      expect(["error", "warning", "info"], rule).toContain(spec.severity);
+      expect(typeof spec.disposition, rule).toBe("string");
     }
   });
 
-  it("couples blocksUnderStrict to the non-info tiers exactly", () => {
-    for (const rule of ALL_RULES) {
-      const spec = RULE_REGISTRY[rule];
-      expect(spec.blocksUnderStrict, rule).toBe(spec.severity !== "info");
-    }
-  });
-
-  it("never lets an info rule block, under any gating", () => {
-    for (const rule of ALL_RULES) {
-      if (RULE_REGISTRY[rule].severity !== "info") continue;
-      expect(ruleBlocks(rule, false), rule).toBe(false);
-      expect(ruleBlocks(rule, true), rule).toBe(false);
-    }
-  });
-
-  it("blocks every error rule unconditionally", () => {
-    for (const rule of ALL_RULES) {
-      if (RULE_REGISTRY[rule].severity !== "error") continue;
-      expect(ruleBlocks(rule, false), rule).toBe(true);
-      expect(ruleBlocks(rule, true), rule).toBe(true);
-    }
-  });
-
-  it("blocks warnings only under strict gating", () => {
-    for (const rule of ALL_RULES) {
-      if (RULE_REGISTRY[rule].severity !== "warning") continue;
-      expect(ruleBlocks(rule, false), rule).toBe(false);
-      expect(ruleBlocks(rule, true), rule).toBe(true);
+  it("keeps the structural rules at the error tier", () => {
+    for (const rule of ["path.traversal", "collision.case", "collision.post-fix", "compat.zip64-required"] as const) {
+      expect(RULE_REGISTRY[rule].severity, rule).toBe("error");
     }
   });
 
@@ -82,7 +56,7 @@ describe("RULE_REGISTRY", () => {
 });
 
 describe("finding factory", () => {
-  it("stamps the severity from the registry, never inline", () => {
+  it("defaults the severity to the registry tier", () => {
     for (const rule of ALL_RULES) {
       const f = finding(rule, "some/path", "message");
       expect(f.rule, rule).toBe(rule);
@@ -90,11 +64,16 @@ describe("finding factory", () => {
     }
   });
 
+  it("honors an explicit severity override (the name rules)", () => {
+    expect(finding("name.invalid-char", "p", "m", { severity: "error" }).severity).toBe("error");
+    expect(finding("name.nfd", "p", "m", { severity: "warning" }).severity).toBe("warning");
+    expect(finding("name.reserved", "p", "m", { severity: "info" }).severity).toBe("info");
+  });
+
   it("omits fix when not provided and preserves it when given", () => {
     const without = finding("name.suspicious", "p", "m");
     expect(without.fix).toBeUndefined();
-    const renamed: RuleId = "name.invalid-char";
-    const withFix = finding(renamed, "p", "m", { kind: "rename", to: "p_" });
+    const withFix = finding("name.invalid-char", "p", "m", { fix: { kind: "rename", to: "p_" } });
     expect(withFix.fix).toEqual({ kind: "rename", to: "p_" });
   });
 });

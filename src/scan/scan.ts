@@ -385,11 +385,13 @@ export async function scan(
     data: { entries: ctx.entries.length, prunedDirs: ctx.prunedDirs.length },
   });
 
-  return {
+  const result: ScanResult = {
     entries: ctx.entries,
     prunedDirs: ctx.prunedDirs,
     output,
     outputExists,
     overwrite: spec.overwrite === true,
   };
+  if (spec.comment !== undefined) result.comment = spec.comment;
+  return result;
 }

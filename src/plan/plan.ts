@@ -46,7 +46,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
   // caught here (and predicted by the dry run) rather than silently producing a
   // duplicate ZIP entry.
   const reserved = policy.metadata !== false ? [policy.metadata.name] : [];
-  applyCollision(items, reserved);
+  applyCollision(items, policy.collisionCase, reserved);
   applyCompression(items, policy);
   applyTimestamps(items);
 
@@ -62,7 +62,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
   for (const f of globalFindings) findings.push(f);
 
   const summary = buildSummary(items, findings, zip64);
-  const writable = computeWritable(findings, policy.strict, scan.outputExists, scan.overwrite);
+  const writable = computeWritable(findings, scan.outputExists, scan.overwrite);
 
   const plan: Plan = {
     output: scan.output,
@@ -73,6 +73,6 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
     entries,
     findings,
   };
-  attachInternals(plan, { writeEntries, policy });
+  attachInternals(plan, { writeEntries, policy, comment: scan.comment });
   return plan;
 }

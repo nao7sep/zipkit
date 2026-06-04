@@ -1,11 +1,12 @@
 /**
  * Policy defaults and layering. Locks the default values, the merge
  * precedence (per-call over instance over default), the replace-not-concat
- * semantics for list fields, and the metadata partial-fill behaviour.
+ * semantics for list fields, the additive `storeExtra`, and the metadata
+ * partial-fill behaviour.
  */
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_POLICY, DEFAULT_STORE_EXTENSIONS, resolvePolicy } from "../src/policy.js";
+import { DEFAULT_POLICY, NAME_DEFAULTS, resolvePolicy } from "../src/policy.js";
 import type { FilterRule } from "../src/types.js";
 
 const ruleA: FilterRule = { pattern: "a", match: "glob", target: "both" };
@@ -17,13 +18,25 @@ describe("DEFAULT_POLICY", () => {
     expect(DEFAULT_POLICY.emptyFiles).toBe("keep");
     expect(DEFAULT_POLICY.emptyDirs).toBe("keep");
     expect(DEFAULT_POLICY.emptyDirDefinition).toBe("recursive");
-    expect(DEFAULT_POLICY.invalidCharReplacement).toBe("_");
+    expect(DEFAULT_POLICY.names).toEqual(NAME_DEFAULTS);
+    expect(DEFAULT_POLICY.names.invalidCharReplacement).toBe("_");
+    expect(DEFAULT_POLICY.collisionCase).toBe("insensitive");
     expect(DEFAULT_POLICY.symlinks).toBe("ignore");
     expect(DEFAULT_POLICY.timestamps).toBe("preserve");
     expect(DEFAULT_POLICY.compression.mode).toBe("auto");
+    expect(DEFAULT_POLICY.compression.storeExtra).toEqual([]);
+    expect(DEFAULT_POLICY.compression.level).toBe(6);
     expect(DEFAULT_POLICY.metadata).toEqual({ name: "_metadata.json", hash: true });
     expect(DEFAULT_POLICY.zip64).toBe("auto");
-    expect(DEFAULT_POLICY.strict).toBe(false);
+  });
+
+  it("defaults every name guardrail to fix (suspicious to warn)", () => {
+    expect(DEFAULT_POLICY.names.nfc).toBe("fix");
+    expect(DEFAULT_POLICY.names.invalidChars).toBe("fix");
+    expect(DEFAULT_POLICY.names.controlChars).toBe("fix");
+    expect(DEFAULT_POLICY.names.trailingDotSpace).toBe("fix");
+    expect(DEFAULT_POLICY.names.reserved).toBe("fix");
+    expect(DEFAULT_POLICY.names.suspicious).toBe("warn");
   });
 });
 
@@ -33,9 +46,20 @@ describe("resolvePolicy", () => {
   });
 
   it("merges per-call over instance over defaults", () => {
-    const resolved = resolvePolicy({ junk: "none", strict: false }, { strict: true });
+    const resolved = resolvePolicy(
+      { junk: "none", collisionCase: "insensitive" },
+      { collisionCase: "sensitive" },
+    );
     expect(resolved.junk).toBe("none");
-    expect(resolved.strict).toBe(true);
+    expect(resolved.collisionCase).toBe("sensitive");
+  });
+
+  it("deep-merges a partial names object over the defaults", () => {
+    const resolved = resolvePolicy(undefined, { names: { invalidChars: "error" } });
+    expect(resolved.names.invalidChars).toBe("error");
+    // The unset guardrails keep their defaults.
+    expect(resolved.names.nfc).toBe("fix");
+    expect(resolved.names.invalidCharReplacement).toBe("_");
   });
 
   it("replaces list fields wholesale rather than concatenating", () => {
@@ -43,17 +67,19 @@ describe("resolvePolicy", () => {
     expect(resolved.filters).toEqual([ruleB]);
   });
 
-  it("keeps the default store list when only the mode is overridden", () => {
+  it("keeps storeExtra empty when only the mode is overridden", () => {
     const resolved = resolvePolicy(undefined, { compression: { mode: "store-all" } });
     expect(resolved.compression.mode).toBe("store-all");
-    expect(resolved.compression.storeExtensions).toEqual([...DEFAULT_STORE_EXTENSIONS]);
+    expect(resolved.compression.storeExtra).toEqual([]);
+    expect(resolved.compression.level).toBe(6);
   });
 
-  it("replaces the store list when provided", () => {
+  it("carries storeExtra additions and a level override", () => {
     const resolved = resolvePolicy(undefined, {
-      compression: { storeExtensions: [".foo"] },
+      compression: { storeExtra: [".foo"], level: 9 },
     });
-    expect(resolved.compression.storeExtensions).toEqual([".foo"]);
+    expect(resolved.compression.storeExtra).toEqual([".foo"]);
+    expect(resolved.compression.level).toBe(9);
   });
 
   it("fills metadata defaults — name and hash on — for a partial metadata object", () => {
@@ -71,9 +97,9 @@ describe("resolvePolicy", () => {
   });
 
   it("does not mutate DEFAULT_POLICY across calls", () => {
-    resolvePolicy(undefined, { filters: [ruleA], compression: { storeExtensions: [".x"] } });
+    resolvePolicy(undefined, { filters: [ruleA], compression: { storeExtra: [".x"] } });
     expect(DEFAULT_POLICY.filters).toEqual([]);
-    expect(DEFAULT_POLICY.compression.storeExtensions).toEqual([...DEFAULT_STORE_EXTENSIONS]);
+    expect(DEFAULT_POLICY.compression.storeExtra).toEqual([]);
   });
 
   it("does not share the compression object with DEFAULT_POLICY", () => {

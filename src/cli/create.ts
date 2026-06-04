@@ -11,13 +11,16 @@
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
 import { globExclude, regexExclude } from "../filter/rules.js";
-import { DEFAULT_STORE_EXTENSIONS, METADATA_DEFAULTS } from "../policy.js";
+import { METADATA_DEFAULTS } from "../policy.js";
 import type { LogSink } from "../log/logger.js";
 import type {
   ArchiveInput,
   ArchivePolicy,
   ArchiveSpec,
+  CompressionPolicy,
   FilterRule,
+  NameAction,
+  NameRules,
   ZipKitOptions,
 } from "../types.js";
 import { emitJson } from "./json.js";
@@ -34,19 +37,27 @@ interface CreateOpts {
   emptyDirs?: "keep" | "prune";
   emptyDirDef?: "strict" | "recursive";
   invalidChar?: string;
+  nameNfc?: NameAction;
+  nameInvalid?: NameAction;
+  nameControl?: NameAction;
+  nameTrailing?: NameAction;
+  nameReserved?: NameAction;
+  nameSuspicious?: "warn" | "error" | "none";
+  collisionCase?: "insensitive" | "sensitive";
   symlinks?: "ignore" | "preserve" | "follow";
   followExternal?: boolean;
   timestamps?: "clamp" | "preserve";
   timezone?: string;
-  storeExt?: string | false;
+  storeExt?: string;
   storeAll?: boolean;
   compressAll?: boolean;
+  level?: string;
+  comment?: string;
   metadata?: boolean; // commander's --no-metadata sets this false (default true)
   metadataNoHash?: boolean;
   metadataName?: string;
   zip64?: "auto" | "never" | "always";
   dryRun?: boolean;
-  strict?: boolean;
   log?: string;
   quiet?: boolean;
   verbose?: boolean;
@@ -86,7 +97,19 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
   if (opts.emptyDirs) policy.emptyDirs = opts.emptyDirs;
   if (opts.emptyDirDef) policy.emptyDirDefinition = opts.emptyDirDef;
 
-  if (opts.invalidChar !== undefined) policy.invalidCharReplacement = opts.invalidChar;
+  // Naming: the per-feature actions and the invalid-character replacement form
+  // one partial `names` object that resolvePolicy completes from the defaults.
+  const names: Partial<NameRules> = {};
+  if (opts.invalidChar !== undefined) names.invalidCharReplacement = opts.invalidChar;
+  if (opts.nameNfc) names.nfc = opts.nameNfc;
+  if (opts.nameInvalid) names.invalidChars = opts.nameInvalid;
+  if (opts.nameControl) names.controlChars = opts.nameControl;
+  if (opts.nameTrailing) names.trailingDotSpace = opts.nameTrailing;
+  if (opts.nameReserved) names.reserved = opts.nameReserved;
+  if (opts.nameSuspicious) names.suspicious = opts.nameSuspicious;
+  if (Object.keys(names).length > 0) policy.names = names as NameRules;
+
+  if (opts.collisionCase) policy.collisionCase = opts.collisionCase;
 
   if (opts.symlinks) policy.symlinks = opts.symlinks;
   if (opts.followExternal) policy.followExternal = true;
@@ -94,17 +117,14 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
   if (opts.timezone !== undefined) policy.timezone = opts.timezone;
 
   const mode = opts.compressAll ? "compress-all" : opts.storeAll ? "store-all" : undefined;
-  const storeExtensions =
-    opts.storeExt === false
-      ? []
-      : typeof opts.storeExt === "string"
-        ? splitList(opts.storeExt)
-        : undefined;
-  if (mode !== undefined || storeExtensions !== undefined) {
-    policy.compression = {
-      mode: mode ?? "auto",
-      storeExtensions: storeExtensions ?? [...DEFAULT_STORE_EXTENSIONS],
-    };
+  const storeExtra = opts.storeExt !== undefined ? splitList(opts.storeExt) : undefined;
+  const level = opts.level !== undefined ? Number.parseInt(opts.level, 10) : undefined;
+  if (mode !== undefined || storeExtra !== undefined || level !== undefined) {
+    const compression: Partial<CompressionPolicy> = {};
+    if (mode !== undefined) compression.mode = mode;
+    if (storeExtra !== undefined) compression.storeExtra = storeExtra;
+    if (level !== undefined) compression.level = level;
+    policy.compression = compression as CompressionPolicy;
   }
 
   // Metadata is embedded by default (the policy default). `--no-metadata` sets
@@ -120,7 +140,6 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
   }
 
   if (opts.zip64) policy.zip64 = opts.zip64;
-  if (opts.strict) policy.strict = true;
 
   return policy;
 }
@@ -140,6 +159,7 @@ function buildSpec(
   if (opts.root !== undefined) spec.root = opts.root;
   if (opts.output !== undefined) spec.output = opts.output;
   if (opts.overwrite) spec.overwrite = true;
+  if (opts.comment !== undefined) spec.comment = opts.comment;
 
   const policy = buildPolicy(opts, filters);
   if (Object.keys(policy).length > 0) spec.policy = policy;
@@ -206,6 +226,7 @@ export function registerCreate(
   // Destination
   cmd.option("-o, --output <path>", "output archive path");
   cmd.option("--overwrite", "overwrite an existing output");
+  cmd.option("--comment <text>", "archive comment, stored in the ZIP and the metadata");
 
   // Selection
   cmd.option("--junk <builtin|none>", "junk preset (default builtin)");
@@ -215,10 +236,25 @@ export function registerCreate(
   cmd.option("--empty-dirs <keep|prune>", "empty-directory handling (default keep)");
   cmd.option("--empty-dir-def <strict|recursive>", "empty-directory definition (default recursive)");
 
-  // Naming
+  // Naming. Each name guardrail takes an action: fix (repair, the default) |
+  // warn (report, do not block) | error (report and fail) | none (silent).
+  const nameAction = " <fix|warn|error|none>";
+  cmd.option(`--name-nfc${nameAction}`, "non-NFC names (e.g. macOS NFD) → NFC");
+  cmd.option(`--name-invalid${nameAction}`, "Windows-illegal characters < > : \" | ? *");
+  cmd.option(`--name-control${nameAction}`, "control characters below 0x20");
+  cmd.option(`--name-trailing${nameAction}`, "trailing dots or spaces");
+  cmd.option(`--name-reserved${nameAction}`, "reserved device names (CON, PRN, …)");
+  cmd.option(
+    "--name-suspicious <warn|error|none>",
+    "zero-width / bidi-override characters (kept; never fixed)",
+  );
   cmd.option(
     "--invalid-char <char>",
     'replacement for invalid characters; a single path component, no slashes (default "_")',
+  );
+  cmd.option(
+    "--collision-case <insensitive|sensitive>",
+    "whether case-only path differences collide (default insensitive)",
   );
 
   // Entry data
@@ -232,10 +268,13 @@ export function registerCreate(
     "--timezone <iana>",
     "IANA zone for the DOS local-time field, e.g. Asia/Tokyo (default: host zone)",
   );
-  cmd.option("--store-ext <list>", "comma-separated extensions to store without deflating");
-  cmd.option("--no-store-ext", "deflate everything (clear the store list)");
-  cmd.option("--store-all", "store every entry");
-  cmd.option("--compress-all", "deflate every entry");
+  cmd.option(
+    "--store-ext <list>",
+    "extra comma-separated extensions to store, added to the built-in set",
+  );
+  cmd.option("--store-all", "store every entry (no compression)");
+  cmd.option("--compress-all", "deflate every entry (ignore the store set)");
+  cmd.option("--level <1-9>", "deflate level, 1 (fastest) to 9 (smallest) (default 6)");
 
   // Companion output
   cmd.option("--no-metadata", "do not embed the metadata file (produce a plain archive)");
@@ -250,7 +289,6 @@ export function registerCreate(
 
   // Diagnostics and control
   cmd.option("--dry-run", "compute and render the plan; write nothing");
-  cmd.option("--strict", "treat warnings as blocking");
   cmd.option("--log <path.jsonl>", "write the event stream as JSONL");
   cmd.option("--quiet", "suppress console progress");
   cmd.option("--verbose", "include per-entry detail in console progress");

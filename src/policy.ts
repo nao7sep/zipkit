@@ -6,17 +6,18 @@
  */
 
 import { defu } from "defu";
-import type { ArchivePolicy, MetadataPolicy } from "./types.js";
+import type { ArchivePolicy, MetadataPolicy, NameRules } from "./types.js";
 
 /**
- * Extensions stored verbatim under `compression.mode: "auto"` — formats that
- * are reliably already compressed, where attempting deflate only wastes CPU
- * with no realistic chance of shrinking. Lowercase, leading dot. This list is
- * a CPU optimization, not a correctness setting: any file outside it is still
- * deflated. The method is decided here and is final — the streaming writer does
- * not reconsider it — so a deflated entry can rarely be a few bytes larger than
- * its stored form. Borderline formats (e.g. PDF, which sometimes compresses) are
- * deliberately left off so `auto` can keep the win when it exists.
+ * The built-in set stored verbatim under `compression.mode: "auto"` — formats
+ * that are reliably already compressed, where attempting deflate only wastes
+ * CPU with no realistic chance of shrinking. Lowercase, leading dot. This is a
+ * CPU optimization, not a correctness setting: any file outside it is still
+ * deflated, and `compression.storeExtra` only adds to it. The method is decided
+ * at plan time and is final — the streaming writer does not reconsider it — so a
+ * deflated entry can rarely be a few bytes larger than its stored form.
+ * Borderline formats (e.g. PDF, which sometimes compresses) are deliberately
+ * left off so `auto` can keep the win when it exists.
  */
 export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   // Images
@@ -56,6 +57,25 @@ export const METADATA_DEFAULTS: MetadataPolicy = {
   hash: true,
 };
 
+/** The default deflate level — zlib's own default, a balanced speed/size point. */
+export const DEFAULT_DEFLATE_LEVEL = 6;
+
+/**
+ * Name-rule defaults: repair every portability defect we can (`fix`), and flag
+ * the unfixable suspicious-character class as a `warning`. Each is individually
+ * overridable — a Linux-only user can set the Windows-specific rules to `none`,
+ * a CI gate can set any to `error`.
+ */
+export const NAME_DEFAULTS: NameRules = {
+  nfc: "fix",
+  invalidChars: "fix",
+  invalidCharReplacement: "_",
+  controlChars: "fix",
+  trailingDotSpace: "fix",
+  reserved: "fix",
+  suspicious: "warn",
+};
+
 /**
  * The built-in defaults. Enumerated-value defaults come first in each union.
  * `emptyDirDefinition` defaults to `"recursive"`, matching the CLI's
@@ -71,13 +91,14 @@ export const DEFAULT_POLICY: ArchivePolicy = {
   emptyDirDefinition: "recursive",
 
   // Naming
-  invalidCharReplacement: "_",
+  names: { ...NAME_DEFAULTS },
+  collisionCase: "insensitive",
 
   // Entry data
   symlinks: "ignore",
   followExternal: false,
   timestamps: "preserve",
-  compression: { mode: "auto", storeExtensions: [...DEFAULT_STORE_EXTENSIONS] },
+  compression: { mode: "auto", storeExtra: [], level: DEFAULT_DEFLATE_LEVEL },
 
   // Companion output — the embedded metadata record is zipkit's reason to
   // exist (faithful, high-precision persistence), so it is on by default;
@@ -86,9 +107,6 @@ export const DEFAULT_POLICY: ArchivePolicy = {
 
   // Container format
   zip64: "auto",
-
-  // Gating
-  strict: false,
 };
 
 function firstDefined<T>(...values: (T | undefined)[]): T | undefined {
@@ -116,12 +134,11 @@ export function resolvePolicy(
   const filters = firstDefined(call?.filters, instance?.filters);
   merged.filters = filters !== undefined ? filters : [];
 
-  const storeExtensions = firstDefined(
-    call?.compression?.storeExtensions,
-    instance?.compression?.storeExtensions,
+  const storeExtra = firstDefined(
+    call?.compression?.storeExtra,
+    instance?.compression?.storeExtra,
   );
-  merged.compression.storeExtensions =
-    storeExtensions !== undefined ? storeExtensions : [...DEFAULT_STORE_EXTENSIONS];
+  merged.compression.storeExtra = storeExtra !== undefined ? storeExtra : [];
 
   if (merged.metadata !== false) {
     merged.metadata = defu(merged.metadata, METADATA_DEFAULTS) as MetadataPolicy;

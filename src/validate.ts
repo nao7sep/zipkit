@@ -10,7 +10,7 @@ import { z } from "zod";
 import { PolicyError } from "./errors.js";
 import { resolveSegments, toForwardSlash } from "./internal/path.js";
 import { formatZodError } from "./internal/zodError.js";
-import { fixSegment } from "./plan/nameFix.js";
+import { fullFixSegment } from "./plan/nameFix.js";
 import { isValidTimeZone } from "./internal/timeZone.js";
 import type { ArchivePolicy, ArchiveSpec, ExtractSpec } from "./types.js";
 
@@ -34,7 +34,7 @@ function isSafePathComponent(name: string): boolean {
   const { segments, escaped } = resolveSegments(toForwardSlash(name));
   if (escaped || segments.length !== 1) return false;
   const segment = segments[0] as string;
-  return fixSegment(segment, "_").segment === segment;
+  return fullFixSegment(segment, "_") === segment;
 }
 
 const filterRuleSchema = z
@@ -56,21 +56,36 @@ const filterRuleSchema = z
     { error: "invalid regular expression pattern", path: ["pattern"] },
   );
 
+const nameActionSchema = z.enum(["fix", "warn", "error", "none"]);
+
 const partialPolicySchema = z.strictObject({
   junk: z.enum(["builtin", "none"]).optional(),
   filters: z.array(filterRuleSchema).optional(),
   emptyFiles: z.enum(["keep", "skip"]).optional(),
   emptyDirs: z.enum(["keep", "prune"]).optional(),
   emptyDirDefinition: z.enum(["strict", "recursive"]).optional(),
-  // Substituted into a single segment after the path-traversal pass, so it must
-  // itself be a clean single component — never a separator or a `..` that would
-  // re-introduce an absolute or traversing entry name.
-  invalidCharReplacement: z
-    .string()
-    .optional()
-    .refine((r) => r === undefined || isSafePathComponent(r), {
-      error: "invalidCharReplacement must be a single path component (no slashes, not '.' or '..')",
-    }),
+  names: z
+    .strictObject({
+      nfc: nameActionSchema.optional(),
+      invalidChars: nameActionSchema.optional(),
+      // Substituted into a single segment after the path-traversal pass, so it
+      // must itself be a clean single component — never a separator or a `..`
+      // that would re-introduce an absolute or traversing entry name.
+      invalidCharReplacement: z
+        .string()
+        .optional()
+        .refine((r) => r === undefined || isSafePathComponent(r), {
+          error:
+            "names.invalidCharReplacement must be a single path component (no slashes, not '.' or '..')",
+          path: ["invalidCharReplacement"],
+        }),
+      controlChars: nameActionSchema.optional(),
+      trailingDotSpace: nameActionSchema.optional(),
+      reserved: nameActionSchema.optional(),
+      suspicious: z.enum(["warn", "error", "none"]).optional(),
+    })
+    .optional(),
+  collisionCase: z.enum(["insensitive", "sensitive"]).optional(),
   symlinks: z.enum(["ignore", "preserve", "follow"]).optional(),
   followExternal: z.boolean().optional(),
   timestamps: z.enum(["preserve", "clamp"]).optional(),
@@ -85,7 +100,8 @@ const partialPolicySchema = z.strictObject({
   compression: z
     .strictObject({
       mode: z.enum(["auto", "store-all", "compress-all"]).optional(),
-      storeExtensions: z.array(z.string()).optional(),
+      storeExtra: z.array(z.string()).optional(),
+      level: z.number().int().min(1).max(9).optional(),
     })
     .optional(),
   metadata: z
@@ -105,7 +121,6 @@ const partialPolicySchema = z.strictObject({
     ])
     .optional(),
   zip64: z.enum(["auto", "never", "always"]).optional(),
-  strict: z.boolean().optional(),
 });
 
 const archiveInputSchema = z.union([
@@ -122,6 +137,14 @@ const specSchema = z.strictObject({
   root: z.string().optional(),
   output: z.string().optional(),
   overwrite: z.boolean().optional(),
+  // The ZIP EOCD comment-length field is 16-bit, so the UTF-8 encoding must fit
+  // in 65535 bytes.
+  comment: z
+    .string()
+    .optional()
+    .refine((c) => c === undefined || Buffer.byteLength(c, "utf8") <= 0xffff, {
+      error: "comment must be at most 65535 bytes when UTF-8 encoded",
+    }),
   policy: partialPolicySchema.optional(),
 });
 

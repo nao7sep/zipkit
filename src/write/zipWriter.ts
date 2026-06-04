@@ -515,9 +515,10 @@ export class ZipWriter {
   /**
    * Write the central directory and EOCD (with Zip64 records when needed),
    * fsync, close, and atomically rename the temp file into place. Returns
-   * whether Zip64 structures were emitted and the final byte length.
+   * whether Zip64 structures were emitted and the final byte length. An optional
+   * archive comment is written into the EOCD comment field (UTF-8).
    */
-  async finalize(forceZip64: boolean): Promise<{ zip64: boolean; bytes: number }> {
+  async finalize(forceZip64: boolean, comment?: string): Promise<{ zip64: boolean; bytes: number }> {
     const cdStart = this.#offset;
     for (const record of this.#central) await this.#append(record);
     const cdSize = this.#offset - cdStart;
@@ -548,6 +549,11 @@ export class ZipWriter {
       await this.#append(locator);
     }
 
+    // The EOCD comment field length is 16-bit; a longer comment is rejected at
+    // the spec boundary, so truncation here would be a bug, not a fallback.
+    const commentBuf =
+      comment !== undefined && comment.length > 0 ? Buffer.from(comment, "utf8") : EMPTY;
+
     const eocd = Buffer.alloc(22);
     eocd.writeUInt32LE(EOCD_SIG, 0);
     eocd.writeUInt16LE(0, 4); // this disk
@@ -556,8 +562,9 @@ export class ZipWriter {
     eocd.writeUInt16LE(count >= U16 ? U16 : count, 10);
     eocd.writeUInt32LE(cdSize >= U32 ? U32 : cdSize, 12);
     eocd.writeUInt32LE(cdStart >= U32 ? U32 : cdStart, 16);
-    eocd.writeUInt16LE(0, 20); // comment length
+    eocd.writeUInt16LE(commentBuf.length, 20); // comment length
     await this.#append(eocd);
+    await this.#append(commentBuf);
 
     const bytes = this.#offset;
     await fsyncAsync(this.#fd);

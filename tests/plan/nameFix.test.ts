@@ -1,20 +1,35 @@
 /**
- * Segment name-fixing table tests. Each row asserts the repaired
- * segment and which registry rules fired, in order. These are paths a
+ * Segment name-fixing table tests. Each row asserts the repaired segment and
+ * which rules fired, in order, under the all-`fix` action set. The action
+ * variants (warn/error/none) get their own block: each decides whether the fix
+ * is applied and at what severity the issue is reported. These are paths a
  * filesystem walk seldom produces, so they are tested directly. Special
- * characters are constructed via code points to keep the source readable and
- * unambiguous.
+ * characters are constructed via code points to keep the source readable.
  */
 
 import { describe, expect, it } from "vitest";
-import { fixSegment } from "../../src/plan/nameFix.js";
+import { fullFixSegment, processSegment } from "../../src/plan/nameFix.js";
 import type { RuleId } from "../../src/registry.js";
+import type { NameRules } from "../../src/types.js";
 
 const COMBINING_ACUTE = String.fromCodePoint(0x0301);
 const NFD_E = `e${COMBINING_ACUTE}`;
 const NFC_E = String.fromCodePoint(0x00e9);
 const ZWSP = String.fromCodePoint(0x200b);
 const BELL = String.fromCodePoint(0x07);
+
+/** Every guardrail set to `fix` (suspicious to `warn`, its strongest action). */
+function allFix(replacement = "_"): NameRules {
+  return {
+    nfc: "fix",
+    invalidChars: "fix",
+    invalidCharReplacement: replacement,
+    controlChars: "fix",
+    trailingDotSpace: "fix",
+    reserved: "fix",
+    suspicious: "warn",
+  };
+}
 
 interface Row {
   name: string;
@@ -83,17 +98,17 @@ const rows: Row[] = [
   },
 ];
 
-describe("fixSegment", () => {
+describe("processSegment (all fix)", () => {
   for (const row of rows) {
     it(row.name, () => {
-      const result = fixSegment(row.input, row.replacement ?? "_");
+      const result = processSegment(row.input, allFix(row.replacement ?? "_"));
       expect(result.segment).toBe(row.expected);
-      expect(result.rules).toEqual(row.rules);
+      expect(result.issues.map((i) => i.rule)).toEqual(row.rules);
     });
   }
 
   it("records a transformation chain for the metadata", () => {
-    const result = fixSegment("a:b. ", "_");
+    const result = processSegment("a:b. ", allFix());
     expect(result.transformations.map((t) => t.rule)).toEqual([
       "name.invalid-char",
       "name.trailing-dot-space",
@@ -101,5 +116,65 @@ describe("fixSegment", () => {
     expect(result.transformations[0]?.before).toBe("a:b. ");
     expect(result.transformations[0]?.after).toBe("a_b. ");
     expect(result.transformations[1]?.after).toBe("a_b");
+  });
+
+  it("a fix issue is info severity and applied", () => {
+    const [issue] = processSegment("a:b", allFix()).issues;
+    expect(issue).toMatchObject({ rule: "name.invalid-char", severity: "info", applied: true });
+  });
+});
+
+describe("processSegment actions", () => {
+  it("warn leaves the name and reports a warning", () => {
+    const result = processSegment("a:b", { ...allFix(), invalidChars: "warn" });
+    expect(result.segment).toBe("a:b");
+    expect(result.transformations).toEqual([]);
+    expect(result.issues).toEqual([
+      { rule: "name.invalid-char", severity: "warning", applied: false },
+    ]);
+  });
+
+  it("error leaves the name and reports an error", () => {
+    const result = processSegment("a:b", { ...allFix(), invalidChars: "error" });
+    expect(result.segment).toBe("a:b");
+    expect(result.issues).toEqual([
+      { rule: "name.invalid-char", severity: "error", applied: false },
+    ]);
+  });
+
+  it("none leaves the name and reports nothing", () => {
+    const result = processSegment("a:b", { ...allFix(), invalidChars: "none" });
+    expect(result.segment).toBe("a:b");
+    expect(result.issues).toEqual([]);
+  });
+
+  it("suspicious can be silenced with none", () => {
+    const result = processSegment(`a${ZWSP}b`, { ...allFix(), suspicious: "none" });
+    expect(result.segment).toBe(`a${ZWSP}b`);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("only the fixed classes act when actions are mixed", () => {
+    // NFD fixed, invalid chars left as a warning, trailing trimmed.
+    const result = processSegment(`${NFD_E}:x. `, {
+      ...allFix(),
+      invalidChars: "warn",
+    });
+    expect(result.segment).toBe(`${NFC_E}:x`);
+    expect(result.issues.map((i) => [i.rule, i.severity, i.applied])).toEqual([
+      ["name.nfd", "info", true],
+      ["name.invalid-char", "warning", false],
+      ["name.trailing-dot-space", "info", true],
+    ]);
+  });
+});
+
+describe("fullFixSegment", () => {
+  it("equals the input for a clean name", () => {
+    expect(fullFixSegment("report.txt", "_")).toBe("report.txt");
+  });
+
+  it("returns the fully repaired segment", () => {
+    expect(fullFixSegment("a:b. ", "_")).toBe("a_b");
   });
 });

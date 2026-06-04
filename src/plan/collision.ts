@@ -1,15 +1,17 @@
 /**
- * Collision detection (pass 7). The resolved tree — files and
- * directories — is case-folded on post-fix names. Distinct sources that fold
- * to the same path collide on a case-insensitive filesystem. An exact post-fix
- * match (often substitution-induced) is `collision.post-fix`; a case-only
- * difference is `collision.case`. Both are errors: ZipKit does not auto-rename,
- * because choosing which file to rename is the ambiguous resolution that
- * defines the error tier. The finding is attached to every entry in the
- * colliding group.
+ * Collision detection (pass 7). Post-fix names are folded and grouped: distinct
+ * sources that fold together collide. Under `insensitive` (the default) the fold
+ * is case-insensitive, so two names differing only by case clash as they would
+ * on macOS/Windows — reported as `collision.case`; an exact post-fix match (often
+ * substitution-induced) is `collision.post-fix`. Under `sensitive` only exact
+ * matches collide (`collision.post-fix`), for archives targeting only
+ * case-sensitive filesystems. Both are errors: ZipKit does not auto-rename,
+ * because choosing which file to rename is the ambiguous resolution that defines
+ * the error tier. The finding is attached to every entry in the colliding group.
  */
 
 import { finding } from "../registry.js";
+import type { ArchivePolicy } from "../types.js";
 import type { WorkItem } from "./workItem.js";
 
 /**
@@ -19,14 +21,21 @@ import type { WorkItem } from "./workItem.js";
  *   source-side collision — so it is reported here as an error, which also lets
  *   the dry run predict it.
  */
-export function applyCollision(items: WorkItem[], reserved: readonly string[] = []): void {
+export function applyCollision(
+  items: WorkItem[],
+  collisionCase: ArchivePolicy["collisionCase"],
+  reserved: readonly string[] = [],
+): void {
+  const fold = (path: string): string =>
+    collisionCase === "sensitive" ? path : path.toLowerCase();
+
   const groups = new Map<string, WorkItem[]>();
   for (const item of items) {
     if (item.excluded) continue;
-    const fold = item.archivePath.toLowerCase();
-    const group = groups.get(fold);
+    const key = fold(item.archivePath);
+    const group = groups.get(key);
     if (group) group.push(item);
-    else groups.set(fold, [item]);
+    else groups.set(key, [item]);
   }
 
   for (const group of groups.values()) {
@@ -43,7 +52,7 @@ export function applyCollision(items: WorkItem[], reserved: readonly string[] = 
   }
 
   for (const name of reserved) {
-    const group = groups.get(name.toLowerCase());
+    const group = groups.get(fold(name));
     if (!group) continue;
     for (const item of group) {
       item.findings.push(

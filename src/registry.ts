@@ -1,10 +1,14 @@
 /**
- * The rule registry and severity contract. Severity lives in exactly one
- * place. Rules never write a tier inline; they call {@link finding}, which
- * stamps the severity from this table. The coupling is exact: an `error` is the
- * tier that blocks unconditionally, a `warning` blocks only under strict
- * gating, and `info` never blocks. Changing a tier changes observable blocking
- * behaviour and is a breaking change to strict-gating semantics.
+ * The rule registry and severity contract. Severity decides blocking and
+ * nothing else: an `error` blocks the write, a `warning` and an `info` never
+ * do. There is no separate strict gating — a caller who wants an issue to block
+ * sets that issue's severity to `error` (for the configurable name rules, via
+ * the `names` policy; see `plan/nameFix.ts`).
+ *
+ * Most rules have a fixed severity, stamped here. The name rules are the
+ * exception: their severity is chosen per run from the policy action, so
+ * `finding()` is called with an explicit `severity` for them. The registry
+ * entry is then only a default; the call site is authoritative.
  *
  * The table is in pipeline order: path rooting, content selection, name
  * fixing, deduplication, collision detection, timestamp resolution, and
@@ -35,35 +39,36 @@ export type RuleId =
   | "compat.zip64-required";
 
 export interface RuleSpec {
+  /** The rule's severity, which alone decides blocking (`error` blocks). For
+   *  the configurable name rules this is a default the call site overrides. */
   severity: Severity;
-  /** Blocks the write with no strict gating (true exactly for `error`). */
-  blocksNormally: boolean;
-  /** Blocks the write under `--strict` (true for `error` and `warning`). */
-  blocksUnderStrict: boolean;
   /** Human-readable default disposition. */
   disposition: string;
 }
 
 export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
-  "path.absolute": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "strip prefix" },
-  "path.traversal": { severity: "error", blocksNormally: true, blocksUnderStrict: true, disposition: "abort" },
-  "path.too-long": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "keep" },
-  "macos.junk": { severity: "info", blocksNormally: false, blocksUnderStrict: false, disposition: "exclude" },
-  "windows.junk": { severity: "info", blocksNormally: false, blocksUnderStrict: false, disposition: "exclude" },
-  "entry.symlink": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "exclude" },
-  "name.nfd": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "normalize to NFC" },
-  "name.invalid-char": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "substitute" },
-  "name.control-char": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "strip" },
-  "name.trailing-dot-space": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "trim" },
-  "name.reserved": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "suffix" },
-  "name.suspicious": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "keep" },
-  "entry.duplicate": { severity: "info", blocksNormally: false, blocksUnderStrict: false, disposition: "deduplicate" },
-  "collision.case": { severity: "error", blocksNormally: true, blocksUnderStrict: true, disposition: "abort" },
-  "collision.post-fix": { severity: "error", blocksNormally: true, blocksUnderStrict: true, disposition: "abort" },
-  "time.pre-1980": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "clamp" },
-  "time.post-2107": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "clamp" },
-  "compat.zip64": { severity: "warning", blocksNormally: false, blocksUnderStrict: true, disposition: "use Zip64" },
-  "compat.zip64-required": { severity: "error", blocksNormally: true, blocksUnderStrict: true, disposition: "abort" },
+  "path.absolute": { severity: "warning", disposition: "strip prefix" },
+  "path.traversal": { severity: "error", disposition: "abort" },
+  "path.too-long": { severity: "warning", disposition: "keep" },
+  "macos.junk": { severity: "info", disposition: "exclude" },
+  "windows.junk": { severity: "info", disposition: "exclude" },
+  "entry.symlink": { severity: "warning", disposition: "exclude" },
+  // The name rules' severity is set per run from the `names` policy action
+  // (fix → info, warn → warning, error → error); these defaults are only used
+  // if a call site forgets to pass one.
+  "name.nfd": { severity: "info", disposition: "normalize to NFC" },
+  "name.invalid-char": { severity: "info", disposition: "substitute" },
+  "name.control-char": { severity: "info", disposition: "strip" },
+  "name.trailing-dot-space": { severity: "info", disposition: "trim" },
+  "name.reserved": { severity: "info", disposition: "suffix" },
+  "name.suspicious": { severity: "warning", disposition: "keep" },
+  "entry.duplicate": { severity: "info", disposition: "deduplicate" },
+  "collision.case": { severity: "error", disposition: "abort" },
+  "collision.post-fix": { severity: "error", disposition: "abort" },
+  "time.pre-1980": { severity: "warning", disposition: "clamp" },
+  "time.post-2107": { severity: "warning", disposition: "clamp" },
+  "compat.zip64": { severity: "warning", disposition: "use Zip64" },
+  "compat.zip64-required": { severity: "error", disposition: "abort" },
 };
 
 /** The rule ids in pipeline order. */
@@ -75,28 +80,23 @@ export function isKnownRule(rule: string): rule is RuleId {
 }
 
 /**
- * Construct a finding, stamping its severity from the registry. This is the
- * only sanctioned way to create a finding, so the invariant — every
- * finding's severity equals its registry tier — holds by construction.
+ * Construct a finding. The severity defaults to the registry tier; a caller
+ * passes an explicit `severity` only for the configurable name rules, whose
+ * tier is chosen per run from the policy action. This stays the single
+ * sanctioned way to create a finding, so every finding still carries a tier.
  */
 export function finding(
   rule: RuleId,
   path: string,
   message: string,
-  fix?: Finding["fix"],
+  opts?: { fix?: Finding["fix"]; severity?: Severity },
 ): Finding {
   const f: Finding = {
     rule,
-    severity: RULE_REGISTRY[rule].severity,
+    severity: opts?.severity ?? RULE_REGISTRY[rule].severity,
     path,
     message,
   };
-  if (fix) f.fix = fix;
+  if (opts?.fix) f.fix = opts.fix;
   return f;
-}
-
-/** Whether a finding of this rule blocks the write under the given gating. */
-export function ruleBlocks(rule: RuleId, strict: boolean): boolean {
-  const spec = RULE_REGISTRY[rule];
-  return strict ? spec.blocksUnderStrict : spec.blocksNormally;
 }

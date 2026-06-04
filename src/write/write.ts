@@ -63,12 +63,13 @@ async function streamFile(
   writer: ZipWriter,
   source: WriteEntry,
   chunkSize: number,
+  level: number,
   hasher: Hash | null,
   signal: AbortSignal | undefined,
 ): Promise<StreamResult> {
   const input = toWriteEntryInput(source);
   return writer.streamEntry(input, async (sink) => {
-    const compressor = new EntryCompressor(source.method, sink, chunkSize);
+    const compressor = new EntryCompressor(source.method, sink, chunkSize, level);
     const reader = createReadStream(source.absolutePath, { highWaterMark: chunkSize });
     try {
       for await (const chunk of reader) {
@@ -93,9 +94,10 @@ async function streamBuffer(
   input: WriteEntryInput,
   raw: Buffer,
   chunkSize: number,
+  level: number,
 ): Promise<StreamResult> {
   return writer.streamEntry(input, async (sink) => {
-    const compressor = new EntryCompressor(input.method, sink, chunkSize);
+    const compressor = new EntryCompressor(input.method, sink, chunkSize, level);
     if (raw.length > 0) await compressor.update(raw);
     return compressor.finish();
   });
@@ -116,7 +118,8 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
     );
   }
 
-  const { policy, writeEntries } = internals;
+  const { policy, writeEntries, comment } = internals;
+  const level = policy.compression.level;
   // The zone the DOS local-time field is rendered in: the explicit policy zone,
   // or the host's. Resolved once and recorded in the metadata so the local
   // field is interpretable; the UTC extras and metadata times need no zone.
@@ -181,6 +184,7 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
           toWriteEntryInput(source),
           raw,
           deps.chunkSize,
+          level,
         );
         const entry: StreamedEntry = {
           source,
@@ -194,7 +198,7 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
       }
 
       const hasher = hash ? createHash("sha256") : null;
-      const result = await streamFile(writer, source, deps.chunkSize, hasher, signal);
+      const result = await streamFile(writer, source, deps.chunkSize, level, hasher, signal);
       const entry: StreamedEntry = {
         source,
         crc32: result.crc32,
@@ -216,7 +220,14 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
       if (s.sha256 !== undefined) input.sha256 = s.sha256;
       return input;
     });
-    const metadata = buildMetadata(plan, policy, metadataEntries, createdNs, effectiveTimeZone);
+    const metadata = buildMetadata(
+      plan,
+      policy,
+      metadataEntries,
+      createdNs,
+      effectiveTimeZone,
+      comment,
+    );
 
     if (policy.metadata !== false) {
       // A ZIP is a container, so the manifest rides inside it rather than as a
@@ -237,10 +248,11 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
         },
         json,
         deps.chunkSize,
+        level,
       );
     }
 
-    const final = await writer.finalize(forceZip64);
+    const final = await writer.finalize(forceZip64, comment);
     zip64 = final.zip64;
     bytes = final.bytes;
 

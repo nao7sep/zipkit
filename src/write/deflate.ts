@@ -44,11 +44,11 @@ export class EntryCompressor {
   #chain: Promise<void> = Promise.resolve();
   #error: unknown;
 
-  constructor(method: "store" | "deflate", sink: ChunkSink, chunkSize: number) {
+  constructor(method: "store" | "deflate", sink: ChunkSink, chunkSize: number, level: number) {
     this.#method = method;
     this.#sink = sink;
     if (method === "deflate") {
-      this.#deflate = zlib.createDeflateRaw({ chunkSize });
+      this.#deflate = zlib.createDeflateRaw({ chunkSize, level });
       // Output chunks arrive on the stream's "data" events, already in order.
       // Forward each to the sink strictly sequentially — the sink advances a
       // shared file offset, so overlapping writes would interleave the bytes.

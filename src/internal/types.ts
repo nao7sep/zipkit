@@ -67,6 +67,8 @@ export interface ScanResult {
   output: string;
   outputExists: boolean;
   overwrite: boolean;
+  /** The archive comment from the spec, carried through to the writer. */
+  comment?: string;
 }
 
 /** One name fix applied to an entry, recorded for the metadata file. */

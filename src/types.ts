@@ -29,9 +29,46 @@ export interface FilterRule {
 }
 
 export interface CompressionPolicy {
+  /**
+   * `auto` stores the built-in set of already-compressed extensions and
+   * deflates the rest; `store-all` stores every entry (no compression);
+   * `compress-all` deflates every entry (the built-in store set is ignored).
+   */
   mode: "auto" | "store-all" | "compress-all";
-  /** Lowercase extensions (with leading dot) stored verbatim under `"auto"`. */
-  storeExtensions: string[];
+  /**
+   * Extra lowercase extensions (with leading dot) added to the built-in store
+   * set under `"auto"`. Additive — there is no way to drop a built-in, because
+   * deflating an already-compressed format only wastes CPU; to deflate
+   * everything use `compress-all`.
+   */
+  storeExtra: string[];
+  /** Deflate level 1 (fastest) to 9 (smallest); affects only deflated entries. */
+  level: number;
+}
+
+/**
+ * What to do about one class of non-portable name. `fix` repairs the name and
+ * records an `info` finding plus the transformation; `warn` leaves it and
+ * records a `warning`; `error` leaves it and fails the run; `none` is silent.
+ * `name.suspicious` characters are kept by design, so that rule has no `fix`.
+ */
+export type NameAction = "fix" | "warn" | "error" | "none";
+
+export interface NameRules {
+  /** Non-NFC (e.g. macOS NFD) names → NFC. */
+  nfc: NameAction;
+  /** Windows-illegal characters `< > : " | ? * \`. */
+  invalidChars: NameAction;
+  /** The substitute for an invalid character; a single safe path component. */
+  invalidCharReplacement: string;
+  /** Control characters below 0x20. */
+  controlChars: NameAction;
+  /** Trailing spaces or dots (which Windows silently strips). */
+  trailingDotSpace: NameAction;
+  /** Reserved device names (CON, PRN, AUX, NUL, COM1–9, LPT1–9). */
+  reserved: NameAction;
+  /** Zero-width and bidirectional-override characters — kept, so never `fix`. */
+  suspicious: "warn" | "error" | "none";
 }
 
 export interface MetadataPolicy {
@@ -59,7 +96,13 @@ export interface ArchivePolicy {
   emptyDirDefinition: "strict" | "recursive";
 
   // Naming
-  invalidCharReplacement: string;
+  names: NameRules;
+  /**
+   * Whether two archive paths that differ only by case collide. `insensitive`
+   * (default) catches clashes that would break on macOS/Windows; `sensitive`
+   * allows them, for archives targeting only case-sensitive filesystems.
+   */
+  collisionCase: "insensitive" | "sensitive";
 
   // Entry data
   symlinks: "ignore" | "preserve" | "follow";
@@ -80,9 +123,6 @@ export interface ArchivePolicy {
 
   // Container format
   zip64: "auto" | "never" | "always";
-
-  // Gating
-  strict: boolean;
 }
 
 export type ArchiveInput = string | { path: string; as?: string; flatten?: boolean };
@@ -95,6 +135,10 @@ export interface ArchiveSpec {
   // Destination
   output?: string;
   overwrite?: boolean;
+
+  // Content
+  /** The ZIP end-of-central-directory comment (UTF-8). Recorded in the metadata. */
+  comment?: string;
 
   // Configuration
   policy?: Partial<ArchivePolicy>;
@@ -232,6 +276,8 @@ export interface Metadata {
   createdUtc: UtcTime;
   /** The IANA zone the DOS local-time fields were rendered in. */
   timeZone: string;
+  /** The archive comment, present only when one was set. */
+  comment?: string;
   policy: ArchivePolicy; // configuration
   summary: PlanSummary; // quantities (aggregate)
   totals: { uncompressedBytes: number; compressedBytes: number };

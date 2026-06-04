@@ -84,6 +84,7 @@ export function buildMetadata(
   entries: MetadataEntryInput[],
   createdNs: bigint,
   timeZone: string,
+  comment?: string,
 ): Metadata {
   const excluded: MetadataExcluded[] = plan.entries
     .filter((entry) => entry.excluded)
@@ -97,7 +98,7 @@ export function buildMetadata(
       return record;
     });
 
-  return {
+  const document: Metadata = {
     tool: "zipkit",
     version: VERSION,
     createdUtc: utcTime(createdNs),
@@ -121,4 +122,8 @@ export function buildMetadata(
     excluded,
     findings: plan.findings,
   };
+  // The comment rides into the document only when set, so a commentless archive
+  // does not carry an empty field.
+  if (comment !== undefined) document.comment = comment;
+  return document;
 }

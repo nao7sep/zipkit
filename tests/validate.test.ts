@@ -88,16 +88,20 @@ describe("safe single-component fields", () => {
   // entry names. It is held to the same single-safe-component standard as the
   // metadata file name.
   it.each(["/", "\\", "..", ".", "", "a/b", "../x", "<", "na:me"])(
-    "rejects an unsafe invalidCharReplacement %j",
+    "rejects an unsafe names.invalidCharReplacement %j",
     (replacement) => {
-      expect(() => validatePolicy({ invalidCharReplacement: replacement })).toThrow(PolicyError);
+      expect(() =>
+        validatePolicy({ names: { invalidCharReplacement: replacement } } as never),
+      ).toThrow(PolicyError);
     },
   );
 
   it.each(["_", "-", "()", "__", "x", "fixed"])(
-    "accepts a safe invalidCharReplacement %j",
+    "accepts a safe names.invalidCharReplacement %j",
     (replacement) => {
-      expect(() => validatePolicy({ invalidCharReplacement: replacement })).not.toThrow();
+      expect(() =>
+        validatePolicy({ names: { invalidCharReplacement: replacement } } as never),
+      ).not.toThrow();
     },
   );
 
@@ -110,5 +114,33 @@ describe("safe single-component fields", () => {
 
   it("accepts a safe metadata.name", () => {
     expect(() => validatePolicy({ metadata: { name: "_metadata.json" } } as never)).not.toThrow();
+  });
+});
+
+describe("new configuration surface", () => {
+  it("accepts the name guardrail actions and rejects an unknown one", () => {
+    expect(() => validatePolicy({ names: { nfc: "warn", reserved: "error" } } as never)).not.toThrow();
+    expect(() => validatePolicy({ names: { nfc: "ignore" } } as never)).toThrow(PolicyError);
+  });
+
+  it("rejects a fix action on suspicious (it is detection-only)", () => {
+    expect(() => validatePolicy({ names: { suspicious: "fix" } } as never)).toThrow(PolicyError);
+  });
+
+  it("accepts a valid collisionCase and rejects an unknown one", () => {
+    expect(() => validatePolicy({ collisionCase: "sensitive" })).not.toThrow();
+    expect(() => validatePolicy({ collisionCase: "fuzzy" } as never)).toThrow(PolicyError);
+  });
+
+  it("bounds the deflate level to 1–9 integers", () => {
+    expect(() => validatePolicy({ compression: { level: 9 } })).not.toThrow();
+    expect(() => validatePolicy({ compression: { level: 0 } })).toThrow(PolicyError);
+    expect(() => validatePolicy({ compression: { level: 10 } })).toThrow(PolicyError);
+    expect(() => validatePolicy({ compression: { level: 6.5 } })).toThrow(PolicyError);
+  });
+
+  it("accepts an archive comment and rejects one over 65535 bytes", () => {
+    expect(() => validateSpec({ inputs: ["a"], comment: "release build" })).not.toThrow();
+    expect(() => validateSpec({ inputs: ["a"], comment: "x".repeat(65536) })).toThrow(PolicyError);
   });
 });

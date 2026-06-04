@@ -4,10 +4,12 @@
  * behaviours: junk exclusion, name fixing and renames, collision and traversal
  * errors that block, dedup, empty-file and empty-directory handling, the two
  * empty-dir definitions, compression selection, the Zip64 verdict, timestamp
- * flagging, symlink modes, strict gating, and the output-existence gate.
+ * flagging, symlink modes, the per-rule name actions, and the output-existence
+ * gate.
  *
  * `writable` doubles as the severity enforcement: error findings always block,
- * warnings block only under strict, info never blocks.
+ * warnings and info never do. A name rule blocks only when its action is set to
+ * `error`.
  */
 
 import { describe, expect, it } from "vitest";
@@ -59,7 +61,7 @@ describe("selection", () => {
 });
 
 describe("name fixing", () => {
-  it("normalizes an NFD name to NFC, renames, and warns without blocking", () => {
+  it("normalizes an NFD name to NFC, renames, and logs info without blocking", () => {
     const nfd = `cafe${String.fromCodePoint(0x0301)}.txt`;
     const p = plan([scanEntry({ archivePath: nfd })]);
     expect(p.writable).toBe(true);
@@ -67,12 +69,25 @@ describe("name fixing", () => {
     expect(entry?.archivePath).toBe(`caf${String.fromCodePoint(0x00e9)}.txt`);
     expect(entry?.originalPath).toBe(nfd);
     expect(p.summary.renamed).toBe(1);
-    expect(rules(p.findings)).toContain("name.nfd");
+    const nfdFinding = p.findings.find((f) => f.rule === "name.nfd");
+    expect(nfdFinding?.severity).toBe("info");
   });
 
-  it("blocks an NFD warning under strict gating", () => {
+  it("blocks when a name rule action is set to error", () => {
     const nfd = `cafe${String.fromCodePoint(0x0301)}.txt`;
-    expect(plan([scanEntry({ archivePath: nfd })], { strict: true }).writable).toBe(false);
+    const p = plan([scanEntry({ archivePath: nfd })], { names: { nfc: "error" } });
+    expect(p.writable).toBe(false);
+    // Left as-is (not normalized) and reported at the error tier.
+    expect(p.entries[0]?.archivePath).toBe(nfd);
+    expect(p.findings.find((f) => f.rule === "name.nfd")?.severity).toBe("error");
+  });
+
+  it("leaves a name untouched and silent when its action is none", () => {
+    const nfd = `cafe${String.fromCodePoint(0x0301)}.txt`;
+    const p = plan([scanEntry({ archivePath: nfd })], { names: { nfc: "none" } });
+    expect(p.writable).toBe(true);
+    expect(p.entries[0]?.archivePath).toBe(nfd);
+    expect(rules(p.findings)).not.toContain("name.nfd");
   });
 
   it("reports a fix on an as-introduced parent segment with no directory node", () => {
@@ -117,6 +132,24 @@ describe("collisions", () => {
     ]);
     expect(p.writable).toBe(false);
     expect(rules(p.findings)).toContain("collision.post-fix");
+  });
+
+  it("allows a case-only difference under collisionCase sensitive", () => {
+    const entries = [
+      scanEntry({ archivePath: "Foo/x.txt", absolutePath: "/abs/1" }),
+      scanEntry({ archivePath: "foo/x.txt", absolutePath: "/abs/2" }),
+    ];
+    expect(plan(entries, { collisionCase: "sensitive" }).writable).toBe(true);
+    // An exact post-fix collision is still an error even under sensitive.
+    const exact = plan(
+      [
+        scanEntry({ archivePath: "a_b.txt", absolutePath: "/abs/1" }),
+        scanEntry({ archivePath: "a_b.txt", absolutePath: "/abs/2" }),
+      ],
+      { collisionCase: "sensitive" },
+    );
+    expect(exact.writable).toBe(false);
+    expect(rules(exact.findings)).toContain("collision.post-fix");
   });
 });
 

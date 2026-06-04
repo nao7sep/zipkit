@@ -38,9 +38,10 @@ A single directory's *contents* are flattened to the archive root. OS junk (`.DS
 
 **Gate a build on portability (CI).**
 ```sh
-zipkit create ./my-project --dry-run --strict
+zipkit create ./my-project --dry-run \
+  --name-nfc error --name-invalid error --name-reserved error
 ```
-Writes nothing (`--dry-run` is the CLI form of `plan()`); exits non-zero on any portability defect under `--strict`.
+Writes nothing (`--dry-run` is the CLI form of `plan()`); exits non-zero when the plan is not writable. Each name guardrail set to `error` turns that defect into a blocking failure (collisions and path traversal always block). Leave the actions at their `fix` default and the same command instead *repairs* the names and exits zero.
 
 **Confirm an archive was created successfully.**
 ```sh
@@ -96,6 +97,7 @@ By default a single directory input is **flattened**: its *contents* land at the
 |---|---|
 | `-o, --output <path>` | Output archive path. When omitted, the archive is written beside what is archived (`<dirname>.zip`, `<stem>.zip`, or `<parent>.zip`). |
 | `--overwrite` | Overwrite an existing output archive. |
+| `--comment <text>` | Archive comment, written to the ZIP end-of-central-directory record (UTF-8, up to 65535 bytes) and recorded in the metadata. |
 
 ### Selection
 
@@ -112,18 +114,34 @@ Both exclude flags append to one list; any matching rule drops the entry (the sy
 
 #### Built-in junk preset
 
-`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk`) and never block, even under `--strict`. `--junk none` disables the preset for the whole run.
+`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk`) and never block. `--junk none` disables the preset for the whole run.
 
 - **macOS:** `.DS_Store`, `__MACOSX/`, `._*` (AppleDouble files), `Icon\r` (custom folder icon), `.Spotlight-V100`, `.Trashes`, `.fseventsd`
 - **Windows:** `Thumbs.db`, `ehthumbs.db`, `desktop.ini`, `$RECYCLE.BIN/`, `System Volume Information/`
 
 ### Naming
 
+Each non-portable name class is governed by its own action, so a Linux-only run can stop the Windows-specific fixes while a CI gate can make any of them fail the build:
+
+| Action | Effect |
+|---|---|
+| `fix` (default) | Repair the name; record an `info` finding and the transformation. |
+| `warn` | Leave it; record a `warning` (does not block). |
+| `error` | Leave it; record an `error` (the run fails). |
+| `none` | Leave it; record nothing. |
+
 | Flag | Default | Description |
 |---|---|---|
-| `--invalid-char <char>` | `_` | Replacement for invalid characters. Must be a single path component (no slashes, not `.` or `..`), so substitution can never introduce a separator or escape the archive root. |
+| `--name-nfc <fix\|warn\|error\|none>` | `fix` | Non-NFC names (e.g. macOS NFD) → NFC. |
+| `--name-invalid <fix\|warn\|error\|none>` | `fix` | Windows-illegal characters `< > : " \| ? * \`. |
+| `--name-control <fix\|warn\|error\|none>` | `fix` | Control characters below `0x20`. |
+| `--name-trailing <fix\|warn\|error\|none>` | `fix` | Trailing dots or spaces (which Windows silently strips). |
+| `--name-reserved <fix\|warn\|error\|none>` | `fix` | Reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`9`, `LPT1`–`9`). |
+| `--name-suspicious <warn\|error\|none>` | `warn` | Zero-width / bidi-override characters. Kept by design, so there is no `fix`. |
+| `--invalid-char <char>` | `_` | Replacement used when `--name-invalid` repairs a name. A single path component (no slashes, not `.` or `..`), so substitution can never introduce a separator or escape the archive root. |
+| `--collision-case <insensitive\|sensitive>` | `insensitive` | Whether two archive paths that differ only by case collide. `insensitive` catches clashes that would break on macOS/Windows; `sensitive` allows them, for archives targeting only case-sensitive filesystems. |
 
-NFC normalization, the other name fixes, and collision detection are unconditional and carry no knob.
+A collision is always an `error` (there is no auto-rename — choosing which file to rename is the ambiguous resolution that defines the tier), but `--collision-case sensitive` narrows what counts as a collision to exact post-fix matches.
 
 ### Entry data
 
@@ -133,12 +151,12 @@ NFC normalization, the other name fixes, and collision detection are uncondition
 | `--follow-external` | off | Under `follow`, allow links that escape the input tree. |
 | `--timestamps <preserve\|clamp>` | `preserve` | Timestamp policy. `preserve` (default) writes the DOS local-time field *and* two absolute-UTC extras: the NTFS extra (`0x000a`) carries modification, access, and creation times at 100-ns precision across the full date range (what Windows restores), and the Info-ZIP extended-timestamp (`0x5455`) carries the same three times as 1-second UTC values *where each fits its signed 32-bit range* (~1901–2038) — times outside that range are kept only in the NTFS extra and the metadata. A creation time the OS doesn't actually track is omitted rather than fabricated. Unknown extras are skipped by every conforming reader, so this is safe for old tools. `clamp` writes only the DOS local-time field (2-second resolution, clamped to 1980–2107) for a minimal, zero-extra archive. |
 | `--timezone <iana>` | host zone | IANA zone (e.g. `Asia/Tokyo`, `UTC`) the DOS local-time field is rendered in. The DOS field stores local wall-clock with no zone attached, so a same-zone reader sees the file's real modification time. Affects only the DOS field — the UTC extras and the metadata record are always UTC. |
-| `--store-ext <list>` | (built-in list) | Comma-separated extensions stored without deflating. |
-| `--no-store-ext` | | Deflate everything (clear the store list). |
-| `--store-all` | | Store every entry. |
-| `--compress-all` | | Deflate every entry. |
+| `--store-ext <list>` | (none) | Extra comma-separated extensions to store, **added** to the built-in set. |
+| `--store-all` | | Store every entry (no compression). |
+| `--compress-all` | | Deflate every entry (ignore the store set). |
+| `--level <1-9>` | `6` | Deflate level, 1 (fastest) to 9 (smallest). Affects only deflated entries. |
 
-The store list names already-compressed formats, where attempting deflate is wasted effort. Files outside the list are deflated; the method is decided up front from the extension and is final, so a deflated entry can rarely end up a few bytes larger than its stored form (the writer streams once and does not reconsider). The list is a CPU optimization, never a correctness setting. Borderline formats such as PDF are deliberately left off so `auto` keeps the win on the ones that do compress. Built-in list: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.mp4`, `.mov`, `.mkv`, `.webm`, `.mp3`, `.aac`, `.m4a`, `.flac`, `.zip`, `.gz`, `.7z`, `.rar`, `.docx`, `.xlsx`, `.pptx`, `.woff2`.
+Under `auto` (the default), the store set is the built-in list of already-compressed formats — where attempting deflate is wasted effort — plus any extensions you add with `--store-ext`. Files outside the set are deflated; the method is decided up front from the extension and is final, so a deflated entry can rarely end up a few bytes larger than its stored form (the writer streams once and does not reconsider). The set is a CPU optimization, never a correctness setting, so there is no way to *remove* a built-in: deflating an already-compressed format only burns CPU, and `--compress-all` covers "deflate everything" anyway. Borderline formats such as PDF are deliberately left off so `auto` keeps the win on the ones that do compress. Built-in list: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.mp4`, `.mov`, `.mkv`, `.webm`, `.mp3`, `.aac`, `.m4a`, `.flac`, `.zip`, `.gz`, `.7z`, `.rar`, `.docx`, `.xlsx`, `.pptx`, `.woff2`.
 
 ### Companion output
 
@@ -150,7 +168,7 @@ The store list names already-compressed formats, where attempting deflate is was
 
 The metadata file is a JSON record of the run, in four parts:
 
-- **Header** — `tool`, `version`, `createdUtc`, `timeZone` (the IANA zone the DOS fields were rendered in), the resolved `policy`, the plan `summary`, and aggregate `totals` (uncompressed and compressed bytes).
+- **Header** — `tool`, `version`, `createdUtc`, `timeZone` (the IANA zone the DOS fields were rendered in), `comment` (present only when one was set), the resolved `policy`, the plan `summary`, and aggregate `totals` (uncompressed and compressed bytes).
 - **`entries`** — one record per written entry: `archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size`, `compressedSize`, `crc32`, `sha256` (unless `--metadata-no-hash`), `mode`, the four stat times `mtime`/`atime`/`ctime`/`btime` (each `{ ns, iso }`, UTC; `btime` is `null` when the platform doesn't track it), `linkTarget` for preserved symlinks, and the `transformations` applied.
 - **`excluded`** — dropped entries, each with its `reason`.
 - **`findings`** — every finding from the run.
@@ -170,7 +188,6 @@ The metadata file is **always embedded** as an entry at the archive root — a Z
 | Flag | Description |
 |---|---|
 | `--dry-run` | Compute and render the plan; write nothing. The CLI form of `plan()`. |
-| `--strict` | Treat warnings as blocking. |
 | `--log <path.jsonl>` | Write the event stream as JSONL. |
 | `--quiet` | Suppress console progress. |
 | `--verbose` | Include per-entry detail in console progress. |
@@ -219,39 +236,39 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 
 ## Rules and severity contract
 
-Every rule has a fixed tier, decided by one principle and enforced by a single registry (the `RULE_REGISTRY` constant). Rules never write a tier inline; they read it from the registry, so the boundary between tiers is a single, tested definition and a consumer's CI verdict never flips on an unrelated change.
+Severity decides one thing and nothing else: **an `error` blocks the write (`writable = false`); a `warning` and an `info` never do.** There is no separate strict mode — a caller who wants an issue to block sets that issue to `error`.
 
-- **error** — there is no safe, unambiguous automatic resolution; proceeding would corrupt data, lose data, or pick a winner arbitrarily. An error always blocks (`writable = false`), with or without strict gating.
-- **warning** — the tool safely auto-fixed the issue, but the finding reflects a portability defect in the source that a careful author might fix upstream. A warning blocks only under `--strict`.
-- **info** — routine hygiene the tool performs by design; nothing for the consumer to act on. Info never blocks.
+- **error** — either there is no safe, unambiguous automatic resolution (a collision, a path traversal — proceeding would corrupt or lose data, or pick a winner arbitrarily), or a name guardrail was explicitly set to `error`. Always blocks.
+- **warning** — a portability defect that was left as-is (a guardrail set to `warn`, an ignored symlink, an out-of-range timestamp). Reported, never blocks.
+- **info** — routine hygiene the tool performed by design: a name it repaired (`fix`), junk it dropped, a duplicate it collapsed. Nothing to act on.
 
-The coupling that prevents drift is exact: **error is the tier that blocks unconditionally.** Severity cannot be reclassified without changing observable blocking behavior, which is visible and tested.
+Most rules have a fixed tier, stamped by a single registry (the `RULE_REGISTRY` constant). The **name rules are the exception**: their tier is chosen per run from the `names` policy action — `fix` → `info`, `warn` → `warning`, `error` → `error` — so the same rule reports at whatever tier you asked for.
 
 ### The registry, in pipeline order
 
-| Rule | Tier | Blocks normally | Blocks under strict | Disposition |
-|---|---|---|---|---|
-| `path.absolute` | warning | no | yes | strip prefix |
-| `path.traversal` | error | yes | yes | abort |
-| `path.too-long` | warning | no | yes | keep |
-| `macos.junk` | info | no | no | exclude |
-| `windows.junk` | info | no | no | exclude |
-| `entry.symlink` | warning | no | yes | exclude |
-| `name.nfd` | warning | no | yes | normalize to NFC |
-| `name.invalid-char` | warning | no | yes | substitute |
-| `name.control-char` | warning | no | yes | strip |
-| `name.trailing-dot-space` | warning | no | yes | trim |
-| `name.reserved` | warning | no | yes | suffix |
-| `name.suspicious` | warning | no | yes | keep |
-| `entry.duplicate` | info | no | no | deduplicate |
-| `collision.case` | error | yes | yes | abort |
-| `collision.post-fix` | error | yes | yes | abort |
-| `time.pre-1980` | warning | no | yes | clamp |
-| `time.post-2107` | warning | no | yes | clamp |
-| `compat.zip64` | warning | no | yes | use Zip64 |
-| `compat.zip64-required` | error | yes | yes | abort |
+| Rule | Tier | Disposition |
+|---|---|---|
+| `path.absolute` | warning | strip prefix |
+| `path.traversal` | error | abort |
+| `path.too-long` | warning | keep |
+| `macos.junk` | info | exclude |
+| `windows.junk` | info | exclude |
+| `entry.symlink` | warning | exclude |
+| `name.nfd` | per action | normalize to NFC |
+| `name.invalid-char` | per action | substitute |
+| `name.control-char` | per action | strip |
+| `name.trailing-dot-space` | per action | trim |
+| `name.reserved` | per action | suffix |
+| `name.suspicious` | per action | keep |
+| `entry.duplicate` | info | deduplicate |
+| `collision.case` | error | abort |
+| `collision.post-fix` | error | abort |
+| `time.pre-1980` | warning | clamp |
+| `time.post-2107` | warning | clamp |
+| `compat.zip64` | warning | use Zip64 |
+| `compat.zip64-required` | error | abort |
 
-Junk removal and same-source deduplication are deliberately `info`: strict gating does not fail a build merely because the tool dropped a `.DS_Store` or collapsed a file that two overlapping inputs both supplied. Strict gating fires on source-side portability defects an author can fix upstream.
+The name rules show **per action** because their tier follows the `--name-*` setting (default `fix`, reported as `info`). Junk removal and same-source deduplication are deliberately `info`: dropping a `.DS_Store` or collapsing a file two overlapping inputs both supplied is not something to fail a build over. A collision is always an `error` — there is no auto-rename option, because choosing which file to rename is the ambiguous resolution that defines the tier — and Zip64 distinguishes `compat.zip64` (used, a warning) from `compat.zip64-required` (needed but disabled by `zip64: never`, an error).
 
 Where a policy could otherwise flip a tier, the two outcomes are modeled as separate rules. A collision is always an error — there is no auto-rename option, because choosing which file to rename is the ambiguous resolution that defines the error tier. Zip64 distinguishes `compat.zip64` (used, a warning) from `compat.zip64-required` (needed but disabled by `zip64: never`, an error).
 
@@ -275,7 +292,8 @@ The `plan → inspect → write` flow is the reason ZipKit is an SDK and not onl
 ```ts
 import { ZipKit } from "zipkit";
 
-const zip = new ZipKit({ policy: { strict: true } });
+// Make non-portable names fail the plan instead of being repaired.
+const zip = new ZipKit({ policy: { names: { invalidChars: "error", reserved: "error" } } });
 
 // Plan, inspect, then write.
 const plan = await zip.plan({ inputs: ["./my-project"], output: "out.zip" });

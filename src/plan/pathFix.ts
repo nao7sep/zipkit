@@ -60,15 +60,16 @@ export function applyPathFix(items: WorkItem[]): void {
     if (result.strippedAbsolute) {
       item.findings.push(
         finding("path.absolute", before, "absolute path prefix stripped", {
-          kind: "rename",
-          to: result.path,
+          fix: { kind: "rename", to: result.path },
         }),
       );
     }
 
     if (result.escaped) {
       item.findings.push(
-        finding("path.traversal", before, "path escapes the archive root", { kind: "exclude" }),
+        finding("path.traversal", before, "path escapes the archive root", {
+          fix: { kind: "exclude" },
+        }),
       );
       item.excluded = true;
       item.excludeReason = "path traversal";
