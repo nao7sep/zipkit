@@ -37,8 +37,11 @@ export interface ScanEntry {
    * The four nanosecond stat times the platform exposes, all UTC instants:
    * modification, access, inode-change, and creation (birth). `ctimeNs` (inode
    * change) has no ZIP field and rides only into the metadata record; the
-   * others map to the DOS field and the timestamp extras. On filesystems that
-   * do not track birth time it may be zero.
+   * others map to the DOS field and the timestamp extras. Birth time is not
+   * tracked on every filesystem; the platform then reports 0 (or a fallback),
+   * so a zero `birthtimeNs` is treated as "no creation time" — omitted from the
+   * UT extra, written as the FILETIME unset sentinel in NTFS, and null in the
+   * metadata — rather than preserved as if real.
    */
   mtimeNs: bigint;
   atimeNs: bigint;

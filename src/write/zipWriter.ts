@@ -22,7 +22,6 @@
  * host byte and link mode, because there is no other faithful representation.
  */
 
-import { DOS_EPOCH_NS, DOS_LIMIT_NS } from "../internal/dosTime.js";
 import { wallClockInZone } from "../internal/timeZone.js";
 
 const LOCAL_SIG = 0x04034b50;
@@ -44,6 +43,10 @@ const MAX_DOS = { date: ((2107 - 1980) << 9) | (12 << 5) | 31, time: (23 << 11) 
 
 const INT32_MIN = -0x80000000;
 const INT32_MAX = 0x7fffffff;
+
+// The widest instant JS `Date` can represent (±100,000,000 days from the epoch).
+// An instant beyond this cannot be rendered, so it is clamped by sign.
+const DATE_MS_LIMIT = 8_640_000_000_000_000;
 
 export interface PreparedEntry {
   name: string; // archive path, no trailing slash; the writer adds it for dirs
@@ -74,16 +77,17 @@ export interface ZipResult {
 
 function dosFor(entry: PreparedEntry, options: ZipWriterOptions): { date: number; time: number } {
   if (options.deterministic) return FIXED_DOS;
-  // Clamp into the representable window using the bigint bounds, so the Date
-  // rendered below is always valid and the packed fields never overflow. The
-  // bounds are UTC instants and the field is local, so the clamp is exact only
-  // to within one zone offset of the 1980/2108 edges — immaterial in practice.
-  if (entry.mtimeNs < DOS_EPOCH_NS) return FIXED_DOS;
-  if (entry.mtimeNs >= DOS_LIMIT_NS) return MAX_DOS;
-  // The DOS field is local wall-clock time with no zone stored. Render the
-  // absolute instant into the configured zone so a same-zone reader sees the
-  // file's real modification time rather than a UTC-shifted one.
-  const w = wallClockInZone(Number(entry.mtimeNs / 1_000_000n), options.timeZone);
+  const ms = Number(entry.mtimeNs / 1_000_000n);
+  if (!Number.isFinite(ms) || ms < -DATE_MS_LIMIT) return FIXED_DOS;
+  if (ms > DATE_MS_LIMIT) return MAX_DOS;
+  // The DOS field is local wall-clock with no zone stored: render the instant in
+  // the configured zone so a same-zone reader sees the file's real time. Clamp
+  // on the *local* components, not the UTC instant — a zone offset can carry an
+  // instant that is within the UTC window just past the 1980/2107 edges, which
+  // would otherwise overflow the packed 16-bit fields.
+  const w = wallClockInZone(ms, options.timeZone);
+  if (w.year < 1980) return FIXED_DOS;
+  if (w.year > 2107) return MAX_DOS;
   return {
     date: ((w.year - 1980) << 9) | (w.month << 5) | w.day,
     time: (w.hour << 11) | (w.minute << 5) | (w.second >> 1),
@@ -124,7 +128,10 @@ function filetime(ns: bigint): bigint {
 function extendedTimestamp(entry: PreparedEntry): { local: Buffer; central: Buffer } | null {
   const m = utSeconds(entry.mtimeNs);
   const a = utSeconds(entry.atimeNs);
-  const c = utSeconds(entry.birthtimeNs);
+  // A birthtime of 0 is the platform's "creation time unavailable" marker
+  // (Node may also report ctime there, which is indistinguishable); do not
+  // assert a creation time we were not actually given.
+  const c = entry.birthtimeNs > 0n ? utSeconds(entry.birthtimeNs) : null;
   const flags = (m !== null ? 1 : 0) | (a !== null ? 2 : 0) | (c !== null ? 4 : 0);
   if (flags === 0) return null;
 
@@ -160,7 +167,9 @@ function ntfsTimestamp(entry: PreparedEntry): Buffer {
   b.writeUInt16LE(24, 10); // attribute size
   b.writeBigUInt64LE(filetime(entry.mtimeNs), 12);
   b.writeBigUInt64LE(filetime(entry.atimeNs), 20);
-  b.writeBigUInt64LE(filetime(entry.birthtimeNs), 28);
+  // 0 = FILETIME "unset" (1601), written when no real creation time is known,
+  // rather than fabricating one from the platform's fallback value.
+  b.writeBigUInt64LE(entry.birthtimeNs > 0n ? filetime(entry.birthtimeNs) : 0n, 28);
   return b;
 }
 

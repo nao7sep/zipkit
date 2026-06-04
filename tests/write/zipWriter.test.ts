@@ -166,6 +166,39 @@ describe("timestamps", () => {
     expect((mtimeFiletime - NTFS_EPOCH_OFFSET) * 100n).toBe(Y2020_NS);
   });
 
+  it("clamps when the zone offset pushes a UTC-in-range instant out of the DOS window", () => {
+    // 1980-01-01T00:00:00Z is in UTC range, but in Los Angeles it is local 1979
+    // → must clamp to the DOS minimum, not overflow the packed year field.
+    const lo = fileEntry("lo.txt", Buffer.from("x"), false);
+    lo.mtimeNs = BigInt(Date.UTC(1980, 0, 1)) * 1_000_000n;
+    const loEntry = readZip(
+      buildZip([lo], { ...baseOptions, timeZone: "America/Los_Angeles" }).bytes,
+    ).entries[0];
+    expect(loEntry?.dosDate).toBe((1 << 5) | 1);
+    expect(loEntry?.dosTime).toBe(0);
+
+    // 2107-12-31T23:00:00Z is in UTC range, but in Tokyo it is local 2108
+    // → must clamp to the DOS maximum.
+    const hi = fileEntry("hi.txt", Buffer.from("x"), false);
+    hi.mtimeNs = BigInt(Date.UTC(2107, 11, 31, 23)) * 1_000_000n;
+    const hiEntry = readZip(buildZip([hi], { ...baseOptions, timeZone: "Asia/Tokyo" }).bytes)
+      .entries[0];
+    expect(hiEntry?.dosDate).toBe(((2107 - 1980) << 9) | (12 << 5) | 31);
+  });
+
+  it("does not assert a creation time when birthtime is unavailable (0)", () => {
+    const entry = fileEntry("a.txt", Buffer.from("data"), false);
+    entry.birthtimeNs = 0n; // platform reports no creation time
+    const { entries } = readZip(
+      buildZip([entry], { ...baseOptions, preserveTimestamps: true }).bytes,
+    );
+    const e = entries[0]!;
+    // UT drops the creation bit: only modification | access remain.
+    expect(findExtra(e.localExtra, 0x5455)![0]).toBe(0x03);
+    // NTFS writes the creation field as the FILETIME unset sentinel (0).
+    expect(findExtra(e.localExtra, 0x000a)!.readBigUInt64LE(24)).toBe(0n);
+  });
+
   it("clamps a far-future mtime to the DOS maximum without crashing", () => {
     const entry = fileEntry("future.txt", Buffer.from("x"), false);
     entry.mtimeNs = BigInt(Date.UTC(2200, 0, 1)) * 1_000_000n;

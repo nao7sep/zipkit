@@ -63,7 +63,9 @@ function metadataEntry(input: MetadataEntryInput, deterministic: boolean): Recor
     out.mtime = utcTime(entry.mtimeNs);
     out.atime = utcTime(entry.atimeNs);
     out.ctime = utcTime(entry.ctimeNs);
-    out.btime = utcTime(entry.birthtimeNs);
+    // birthtime of 0 is the platform's "unavailable" marker; record null rather
+    // than a fabricated creation time so the record stays honest.
+    out.btime = entry.birthtimeNs > 0n ? utcTime(entry.birthtimeNs) : null;
   }
   out.crc32 = input.crc32;
   if (input.sha256 !== undefined) out.sha256 = input.sha256;

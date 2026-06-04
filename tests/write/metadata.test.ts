@@ -60,6 +60,21 @@ describe("buildMetadata", () => {
     }
   });
 
+  it("records btime as null when the platform reports no creation time", () => {
+    const noBirth: WriteEntry = { ...symlink, birthtimeNs: 0n };
+    const doc = buildMetadata(
+      plan,
+      DEFAULT_POLICY,
+      [{ writeEntry: noBirth, crc32: 123, compressedSize: 6 }],
+      0n,
+      "UTC",
+    );
+    const entry = metaEntries(doc)[0]!;
+    expect(entry.btime).toBeNull();
+    // The reliable times are still present.
+    expect((entry.mtime as { ns: string }).ns).toBe("1577836800000000000");
+  });
+
   it("omits volatile fields under deterministic output", () => {
     const doc = buildMetadata(
       plan,
