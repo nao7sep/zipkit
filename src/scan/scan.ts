@@ -56,7 +56,7 @@ interface ScanContext {
    * This is the only self-exclusion the scan does. There is deliberately no
    * name-based "looks like an atomic-write temp" rule: the current run's temp
    * never exists during the scan (the scan completes before any write), and a
-   * stale temp survives only a hard crash that skipped write-file-atomic's
+   * stale temp survives only a hard crash that skipped the writer's rename and
    * cleanup — rare, and harmlessly archived as an ordinary file. Guessing from
    * the name instead would silently drop a real neighbour such as a dated
    * `archive.zip.20240604`, which is the worse failure.

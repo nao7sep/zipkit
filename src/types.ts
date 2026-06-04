@@ -107,6 +107,13 @@ export interface ZipKitOptions {
   policy?: Partial<ArchivePolicy>;
   logger?: (event: LogEvent) => void;
   concurrency?: number;
+  /**
+   * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
+   * read/inflate/deflate/write streams. A runtime/performance concern, not a
+   * policy: it changes only how the work is buffered, never the archive's bytes.
+   * Peak memory is roughly this times `concurrency`. Defaults to 65536 (64 KB).
+   */
+  chunkSize?: number;
 }
 
 // ---------------------------------------------------------------------------

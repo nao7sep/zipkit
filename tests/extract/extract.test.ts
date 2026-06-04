@@ -1,38 +1,36 @@
 /**
- * Extract/validate tests. Archives are built with the in-house writer, written
- * to a temp dir, then read back through the public `extract` operation. Covers
+ * Extract/validate tests. Archives are built with the streaming in-house writer
+ * into a temp dir, then read back through the public `extract` operation. Covers
  * the dry/heavy matrix, CRC and SHA verification, completeness, path safety,
  * exclusion, timestamp restoration, and Zip64.
  */
 
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../src/index.js";
-import { buildZip } from "../../src/write/zipWriter.js";
-import type { PreparedEntry, ZipWriterOptions } from "../../src/write/zipWriter.js";
+import type { ZipWriterOptions } from "../../src/write/zipWriter.js";
+import { buildZipFile, type EntryWithData } from "../helpers/writeZip.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 const Y2020_MS = 1_577_836_800_000;
 
 const writerOptions: ZipWriterOptions = {
   zip64: false,
-  deterministic: false,
   preserveTimestamps: true,
   timeZone: "UTC",
+  chunkSize: 65536,
 };
 
-function fileEntry(name: string, content: string, crcOverride?: number): PreparedEntry {
+function fileEntry(name: string, content: string): EntryWithData {
   const data = Buffer.from(content, "utf8");
   return {
     name,
     type: "file",
     method: "store",
-    crc32: crcOverride ?? zlib.crc32(data),
-    data,
+    raw: data,
     uncompressedSize: data.length,
     mtimeNs: Y2020_NS,
     atimeNs: Y2020_NS,
@@ -49,10 +47,13 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function writeArchive(entries: PreparedEntry[], opts?: Partial<ZipWriterOptions>): Promise<string> {
-  const bytes = buildZip(entries, { ...writerOptions, ...opts }).bytes;
+async function writeArchive(
+  entries: EntryWithData[],
+  opts?: Partial<ZipWriterOptions>,
+): Promise<string> {
+  const built = await buildZipFile(entries, { ...writerOptions, ...opts });
   const archive = path.join(dir, "a.zip");
-  await writeFile(archive, bytes);
+  await writeFile(archive, await readFile(built.path));
   return archive;
 }
 
@@ -97,14 +98,23 @@ describe("dry-run validation", () => {
   });
 
   it("reports a CRC failure and refuses to write the corrupt entry", async () => {
-    // A stored CRC that disagrees with the content stands in for corruption.
-    const archive = await writeArchive([fileEntry("bad.txt", "payload", 0x12345678)]);
+    // Build a valid archive, then flip a content byte on disk so the stored CRC
+    // no longer matches — the streaming writer computes a correct CRC, so
+    // corruption must be introduced after the fact.
+    const archive = await writeArchive([fileEntry("bad.txt", "payload")]);
+    const buf = await readFile(archive);
+    const idx = buf.indexOf(Buffer.from("payload"));
+    buf[idx] ^= 0xff;
+    await writeFile(archive, buf);
+
     const dest = path.join(dir, "out");
     const report = await new ZipKit().extract({ archive, dest });
     expect(report.ok).toBe(false);
     expect(report.entries[0]?.crc).toBe("fail");
     expect(report.entries[0]?.written).toBe(false);
     expect(report.findings.some((f) => f.rule === "extract.crc-fail")).toBe(true);
+    // The corrupt entry was never written to the destination.
+    await expect(stat(path.join(dest, "bad.txt"))).rejects.toThrow();
   });
 });
 
@@ -177,6 +187,28 @@ describe("path safety and exclusion", () => {
     ).rejects.toThrow(/escapes/i);
   });
 
+  it("leaves no temp stragglers when a write error aborts the pool mid-stream", async () => {
+    // A plain file at dest/blocked makes the directory mkdir for "blocked/x.txt"
+    // fail, throwing mid-pool while the large entries are still streaming. The
+    // run must reject and leave no `.zk-*.tmp` behind: siblings run to completion
+    // and clean up (no abandonment), and the failed entry rm's its own temp.
+    const big = "x".repeat(2_000_000);
+    const archive = await writeArchive([
+      fileEntry("blocked/x.txt", "data"),
+      fileEntry("big1.txt", big),
+      fileEntry("big2.txt", big),
+      fileEntry("big3.txt", big),
+    ]);
+    const dest = path.join(dir, "out");
+    await mkdir(dest, { recursive: true });
+    await writeFile(path.join(dest, "blocked"), "i block the directory");
+
+    await expect(new ZipKit().extract({ archive, dest })).rejects.toThrow();
+
+    const left = await readdir(dest);
+    expect(left.some((f) => f.startsWith(".zk-"))).toBe(false);
+  });
+
   it("does not write a literally-excluded entry", async () => {
     const archive = await writeArchive([fileEntry("keep.txt", "k"), fileEntry("_metadata.json", "{}")]);
     const dest = path.join(dir, "out");
@@ -219,12 +251,11 @@ describe("path safety and exclusion", () => {
 
 describe("symlinks and zip64", () => {
   it("restores a symlink entry, or skips it under symlinks: skip", async () => {
-    const link: PreparedEntry = {
+    const link: EntryWithData = {
       name: "link",
       type: "symlink",
       method: "store",
-      crc32: zlib.crc32(Buffer.from("target.txt")),
-      data: Buffer.from("target.txt"),
+      raw: Buffer.from("target.txt"),
       uncompressedSize: 10,
       mtimeNs: Y2020_NS,
       atimeNs: Y2020_NS,
@@ -241,11 +272,62 @@ describe("symlinks and zip64", () => {
     expect(await readlink(path.join(dir, "keep", "link"))).toBe("target.txt");
   });
 
+  it("round-trips a zero-byte file (no compressed bytes to stream)", async () => {
+    const archive = await writeArchive([fileEntry("empty.txt", ""), fileEntry("a.txt", "x")]);
+    const dest = path.join(dir, "empties");
+    const report = await new ZipKit().extract({ archive, dest });
+    expect(report.ok).toBe(true);
+    const empty = await stat(path.join(dest, "empty.txt"));
+    expect(empty.size).toBe(0);
+    expect((await readFile(path.join(dest, "a.txt"))).toString()).toBe("x");
+  });
+
   it("reads and round-trips a Zip64 archive", async () => {
     const archive = await writeArchive([fileEntry("z.txt", "zip64 content")], { zip64: true });
     const dest = path.join(dir, "out");
     const report = await new ZipKit().extract({ archive, dest });
     expect(report.ok).toBe(true);
     expect((await readFile(path.join(dest, "z.txt"))).toString()).toBe("zip64 content");
+  });
+});
+
+describe("large-file streaming round-trip", () => {
+  it("round-trips a multi-megabyte file through create then extract with a matching SHA", async () => {
+    // ~6 MB of pseudo-random (incompressible) plus compressible content, larger
+    // than any single chunk, so the streaming read/deflate/write and the
+    // streaming inflate/write both span many chunks.
+    const src = path.join(dir, "src");
+    await rm(src, { recursive: true, force: true });
+    const big = Buffer.concat([
+      randomBytes(3 * 1024 * 1024), // incompressible
+      Buffer.from("compress me ".repeat(250_000), "utf8"), // deflate wins here
+    ]);
+    await mkdir(src, { recursive: true });
+    await writeFile(path.join(src, "big.bin"), big);
+    const expectedSha = createHash("sha256").update(big).digest("hex");
+
+    const archive = path.join(dir, "big.zip");
+    await new ZipKit().create({ inputs: [src], output: archive, overwrite: true });
+
+    const dest = path.join(dir, "big-out");
+    const report = await new ZipKit().extract({ archive, dest });
+    expect(report.ok).toBe(true);
+    const roundTripped = await readFile(path.join(dest, "big.bin"));
+    expect(createHash("sha256").update(roundTripped).digest("hex")).toBe(expectedSha);
+  });
+
+  it("honors a small chunkSize for both create and extract", async () => {
+    const src = path.join(dir, "csrc");
+    await mkdir(src, { recursive: true });
+    const content = Buffer.from("chunked streaming ".repeat(5000), "utf8");
+    await writeFile(path.join(src, "c.txt"), content);
+
+    const archive = path.join(dir, "chunked.zip");
+    // A tiny chunk size forces many read/deflate/write cycles per entry.
+    await new ZipKit({ chunkSize: 64 }).create({ inputs: [src], output: archive, overwrite: true });
+    const dest = path.join(dir, "chunked-out");
+    const report = await new ZipKit({ chunkSize: 64 }).extract({ archive, dest });
+    expect(report.ok).toBe(true);
+    expect((await readFile(path.join(dest, "c.txt"))).equals(content)).toBe(true);
   });
 });

@@ -5,6 +5,7 @@
  * reports whether Zip64 end-of-central-directory structures are present.
  */
 
+import { readFileSync } from "node:fs";
 import zlib from "node:zlib";
 
 export interface ReadEntry {
@@ -112,4 +113,10 @@ export function readZip(buf: Buffer): ReadZip {
   }
 
   return { entries, hasZip64Eocd, hasZip64Locator };
+}
+
+/** Read an archive from disk and parse it — the streaming writer's output lands
+ *  in a file, so tests assert the byte contract by reading the file back. */
+export function readZipFile(path: string): ReadZip {
+  return readZip(readFileSync(path));
 }

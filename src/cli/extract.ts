@@ -10,6 +10,7 @@ import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
 import { globExclude, regexExclude } from "../filter/rules.js";
 import type { ExtractSpec, FilterRule, ZipKitOptions } from "../types.js";
+import { parseChunkSize } from "./create.js";
 import { emitJson } from "./json.js";
 import { createConsoleProgress, renderExtractReport } from "./render.js";
 
@@ -24,6 +25,8 @@ interface ExtractOpts {
   symlinks?: "restore" | "skip";
   quiet?: boolean;
   verbose?: boolean;
+  concurrency?: string;
+  chunkSize?: string;
   json?: boolean;
 }
 
@@ -60,12 +63,28 @@ export function registerExtract(
   cmd.option("--exclude-regex <pattern>", "exclude regex, not written (repeatable)", addRegex);
   cmd.option("--quiet", "suppress console progress");
   cmd.option("--verbose", "include per-entry detail in console progress");
+  cmd.option(
+    "--concurrency <n>",
+    "maximum entries extracted in parallel (default: available CPUs, bounded 4–16)",
+  );
+  cmd.option(
+    "--chunk-size <size>",
+    "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
+  );
   cmd.option("--json", "emit the report as JSON; suppress the human renderer");
 
   cmd.action(async (archive: string, dest: string | undefined, opts: ExtractOpts) => {
     const zkOptions: ZipKitOptions = {};
     if (!opts.json && !opts.quiet) {
       zkOptions.logger = createConsoleProgress(opts.verbose === true);
+    }
+    if (opts.concurrency !== undefined) {
+      const n = Number.parseInt(opts.concurrency, 10);
+      if (Number.isFinite(n) && n > 0) zkOptions.concurrency = n;
+    }
+    if (opts.chunkSize !== undefined) {
+      const bytes = parseChunkSize(opts.chunkSize);
+      if (bytes !== null) zkOptions.chunkSize = bytes;
     }
     const zip = new ZipKit(zkOptions);
 

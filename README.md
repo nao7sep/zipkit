@@ -138,7 +138,7 @@ NFC normalization, the other name fixes, and collision detection are uncondition
 | `--store-all` | | Store every entry. |
 | `--compress-all` | | Deflate every entry. |
 
-The store list names already-compressed formats, where attempting deflate is wasted effort. Files outside the list are deflated, and any entry whose deflate does not shrink falls back to store — so the list is a CPU optimization, never a correctness setting. Borderline formats such as PDF are deliberately left off so `auto` keeps the win on the ones that do compress. Built-in list: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.mp4`, `.mov`, `.mkv`, `.webm`, `.mp3`, `.aac`, `.m4a`, `.flac`, `.zip`, `.gz`, `.7z`, `.rar`, `.docx`, `.xlsx`, `.pptx`, `.woff2`.
+The store list names already-compressed formats, where attempting deflate is wasted effort. Files outside the list are deflated; the method is decided up front from the extension and is final, so a deflated entry can rarely end up a few bytes larger than its stored form (the writer streams once and does not reconsider). The list is a CPU optimization, never a correctness setting. Borderline formats such as PDF are deliberately left off so `auto` keeps the win on the ones that do compress. Built-in list: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.mp4`, `.mov`, `.mkv`, `.webm`, `.mp3`, `.aac`, `.m4a`, `.flac`, `.zip`, `.gz`, `.7z`, `.rar`, `.docx`, `.xlsx`, `.pptx`, `.woff2`.
 
 ### Companion output
 
@@ -174,7 +174,8 @@ The metadata file is **always embedded** as an entry at the archive root — a Z
 | `--log <path.jsonl>` | Write the event stream as JSONL. |
 | `--quiet` | Suppress console progress. |
 | `--verbose` | Include per-entry detail in console progress. |
-| `--concurrency <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. |
+| `--concurrency <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. Peak memory is roughly `chunkSize × concurrency` (see [Performance](#performance)). |
+| `--chunk-size <size>` | Chunk size for all streamed I/O, in bytes; accepts a `k`/`m` suffix (e.g. `64k`, `1m`). Defaults to 64 KB. |
 | `--json` | Emit the plan or result as JSON; suppress the human renderer. |
 
 `--json` suppresses the human renderer and emits the `Plan` (dry run) or `WriteResult` (actual run) as JSON. Errors always go to stderr, so stdout stays valid JSON.
@@ -306,9 +307,20 @@ Every archive holds to a fixed byte contract, so it reads cleanly across platfor
 - **Names.** The UTF-8 flag (general-purpose bit 11) is always set, so non-ASCII names survive across locales; the host byte is FAT, so no Unix mode leaks.
 - **Minimal extra fields.** Only the Zip64 extra when genuinely needed, plus — under timestamp preservation (the default) — the Info-ZIP extended-timestamp (`0x5455`) and NTFS (`0x000a`) extras. Both are standard extras any conforming reader understands or skips, so they are safe for old tools; `--timestamps clamp` drops them for a zero-extra archive.
 - **Timestamps.** The DOS date/time field holds *local* wall-clock time in the configured zone (the host zone by default). That field carries no zone, so the absolute UTC truth lives in the two extras above and in the metadata record.
-- **Compression.** Deflate via the platform `zlib`, falling back to Store when Deflate does not shrink, and Store for already-compressed extensions.
+- **Compression.** Deflate via the platform `zlib`, and Store for already-compressed extensions. The method is chosen up front from the extension and is final — entries stream through it once, with no second pass — so a deflated entry can rarely end up a few bytes larger than its stored form. That is an accepted trade for streaming arbitrarily large files in bounded memory (see [Performance](#performance)).
 - **Atomic output.** A temporary file is written in the same directory, then renamed — a reader never sees a half-written archive.
 - **Self-exclusion.** When the output lives inside the input tree, the archive never contains itself: the output is excluded by file identity (`dev:ino`), exact on every filesystem — a case-insensitive volume that aliases `Out.zip` to `out.zip` excludes it, a case-sensitive one keeps a same-named neighbour. Identity is the *only* self-exclusion; zipkit never guesses from a name that a file is a stale temp, so a real neighbour such as `archive.zip.notes` or a dated `archive.zip.20240604` is always archived.
+
+## Performance
+
+All I/O is streamed in fixed-size chunks, so memory does not scale with file or archive size. Both creating and extracting read, (de)compress, and write in pieces; an arbitrarily large file round-trips in bounded space.
+
+- **Chunk size.** The chunk size — the `highWaterMark` of every read, (de)compress, and write stream — defaults to **64 KB** and is configurable with `--chunk-size` (CLI) or `chunkSize` (SDK), accepting a byte integer with an optional `k`/`m` suffix. It applies to all streamed I/O.
+- **Peak memory.** Roughly `chunkSize × concurrency`: each in-flight entry holds about a chunk's worth of buffer rather than its whole file.
+
+The 64 KB default follows the common sequential-I/O sweet spot. Node.js `fs` streams default their [`highWaterMark` to 64 KB](https://nodejs.org/api/stream.html); .NET's `FileStream` defaults to a smaller [4096-byte buffer](https://learn.microsoft.com/en-us/dotnet/api/system.io.filestreamoptions.buffersize), with Microsoft's guidance being to "run benchmarks and measure" because the ideal size depends on the access pattern and environment; benchmarks of [buffered disk access](https://www.zabkat.com/blog/buffered-disk-access.htm) and [streaming in Node.js](https://blog.appsignal.com/2022/02/02/use-streams-to-build-high-performing-nodejs-applications.html) put the sweet spot around 64 KB, with diminishing or negative returns past ~256 KB as buffer overhead grows. The default is a sound starting point; tune it for your workload.
+
+**Create is sequential; extract is concurrent.** A ZIP archive is a single ordered byte stream — entries are concatenated in order, each followed by the central directory — so creating one is inherently sequential: the writer streams entries one after another into a single file descriptor. Extraction is the opposite: every entry becomes an *independent* output file, so entries run concurrently (bounded by `concurrency`), each streaming to its own file. The OS write-back cache absorbs those parallel writes, so they do not bottleneck the decompressor.
 
 ## Scope
 
@@ -317,7 +329,7 @@ In scope:
 - Creating clean, portable archives from a source tree.
 - Reading them back — extraction, and validation (CRC always; against the embedded manifest, completeness and SHA-256).
 
-Out of scope: repairing or re-writing existing archives; encryption; compression methods beyond Store and Deflate; multi-volume or split archives; and streaming of individual large files (each entry is buffered whole in memory — see concurrency).
+Out of scope: repairing or re-writing existing archives; encryption; compression methods beyond Store and Deflate; and multi-volume or split archives.
 
 ## Development
 

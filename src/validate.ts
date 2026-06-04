@@ -180,6 +180,21 @@ export function validateExtractSpec(spec: ExtractSpec): ExtractSpec {
   return signal ? { ...data, signal } : { ...data };
 }
 
+/**
+ * Validate the streamed-I/O chunk size: a positive integer number of bytes.
+ * Anything else (zero, negative, fractional, non-finite) is a caller mistake
+ * rejected at the boundary rather than passed to a stream's `highWaterMark`.
+ */
+export function validateChunkSize(chunkSize: number): number {
+  if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+    throw new PolicyError(
+      "options.invalid",
+      `chunkSize must be a positive integer number of bytes (got ${chunkSize})`,
+    );
+  }
+  return chunkSize;
+}
+
 /** Validate an instance-level policy, applying filter-rule defaults. */
 export function validatePolicy(policy: Partial<ArchivePolicy>): Partial<ArchivePolicy> {
   const result = partialPolicySchema.safeParse(policy);

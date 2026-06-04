@@ -5,16 +5,22 @@
  * the manifest and its recorded SHA-256; and unless `dryRun` is set, verified
  * entries are written to disk with their times restored.
  *
- * CRC governs writing — a corrupt entry is never written. Path safety, exclusion,
- * and the overwrite gate decide the rest. Completeness (missing/extra) is
- * computed from the entry-name sets, independent of the decompression loop. The
- * report carries every per-entry outcome; the caller decides what is fatal.
+ * Reads are positioned against an open fd, never a whole-archive buffer, and an
+ * entry's content streams through inflate to its own output file — so memory
+ * stays bounded and entries run CONCURRENTLY (bounded by the pool), each writing
+ * an independent file. CRC governs writing: an entry streams to a temp file in
+ * the destination, and only a CRC-clean entry that passes the path-safety,
+ * exclusion, and overwrite gates is renamed into place; a corrupt entry's temp
+ * file is discarded. Completeness (missing/extra) is computed from the entry-name
+ * sets, independent of the decompression loop.
  */
 
 import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { close, open, stat as fsStat } from "node:fs";
+import { lstat, mkdir, rename, rm, symlink, utimes } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
 import path from "node:path";
-import zlib from "node:zlib";
+import { promisify } from "node:util";
 import { ReadError, throwIfAborted } from "../errors.js";
 import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
@@ -22,10 +28,16 @@ import { machineTimeZone } from "../internal/timeZone.js";
 import type { Logger } from "../log/logger.js";
 import type { ExtractEntryResult, ExtractReport, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
-import { parseZip, readEntryData, type ReadEntry } from "./zipReader.js";
+import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipReader.js";
+
+const openAsync = promisify(open);
+const closeAsync = promisify(close);
+const statAsync = promisify(fsStat);
 
 export interface ExtractDeps {
+  limit: <T>(fn: () => Promise<T>) => Promise<T>;
   logger: Logger;
+  chunkSize: number;
   signal?: AbortSignal;
 }
 
@@ -55,27 +67,97 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
-/** Write one verified entry; returns false when an existing file was preserved. */
-async function writeEntry(
+function finding(rule: string, severity: Finding["severity"], path: string, message: string): Finding {
+  return { rule, severity, path, message };
+}
+
+interface ManifestRecord {
+  archivePath?: unknown;
+  sha256?: unknown;
+}
+
+/** The verified outcome of streaming one entry through inflate. */
+interface VerifyResult {
+  crcOk: boolean;
+  sha?: ExtractEntryResult["sha"];
+  /** A staged temp file holding the verified bytes, when one was written. */
+  tempPath?: string;
+  /** A symlink's decoded target, when the entry is a symlink to be restored. */
+  linkTarget?: string;
+}
+
+/**
+ * Stream an entry through inflate, verifying its CRC and (under checkMetadata)
+ * its SHA-256. When `stageTo` is given the bytes are written to that temp path
+ * so a CRC-clean entry can later be renamed into place; otherwise the entry is
+ * verified against a null sink (dry-run, excluded, unsafe, or skipped). A
+ * symlink's small target is captured in memory regardless, for the symlink call.
+ */
+async function verifyEntry(
+  fd: number,
   entry: ReadEntry,
-  data: Buffer,
+  chunkSize: number,
+  checkSha: boolean,
+  storedSha: string | null,
+  stageTo: string | null,
+  captureLink: boolean,
+): Promise<VerifyResult> {
+  if (entry.type === "dir") {
+    return { crcOk: true, sha: checkSha ? (storedSha ? "ok" : "absent") : undefined };
+  }
+
+  const hasher = checkSha ? createHash("sha256") : null;
+  const linkChunks: Buffer[] = [];
+  const out = stageTo ? createWriteStream(stageTo) : null;
+
+  const sink = async (chunk: Buffer): Promise<void> => {
+    if (hasher) hasher.update(chunk);
+    if (captureLink) linkChunks.push(chunk);
+    if (out) {
+      if (!out.write(chunk)) await new Promise<void>((resolve) => out.once("drain", resolve));
+    }
+  };
+
+  let crc32: number;
+  try {
+    ({ crc32 } = await readEntryData(fd, entry, sink, chunkSize));
+  } catch (err) {
+    if (out) {
+      out.destroy();
+      await rm(stageTo as string, { force: true });
+    }
+    throw err;
+  }
+  if (out) {
+    await new Promise<void>((resolve, reject) => {
+      out.end((err?: Error | null) => (err ? reject(err) : resolve()));
+    });
+  }
+
+  const crcOk = crc32 === (entry.crc32 >>> 0);
+  const result: VerifyResult = { crcOk };
+  if (checkSha) {
+    if (storedSha === null) result.sha = "absent";
+    else result.sha = hasher!.digest("hex") === storedSha ? "ok" : "mismatch";
+  }
+  if (crcOk && stageTo) result.tempPath = stageTo;
+  if (captureLink) result.linkTarget = Buffer.concat(linkChunks).toString("utf8");
+  return result;
+}
+
+/** Move a verified temp file into its final place, restoring times. */
+async function commitFile(
+  entry: ReadEntry,
+  tempPath: string,
   target: string,
   options: WriteOptions,
 ): Promise<boolean> {
-  if (entry.type === "dir") {
-    await mkdir(target, { recursive: true });
-    return true;
-  }
   await mkdir(path.dirname(target), { recursive: true });
-  if (!options.overwrite && (await pathExists(target))) return false;
-
-  if (entry.type === "symlink") {
-    if (options.overwrite) await rm(target, { force: true });
-    await symlink(data.toString("utf8"), target);
-    return true; // link times are not restored: no portable lutimes guarantee
+  if (!options.overwrite && (await pathExists(target))) {
+    await rm(tempPath, { force: true });
+    return false;
   }
-
-  await writeFile(target, data);
+  await rename(tempPath, target);
   if (options.restore) {
     const t = restoreTimes(entry, options.timeZone);
     // Best-effort: a filesystem that rejects the times must not fail the write.
@@ -86,15 +168,6 @@ async function writeEntry(
     }
   }
   return true;
-}
-
-function finding(rule: string, severity: Finding["severity"], path: string, message: string): Finding {
-  return { rule, severity, path, message };
-}
-
-interface ManifestRecord {
-  archivePath?: unknown;
-  sha256?: unknown;
 }
 
 export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Promise<ExtractReport> {
@@ -120,186 +193,270 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
   const matcher = buildMatcher(spec.exclude ?? [], false);
   const dest = spec.dest !== undefined ? path.resolve(spec.dest) : undefined;
 
-  let buf: Buffer;
+  let fd: number;
+  let fileSize: number;
   try {
-    buf = await readFile(spec.archive);
+    fd = await openAsync(spec.archive, "r");
+    fileSize = (await statAsync(spec.archive)).size;
   } catch (err) {
     throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, { cause: err });
   }
-  const parsed = parseZip(buf);
-  deps.logger.emit("extract", "info", "extract.start", {
-    data: { entries: parsed.entries.length, write },
-  });
 
-  // Manifest resolution (heavy mode): the manifest is the entry embedded in the
-  // archive. Requested-but-absent is a hard failure.
-  let manifest: ExtractReport["manifest"] = null;
-  let manifestEntryPath: string | undefined;
-  const manifestMap = new Map<string, ManifestRecord>();
-  if (spec.checkMetadata) {
-    const name = spec.metadataName ?? "_metadata.json";
-    const inside = parsed.entries.find((e) => e.archivePath === name);
-    if (!inside) {
-      throw new ReadError(
-        "read.manifest-missing",
-        `metadata validation requested but no manifest '${name}' is embedded in the archive`,
-      );
-    }
-    manifestEntryPath = inside.archivePath;
-    let doc: { entries?: unknown };
-    try {
-      doc = JSON.parse(readEntryData(buf, inside).toString("utf8"));
-    } catch (err) {
-      throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
-        cause: err,
-      });
-    }
-    manifest = { name };
-    const docEntries = Array.isArray(doc.entries) ? (doc.entries as ManifestRecord[]) : [];
-    for (const m of docEntries) {
-      if (typeof m.archivePath === "string") manifestMap.set(m.archivePath, m);
-    }
-  }
+  try {
+    const parsed = await parseZip(fd, fileSize);
+    deps.logger.emit("extract", "info", "extract.start", {
+      data: { entries: parsed.entries.length, write },
+    });
 
-  const entries: ExtractEntryResult[] = [];
-  const findings: Finding[] = [];
-  const seen = new Set<string>();
-  let crcFailed = 0;
-  let shaMismatched = 0;
-  let unsafe = 0;
-  let written = 0;
-  let skipped = 0;
-
-  for (const entry of parsed.entries) {
-    throwIfAborted(signal);
-    const isManifestEntry = entry.archivePath === manifestEntryPath;
-    if (!isManifestEntry) seen.add(entry.archivePath);
-
-    const data = readEntryData(buf, entry);
-    const crcOk = entry.type === "dir" || zlib.crc32(data) === (entry.crc32 >>> 0);
-    if (!crcOk) {
-      crcFailed++;
-      findings.push(
-        finding("extract.crc-fail", "error", entry.archivePath, "CRC-32 mismatch: entry is corrupt"),
-      );
-    }
-
-    let sha: ExtractEntryResult["sha"];
-    if (spec.checkMetadata && entry.type !== "dir" && !isManifestEntry) {
-      const record = manifestMap.get(entry.archivePath);
-      if (record && typeof record.sha256 === "string") {
-        const actual = createHash("sha256").update(data).digest("hex");
-        sha = actual === record.sha256 ? "ok" : "mismatch";
-        if (sha === "mismatch") {
-          shaMismatched++;
-          findings.push(
-            finding(
-              "extract.sha-mismatch",
-              "error",
-              entry.archivePath,
-              "content hash does not match the manifest",
-            ),
-          );
-        }
-      } else {
-        sha = "absent";
+    // Manifest resolution (heavy mode): the manifest is the entry embedded in
+    // the archive, read via positioned reads. Requested-but-absent is a hard
+    // failure.
+    let manifest: ExtractReport["manifest"] = null;
+    let manifestEntryPath: string | undefined;
+    const manifestMap = new Map<string, ManifestRecord>();
+    if (spec.checkMetadata) {
+      const name = spec.metadataName ?? "_metadata.json";
+      const inside = parsed.entries.find((e) => e.archivePath === name);
+      if (!inside) {
+        throw new ReadError(
+          "read.manifest-missing",
+          `metadata validation requested but no manifest '${name}' is embedded in the archive`,
+        );
+      }
+      manifestEntryPath = inside.archivePath;
+      let doc: { entries?: unknown };
+      try {
+        doc = JSON.parse((await readEntryBuffer(fd, inside)).toString("utf8"));
+      } catch (err) {
+        throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
+          cause: err,
+        });
+      }
+      manifest = { name };
+      const docEntries = Array.isArray(doc.entries) ? (doc.entries as ManifestRecord[]) : [];
+      for (const m of docEntries) {
+        if (typeof m.archivePath === "string") manifestMap.set(m.archivePath, m);
       }
     }
 
-    let didWrite = false;
-    let skip: ExtractEntryResult["skipped"];
-    let outputPath: string | undefined;
-    if (!write) {
-      skip = "dry-run";
-    } else if (!crcOk) {
-      skip = "crc-fail";
-    } else if (matcher.match(entry.archivePath, entry.type === "dir")) {
-      skip = "excluded";
-    } else {
-      const target = safeJoin(dest as string, entry.archivePath);
-      if (target === null) {
-        unsafe++;
-        skip = "unsafe";
-        findings.push(
-          finding(
-            "extract.unsafe-path",
-            "error",
-            entry.archivePath,
-            "entry path escapes the destination directory",
-          ),
-        );
-        if (onUnsafe === "abort") {
-          throw new ReadError(
-            "read.unsafe-path",
-            `entry '${entry.archivePath}' escapes the destination directory`,
-          );
-        }
-      } else if (entry.type === "symlink" && writeOptions.symlinks === "skip") {
-        skip = "symlink-skip";
+    if (write && dest !== undefined) await mkdir(dest, { recursive: true });
+
+    // Per-entry processing runs concurrently — each entry streams to its own
+    // output file. `aborted` short-circuits the pool once an `onUnsafe: abort`
+    // entry is found, so the run fails fast without spawning the rest.
+    const abort: { entry: ReadEntry | null } = { entry: null };
+    // `allSettled`, not `all`: every task runs to completion so none is abandoned
+    // mid-stream — which would orphan its temp file and keep reading the archive
+    // descriptor the `finally` is about to close. Failures are surfaced after.
+    const settled = await Promise.allSettled(
+      parsed.entries.map((entry) =>
+        deps.limit(async () => {
+          throwIfAborted(signal);
+          if (abort.entry) return null;
+          return processEntry(entry);
+        }),
+      ),
+    );
+    for (const s of settled) {
+      if (s.status === "rejected") throw s.reason;
+    }
+    if (abort.entry) {
+      throw new ReadError(
+        "read.unsafe-path",
+        `entry '${abort.entry.archivePath}' escapes the destination directory`,
+      );
+    }
+
+    async function processEntry(entry: ReadEntry): Promise<ExtractEntryResult> {
+      const isManifestEntry = entry.archivePath === manifestEntryPath;
+      const checkSha = spec.checkMetadata === true && entry.type !== "dir" && !isManifestEntry;
+      const record = checkSha ? manifestMap.get(entry.archivePath) : undefined;
+      const storedSha =
+        record && typeof record.sha256 === "string" ? record.sha256 : null;
+
+      // Decide up front whether this entry's bytes are written, so we only stage
+      // a temp file when it will actually be committed. Everything else still
+      // streams (CRC and SHA are verified) but to a null sink.
+      let skip: ExtractEntryResult["skipped"];
+      let target: string | null = null;
+      if (!write) {
+        skip = "dry-run";
+      } else if (matcher.match(entry.archivePath, entry.type === "dir")) {
+        skip = "excluded";
       } else {
-        outputPath = target;
+        const joined = safeJoin(dest as string, entry.archivePath);
+        if (joined === null) {
+          skip = "unsafe";
+          if (onUnsafe === "abort") abort.entry ??= entry;
+        } else if (entry.type === "symlink" && writeOptions.symlinks === "skip") {
+          skip = "symlink-skip";
+        } else {
+          target = joined;
+        }
+      }
+
+      const willWrite = target !== null && entry.type !== "dir";
+      const tempPath =
+        willWrite && entry.type !== "symlink"
+          ? path.join(dest as string, `.zk-${process.pid}-${randomTag()}.tmp`)
+          : null;
+      const captureLink = entry.type === "symlink";
+
+      const verified = await verifyEntry(
+        fd,
+        entry,
+        deps.chunkSize,
+        checkSha,
+        storedSha,
+        tempPath,
+        captureLink,
+      );
+
+      let didWrite = false;
+      let outputPath: string | undefined;
+      if (!verified.crcOk) {
+        // A corrupt entry is never written. CRC failure outranks every reason
+        // except a dry run, where writing was never on the table.
+        if (skip !== "dry-run") skip = "crc-fail";
+        if (verified.tempPath) await rm(verified.tempPath, { force: true });
+      } else if (target !== null) {
         try {
-          didWrite = await writeEntry(entry, data, target, writeOptions);
+          if (entry.type === "dir") {
+            await mkdir(target, { recursive: true });
+            didWrite = true;
+          } else if (entry.type === "symlink") {
+            didWrite = await commitSymlink(target, verified.linkTarget ?? "", writeOptions);
+            if (!didWrite) skip = "exists";
+          } else {
+            didWrite = await commitFile(entry, verified.tempPath as string, target, writeOptions);
+            if (!didWrite) skip = "exists";
+          }
         } catch (err) {
+          if (verified.tempPath) await rm(verified.tempPath, { force: true });
           throw new ReadError("read.write-failed", `cannot write ${entry.archivePath}`, {
             cause: err,
           });
         }
-        if (!didWrite) skip = "exists";
+        if (didWrite) outputPath = target;
+      }
+
+      const result: ExtractEntryResult = {
+        archivePath: entry.archivePath,
+        type: entry.type,
+        crc: verified.crcOk ? "ok" : "fail",
+        written: didWrite,
+      };
+      if (verified.sha !== undefined) result.sha = verified.sha;
+      if (skip !== undefined) result.skipped = skip;
+      if (outputPath !== undefined) result.outputPath = outputPath;
+      return result;
+    }
+
+    const entries: ExtractEntryResult[] = settled
+      .map((s) => (s as PromiseFulfilledResult<ExtractEntryResult | null>).value)
+      .filter((r): r is ExtractEntryResult => r !== null);
+    const findings: Finding[] = [];
+    const seen = new Set<string>();
+    let crcFailed = 0;
+    let shaMismatched = 0;
+    let unsafe = 0;
+    let written = 0;
+    let skipped = 0;
+
+    for (const r of entries) {
+      if (r.archivePath !== manifestEntryPath) seen.add(r.archivePath);
+      if (r.crc === "fail") {
+        crcFailed++;
+        findings.push(
+          finding("extract.crc-fail", "error", r.archivePath, "CRC-32 mismatch: entry is corrupt"),
+        );
+      }
+      if (r.sha === "mismatch") {
+        shaMismatched++;
+        findings.push(
+          finding(
+            "extract.sha-mismatch",
+            "error",
+            r.archivePath,
+            "content hash does not match the manifest",
+          ),
+        );
+      }
+      if (r.skipped === "unsafe") {
+        unsafe++;
+        findings.push(
+          finding(
+            "extract.unsafe-path",
+            "error",
+            r.archivePath,
+            "entry path escapes the destination directory",
+          ),
+        );
+      }
+      if (r.written) written++;
+      else skipped++;
+    }
+
+    const missing: string[] = [];
+    const extra: string[] = [];
+    if (spec.checkMetadata) {
+      for (const key of manifestMap.keys()) if (!seen.has(key)) missing.push(key);
+      for (const key of seen) if (!manifestMap.has(key)) extra.push(key);
+      for (const m of missing) {
+        findings.push(
+          finding("extract.missing", "error", m, "entry is in the manifest but absent from the archive"),
+        );
+      }
+      for (const e of extra) {
+        findings.push(
+          finding("extract.extra", "warning", e, "entry is in the archive but absent from the manifest"),
+        );
       }
     }
-    if (didWrite) written++;
-    else skipped++;
 
-    const result: ExtractEntryResult = {
-      archivePath: entry.archivePath,
-      type: entry.type,
-      crc: crcOk ? "ok" : "fail",
-      written: didWrite,
+    const ok =
+      crcFailed === 0 &&
+      unsafe === 0 &&
+      (!spec.checkMetadata || (missing.length === 0 && extra.length === 0 && shaMismatched === 0));
+
+    deps.logger.emit("extract", "info", "extract.done", {
+      data: { total: entries.length, crcFailed, shaMismatched, written, skipped, ok },
+    });
+
+    const report: ExtractReport = {
+      archive: spec.archive,
+      wrote: written > 0,
+      manifest,
+      entries,
+      missing,
+      extra,
+      findings,
+      summary: { total: entries.length, crcFailed, shaMismatched, written, skipped },
+      ok,
     };
-    if (sha !== undefined) result.sha = sha;
-    if (skip !== undefined) result.skipped = skip;
-    if (outputPath !== undefined) result.outputPath = outputPath;
-    entries.push(result);
+    if (spec.dest !== undefined) report.dest = spec.dest;
+    return report;
+  } finally {
+    await closeAsync(fd).catch(() => {});
   }
+}
 
-  const missing: string[] = [];
-  const extra: string[] = [];
-  if (spec.checkMetadata) {
-    for (const key of manifestMap.keys()) if (!seen.has(key)) missing.push(key);
-    for (const key of seen) if (!manifestMap.has(key)) extra.push(key);
-    for (const m of missing) {
-      findings.push(
-        finding("extract.missing", "error", m, "entry is in the manifest but absent from the archive"),
-      );
-    }
-    for (const e of extra) {
-      findings.push(
-        finding("extract.extra", "warning", e, "entry is in the archive but absent from the manifest"),
-      );
-    }
-  }
+/** Restore a symlink, returning false when an existing target was preserved. */
+async function commitSymlink(
+  target: string,
+  linkTarget: string,
+  options: WriteOptions,
+): Promise<boolean> {
+  await mkdir(path.dirname(target), { recursive: true });
+  if (!options.overwrite && (await pathExists(target))) return false;
+  if (options.overwrite) await rm(target, { force: true });
+  await symlink(linkTarget, target);
+  return true; // link times are not restored: no portable lutimes guarantee
+}
 
-  const ok =
-    crcFailed === 0 &&
-    unsafe === 0 &&
-    (!spec.checkMetadata || (missing.length === 0 && extra.length === 0 && shaMismatched === 0));
-
-  deps.logger.emit("extract", "info", "extract.done", {
-    data: { total: entries.length, crcFailed, shaMismatched, written, skipped, ok },
-  });
-
-  const report: ExtractReport = {
-    archive: spec.archive,
-    wrote: written > 0,
-    manifest,
-    entries,
-    missing,
-    extra,
-    findings,
-    summary: { total: entries.length, crcFailed, shaMismatched, written, skipped },
-    ok,
-  };
-  if (spec.dest !== undefined) report.dest = spec.dest;
-  return report;
+let tagCounter = 0;
+/** A short, collision-resistant suffix for a per-entry temp file. */
+function randomTag(): string {
+  tagCounter = (tagCounter + 1) >>> 0;
+  return `${Date.now().toString(36)}-${tagCounter.toString(36)}`;
 }

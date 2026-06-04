@@ -17,7 +17,7 @@ import { extractArchive } from "./extract/extract.js";
 import { planArchive } from "./plan/plan.js";
 import { resolvePolicy } from "./policy.js";
 import { scan } from "./scan/scan.js";
-import { validateExtractSpec, validatePolicy, validateSpec } from "./validate.js";
+import { validateChunkSize, validateExtractSpec, validatePolicy, validateSpec } from "./validate.js";
 import { writeArchive } from "./write/write.js";
 import type {
   ArchivePolicy,
@@ -33,14 +33,20 @@ import type {
 /**
  * The default concurrency tracks the host's available parallelism (which
  * respects cgroup and CPU-affinity limits, so it does the right thing in CI and
- * containers), bounded at both ends. The cap keeps a many-core box from running
- * an unbounded number of file reads at once — each in-flight entry buffers its
- * whole file in memory before deflating, so peak memory scales with this number.
+ * containers), bounded at both ends. All streamed I/O is now chunked, so an
+ * in-flight entry holds only about `chunkSize` of buffer rather than its whole
+ * file; peak memory is therefore roughly `chunkSize × concurrency`. The cap
+ * keeps a many-core box from opening an unbounded number of streams at once.
  * The floor keeps the work — which is largely I/O-bound — parallel even on a
- * single-vCPU container, where `availableParallelism()` returns 1.
+ * single-vCPU container, where `availableParallelism()` returns 1. Concurrency
+ * governs the scan and extraction (each entry streams to its own output file);
+ * the create write is a single ordered byte stream and runs sequentially.
  */
 const MIN_DEFAULT_CONCURRENCY = 4;
 const MAX_DEFAULT_CONCURRENCY = 16;
+
+/** Default chunk size (64 KB) for all streamed I/O — see {@link ZipKitOptions.chunkSize}. */
+const DEFAULT_CHUNK_SIZE = 65536;
 
 function defaultConcurrency(): number {
   return Math.max(MIN_DEFAULT_CONCURRENCY, Math.min(os.availableParallelism(), MAX_DEFAULT_CONCURRENCY));
@@ -50,6 +56,7 @@ export class ZipKit {
   readonly #policy: Partial<ArchivePolicy> | undefined;
   readonly #logger: Logger;
   readonly #concurrency: number;
+  readonly #chunkSize: number;
 
   constructor(options: ZipKitOptions = {}) {
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
@@ -58,6 +65,8 @@ export class ZipKit {
       options.concurrency && options.concurrency > 0
         ? Math.floor(options.concurrency)
         : defaultConcurrency();
+    this.#chunkSize =
+      options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
   }
 
   /** Scan and plan; writes nothing. */
@@ -80,17 +89,15 @@ export class ZipKit {
 
   /** Execute a plan produced by {@link ZipKit.plan}. */
   async write(plan: Plan): Promise<WriteResult> {
-    const limit = pLimit(this.#concurrency);
-    return this.#runWrite(plan, { limit, logger: this.#logger });
+    return this.#runWrite(plan, { logger: this.#logger, chunkSize: this.#chunkSize });
   }
 
   /** Plan and write in one call. */
   async create(spec: ArchiveSpec): Promise<WriteResult> {
     const plan = await this.plan(spec);
-    const limit = pLimit(this.#concurrency);
     const deps = spec.signal
-      ? { limit, logger: this.#logger, signal: spec.signal }
-      : { limit, logger: this.#logger };
+      ? { logger: this.#logger, chunkSize: this.#chunkSize, signal: spec.signal }
+      : { logger: this.#logger, chunkSize: this.#chunkSize };
     return this.#runWrite(plan, deps);
   }
 
@@ -103,9 +110,10 @@ export class ZipKit {
   async extract(spec: ExtractSpec): Promise<ExtractReport> {
     try {
       const validated = validateExtractSpec(spec);
+      const limit = pLimit(this.#concurrency);
       const deps = spec.signal
-        ? { logger: this.#logger, signal: spec.signal }
-        : { logger: this.#logger };
+        ? { limit, logger: this.#logger, chunkSize: this.#chunkSize, signal: spec.signal }
+        : { limit, logger: this.#logger, chunkSize: this.#chunkSize };
       return await extractArchive(validated, deps);
     } catch (err) {
       this.#reportError(err);
@@ -118,7 +126,7 @@ export class ZipKit {
    *  double-report when its inner `plan()` throws. */
   async #runWrite(
     plan: Plan,
-    deps: { limit: <T>(fn: () => Promise<T>) => Promise<T>; logger: Logger; signal?: AbortSignal },
+    deps: { logger: Logger; chunkSize: number; signal?: AbortSignal },
   ): Promise<WriteResult> {
     try {
       return await writeArchive(plan, deps);

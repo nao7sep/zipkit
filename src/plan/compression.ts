@@ -2,8 +2,10 @@
  * Compression method selection (pass 8). Under `auto`, an entry whose
  * extension is in the store list is stored, otherwise deflated. `store-all` and
  * `compress-all` override per-extension behaviour. Directories and preserved
- * symlinks are always stored. The writer applies a further store fallback at
- * write time when deflate fails to shrink the data.
+ * symlinks are always stored. The method decided here is final: the writer
+ * streams the entry with it and never reconsiders, so a deflated entry can
+ * rarely end up a few bytes larger than its stored form — an accepted trade for
+ * streaming arbitrarily large files in bounded memory.
  */
 
 import { extnameLower } from "../internal/path.js";

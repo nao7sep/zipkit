@@ -13,9 +13,10 @@ import type { ArchivePolicy, MetadataPolicy } from "./types.js";
  * are reliably already compressed, where attempting deflate only wastes CPU
  * with no realistic chance of shrinking. Lowercase, leading dot. This list is
  * a CPU optimization, not a correctness setting: any file outside it is still
- * deflated, and any entry whose deflate fails to shrink falls back to store.
- * Borderline formats (e.g. PDF, which sometimes compresses) are deliberately
- * left off so `auto` can keep the win when it exists.
+ * deflated. The method is decided here and is final — the streaming writer does
+ * not reconsider it — so a deflated entry can rarely be a few bytes larger than
+ * its stored form. Borderline formats (e.g. PDF, which sometimes compresses) are
+ * deliberately left off so `auto` can keep the win when it exists.
  */
 export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   // Images

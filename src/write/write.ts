@@ -1,18 +1,20 @@
 /**
- * The write edge. It consumes a writable plan, reads each entry's bytes,
- * compresses and hashes them, frames the archive with the in-house writer, and
- * writes it atomically — a temporary file in the same directory, then a
- * same-filesystem rename. The metadata file is always injected as an entry. The
- * writer instructions ride on the plan (see `carrier.ts`), so `write(plan)`
- * needs no second argument.
+ * The write edge. It consumes a writable plan and streams each entry into the
+ * archive sequentially — the archive is one ordered byte stream. Each source
+ * file flows through deflate (or a store pass-through) in `chunkSize` pieces, so
+ * an arbitrarily large file is archived in bounded memory; its CRC-32 and
+ * SHA-256 are computed incrementally as it streams. The metadata file is built
+ * from the streamed results and injected as the final entry. The writer
+ * instructions ride on the plan (see `carrier.ts`), so `write(plan)` needs no
+ * second argument.
  *
  * `writable` is the gate: a non-writable plan throws `WriteError`, with no
- * override for the error tier.
+ * override for the error tier. The output is written to a temp file in its own
+ * directory and atomically renamed into place by the writer.
  */
 
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import writeFileAtomic from "write-file-atomic";
+import { createHash, type Hash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { throwIfAborted, toAbortError, WriteError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
 import { machineTimeZone } from "../internal/timeZone.js";
@@ -20,106 +22,83 @@ import type { WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import type { Plan, WriteResult } from "../types.js";
 import { computeZip64Need } from "../plan/zip64.js";
-import { compress } from "./deflate.js";
 import { buildMetadata } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
-import { buildZip } from "./zipWriter.js";
-import type { PreparedEntry } from "./zipWriter.js";
+import { EntryCompressor, ZipWriter } from "./zipWriter.js";
+import type { StreamResult, WriteEntryInput } from "./zipWriter.js";
 
 export interface WriteDeps {
-  limit: <T>(fn: () => Promise<T>) => Promise<T>;
   logger: Logger;
+  chunkSize: number;
   signal?: AbortSignal;
 }
 
-interface Prepared {
-  entry: PreparedEntry;
+/** What each streamed entry contributed, gathered for the metadata record. */
+interface StreamedEntry {
   source: WriteEntry;
   crc32: number;
+  compressedSize: number;
   sha256?: string;
 }
 
-const EMPTY = Buffer.alloc(0);
-
-function sha256(buffer: Buffer): string {
-  return createHash("sha256").update(buffer).digest("hex");
+function toWriteEntryInput(source: WriteEntry): WriteEntryInput {
+  return {
+    name: source.archivePath,
+    type: source.type,
+    method: source.method,
+    uncompressedSize: source.size,
+    mtimeNs: source.mtimeNs,
+    atimeNs: source.atimeNs,
+    birthtimeNs: source.birthtimeNs,
+    mode: source.mode,
+  };
 }
 
-async function prepareEntry(
+/**
+ * Stream one source file through its compressor into the writer, computing the
+ * SHA-256 over the raw bytes when requested. Directories carry no data and are
+ * handled by the caller via `addDir`.
+ */
+async function streamFile(
+  writer: ZipWriter,
   source: WriteEntry,
-  hash: boolean,
+  chunkSize: number,
+  hasher: Hash | null,
   signal: AbortSignal | undefined,
-): Promise<Prepared> {
-  if (source.type === "dir") {
-    return {
-      entry: {
-        name: source.archivePath,
-        type: "dir",
-        method: "store",
-        crc32: 0,
-        data: EMPTY,
-        uncompressedSize: 0,
-        mtimeNs: source.mtimeNs,
-        atimeNs: source.atimeNs,
-        birthtimeNs: source.birthtimeNs,
-        mode: source.mode,
-      },
-      source,
-      crc32: 0,
-    };
-  }
+): Promise<StreamResult> {
+  const input = toWriteEntryInput(source);
+  return writer.streamEntry(input, async (sink) => {
+    const compressor = new EntryCompressor(source.method, sink, chunkSize);
+    const reader = createReadStream(source.absolutePath, { highWaterMark: chunkSize });
+    try {
+      for await (const chunk of reader) {
+        throwIfAborted(signal);
+        const buf = chunk as Buffer;
+        if (hasher) hasher.update(buf);
+        await compressor.update(buf);
+      }
+    } catch (err) {
+      reader.destroy();
+      throw new WriteError("write.read-failed", `cannot read source for ${source.archivePath}`, {
+        cause: err,
+      });
+    }
+    return compressor.finish();
+  });
+}
 
-  if (source.type === "symlink") {
-    const raw = Buffer.from(source.linkTarget ?? "", "utf8");
-    const compressed = await compress(raw, "store");
-    const prepared: Prepared = {
-      entry: {
-        name: source.archivePath,
-        type: "symlink",
-        method: compressed.method,
-        crc32: compressed.crc32,
-        data: compressed.data,
-        uncompressedSize: compressed.size,
-        mtimeNs: source.mtimeNs,
-        atimeNs: source.atimeNs,
-        birthtimeNs: source.birthtimeNs,
-        mode: source.mode,
-      },
-      source,
-      crc32: compressed.crc32,
-    };
-    if (hash) prepared.sha256 = sha256(raw);
-    return prepared;
-  }
-
-  let raw: Buffer;
-  try {
-    raw = await readFile(source.absolutePath);
-  } catch (err) {
-    throw new WriteError("write.read-failed", `cannot read source for ${source.archivePath}`, {
-      cause: err,
-    });
-  }
-  throwIfAborted(signal);
-  const compressed = await compress(raw, source.method);
-  const prepared: Prepared = {
-    entry: {
-      name: source.archivePath,
-      type: "file",
-      method: compressed.method,
-      crc32: compressed.crc32,
-      data: compressed.data,
-      uncompressedSize: compressed.size,
-      mtimeNs: source.mtimeNs,
-      atimeNs: source.atimeNs,
-      birthtimeNs: source.birthtimeNs,
-      mode: source.mode,
-    },
-    source,
-    crc32: compressed.crc32,
-  };
-  if (hash) prepared.sha256 = sha256(raw);
-  return prepared;
+/** Stream an in-memory buffer (a symlink target or the metadata JSON) as one entry. */
+async function streamBuffer(
+  writer: ZipWriter,
+  input: WriteEntryInput,
+  raw: Buffer,
+  chunkSize: number,
+): Promise<StreamResult> {
+  return writer.streamEntry(input, async (sink) => {
+    const compressor = new EntryCompressor(input.method, sink, chunkSize);
+    if (raw.length > 0) await compressor.update(raw);
+    return compressor.finish();
+  });
 }
 
 export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteResult> {
@@ -148,91 +127,150 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
   deps.logger.emit("write", "info", "write.start", { data: { entries: writeEntries.length } });
 
   const hash = policy.metadata !== false && policy.metadata.hash;
-  let prepared: Prepared[];
-  try {
-    prepared = await Promise.all(
-      writeEntries.map((source) =>
-        deps.limit(async () => {
-          const result = await prepareEntry(source, hash, signal);
-          deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
-          return result;
-        }),
-      ),
-    );
-  } catch (err) {
-    if (signal?.aborted) throw toAbortError(signal.reason);
-    throw err;
-  }
-
-  const zipEntries: PreparedEntry[] = prepared.map((p) => p.entry);
-
-  // The structured record is always built and returned — it is the run's full
-  // state. Embedding it as `_metadata.json` is the only part gated by policy.
-  const metadataEntries: MetadataEntryInput[] = prepared.map((p) => {
-    const input: MetadataEntryInput = {
-      writeEntry: p.source,
-      crc32: p.crc32,
-      compressedSize: p.entry.data.length,
-    };
-    if (p.sha256 !== undefined) input.sha256 = p.sha256;
-    return input;
-  });
   const createdNs = BigInt(Date.now()) * 1_000_000n;
-  const metadata = buildMetadata(plan, policy, metadataEntries, createdNs, effectiveTimeZone);
 
+  // Decide Zip64 over the final entry set up front — it includes the injected
+  // metadata entry that the plan-time estimate could not see. The header format
+  // depends only on the uncompressed sizes and offsets, all known here, so the
+  // decision is fixed before any byte is written. Under "never" this is a hard
+  // gate: refuse rather than silently producing a Zip64 archive.
+  const metadataPlaceholderSize = policy.metadata !== false ? estimateMetadataSize(writeEntries) : 0;
+  const sizedEntries = writeEntries.map((e) => ({
+    name: e.archivePath,
+    size: e.size,
+    isDir: e.type === "dir",
+  }));
   if (policy.metadata !== false) {
-    // A ZIP is a container, so the manifest rides inside it rather than as a
-    // loose file that could drift away from the archive.
-    const json = Buffer.from(JSON.stringify(metadata, null, 2), "utf8");
-    const compressed = await compress(json, "deflate");
-    zipEntries.push({
-      name: policy.metadata.name,
-      type: "file",
-      method: compressed.method,
-      crc32: compressed.crc32,
-      data: compressed.data,
-      uncompressedSize: compressed.size,
-      mtimeNs: createdNs,
-      atimeNs: createdNs,
-      birthtimeNs: createdNs,
-      mode: 0,
-    });
+    sizedEntries.push({ name: policy.metadata.name, size: metadataPlaceholderSize, isDir: false });
   }
-
-  // Decide Zip64 over the final entry set, which includes the injected metadata
-  // entry that the plan-time estimate could not see. Under "never" this is a
-  // hard gate: emit a clear error rather than silently producing a Zip64
-  // archive the caller forbade.
-  const zip64Needed = computeZip64Need(
-    zipEntries.map((e) => ({ name: e.name, size: e.uncompressedSize, isDir: e.type === "dir" })),
-  );
+  const zip64Needed = computeZip64Need(sizedEntries);
   if (policy.zip64 === "never" && zip64Needed) {
     throw new WriteError(
       "write.zip64-required",
       "the archive exceeds 32-bit ZIP limits but Zip64 is disabled",
     );
   }
-  const { bytes, zip64 } = buildZip(zipEntries, {
-    zip64: policy.zip64 === "always" || zip64Needed,
+  const forceZip64 = policy.zip64 === "always" || zip64Needed;
+
+  const writer = new ZipWriter(plan.output, {
+    zip64: forceZip64,
     preserveTimestamps: policy.timestamps === "preserve",
     timeZone: effectiveTimeZone,
+    chunkSize: deps.chunkSize,
   });
 
+  let zip64 = false;
+  let bytes = 0;
   try {
-    await writeFileAtomic(plan.output, bytes);
+    await writer.open();
+
+    const streamed: StreamedEntry[] = [];
+    for (const source of writeEntries) {
+      throwIfAborted(signal);
+      if (source.type === "dir") {
+        await writer.addDir(toWriteEntryInput(source));
+        streamed.push({ source, crc32: 0, compressedSize: 0 });
+        deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
+        continue;
+      }
+
+      if (source.type === "symlink") {
+        const raw = Buffer.from(source.linkTarget ?? "", "utf8");
+        const result = await streamBuffer(
+          writer,
+          toWriteEntryInput(source),
+          raw,
+          deps.chunkSize,
+        );
+        const entry: StreamedEntry = {
+          source,
+          crc32: result.crc32,
+          compressedSize: result.compressedSize,
+        };
+        if (hash) entry.sha256 = createHash("sha256").update(raw).digest("hex");
+        streamed.push(entry);
+        deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
+        continue;
+      }
+
+      const hasher = hash ? createHash("sha256") : null;
+      const result = await streamFile(writer, source, deps.chunkSize, hasher, signal);
+      const entry: StreamedEntry = {
+        source,
+        crc32: result.crc32,
+        compressedSize: result.compressedSize,
+      };
+      if (hasher) entry.sha256 = hasher.digest("hex");
+      streamed.push(entry);
+      deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
+    }
+
+    // The structured record is always built and returned — it is the run's full
+    // state. Embedding it as `_metadata.json` is the only part gated by policy.
+    const metadataEntries: MetadataEntryInput[] = streamed.map((s) => {
+      const input: MetadataEntryInput = {
+        writeEntry: s.source,
+        crc32: s.crc32,
+        compressedSize: s.compressedSize,
+      };
+      if (s.sha256 !== undefined) input.sha256 = s.sha256;
+      return input;
+    });
+    const metadata = buildMetadata(plan, policy, metadataEntries, createdNs, effectiveTimeZone);
+
+    if (policy.metadata !== false) {
+      // A ZIP is a container, so the manifest rides inside it rather than as a
+      // loose file that could drift away from the archive. It is generated in
+      // memory (it is small) and streamed like any other entry, last.
+      const json = Buffer.from(JSON.stringify(metadata, null, 2), "utf8");
+      await streamBuffer(
+        writer,
+        {
+          name: policy.metadata.name,
+          type: "file",
+          method: "deflate",
+          uncompressedSize: json.length,
+          mtimeNs: createdNs,
+          atimeNs: createdNs,
+          birthtimeNs: createdNs,
+          mode: 0,
+        },
+        json,
+        deps.chunkSize,
+      );
+    }
+
+    const final = await writer.finalize(forceZip64);
+    zip64 = final.zip64;
+    bytes = final.bytes;
+
+    deps.logger.emit("write", "info", "write.done", { data: { bytes, zip64 } });
+
+    return {
+      output: plan.output,
+      zip64,
+      entries: streamed.length + (policy.metadata !== false ? 1 : 0),
+      excluded: plan.summary.excluded,
+      bytes,
+      metadata,
+      plan,
+    };
   } catch (err) {
-    throw new WriteError("write.atomic-failed", `failed to write ${plan.output}`, { cause: err });
+    await writer.abort();
+    if (signal?.aborted) throw toAbortError(signal.reason);
+    if (err instanceof WriteError) throw err;
+    throw new WriteError("write.failed", `failed to write ${plan.output}`, { cause: err });
   }
+}
 
-  deps.logger.emit("write", "info", "write.done", { data: { bytes: bytes.length, zip64 } });
-
-  return {
-    output: plan.output,
-    zip64,
-    entries: zipEntries.length,
-    excluded: plan.summary.excluded,
-    bytes: bytes.length,
-    metadata,
-    plan,
-  };
+/**
+ * A safe upper bound on the embedded metadata file's uncompressed size, used
+ * only to decide Zip64 before the entries stream. The metadata JSON is tiny
+ * relative to any archive that could approach the 4 GiB threshold, so a generous
+ * per-entry estimate cannot flip the decision incorrectly: it can only err
+ * toward Zip64 on an archive already at the very edge, which is harmless.
+ */
+function estimateMetadataSize(entries: WriteEntry[]): number {
+  // Roughly the JSON weight of one entry record plus a fixed header allowance.
+  return 4096 + entries.length * 512;
 }

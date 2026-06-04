@@ -1,6 +1,9 @@
 /**
  * The in-house ZIP container framing — local file headers, the central
- * directory, the end-of-central-directory record, and Zip64 structures. The
+ * directory, the end-of-central-directory record, and Zip64 structures — driven
+ * as a streaming writer. The archive is one ordered byte stream, so entries are
+ * written sequentially through a single seekable file descriptor: a temp file
+ * in the output's directory, fsync'd and atomically renamed into place. The
  * clean-byte contract is encoded here:
  *
  * - The general-purpose flag has bit 11 set (names are UTF-8).
@@ -20,9 +23,26 @@
  *
  * The single deliberate exception is a preserved symlink: it carries a Unix
  * host byte and link mode, because there is no other faithful representation.
+ *
+ * CRC-32 and the compressed size are not known until an entry has streamed, but
+ * the uncompressed size (from `stat`) and therefore the Zip64 decision are known
+ * up front, so the header FORMAT is fixed before the header is written. The
+ * local header is written with placeholder crc/size fields, the data is
+ * streamed, then the real values are patched back into the header at its
+ * recorded offset with positioned writes — no data descriptors, no GP bit 3, so
+ * the bytes match what a same-archive reader and `unzip` expect.
  */
 
+import { close, fsync, open, rename, write as fsWrite } from "node:fs";
+import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { wallClockInZone } from "../internal/timeZone.js";
+import { EntryCompressor, type ChunkSink } from "./deflate.js";
+
+const openAsync = promisify(open);
+const closeAsync = promisify(close);
+const fsyncAsync = promisify(fsync);
+const renameAsync = promisify(rename);
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
@@ -48,13 +68,16 @@ const INT32_MAX = 0x7fffffff;
 // An instant beyond this cannot be rendered, so it is clamped by sign.
 const DATE_MS_LIMIT = 8_640_000_000_000_000;
 
-export interface PreparedEntry {
+/**
+ * One entry to write. A `file`/`symlink` streams its bytes through the writer;
+ * a `dir` carries none. The crc/compressed-size are produced by the stream and
+ * are not part of this input.
+ */
+export interface WriteEntryInput {
   name: string; // archive path, no trailing slash; the writer adds it for dirs
   type: "file" | "dir" | "symlink";
   method: "store" | "deflate";
-  crc32: number;
-  data: Buffer; // bytes to write (compressed or stored; empty for a directory)
-  uncompressedSize: number;
+  uncompressedSize: number; // known from stat up front; fixes the header format
   mtimeNs: bigint;
   atimeNs: bigint;
   birthtimeNs: bigint; // creation time; the NTFS/UT "creation" field
@@ -67,14 +90,31 @@ export interface ZipWriterOptions {
   preserveTimestamps: boolean;
   /** IANA zone the DOS local-time field is rendered in (already resolved). */
   timeZone: string;
+  /** highWaterMark for the temp-file writes and the deflate stream. */
+  chunkSize: number;
 }
 
-export interface ZipResult {
-  bytes: Buffer;
-  zip64: boolean;
+/** The result an entry's data source must produce when fully consumed. */
+export interface StreamResult {
+  crc32: number;
+  compressedSize: number;
+  uncompressedSize: number;
 }
 
-function dosFor(entry: PreparedEntry, options: ZipWriterOptions): { date: number; time: number } {
+/** The per-entry geometry recorded when its local header is written, needed to
+ *  stream its data, patch the header, and build the central record. */
+interface EntryGeometry {
+  nameBuf: Buffer;
+  date: number;
+  time: number;
+  useZip64: boolean;
+  headerOffset: number;
+  times: { local: Buffer; central: Buffer } | null;
+  info: { madeBy: number; extAttr: number; baseVersion: number };
+  versionNeeded: number;
+}
+
+function dosFor(entry: WriteEntryInput, options: ZipWriterOptions): { date: number; time: number } {
   const ms = Number(entry.mtimeNs / 1_000_000n);
   if (!Number.isFinite(ms) || ms < -DATE_MS_LIMIT) return FIXED_DOS;
   if (ms > DATE_MS_LIMIT) return MAX_DOS;
@@ -123,7 +163,7 @@ function filetime(ns: bigint): bigint {
  * sharing the same flags byte. Returns null when no time is representable, so a
  * value is never silently misrepresented — the metadata file stays lossless.
  */
-function extendedTimestamp(entry: PreparedEntry): { local: Buffer; central: Buffer } | null {
+function extendedTimestamp(entry: WriteEntryInput): { local: Buffer; central: Buffer } | null {
   const m = utSeconds(entry.mtimeNs);
   const a = utSeconds(entry.atimeNs);
   // A birthtime of 0 is the platform's "creation time unavailable" marker
@@ -156,7 +196,7 @@ function extendedTimestamp(entry: PreparedEntry): { local: Buffer; central: Buff
  * there. Unlike the DOS field it represents the full Unix range, so it is always
  * written under preservation.
  */
-function ntfsTimestamp(entry: PreparedEntry): Buffer {
+function ntfsTimestamp(entry: WriteEntryInput): Buffer {
   const b = Buffer.alloc(36);
   b.writeUInt16LE(0x000a, 0); // tag
   b.writeUInt16LE(32, 2); // TSize: reserved(4) + attr header(4) + three 8-byte times
@@ -172,7 +212,7 @@ function ntfsTimestamp(entry: PreparedEntry): Buffer {
 }
 
 /** The combined timestamp extras (UT + NTFS) for the local and central records. */
-function timestampExtras(entry: PreparedEntry): { local: Buffer; central: Buffer } {
+function timestampExtras(entry: WriteEntryInput): { local: Buffer; central: Buffer } {
   const ut = extendedTimestamp(entry);
   const ntfs = ntfsTimestamp(entry);
   return {
@@ -200,7 +240,7 @@ function zip64CentralExtra(uncompressed: number, compressed: number, offset: num
   return b;
 }
 
-function hostInfo(entry: PreparedEntry): { madeBy: number; extAttr: number; baseVersion: number } {
+function hostInfo(entry: WriteEntryInput): { madeBy: number; extAttr: number; baseVersion: number } {
   if (entry.type === "symlink") {
     const mode = (entry.mode & 0xffff) || 0o120777;
     return { madeBy: (3 << 8) | 20, extAttr: (mode * 0x10000) >>> 0, baseVersion: 20 };
@@ -212,7 +252,7 @@ function hostInfo(entry: PreparedEntry): { madeBy: number; extAttr: number; base
 
 function localHeader(p: {
   versionNeeded: number;
-  method: PreparedEntry["method"];
+  method: WriteEntryInput["method"];
   date: number;
   time: number;
   crc32: number;
@@ -239,7 +279,7 @@ function localHeader(p: {
 function centralRecord(p: {
   madeBy: number;
   versionNeeded: number;
-  method: PreparedEntry["method"];
+  method: WriteEntryInput["method"];
   date: number;
   time: number;
   crc32: number;
@@ -271,119 +311,280 @@ function centralRecord(p: {
   return b;
 }
 
-export function buildZip(entries: PreparedEntry[], options: ZipWriterOptions): ZipResult {
-  const chunks: Buffer[] = [];
-  const central: Buffer[] = [];
-  let offset = 0;
-  let anyEntryZip64 = false;
+const writeFd = promisify(
+  (fd: number, buffer: Buffer, offset: number, length: number, position: number | null,
+   cb: (err: NodeJS.ErrnoException | null) => void) =>
+    fsWrite(fd, buffer, offset, length, position, (err) => cb(err)),
+);
 
-  for (const entry of entries) {
+/**
+ * A streaming ZIP writer. Open it on an output path, append entries in order —
+ * each `file`/`symlink` streams its bytes through `streamEntry`, a `dir` through
+ * `addDir` — then `finalize` to write the central directory and EOCD, fsync, and
+ * atomically rename the temp file into place. Sequential by construction: the
+ * archive is one ordered byte stream.
+ */
+export class ZipWriter {
+  readonly #output: string;
+  readonly #tempPath: string;
+  readonly #options: ZipWriterOptions;
+  #fd = -1;
+  /** Append position in the temp file (also each entry's local-header offset). */
+  #offset = 0;
+  readonly #central: Buffer[] = [];
+  #count = 0;
+  #anyEntryZip64 = false;
+
+  constructor(output: string, options: ZipWriterOptions) {
+    this.#output = output;
+    this.#options = options;
+    // A temp file in the output's own directory, so the closing rename is a
+    // same-filesystem atomic replace — the same atomic guarantee, kept without
+    // buffering the whole archive in memory.
+    this.#tempPath = join(dirname(output), `.${process.pid}-${Date.now()}.zip.tmp`);
+  }
+
+  async open(): Promise<void> {
+    this.#fd = await openAsync(this.#tempPath, "w");
+  }
+
+  /** Append raw bytes at the current offset, advancing it. */
+  async #append(buffer: Buffer): Promise<void> {
+    if (buffer.length === 0) return;
+    await writeFd(this.#fd, buffer, 0, buffer.length, this.#offset);
+    this.#offset += buffer.length;
+  }
+
+  /**
+   * Decide the header format and write the local header + name + extra, leaving
+   * the crc/sizes as placeholders. Returns the per-entry geometry the caller
+   * needs to stream the data and patch the header afterward.
+   */
+  #beginEntry(entry: WriteEntryInput): EntryGeometry {
     const name = entry.type === "dir" ? `${entry.name}/` : entry.name;
     const nameBuf = Buffer.from(name, "utf8");
-    const { date, time } = dosFor(entry, options);
-    const compSize = entry.data.length;
-    const uncompSize = entry.uncompressedSize;
-    const localHeaderOffset = offset;
-    const useZip64 = uncompSize >= U32 || compSize >= U32 || localHeaderOffset >= U32;
-    if (useZip64) anyEntryZip64 = true;
-
+    const { date, time } = dosFor(entry, this.#options);
+    const headerOffset = this.#offset;
+    // The uncompressed size and offset are known now; the compressed size can
+    // only shrink, so an entry that does not need Zip64 by uncompressed size or
+    // offset never needs it by compressed size. The format is therefore fixed.
+    const useZip64 = entry.uncompressedSize >= U32 || headerOffset >= U32;
+    if (useZip64) this.#anyEntryZip64 = true;
     const info = hostInfo(entry);
     const versionNeeded = useZip64 ? 45 : info.baseVersion;
-    const times = options.preserveTimestamps ? timestampExtras(entry) : null;
+    const times = this.#options.preserveTimestamps ? timestampExtras(entry) : null;
+    return { nameBuf, date, time, useZip64, headerOffset, times, info, versionNeeded };
+  }
 
-    const localExtra = Buffer.concat([
-      ...(useZip64 ? [zip64LocalExtra(uncompSize, compSize)] : []),
-      ...(times ? [times.local] : []),
-    ]);
-    const localExtraBuf = localExtra.length > 0 ? localExtra : EMPTY;
+  /** Build the local extra blob for an entry's chosen format. */
+  #localExtra(
+    useZip64: boolean,
+    uncompSize: number,
+    compSize: number,
+    times: { local: Buffer } | null,
+  ): Buffer {
+    const parts: Buffer[] = [];
+    if (useZip64) parts.push(zip64LocalExtra(uncompSize, compSize));
+    if (times) parts.push(times.local);
+    return parts.length > 0 ? Buffer.concat(parts) : EMPTY;
+  }
 
-    chunks.push(
-      localHeader({
-        versionNeeded,
-        method: entry.method,
-        date,
-        time,
-        crc32: entry.crc32,
-        compSize: useZip64 ? U32 : compSize,
-        uncompSize: useZip64 ? U32 : uncompSize,
-        nameLen: nameBuf.length,
-        extraLen: localExtraBuf.length,
-      }),
-      nameBuf,
-      localExtraBuf,
-      entry.data,
-    );
-    offset += 30 + nameBuf.length + localExtraBuf.length + entry.data.length;
+  /** Record the central-directory entry once the stream's crc/sizes are known. */
+  #pushCentral(
+    entry: WriteEntryInput,
+    g: EntryGeometry,
+    result: StreamResult,
+  ): void {
+    const centralExtra: Buffer[] = [];
+    if (g.useZip64) {
+      centralExtra.push(
+        zip64CentralExtra(result.uncompressedSize, result.compressedSize, g.headerOffset),
+      );
+    }
+    if (g.times) centralExtra.push(g.times.central);
+    const centralExtraBuf = centralExtra.length > 0 ? Buffer.concat(centralExtra) : EMPTY;
 
-    const centralExtra = Buffer.concat([
-      ...(useZip64 ? [zip64CentralExtra(uncompSize, compSize, localHeaderOffset)] : []),
-      ...(times ? [times.central] : []),
-    ]);
-    const centralExtraBuf = centralExtra.length > 0 ? centralExtra : EMPTY;
-
-    central.push(
+    this.#central.push(
       centralRecord({
-        madeBy: info.madeBy,
-        versionNeeded,
+        madeBy: g.info.madeBy,
+        versionNeeded: g.versionNeeded,
         method: entry.method,
-        date,
-        time,
-        crc32: entry.crc32,
-        compSize: useZip64 ? U32 : compSize,
-        uncompSize: useZip64 ? U32 : uncompSize,
-        nameLen: nameBuf.length,
+        date: g.date,
+        time: g.time,
+        crc32: result.crc32,
+        compSize: g.useZip64 ? U32 : result.compressedSize,
+        uncompSize: g.useZip64 ? U32 : result.uncompressedSize,
+        nameLen: g.nameBuf.length,
         extraLen: centralExtraBuf.length,
-        extAttr: info.extAttr,
-        offset: useZip64 ? U32 : localHeaderOffset,
+        extAttr: g.info.extAttr,
+        offset: g.useZip64 ? U32 : g.headerOffset,
       }),
-      nameBuf,
+      g.nameBuf,
       centralExtraBuf,
     );
+    this.#count++;
   }
 
-  const cdStart = offset;
-  for (const record of central) {
-    chunks.push(record);
-    offset += record.length;
-  }
-  const cdSize = offset - cdStart;
-  const count = entries.length;
+  /**
+   * Patch the real crc/sizes into a local header at its recorded offset. The
+   * header's crc field is at +14, the compressed size at +18, the uncompressed
+   * size at +22. Under Zip64 the base fields stay the sentinel and the real
+   * 64-bit sizes live in the local Zip64 extra (which follows the name).
+   */
+  async #patchLocalHeader(
+    g: EntryGeometry,
+    result: StreamResult,
+  ): Promise<void> {
+    const patch = Buffer.alloc(12);
+    patch.writeUInt32LE(result.crc32 >>> 0, 0);
+    patch.writeUInt32LE(g.useZip64 ? U32 : result.compressedSize, 4);
+    patch.writeUInt32LE(g.useZip64 ? U32 : result.uncompressedSize, 8);
+    await writeFd(this.#fd, patch, 0, patch.length, g.headerOffset + 14);
 
-  const needZip64 =
-    options.zip64 || anyEntryZip64 || count >= U16 || cdStart >= U32 || cdSize >= U32;
-
-  if (needZip64) {
-    const eocd64 = Buffer.alloc(56);
-    eocd64.writeUInt32LE(ZIP64_EOCD_SIG, 0);
-    eocd64.writeBigUInt64LE(44n, 4); // size of this record minus 12
-    eocd64.writeUInt16LE(45, 12); // version made by (FAT host, 4.5)
-    eocd64.writeUInt16LE(45, 14); // version needed
-    eocd64.writeUInt32LE(0, 16); // this disk
-    eocd64.writeUInt32LE(0, 20); // disk with central directory
-    eocd64.writeBigUInt64LE(BigInt(count), 24);
-    eocd64.writeBigUInt64LE(BigInt(count), 32);
-    eocd64.writeBigUInt64LE(BigInt(cdSize), 40);
-    eocd64.writeBigUInt64LE(BigInt(cdStart), 48);
-    chunks.push(eocd64);
-
-    const locator = Buffer.alloc(20);
-    locator.writeUInt32LE(ZIP64_LOCATOR_SIG, 0);
-    locator.writeUInt32LE(0, 4); // disk with the zip64 end record
-    locator.writeBigUInt64LE(BigInt(cdStart + cdSize), 8);
-    locator.writeUInt32LE(1, 16); // total number of disks
-    chunks.push(locator);
+    if (g.useZip64) {
+      // The Zip64 local extra sits right after the name; overwrite its two
+      // 8-byte size fields (which were written with the placeholder sizes).
+      const sizes = Buffer.alloc(16);
+      sizes.writeBigUInt64LE(BigInt(result.uncompressedSize), 0);
+      sizes.writeBigUInt64LE(BigInt(result.compressedSize), 8);
+      // local header(30) + name + extra-id(2) + extra-size(2) = start of values.
+      const valuesOffset = g.headerOffset + 30 + g.nameBuf.length + 4;
+      await writeFd(this.#fd, sizes, 0, sizes.length, valuesOffset);
+    }
   }
 
-  const eocd = Buffer.alloc(22);
-  eocd.writeUInt32LE(EOCD_SIG, 0);
-  eocd.writeUInt16LE(0, 4); // this disk
-  eocd.writeUInt16LE(0, 6); // disk with central directory
-  eocd.writeUInt16LE(count >= U16 ? U16 : count, 8);
-  eocd.writeUInt16LE(count >= U16 ? U16 : count, 10);
-  eocd.writeUInt32LE(cdSize >= U32 ? U32 : cdSize, 12);
-  eocd.writeUInt32LE(cdStart >= U32 ? U32 : cdStart, 16);
-  eocd.writeUInt16LE(0, 20); // comment length
-  chunks.push(eocd);
+  /**
+   * Stream one file/symlink entry. `produce` is called with a sink that the
+   * caller pushes the entry's compressed/stored bytes into (typically by piping
+   * a read stream through an {@link EntryCompressor}); it returns the final crc
+   * and sizes. The header is written first (placeholders), then the data via the
+   * sink, then the header is patched.
+   */
+  async streamEntry(
+    entry: WriteEntryInput,
+    produce: (sink: ChunkSink) => Promise<StreamResult>,
+  ): Promise<StreamResult> {
+    const g = this.#beginEntry(entry);
+    // Placeholder local extra uses the entry's known uncompressed size and a
+    // zero compressed size; the patch step rewrites both to the real values.
+    const localExtra = this.#localExtra(g.useZip64, entry.uncompressedSize, 0, g.times);
+    await this.#append(
+      localHeader({
+        versionNeeded: g.versionNeeded,
+        method: entry.method,
+        date: g.date,
+        time: g.time,
+        crc32: 0,
+        compSize: g.useZip64 ? U32 : 0,
+        uncompSize: g.useZip64 ? U32 : entry.uncompressedSize,
+        nameLen: g.nameBuf.length,
+        extraLen: localExtra.length,
+      }),
+    );
+    await this.#append(g.nameBuf);
+    await this.#append(localExtra);
 
-  return { bytes: Buffer.concat(chunks), zip64: needZip64 };
+    const result = await produce((chunk) => this.#append(chunk));
+    await this.#patchLocalHeader(g, result);
+    this.#pushCentral(entry, g, result);
+    return result;
+  }
+
+  /** Append a directory entry (no data; trailing slash and 0x10 attribute). */
+  async addDir(entry: WriteEntryInput): Promise<void> {
+    const g = this.#beginEntry(entry);
+    const localExtra = this.#localExtra(g.useZip64, 0, 0, g.times);
+    await this.#append(
+      localHeader({
+        versionNeeded: g.versionNeeded,
+        method: "store",
+        date: g.date,
+        time: g.time,
+        crc32: 0,
+        compSize: g.useZip64 ? U32 : 0,
+        uncompSize: g.useZip64 ? U32 : 0,
+        nameLen: g.nameBuf.length,
+        extraLen: localExtra.length,
+      }),
+    );
+    await this.#append(g.nameBuf);
+    await this.#append(localExtra);
+    this.#pushCentral(entry, g, { crc32: 0, compressedSize: 0, uncompressedSize: 0 });
+  }
+
+  /**
+   * Write the central directory and EOCD (with Zip64 records when needed),
+   * fsync, close, and atomically rename the temp file into place. Returns
+   * whether Zip64 structures were emitted and the final byte length.
+   */
+  async finalize(forceZip64: boolean): Promise<{ zip64: boolean; bytes: number }> {
+    const cdStart = this.#offset;
+    for (const record of this.#central) await this.#append(record);
+    const cdSize = this.#offset - cdStart;
+    const count = this.#count;
+
+    const needZip64 =
+      forceZip64 || this.#anyEntryZip64 || count >= U16 || cdStart >= U32 || cdSize >= U32;
+
+    if (needZip64) {
+      const eocd64 = Buffer.alloc(56);
+      eocd64.writeUInt32LE(ZIP64_EOCD_SIG, 0);
+      eocd64.writeBigUInt64LE(44n, 4); // size of this record minus 12
+      eocd64.writeUInt16LE(45, 12); // version made by (FAT host, 4.5)
+      eocd64.writeUInt16LE(45, 14); // version needed
+      eocd64.writeUInt32LE(0, 16); // this disk
+      eocd64.writeUInt32LE(0, 20); // disk with central directory
+      eocd64.writeBigUInt64LE(BigInt(count), 24);
+      eocd64.writeBigUInt64LE(BigInt(count), 32);
+      eocd64.writeBigUInt64LE(BigInt(cdSize), 40);
+      eocd64.writeBigUInt64LE(BigInt(cdStart), 48);
+      await this.#append(eocd64);
+
+      const locator = Buffer.alloc(20);
+      locator.writeUInt32LE(ZIP64_LOCATOR_SIG, 0);
+      locator.writeUInt32LE(0, 4); // disk with the zip64 end record
+      locator.writeBigUInt64LE(BigInt(cdStart + cdSize), 8);
+      locator.writeUInt32LE(1, 16); // total number of disks
+      await this.#append(locator);
+    }
+
+    const eocd = Buffer.alloc(22);
+    eocd.writeUInt32LE(EOCD_SIG, 0);
+    eocd.writeUInt16LE(0, 4); // this disk
+    eocd.writeUInt16LE(0, 6); // disk with central directory
+    eocd.writeUInt16LE(count >= U16 ? U16 : count, 8);
+    eocd.writeUInt16LE(count >= U16 ? U16 : count, 10);
+    eocd.writeUInt32LE(cdSize >= U32 ? U32 : cdSize, 12);
+    eocd.writeUInt32LE(cdStart >= U32 ? U32 : cdStart, 16);
+    eocd.writeUInt16LE(0, 20); // comment length
+    await this.#append(eocd);
+
+    const bytes = this.#offset;
+    await fsyncAsync(this.#fd);
+    await closeAsync(this.#fd);
+    this.#fd = -1;
+    await renameAsync(this.#tempPath, this.#output);
+    return { zip64: needZip64, bytes };
+  }
+
+  /** Close and remove the temp file after a failed write, best-effort. */
+  async abort(): Promise<void> {
+    if (this.#fd >= 0) {
+      try {
+        await closeAsync(this.#fd);
+      } catch {
+        /* the fd may already be closed */
+      }
+      this.#fd = -1;
+    }
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(this.#tempPath, { force: true });
+    } catch {
+      /* the temp file may not exist */
+    }
+  }
 }
+
+export { EntryCompressor };
+export type { ChunkSink };

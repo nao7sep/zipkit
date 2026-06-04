@@ -51,7 +51,22 @@ interface CreateOpts {
   quiet?: boolean;
   verbose?: boolean;
   concurrency?: string;
+  chunkSize?: string;
   json?: boolean;
+}
+
+/**
+ * Parse a byte size with an optional `k`/`m` suffix (e.g. `64k`, `1m`, `65536`)
+ * into an integer byte count, or null when it is not a positive size. Small and
+ * case-insensitive; the SDK does the authoritative validation.
+ */
+export function parseChunkSize(value: string): number | null {
+  const m = /^(\d+)([km]?)$/i.exec(value.trim());
+  if (!m) return null;
+  const n = Number.parseInt(m[1] as string, 10);
+  const scale = m[2]?.toLowerCase() === "m" ? 1024 * 1024 : m[2]?.toLowerCase() === "k" ? 1024 : 1;
+  const bytes = n * scale;
+  return bytes > 0 ? bytes : null;
 }
 
 function splitList(value: string): string[] {
@@ -243,6 +258,10 @@ export function registerCreate(
     "--concurrency <n>",
     "maximum concurrent file operations (default: available CPUs, bounded 4–16)",
   );
+  cmd.option(
+    "--chunk-size <size>",
+    "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
+  );
   cmd.option("--json", "emit the plan or result as JSON; suppress the human renderer");
 
   cmd.action(async (rawInputs: string[], opts: CreateOpts) => {
@@ -251,6 +270,10 @@ export function registerCreate(
     if (opts.concurrency !== undefined) {
       const n = Number.parseInt(opts.concurrency, 10);
       if (Number.isFinite(n) && n > 0) zkOptions.concurrency = n;
+    }
+    if (opts.chunkSize !== undefined) {
+      const bytes = parseChunkSize(opts.chunkSize);
+      if (bytes !== null) zkOptions.chunkSize = bytes;
     }
     const zip = new ZipKit(zkOptions);
     const spec = buildSpec(rawInputs, opts, filters, signal);
