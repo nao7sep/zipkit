@@ -22,14 +22,17 @@ import type { ArchivePolicy, ArchiveSpec, Plan, WriteResult, ZipKitOptions } fro
 /**
  * The default concurrency tracks the host's available parallelism (which
  * respects cgroup and CPU-affinity limits, so it does the right thing in CI and
- * containers), capped so a many-core box does not run an unbounded number of
- * file reads at once — each in-flight entry buffers its whole file in memory
- * before deflating, so peak memory scales with this number.
+ * containers), bounded at both ends. The cap keeps a many-core box from running
+ * an unbounded number of file reads at once — each in-flight entry buffers its
+ * whole file in memory before deflating, so peak memory scales with this number.
+ * The floor keeps the work — which is largely I/O-bound — parallel even on a
+ * single-vCPU container, where `availableParallelism()` returns 1.
  */
+const MIN_DEFAULT_CONCURRENCY = 4;
 const MAX_DEFAULT_CONCURRENCY = 16;
 
 function defaultConcurrency(): number {
-  return Math.max(1, Math.min(os.availableParallelism(), MAX_DEFAULT_CONCURRENCY));
+  return Math.max(MIN_DEFAULT_CONCURRENCY, Math.min(os.availableParallelism(), MAX_DEFAULT_CONCURRENCY));
 }
 
 export class ZipKit {

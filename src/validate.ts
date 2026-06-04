@@ -8,11 +8,25 @@
 
 import { z } from "zod";
 import { PolicyError } from "./errors.js";
+import { resolveSegments, toForwardSlash } from "./internal/path.js";
 import { formatZodError } from "./internal/zodError.js";
+import { fixSegment } from "./plan/nameFix.js";
 import type { ArchivePolicy, ArchiveSpec } from "./types.js";
 
+/**
+ * The metadata file name must be a single archive-path segment that the name
+ * fixer would leave untouched — i.e. held to exactly the same standard as every
+ * other archive name. This rejects slashes and traversal (`resolveSegments`),
+ * and, via `fixSegment`, anything the fixer would rewrite: non-NFC forms,
+ * Windows-invalid characters (including the bare colon a Windows drive prefix
+ * needs), control characters, trailing dots/spaces, and reserved device names.
+ * So the name is safe both as a ZIP entry name and as a sidecar filename.
+ */
 function isSafeMetadataName(name: string): boolean {
-  return name.length > 0 && !name.includes("/") && !name.includes("\\") && name !== "." && name !== "..";
+  const { segments, escaped } = resolveSegments(toForwardSlash(name));
+  if (escaped || segments.length !== 1) return false;
+  const segment = segments[0] as string;
+  return fixSegment(segment, "_").segment === segment;
 }
 
 const filterRuleSchema = z

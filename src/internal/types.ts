@@ -22,11 +22,13 @@ export interface ScanEntry {
    */
   archivePath: string;
   /**
-   * The entry's path relative to its input's parent — i.e. the input's own name
-   * joined with the entry's path within it, independent of `--wrap`/flatten. It
-   * traces the entry back to its on-disk location (never absolute, so the
-   * clean-byte guarantee holds) even when the archive path is flattened to a
-   * bare filename. Recorded in the metadata file.
+   * A best-effort disk-trace path: the input's own name (as the user supplied
+   * it) joined with the entry's path within that input, independent of
+   * `--wrap`/flatten, so a flattened entry is not reduced to a bare filename in
+   * the metadata. Always relative and never absolute or `..`-escaping, so the
+   * clean-byte guarantee holds — but a trace hint, not a unique key: distinct
+   * inputs sharing a basename can yield the same sourcePath, and a
+   * filesystem-root input ("/") contributes no name. Recorded in the metadata.
    */
   sourcePath: string;
   type: "file" | "dir" | "symlink";

@@ -63,11 +63,22 @@ function isOutputArtifact(ctx: ScanContext, abs: string): boolean {
   return path.dirname(abs) === ctx.outputDir && path.basename(abs).startsWith(`${ctx.outputBase}.`);
 }
 
+/**
+ * The two paths an entry carries, kept together so the archive layout and the
+ * disk-trace travel as one value rather than two adjacent same-typed arguments.
+ * Used both as a per-entry pair and, at a directory level, as the anchor pair.
+ */
+interface EntryPaths {
+  /** The archive path (honors `--wrap`/`--root`/`as`/flatten). */
+  archive: string;
+  /** The input-relative disk-trace path (see {@link ScanEntry.sourcePath}). */
+  source: string;
+}
+
 function makeEntry(
   absolutePath: string,
   inputIndex: number,
-  archivePath: string,
-  sourcePath: string,
+  paths: EntryPaths,
   type: ScanEntry["type"],
   stats: BigIntStats,
   linkTarget?: string,
@@ -75,8 +86,8 @@ function makeEntry(
   const entry: ScanEntry = {
     absolutePath,
     inputIndex,
-    archivePath,
-    sourcePath,
+    archivePath: paths.archive,
+    sourcePath: paths.source,
     type,
     size: Number(stats.size),
     mtimeNs: stats.mtimeNs,
@@ -108,8 +119,7 @@ async function lstatBig(p: string): Promise<BigIntStats> {
 async function handleSymlink(
   ctx: ScanContext,
   abs: string,
-  archive: string,
-  source: string,
+  paths: EntryPaths,
   inputIndex: number,
   link: BigIntStats,
 ): Promise<void> {
@@ -121,7 +131,7 @@ async function handleSymlink(
   }
 
   if (ctx.symlinks !== "follow") {
-    ctx.entries.push(makeEntry(abs, inputIndex, archive, source, "symlink", link, target));
+    ctx.entries.push(makeEntry(abs, inputIndex, paths, "symlink", link, target));
     return;
   }
 
@@ -147,17 +157,16 @@ async function handleSymlink(
     // same real directory cannot both pass the cycle guard.
     if (ctx.followedDirs.has(real)) return;
     ctx.followedDirs.add(real);
-    await crawlDirectory(ctx, real, archive, source, inputIndex);
+    await crawlDirectory(ctx, real, paths, inputIndex);
   } else if (resolved.isFile()) {
-    ctx.entries.push(makeEntry(real, inputIndex, archive, source, "file", resolved));
+    ctx.entries.push(makeEntry(real, inputIndex, paths, "file", resolved));
   }
 }
 
 async function processPath(
   ctx: ScanContext,
   abs: string,
-  archive: string,
-  source: string,
+  paths: EntryPaths,
   inputIndex: number,
 ): Promise<void> {
   let st: BigIntStats;
@@ -167,11 +176,11 @@ async function processPath(
     throw new ScanError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
   }
   if (st.isSymbolicLink()) {
-    await handleSymlink(ctx, abs, archive, source, inputIndex, st);
+    await handleSymlink(ctx, abs, paths, inputIndex, st);
   } else if (st.isDirectory()) {
-    ctx.entries.push(makeEntry(abs, inputIndex, archive, source, "dir", st));
+    ctx.entries.push(makeEntry(abs, inputIndex, paths, "dir", st));
   } else if (st.isFile()) {
-    ctx.entries.push(makeEntry(abs, inputIndex, archive, source, "file", st));
+    ctx.entries.push(makeEntry(abs, inputIndex, paths, "file", st));
   }
   // sockets, fifos, and devices are not archivable and are skipped silently.
 }
@@ -179,8 +188,7 @@ async function processPath(
 async function crawlDirectory(
   ctx: ScanContext,
   absDir: string,
-  anchor: string,
-  sourceAnchor: string,
+  anchors: EntryPaths,
   inputIndex: number,
 ): Promise<void> {
   const crawler = new fdir()
@@ -194,7 +202,7 @@ async function crawlDirectory(
       const abs = stripTrailingSlash(dirPath);
       if (abs === absDir) return false;
       const rel = path.relative(absDir, abs);
-      const archive = joinArchivePath(anchor, toForwardSlash(rel));
+      const archive = joinArchivePath(anchors.archive, toForwardSlash(rel));
       if (archive === "") return false;
       const rule = ctx.matcher.match(archive, true);
       if (rule && rule.action === "exclude") {
@@ -219,11 +227,11 @@ async function crawlDirectory(
     throwIfAborted(ctx.signal);
     const abs = stripTrailingSlash(raw);
     if (abs === absDir || isOutputArtifact(ctx, abs)) continue;
-    const rel = path.relative(absDir, abs);
-    const archive = joinArchivePath(anchor, toForwardSlash(rel));
+    const fwdRel = toForwardSlash(path.relative(absDir, abs));
+    const archive = joinArchivePath(anchors.archive, fwdRel);
     if (archive === "") continue;
-    const source = joinArchivePath(sourceAnchor, toForwardSlash(rel));
-    tasks.push(ctx.limit(() => processPath(ctx, abs, archive, source, inputIndex)));
+    const source = joinArchivePath(anchors.source, fwdRel);
+    tasks.push(ctx.limit(() => processPath(ctx, abs, { archive, source }, inputIndex)));
   }
   await Promise.all(tasks);
 }
@@ -331,14 +339,18 @@ export async function scan(
 
   for (let i = 0; i < inputs.length; i++) {
     throwIfAborted(signal);
-    const anchor = anchors[i] ?? "";
     const real = realInputPaths[i] as string;
-    // The source anchor always carries the input's own name, so an entry's
-    // sourcePath traces to disk even when the archive anchor is flattened away.
-    const sourceAnchor = path.basename(real);
+    // The source anchor carries the input's own name as the user supplied it
+    // (`inputs[i].path`, not the realpath), so sourcePath traces to disk, stays
+    // consistent with the archive anchor, and does not leak a symlink target's
+    // name even when the archive anchor is flattened away.
+    const anchorPaths: EntryPaths = {
+      archive: anchors[i] ?? "",
+      source: path.basename(inputs[i]?.path ?? real),
+    };
     if (isDir[i]) {
       ctx.logger.emit("scan", "debug", "scan.dir", { path: real });
-      await crawlDirectory(ctx, real, anchor, sourceAnchor, i);
+      await crawlDirectory(ctx, real, anchorPaths, i);
     } else {
       if (isOutputArtifact(ctx, real)) continue;
       let fileStats: BigIntStats;
@@ -347,7 +359,7 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, { cause: err });
       }
-      ctx.entries.push(makeEntry(real, i, anchor, sourceAnchor, "file", fileStats));
+      ctx.entries.push(makeEntry(real, i, anchorPaths, "file", fileStats));
     }
   }
 

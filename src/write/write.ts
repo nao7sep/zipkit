@@ -180,7 +180,14 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
         mode: 0,
       });
     } else {
-      sidecar = { path: path.join(path.dirname(plan.output), policy.metadata.name), bytes: json };
+      const sidecarPath = path.join(path.dirname(plan.output), policy.metadata.name);
+      if (path.resolve(sidecarPath) === path.resolve(plan.output)) {
+        throw new WriteError(
+          "write.sidecar-collision",
+          `the metadata sidecar name "${policy.metadata.name}" collides with the output archive`,
+        );
+      }
+      sidecar = { path: sidecarPath, bytes: json };
     }
   }
 

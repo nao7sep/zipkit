@@ -12,7 +12,14 @@
 import { finding } from "../registry.js";
 import type { WorkItem } from "./workItem.js";
 
-export function applyCollision(items: WorkItem[]): void {
+/**
+ * @param reserved Archive paths the writer will inject after planning (the
+ *   inside-metadata file). A real entry that folds to one would produce a
+ *   duplicate ZIP entry — the same ambiguous, no-safe-auto-resolution case as a
+ *   source-side collision — so it is reported here as an error, which also lets
+ *   the dry run predict it.
+ */
+export function applyCollision(items: WorkItem[], reserved: readonly string[] = []): void {
   const groups = new Map<string, WorkItem[]>();
   for (const item of items) {
     if (item.excluded) continue;
@@ -32,6 +39,20 @@ export function applyCollision(items: WorkItem[]): void {
         : "distinct sources differ only by case and collide on case-insensitive filesystems";
     for (const item of group) {
       item.findings.push(finding(rule, item.archivePath, message));
+    }
+  }
+
+  for (const name of reserved) {
+    const group = groups.get(name.toLowerCase());
+    if (!group) continue;
+    for (const item of group) {
+      item.findings.push(
+        finding(
+          "collision.post-fix",
+          item.archivePath,
+          `archive path collides with the reserved metadata file name "${name}"`,
+        ),
+      );
     }
   }
 }
