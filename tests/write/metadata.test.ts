@@ -1,6 +1,6 @@
 /**
- * Metadata builder. Locks the lossless symlink classification and the
- * omission of volatile fields under deterministic output.
+ * Metadata builder. Locks the lossless symlink classification, the four UTC
+ * times (and the btime-null sentinel), and the optional archive comment.
  */
 
 import { describe, expect, it } from "vitest";
@@ -73,5 +73,28 @@ describe("buildMetadata", () => {
     expect(entry.btime).toBeNull();
     // The reliable times are still present.
     expect((entry.mtime as { ns: string }).ns).toBe("1577836800000000000");
+  });
+
+  it("records the archive comment when one is given", () => {
+    const doc = buildMetadata(
+      plan,
+      DEFAULT_POLICY,
+      [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }],
+      0n,
+      "UTC",
+      "release build",
+    );
+    expect(doc.comment).toBe("release build");
+  });
+
+  it("omits the comment field entirely when none is given", () => {
+    const doc = buildMetadata(
+      plan,
+      DEFAULT_POLICY,
+      [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }],
+      0n,
+      "UTC",
+    );
+    expect("comment" in doc).toBe(false);
   });
 });

@@ -90,6 +90,26 @@ describe("name fixing", () => {
     expect(rules(p.findings)).not.toContain("name.nfd");
   });
 
+  it("blocks on a suspicious character when its action is error", () => {
+    const zwsp = `a${String.fromCodePoint(0x200b)}b.txt`;
+    const p = plan([scanEntry({ archivePath: zwsp })], { names: { suspicious: "error" } });
+    expect(p.writable).toBe(false);
+    // Suspicious characters are kept even at the error tier (never fixed).
+    expect(p.entries[0]?.archivePath).toBe(zwsp);
+    expect(p.findings.find((f) => f.rule === "name.suspicious")?.severity).toBe("error");
+  });
+
+  it("applies mixed actions on one path: fix NFC, warn on the invalid char", () => {
+    const dirty = `cafe${String.fromCodePoint(0x0301)}<x.txt`;
+    const p = plan([scanEntry({ archivePath: dirty })], { names: { invalidChars: "warn" } });
+    // NFC normalized (fixed) but the `<` left in place (warn).
+    expect(p.entries[0]?.archivePath).toBe(`caf${String.fromCodePoint(0x00e9)}<x.txt`);
+    expect(p.writable).toBe(true);
+    const byRule = Object.fromEntries(p.findings.map((f) => [f.rule, f.severity]));
+    expect(byRule["name.nfd"]).toBe("info");
+    expect(byRule["name.invalid-char"]).toBe("warning");
+  });
+
   it("reports a fix on an as-introduced parent segment with no directory node", () => {
     const p = plan([scanEntry({ archivePath: "bad>name/file.txt" })]);
     expect(rules(p.findings)).toContain("name.invalid-char");
@@ -151,6 +171,24 @@ describe("collisions", () => {
     expect(exact.writable).toBe(false);
     expect(rules(exact.findings)).toContain("collision.post-fix");
   });
+
+  it("errors when a real entry collides with the reserved metadata name", () => {
+    const p = plan([
+      scanEntry({ archivePath: "_metadata.json", absolutePath: "/abs/1" }),
+      scanEntry({ archivePath: "keep.txt", absolutePath: "/abs/2" }),
+    ]);
+    expect(p.writable).toBe(false);
+    const f = p.findings.find((x) => x.rule === "collision.post-fix");
+    expect(f?.severity).toBe("error");
+    expect(f?.message).toContain("_metadata.json");
+  });
+
+  it("permits the metadata name when metadata is disabled (no reservation)", () => {
+    const p = plan([scanEntry({ archivePath: "_metadata.json", absolutePath: "/abs/1" })], {
+      metadata: false,
+    });
+    expect(p.writable).toBe(true);
+  });
 });
 
 describe("dedup", () => {
@@ -210,7 +248,43 @@ describe("compression", () => {
 
   it("stores everything under store-all", () => {
     const p = plan([scanEntry({ archivePath: "notes.txt" })], {
-      compression: { mode: "store-all", storeExtensions: [] },
+      compression: { mode: "store-all" },
+    });
+    expect(p.entries[0]?.method).toBe("store");
+  });
+
+  it("deflates everything under compress-all, even a built-in store extension", () => {
+    const p = plan([scanEntry({ archivePath: "photo.jpg" })], {
+      compression: { mode: "compress-all" },
+    });
+    expect(p.entries[0]?.method).toBe("deflate");
+  });
+
+  it("stores a storeExtra extension on top of the built-in set", () => {
+    const p = plan(
+      [
+        scanEntry({ archivePath: "model.bin" }),
+        scanEntry({ archivePath: "photo.jpg" }),
+        scanEntry({ archivePath: "notes.txt" }),
+      ],
+      { compression: { storeExtra: [".bin"] } },
+    );
+    const byName = Object.fromEntries(p.entries.map((e) => [e.archivePath, e.method]));
+    expect(byName["model.bin"]).toBe("store"); // added
+    expect(byName["photo.jpg"]).toBe("store"); // built-in
+    expect(byName["notes.txt"]).toBe("deflate"); // neither
+  });
+
+  it("matches storeExtra case-insensitively", () => {
+    const p = plan([scanEntry({ archivePath: "DATA.BIN" })], {
+      compression: { storeExtra: [".BIN"] },
+    });
+    expect(p.entries[0]?.method).toBe("store");
+  });
+
+  it("always stores a directory entry regardless of mode", () => {
+    const p = plan([scanEntry({ archivePath: "dir", type: "dir" })], {
+      compression: { mode: "compress-all" },
     });
     expect(p.entries[0]?.method).toBe("store");
   });
