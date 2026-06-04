@@ -41,7 +41,7 @@ interface CreateOpts {
   storeAll?: boolean;
   compressAll?: boolean;
   metadata?: boolean;
-  metadataHash?: boolean;
+  metadataNoHash?: boolean;
   metadataName?: string;
   metadataPlacement?: "inside" | "sidecar";
   zip64?: "auto" | "never" | "always";
@@ -93,11 +93,11 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
     };
   }
 
-  if (opts.metadata || opts.metadataHash || opts.metadataName || opts.metadataPlacement) {
+  if (opts.metadata || opts.metadataNoHash || opts.metadataName || opts.metadataPlacement) {
     policy.metadata = {
       name: opts.metadataName ?? METADATA_DEFAULTS.name,
       placement: opts.metadataPlacement ?? METADATA_DEFAULTS.placement,
-      hash: opts.metadataHash === true,
+      hash: opts.metadataNoHash !== true,
     };
   }
 
@@ -236,8 +236,8 @@ export function registerCreate(
   cmd.option("--compress-all", "deflate every entry");
 
   // Companion output
-  cmd.option("--metadata", "emit the metadata file");
-  cmd.option("--metadata-hash", "include a SHA-256 per file in the metadata");
+  cmd.option("--metadata", "emit the metadata file (includes a SHA-256 per file)");
+  cmd.option("--metadata-no-hash", "omit the per-file SHA-256 (CRC-32 is always recorded)");
   cmd.option(
     "--metadata-name <name>",
     "metadata file name, a single path component (default _metadata.json)",

@@ -38,7 +38,7 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
   const program = new Command();
   program
     .name("zipkit")
-    .description("Cross-platform ZIP archiver and portability linter/fixer")
+    .description("Cross-platform ZIP archiver and portability linter/fixer; extracts and validates too")
     .version(VERSION)
     .showHelpAfterError()
     .exitOverride();

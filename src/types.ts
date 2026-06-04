@@ -32,7 +32,11 @@ export interface CompressionPolicy {
 export interface MetadataPolicy {
   name: string;
   placement: "inside" | "sidecar";
-  /** Compute a SHA-256 per file in addition to the always-present CRC-32. */
+  /**
+   * Compute a SHA-256 per file in addition to the always-present CRC-32.
+   * Defaults to `true` whenever metadata is emitted — the manifest's purpose is
+   * content identity. Set `false` to record CRC-32 only.
+   */
   hash: boolean;
 }
 

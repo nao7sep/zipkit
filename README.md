@@ -14,6 +14,8 @@ Three layers, with all side effects at the edges:
 
 A dry run is `scan + plan`; an actual run is `scan + plan + write`. Both share the one pure planning function, so the dry run is faithful to the actual run by construction.
 
+Reading an archive back is the mirror of this — a separate **read** path (`extract`) that parses the container, decompresses and CRC-checks every entry, and either writes the files out or, on a dry run, only reports. The same dry/wet symmetry holds: a dry-run extract does everything an extraction does except touch the output, so validation is faithful to extraction.
+
 ## Install
 
 ```sh
@@ -23,16 +25,49 @@ npm run build
 
 The runtime is Node 22.12 or later, ESM.
 
+## Standard workflows
+
+Copy-paste recipes for the common tasks. Every command exits `0` on success and non-zero on failure, so each line is also a gate; add `--json` for a machine-readable result.
+
+**Create a clean archive.**
 ```sh
-# Create a clean archive next to a directory
-zipkit create ./my-project
-
-# Dry run: compute and render the plan, write nothing (a CI gate)
-zipkit create ./my-project --dry-run
-
-# Strict mode: fail the build on any portability defect
-zipkit create ./my-project --strict --dry-run
+zipkit create ./my-project              # writes ./my-project.zip beside the directory
+zipkit create ./my-project -o out.zip   # or name the output explicitly
 ```
+A single directory's *contents* are flattened to the archive root. OS junk (`.DS_Store`, `Thumbs.db`) is dropped and non-portable names are fixed, so the result is clean on macOS and Windows alike.
+
+**Gate a build on portability (CI).**
+```sh
+zipkit create ./my-project --dry-run --strict
+```
+Writes nothing (`--dry-run` is the CLI form of `plan()`); exits non-zero on any portability defect under `--strict`.
+
+**Confirm an archive was created successfully.**
+```sh
+zipkit create ./my-project -o out.zip
+zipkit extract out.zip --dry-run
+```
+The dry-run extract re-reads `out.zip` *from disk*, decompresses every entry, and checks CRC-32. Exit `0` ⇒ a well-formed ZIP whose every entry is intact and readable. (This is the `unzip -t` check; it works on any ZIP.)
+
+**Archive, then safely delete the originals.**
+```sh
+zipkit create ./my-project -o out.zip --metadata
+zipkit extract out.zip --dry-run --check-metadata
+```
+`--metadata` records a SHA-256 per file (on by default). The dry-run `--check-metadata` verifies every entry's CRC **and** SHA against the manifest, plus completeness (no missing or extra entry). Exit `0` ⇒ the archive faithfully and completely captures what `create` read — the gate to clear before removing the source. zipkit never auto-validates its own output; this step is yours to run when it matters.
+
+**Extract to a directory.**
+```sh
+zipkit extract out.zip ./restored              # verifies CRC as it writes; restores times
+zipkit extract out.zip ./restored --overwrite  # replace existing files
+```
+Entries that fail CRC are reported and never written; paths that escape the destination (zip-slip) are skipped.
+
+**Validate a third-party archive.**
+```sh
+zipkit extract anything.zip --dry-run
+```
+A CRC integrity test for any ZIP, not only ones zipkit made.
 
 ## CLI
 
@@ -40,7 +75,7 @@ zipkit create ./my-project --strict --dry-run
 zipkit create <inputs...> [options]
 ```
 
-The CLI exposes one subcommand, `create`, leaving room for a future read/audit subcommand without a breaking change. Flags are grouped by concern, in the order the tool resolves them. Three behaviors are normative:
+The CLI has two subcommands: `create` builds archives (documented here) and `extract` reads them — extraction and validation (see [Extract and validate](#extract-and-validate)). Flags are grouped by concern, in the order the tool resolves them. Three behaviors are normative:
 
 - **Interleave is preserved.** `--include`, `--exclude`, `--include-regex`, and `--exclude-regex` append to one shared ordered list as the parser encounters them, so first-match-wins works across mixed flags — an explicit include can rescue a junk-listed file.
 - **A trailing slash means directory.** `--exclude 'node_modules/'` targets directories; `--exclude '*.tmp'` targets files and directories.
@@ -111,12 +146,12 @@ The store list names already-compressed formats, where attempting deflate is was
 
 | Flag | Default | Description |
 |---|---|---|
-| `--metadata` | off | Emit the metadata file (serialized plan plus raw scan data). |
-| `--metadata-hash` | off | Include a SHA-256 per file. |
+| `--metadata` | off | Emit the metadata file (serialized plan plus raw scan data). Includes a SHA-256 per file by default — the manifest exists to establish content identity. |
+| `--metadata-no-hash` | off | Omit the per-file SHA-256, recording CRC-32 only. |
 | `--metadata-name <name>` | `_metadata.json` | Metadata file name. Must be a single path component (no slashes). |
 | `--metadata-placement <inside\|sidecar>` | `inside` | Inside the archive at its root, or beside the `.zip`. |
 
-The metadata file is a JSON record of the run: a header (`tool`, `version`, `createdUtc`, `timeZone` — the IANA zone the DOS fields were rendered in — the resolved `policy`, the plan `summary`, and aggregate `totals` of uncompressed and compressed bytes); one record per written entry (`archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size` and `compressedSize`, `crc32`, optional `sha256`, `mode`, the four stat times `mtime`/`atime`/`ctime`/`btime` — each an object of lossless `ns` and an ISO-8601 `iso` string, all UTC — `linkTarget` for preserved symlinks, and the `transformations` applied); the list of `excluded` entries with their `reason`; and all `findings`. It never stores absolute source paths, and under `--deterministic` the volatile time fields (`createdUtc`, `timeZone`, and the per-entry times) are omitted so the record is reproducible.
+The metadata file is a JSON record of the run: a header (`tool`, `version`, `createdUtc`, `timeZone` — the IANA zone the DOS fields were rendered in — the resolved `policy`, the plan `summary`, and aggregate `totals` of uncompressed and compressed bytes); one record per written entry (`archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size` and `compressedSize`, `crc32`, `sha256` (unless `--metadata-no-hash`), `mode`, the four stat times `mtime`/`atime`/`ctime`/`btime` — each an object of lossless `ns` and an ISO-8601 `iso` string, all UTC — `linkTarget` for preserved symlinks, and the `transformations` applied); the list of `excluded` entries with their `reason`; and all `findings`. It never stores absolute source paths, and under `--deterministic` the volatile time fields (`createdUtc`, `timeZone`, and the per-entry times) are omitted so the record is reproducible.
 
 A `sidecar` is a second output file and is treated as one: it is gated on `--overwrite` exactly like the archive (an existing sidecar without `--overwrite` makes the plan non-writable), it is excluded from the scan so it is never archived as input even when it sits inside the input tree, and a name that resolves to the archive path itself — case-insensitively, matching the `collision.case` rule, since `Meta.JSON` and `meta.json` are one file on default macOS/Windows filesystems — is rejected up front by the dry run.
 
