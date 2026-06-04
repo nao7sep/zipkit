@@ -40,7 +40,7 @@ function metaEntries(doc: Record<string, unknown>): Array<Record<string, unknown
 
 describe("buildMetadata", () => {
   it("records a symlink's classification losslessly", () => {
-    const doc = buildMetadata(plan, DEFAULT_POLICY, [{ writeEntry: symlink, crc32: 123 }], 0n);
+    const doc = buildMetadata(plan, DEFAULT_POLICY, [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }], 0n);
     expect(metaEntries(doc)[0]?.type).toBe("symlink");
     expect(doc.createdUtc).toBeDefined();
   });
@@ -49,7 +49,7 @@ describe("buildMetadata", () => {
     const doc = buildMetadata(
       plan,
       { ...DEFAULT_POLICY, deterministic: true },
-      [{ writeEntry: symlink, crc32: 123 }],
+      [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }],
       1n,
     );
     expect(doc.createdUtc).toBeUndefined();

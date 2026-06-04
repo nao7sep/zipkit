@@ -115,6 +115,8 @@ The store list names already-compressed formats, where attempting deflate is was
 | `--metadata-name <name>` | `_metadata.json` | Metadata file name. Must be a single path component (no slashes). |
 | `--metadata-placement <inside\|sidecar>` | `inside` | Inside the archive at its root, or beside the `.zip`. |
 
+The metadata file is a JSON record of the run: a header (`tool`, `version`, `createdUtc`, the resolved `policy`, the plan `summary`, and aggregate `totals` of uncompressed and compressed bytes); one record per written entry (`archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size` and `compressedSize`, `crc32`, optional `sha256`, `mode`, `mtimeNs`/`birthtimeNs`, `linkTarget` for preserved symlinks, and the `transformations` applied); the list of `excluded` entries with their `reason`; and all `findings`. It never stores absolute source paths, and under `--deterministic` the volatile time fields are omitted so the record is reproducible.
+
 ### Container format
 
 | Flag | Default | Description |
@@ -131,7 +133,7 @@ The store list names already-compressed formats, where attempting deflate is was
 | `--log <path.jsonl>` | Write the event stream as JSONL. |
 | `--quiet` | Suppress console progress. |
 | `--verbose` | Include per-entry detail in console progress. |
-| `--concurrency <n>` | Maximum concurrent file operations. |
+| `--concurrency <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. |
 | `--json` | Emit the plan or result as JSON; suppress the human renderer. |
 
 `--json` suppresses the human renderer and emits the `Plan` (dry run) or `WriteResult` (actual run) as JSON. Errors always go to stderr, so stdout stays valid JSON.
@@ -181,9 +183,11 @@ The CLI exit codes make this a dependable automation contract:
 | Code | Meaning |
 |---|---|
 | `0` | success |
-| `1` | the plan is not writable — a blocking finding, or an existing output without `--overwrite`. `--dry-run` honors this, making it a CI gate. |
-| `2` | usage error |
+| `1` | the run did not produce an archive — a non-writable plan (a blocking finding, or an existing output without `--overwrite`), or a write failure. `--dry-run` honors the non-writable case, making it a CI gate. |
+| `2` | usage error, including a missing input path |
 | `130` | interrupted (SIGINT) |
+
+Errors are written to stderr as `zipkit [<code>]: <message> (<cause>)` — the dot-separated `code` is a stable handle for scripting, and the cause carries the OS-level reason. Under `--json`, errors stay on stderr so stdout remains valid JSON.
 
 ## SDK
 

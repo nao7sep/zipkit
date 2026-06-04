@@ -19,6 +19,10 @@ function handleError(err: unknown): number {
   if (err instanceof ZipKitError) {
     if (err.errorType === "abort") return 130;
     if (err.errorType === "policy") return 2;
+    // A missing input is the user naming a path that isn't there — a usage
+    // error. Other scan failures (mid-walk I/O, permissions) are runtime
+    // faults and keep the generic failure code.
+    if (err.code === "scan.input-missing") return 2;
     if (err.errorType === "write" && err.code === "write.not-writable") return 1;
   }
   return 1;

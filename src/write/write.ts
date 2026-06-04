@@ -159,7 +159,11 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
 
   if (policy.metadata !== false) {
     const metadataEntries: MetadataEntryInput[] = prepared.map((p) => {
-      const input: MetadataEntryInput = { writeEntry: p.source, crc32: p.crc32 };
+      const input: MetadataEntryInput = {
+        writeEntry: p.source,
+        crc32: p.crc32,
+        compressedSize: p.entry.data.length,
+      };
       if (p.sha256 !== undefined) input.sha256 = p.sha256;
       return input;
     });

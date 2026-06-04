@@ -37,7 +37,13 @@ export function createLogger(sink?: LogSink): Logger {
       if (fields?.rule !== undefined) event.rule = fields.rule;
       if (fields?.path !== undefined) event.path = fields.path;
       if (fields?.data !== undefined) event.data = fields.data;
-      sink(event);
+      // Logging is best-effort observability: a consumer's sink that throws
+      // must never abort the archive operation it is reporting on.
+      try {
+        sink(event);
+      } catch {
+        /* swallow — the sink's failure is not the run's failure */
+      }
     },
   };
 }

@@ -140,7 +140,15 @@ function buildReporter(opts: CreateOpts): { sink: LogSink; finalize: () => Promi
   }
   return {
     sink: (event) => {
-      for (const sink of sinks) sink(event);
+      // Each sink is isolated: a failure in one (e.g. a broken console pipe)
+      // must not starve the others (e.g. the JSONL audit log).
+      for (const sink of sinks) {
+        try {
+          sink(event);
+        } catch {
+          /* best-effort: one sink's failure does not stop the rest */
+        }
+      }
     },
     finalize: async () => {
       if (jsonl) await jsonl.close();
@@ -218,7 +226,10 @@ export function registerCreate(
   // Companion output
   cmd.option("--metadata", "emit the metadata file");
   cmd.option("--metadata-hash", "include a SHA-256 per file in the metadata");
-  cmd.option("--metadata-name <name>", "metadata file name (default _metadata.json)");
+  cmd.option(
+    "--metadata-name <name>",
+    "metadata file name, a single path component (default _metadata.json)",
+  );
   cmd.option("--metadata-placement <inside|sidecar>", "metadata placement (default inside)");
 
   // Container format
@@ -231,7 +242,10 @@ export function registerCreate(
   cmd.option("--log <path.jsonl>", "write the event stream as JSONL");
   cmd.option("--quiet", "suppress console progress");
   cmd.option("--verbose", "include per-entry detail in console progress");
-  cmd.option("--concurrency <n>", "maximum concurrent file operations");
+  cmd.option(
+    "--concurrency <n>",
+    "maximum concurrent file operations (default: available CPUs, bounded 4–16)",
+  );
   cmd.option("--json", "emit the plan or result as JSON; suppress the human renderer");
 
   cmd.action(async (rawInputs: string[], opts: CreateOpts) => {

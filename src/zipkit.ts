@@ -9,6 +9,7 @@
 
 import os from "node:os";
 import pLimit from "p-limit";
+import { ZipKitError } from "./errors.js";
 import { buildMatcher } from "./filter/match.js";
 import { createLogger } from "./log/logger.js";
 import type { Logger } from "./log/logger.js";
@@ -17,7 +18,14 @@ import { resolvePolicy } from "./policy.js";
 import { scan } from "./scan/scan.js";
 import { validatePolicy, validateSpec } from "./validate.js";
 import { writeArchive } from "./write/write.js";
-import type { ArchivePolicy, ArchiveSpec, Plan, WriteResult, ZipKitOptions } from "./types.js";
+import type {
+  ArchivePolicy,
+  ArchiveSpec,
+  LogEvent,
+  Plan,
+  WriteResult,
+  ZipKitOptions,
+} from "./types.js";
 
 /**
  * The default concurrency tracks the host's available parallelism (which
@@ -51,21 +59,26 @@ export class ZipKit {
 
   /** Scan and plan; writes nothing. */
   async plan(spec: ArchiveSpec): Promise<Plan> {
-    const validated = validateSpec(spec);
-    const policy = resolvePolicy(this.#policy, validated.policy);
-    const matcher = buildMatcher(policy);
-    const limit = pLimit(this.#concurrency);
+    try {
+      const validated = validateSpec(spec);
+      const policy = resolvePolicy(this.#policy, validated.policy);
+      const matcher = buildMatcher(policy);
+      const limit = pLimit(this.#concurrency);
 
-    const scanResult = await scan(validated, policy, { matcher, limit, logger: this.#logger });
-    const plan = planArchive(scanResult, policy);
-    this.#reportPlan(plan);
-    return plan;
+      const scanResult = await scan(validated, policy, { matcher, limit, logger: this.#logger });
+      const plan = planArchive(scanResult, policy);
+      this.#reportPlan(plan);
+      return plan;
+    } catch (err) {
+      this.#reportError(err);
+      throw err;
+    }
   }
 
   /** Execute a plan produced by {@link ZipKit.plan}. */
   async write(plan: Plan): Promise<WriteResult> {
     const limit = pLimit(this.#concurrency);
-    return writeArchive(plan, { limit, logger: this.#logger });
+    return this.#runWrite(plan, { limit, logger: this.#logger });
   }
 
   /** Plan and write in one call. */
@@ -75,7 +88,40 @@ export class ZipKit {
     const deps = spec.signal
       ? { limit, logger: this.#logger, signal: spec.signal }
       : { limit, logger: this.#logger };
-    return writeArchive(plan, deps);
+    return this.#runWrite(plan, deps);
+  }
+
+  /** Execute the writer, reporting any failure to the log stream before it
+   *  propagates. `plan()` reports its own failures, so `create()` does not
+   *  double-report when its inner `plan()` throws. */
+  async #runWrite(
+    plan: Plan,
+    deps: { limit: <T>(fn: () => Promise<T>) => Promise<T>; logger: Logger; signal?: AbortSignal },
+  ): Promise<WriteResult> {
+    try {
+      return await writeArchive(plan, deps);
+    } catch (err) {
+      this.#reportError(err);
+      throw err;
+    }
+  }
+
+  /** Emit a terminal error event so a `--log` JSONL trail (and any SDK logger)
+   *  records the failure instead of going silent mid-stream. Best-effort: the
+   *  logger swallows its own faults, and the original error is always rethrown
+   *  by the caller. */
+  #reportError(err: unknown): void {
+    const code = err instanceof ZipKitError ? err.code : "unknown";
+    const stage: LogEvent["stage"] = code.startsWith("scan.")
+      ? "scan"
+      : code.startsWith("write.")
+        ? "write"
+        : "plan";
+    const message = err instanceof Error ? err.message : String(err);
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
+    this.#logger.emit(stage, "error", message, {
+      data: cause !== undefined ? { code, cause } : { code },
+    });
   }
 
   #reportPlan(plan: Plan): void {
