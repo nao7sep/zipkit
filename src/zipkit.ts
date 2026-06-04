@@ -13,14 +13,17 @@ import { ZipKitError } from "./errors.js";
 import { buildMatcher } from "./filter/match.js";
 import { createLogger } from "./log/logger.js";
 import type { Logger } from "./log/logger.js";
+import { extractArchive } from "./extract/extract.js";
 import { planArchive } from "./plan/plan.js";
 import { resolvePolicy } from "./policy.js";
 import { scan } from "./scan/scan.js";
-import { validatePolicy, validateSpec } from "./validate.js";
+import { validateExtractSpec, validatePolicy, validateSpec } from "./validate.js";
 import { writeArchive } from "./write/write.js";
 import type {
   ArchivePolicy,
   ArchiveSpec,
+  ExtractReport,
+  ExtractSpec,
   LogEvent,
   Plan,
   WriteResult,
@@ -91,6 +94,25 @@ export class ZipKit {
     return this.#runWrite(plan, deps);
   }
 
+  /**
+   * Read an archive: verify every entry's CRC-32, optionally reconcile against
+   * the manifest (`checkMetadata`) and verify recorded SHA-256s, and — unless
+   * `dryRun` is set — write the verified entries to `dest`. A dry run writes
+   * nothing and is a pure integrity test that works on any ZIP.
+   */
+  async extract(spec: ExtractSpec): Promise<ExtractReport> {
+    try {
+      const validated = validateExtractSpec(spec);
+      const deps = spec.signal
+        ? { logger: this.#logger, signal: spec.signal }
+        : { logger: this.#logger };
+      return await extractArchive(validated, deps);
+    } catch (err) {
+      this.#reportError(err);
+      throw err;
+    }
+  }
+
   /** Execute the writer, reporting any failure to the log stream before it
    *  propagates. `plan()` reports its own failures, so `create()` does not
    *  double-report when its inner `plan()` throws. */
@@ -116,7 +138,9 @@ export class ZipKit {
       ? "scan"
       : code.startsWith("write.")
         ? "write"
-        : "plan";
+        : code.startsWith("read.")
+          ? "extract"
+          : "plan";
     const message = err instanceof Error ? err.message : String(err);
     const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
     this.#logger.emit(stage, "error", message, {

@@ -1,6 +1,6 @@
 # ZipKit
 
-A cross-platform ZIP archiver and portability linter/fixer, usable as both a TypeScript SDK and a CLI. It produces archives that are clean across platforms: an archive made on macOS contains nothing a Windows user will trip over, and the reverse.
+A cross-platform ZIP archiver and portability linter/fixer, usable as both a TypeScript SDK and a CLI. It produces archives that are clean across platforms: an archive made on macOS contains nothing a Windows user will trip over, and the reverse. It also reads back: `extract` validates an archive's integrity (and, against the manifest, its completeness and content identity) and unpacks it.
 
 ZipKit is fundamentally a portability linter with a fixer attached. The compression and container work is the small part; the value is the set of checks and the policy that decides what to do about each one — NFD-decomposed names, Windows-invalid characters, reserved device names, OS junk files, Unix-only attributes, and unknown extra fields.
 
@@ -141,6 +141,40 @@ A `sidecar` is a second output file and is treated as one: it is gated on `--ove
 
 `--json` suppresses the human renderer and emits the `Plan` (dry run) or `WriteResult` (actual run) as JSON. Errors always go to stderr, so stdout stays valid JSON.
 
+## Extract and validate
+
+```
+zipkit extract <archive> [dest] [options]
+```
+
+One verb covers reading an archive. Two switches are orthogonal: `--dry-run` decides whether files are written, `--check-metadata` decides whether the archive is reconciled against its manifest. **CRC-32 is always verified** — every entry is decompressed regardless — so `extract <archive> --dry-run` is a pure integrity test (the `unzip -t` shape) that works on **any** ZIP, not only ones zipkit produced. With a `dest` it writes the verified entries; CRC governs writing, so a corrupt entry is reported and never written.
+
+```bash
+# Validate integrity only (decompress every entry, check CRC, write nothing)
+zipkit extract archive.zip --dry-run
+
+# Validate against the manifest too: completeness (no missing/extra) + SHA-256
+zipkit extract archive.zip --dry-run --check-metadata
+
+# Extract to a directory, dropping the manifest entry
+zipkit extract archive.zip ./out --exclude _metadata.json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dry-run` | off | Validate only: verify and report, write nothing. |
+| `--overwrite` | off | Overwrite existing files at the destination (otherwise they are preserved and reported as `exists`). |
+| `--check-metadata` | off | Reconcile entries against the manifest (no missing/extra) and verify each recorded SHA-256. Requested-but-absent manifest is a hard error. |
+| `--metadata-name <name>` | `_metadata.json` | Manifest name to look for — first as an entry inside the zip, then as a sidecar beside it. |
+| `--no-timestamps` | (restore on) | Do not restore modification/access times. By default times are restored from the absolute UTC extras when present, falling back to the DOS field interpreted in `--timezone`. |
+| `--timezone <iana>` | host zone | Zone used to read the DOS field when an entry carries no UTC time extra. |
+| `--on-unsafe <skip\|abort>` | `skip` | Handling of an entry whose path escapes the destination (zip-slip): skip it with a finding, or abort the run. |
+| `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. |
+| `--exclude <name>` | | Entry name not to write (repeatable). |
+| `--json` | | Emit the `ExtractReport` as JSON; suppress the human renderer. |
+
+Creation/birth time is not restored — no portable cross-platform API sets it. The exit code is `0` when the report is `ok`, else `1`, so validation scripts cleanly. zipkit deliberately does **not** validate its own output automatically after `create`: a tested compressor is trusted, and `extract --dry-run` is there for when you have a reason to check an archive.
+
 ## Rules and severity contract
 
 Every rule has a fixed tier, decided by one principle and enforced by a single registry (the `RULE_REGISTRY` constant). Rules never write a tier inline; they read it from the registry, so the boundary between tiers is a single, tested definition and a consumer's CI verdict never flips on an unrelated change.
@@ -186,8 +220,8 @@ The CLI exit codes make this a dependable automation contract:
 | Code | Meaning |
 |---|---|
 | `0` | success |
-| `1` | the run did not produce an archive — a non-writable plan (a blocking finding, or an existing output without `--overwrite`), or a write failure. `--dry-run` honors the non-writable case, making it a CI gate. |
-| `2` | usage error, including a missing input path |
+| `1` | the run did not produce its result — for `create`, a non-writable plan (a blocking finding, or an existing output without `--overwrite`) or a write failure; for `extract`, a report that is not `ok` (a CRC failure, an unsafe path, or — under `--check-metadata` — a missing/extra entry or SHA mismatch). `--dry-run` honors these, making either a CI gate. |
+| `2` | usage error: a missing input path, an archive that cannot be opened, or `extract` without a destination or `--dry-run` |
 | `130` | interrupted (SIGINT) |
 
 Errors are written to stderr as `zipkit [<code>]: <message> (<cause>)` — the dot-separated `code` is a stable handle for scripting, and the cause carries the OS-level reason. Under `--json`, errors stay on stderr so stdout remains valid JSON.
@@ -212,9 +246,15 @@ if (plan.writable) {
 
 // Or plan and write in one call.
 await zip.create({ inputs: ["./my-project"], output: "out.zip", overwrite: true });
+
+// Read side: validate (write nothing) or extract. CRC is always checked.
+const report = await zip.extract({ archive: "out.zip", dryRun: true, checkMetadata: true });
+if (!report.ok) console.error(report.findings);
+
+await zip.extract({ archive: "out.zip", dest: "./restored", overwrite: true });
 ```
 
-The committed export surface is the `ZipKit` class; the types `ZipKitOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `Plan`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `WriteResult`, `LogEvent`; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `AbortError` with the type `ZipKitErrorType`.
+The committed export surface is the `ZipKit` class; the types `ZipKitOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `Plan`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `WriteResult`, `ExtractSpec`, `ExtractReport`, `ExtractEntryResult`, `LogEvent`; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
 
 Progress is observed in real time through the optional `logger` callback, which receives a `LogEvent` stream as the pipeline works. The same stream feeds the SDK callback, the CLI console renderer, and the `--log` JSONL sink.
 

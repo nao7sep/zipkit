@@ -12,7 +12,7 @@ import { resolveSegments, toForwardSlash } from "./internal/path.js";
 import { formatZodError } from "./internal/zodError.js";
 import { fixSegment } from "./plan/nameFix.js";
 import { isValidTimeZone } from "./internal/timeZone.js";
-import type { ArchivePolicy, ArchiveSpec } from "./types.js";
+import type { ArchivePolicy, ArchiveSpec, ExtractSpec } from "./types.js";
 
 /**
  * A single archive-path segment that the name fixer would leave untouched — the
@@ -141,6 +141,46 @@ export function validateSpec(spec: ArchiveSpec): ArchiveSpec {
     throw new PolicyError("spec.invalid", `invalid archive spec: ${formatZodError(result.error)}`);
   }
   const data = result.data as Omit<ArchiveSpec, "signal">;
+  return signal ? { ...data, signal } : { ...data };
+}
+
+const extractSpecSchema = z.strictObject({
+  archive: z.string(),
+  dest: z.string().optional(),
+  overwrite: z.boolean().optional(),
+  dryRun: z.boolean().optional(),
+  checkMetadata: z.boolean().optional(),
+  // Becomes an archive entry name or is joined to the archive's directory, so it
+  // must be a single safe path component — never a traversal.
+  metadataName: z
+    .string()
+    .optional()
+    .refine((name) => name === undefined || isSafePathComponent(name), {
+      error: "metadataName must be a single path component (no slashes, not '.' or '..')",
+    }),
+  timestamps: z.enum(["restore", "none"]).optional(),
+  timezone: z
+    .string()
+    .optional()
+    .refine((tz) => tz === undefined || isValidTimeZone(tz), {
+      error: "timezone must be a valid IANA time zone name (e.g. 'Asia/Tokyo', 'UTC')",
+    }),
+  onUnsafe: z.enum(["skip", "abort"]).optional(),
+  symlinks: z.enum(["restore", "skip"]).optional(),
+  exclude: z.array(z.string()).optional(),
+});
+
+/** Validate an extract spec; the non-serializable `signal` is carried around it. */
+export function validateExtractSpec(spec: ExtractSpec): ExtractSpec {
+  const { signal, ...rest } = spec;
+  const result = extractSpecSchema.safeParse(rest);
+  if (!result.success) {
+    throw new PolicyError(
+      "spec.invalid",
+      `invalid extract spec: ${formatZodError(result.error)}`,
+    );
+  }
+  const data = result.data as Omit<ExtractSpec, "signal">;
   return signal ? { ...data, signal } : { ...data };
 }
 

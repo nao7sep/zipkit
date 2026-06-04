@@ -6,7 +6,7 @@
  */
 
 import type { LogSink } from "../log/logger.js";
-import type { Finding, Plan, Severity, WriteResult } from "../types.js";
+import type { ExtractReport, Finding, Plan, Severity, WriteResult } from "../types.js";
 
 export function createConsoleProgress(verbose: boolean): LogSink {
   return (event) => {
@@ -23,6 +23,11 @@ export function createConsoleProgress(verbose: boolean): LogSink {
         break;
       case "write.done":
         process.stderr.write(`write: ${field("bytes")} bytes\n`);
+        break;
+      case "extract.done":
+        process.stderr.write(
+          `extract: ${field("total")} entries, ${field("written")} written, ${field("crcFailed")} CRC failures\n`,
+        );
         break;
       default:
         if (
@@ -71,4 +76,21 @@ export function renderResult(result: WriteResult): string {
     `  zip64:    ${result.zip64 ? "yes" : "no"}`,
   ];
   return `${lines.join("\n")}\n${renderFindings(result.plan.findings)}`;
+}
+
+export function renderExtractReport(report: ExtractReport): string {
+  const s = report.summary;
+  const verb = report.wrote ? "extracted" : "validated";
+  const lines = [
+    `zipkit ${verb} ${report.archive}${report.dest ? ` → ${report.dest}` : ""}`,
+    `  result:    ${report.ok ? "ok" : "FAILED"}`,
+    `  entries:   ${s.total} total — ${s.written} written, ${s.skipped} not written`,
+    `  integrity: ${s.crcFailed} CRC failures`,
+  ];
+  if (report.manifest) {
+    lines.push(
+      `  manifest:  ${report.manifest.name} (${report.manifest.source}) — ${s.shaMismatched} SHA mismatches, ${report.missing.length} missing, ${report.extra.length} extra`,
+    );
+  }
+  return `${lines.join("\n")}\n${renderFindings(report.findings)}`;
 }

@@ -5,7 +5,7 @@
  * `errorType` without importing the concrete classes.
  */
 
-export type ZipKitErrorType = "scan" | "policy" | "write" | "abort";
+export type ZipKitErrorType = "scan" | "policy" | "write" | "read" | "abort";
 
 export abstract class ZipKitError extends Error {
   abstract readonly errorType: ZipKitErrorType;
@@ -31,6 +31,15 @@ export class PolicyError extends ZipKitError {
 /** Writing the archive failed, or the plan was not writable. */
 export class WriteError extends ZipKitError {
   readonly errorType = "write" as const;
+}
+
+/**
+ * Reading or extracting an archive failed: the file is not a well-formed ZIP, an
+ * entry uses an unsupported method, a requested manifest is absent, or a target
+ * file could not be written during extraction.
+ */
+export class ReadError extends ZipKitError {
+  readonly errorType = "read" as const;
 }
 
 /** The operation was cancelled through an `AbortSignal`. */

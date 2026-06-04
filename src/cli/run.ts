@@ -1,10 +1,9 @@
 /**
  * CLI wiring and exit codes: `0` success; `1` the plan is not writable (a
  * blocking finding, or an existing output without `--overwrite`); `2` usage
- * error. The single `create` subcommand leaves room for a future read/audit
- * subcommand without a breaking change. Commander's own errors map to a usage
- * exit; help and version exit cleanly. An interrupt maps to the conventional
- * 130.
+ * error. `create` builds archives; `extract` reads them (extraction and
+ * validation). Commander's own errors map to a usage exit; help and version
+ * exit cleanly. An interrupt maps to the conventional 130.
  */
 
 import { Command } from "commander";
@@ -12,6 +11,7 @@ import { ZipKitError } from "../errors.js";
 import { VERSION } from "../version.js";
 import { installSigintHandler } from "./abort.js";
 import { registerCreate } from "./create.js";
+import { registerExtract } from "./extract.js";
 import { emitError } from "./json.js";
 
 function handleError(err: unknown): number {
@@ -24,6 +24,9 @@ function handleError(err: unknown): number {
     // faults and keep the generic failure code.
     if (err.code === "scan.input-missing") return 2;
     if (err.errorType === "write" && err.code === "write.not-writable") return 1;
+    // Naming an archive or destination that can't be opened is a usage error;
+    // a malformed or unreadable archive is a runtime fault.
+    if (err.code === "read.open-failed" || err.code === "read.no-dest") return 2;
   }
   return 1;
 }
@@ -40,9 +43,11 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
     .showHelpAfterError()
     .exitOverride();
 
-  registerCreate(program, signal, (code) => {
+  const setExit = (code: number) => {
     exitCode = code;
-  });
+  };
+  registerCreate(program, signal, setExit);
+  registerExtract(program, signal, setExit);
 
   try {
     await program.parseAsync(argv);

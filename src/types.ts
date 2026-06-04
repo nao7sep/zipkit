@@ -153,12 +153,93 @@ export interface WriteResult {
 }
 
 // ---------------------------------------------------------------------------
+// Extract / validate
+// ---------------------------------------------------------------------------
+
+/**
+ * One read operation drives both extraction and validation. The two switches
+ * are orthogonal: `dryRun` decides whether files are written, `checkMetadata`
+ * decides whether the archive is reconciled against its manifest. CRC-32 is
+ * always verified — every entry is decompressed regardless — so a dry run with
+ * no other option is a pure integrity test (`unzip -t`), and it works on any
+ * ZIP, not only ones zipkit produced.
+ */
+export interface ExtractSpec {
+  // Source
+  archive: string;
+
+  // Destination
+  /** Output directory. Required unless `dryRun` is set; ignored on a dry run. */
+  dest?: string;
+  overwrite?: boolean;
+
+  // Mode
+  /** Verify only, write nothing. */
+  dryRun?: boolean;
+  /** Reconcile entries against the manifest and verify recorded SHA-256s. */
+  checkMetadata?: boolean;
+  /** Manifest name to look for (inside the zip, else as a sidecar). */
+  metadataName?: string;
+
+  // Restore policy (write only)
+  /** Restore modification/access times to extracted files. Defaults to `restore`. */
+  timestamps?: "restore" | "none";
+  /** Zone used to interpret the DOS field when an entry has no UTC time extra. */
+  timezone?: string;
+  /** Handling of entries whose path escapes `dest`. Defaults to `skip`. */
+  onUnsafe?: "skip" | "abort";
+  /** Whether to recreate symlink entries. Defaults to `restore`. */
+  symlinks?: "restore" | "skip";
+  /** Entry names not to write to disk (e.g. the manifest itself). */
+  exclude?: string[];
+
+  // Control
+  signal?: AbortSignal;
+}
+
+export interface ExtractEntryResult {
+  archivePath: string; // identity
+  type: "file" | "dir" | "symlink"; // classification
+  crc: "ok" | "fail"; // outcome: content integrity
+  /** Identity against the manifest, present only under `checkMetadata`. */
+  sha?: "ok" | "mismatch" | "absent";
+  written: boolean; // state
+  /** Why an entry was not written, when it was not. */
+  skipped?: "dry-run" | "crc-fail" | "unsafe" | "excluded" | "exists" | "symlink-skip";
+  outputPath?: string;
+}
+
+export interface ExtractReport {
+  archive: string; // identity
+  dest?: string;
+  wrote: boolean; // state: whether any file was written
+  /** The manifest used, when `checkMetadata` was requested. */
+  manifest: { source: "inside" | "sidecar"; name: string } | null;
+  entries: ExtractEntryResult[];
+  /** In the manifest but absent from the archive (`checkMetadata`). */
+  missing: string[];
+  /** In the archive but absent from the manifest (`checkMetadata`). */
+  extra: string[];
+  findings: Finding[];
+  summary: {
+    total: number;
+    crcFailed: number;
+    shaMismatched: number;
+    written: number;
+    skipped: number;
+  };
+  /** Overall pass: no CRC failure, no unsafe path, and — under `checkMetadata` —
+   *  no missing/extra entry and no SHA mismatch. The delete-gate reads this. */
+  ok: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
 
 export interface LogEvent {
   ts: string; // time of emission, ISO 8601 UTC
-  stage: "scan" | "plan" | "write"; // classification
+  stage: "scan" | "plan" | "write" | "extract"; // classification
   level: "debug" | "info" | "warn" | "error";
   message: string;
   rule?: string; // context

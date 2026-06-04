@@ -10,6 +10,9 @@ export type {
   ArchivePolicy,
   ArchiveSpec,
   CompressionPolicy,
+  ExtractEntryResult,
+  ExtractReport,
+  ExtractSpec,
   Finding,
   FilterRule,
   LogEvent,
@@ -25,6 +28,7 @@ export type {
 export {
   AbortError,
   PolicyError,
+  ReadError,
   ScanError,
   WriteError,
   ZipKitError,
