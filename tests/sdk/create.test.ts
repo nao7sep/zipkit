@@ -7,6 +7,7 @@
 
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -114,6 +115,43 @@ describe("metadata", () => {
     const doc = JSON.parse(text);
     const zfinding = doc.findings.find((f: { rule: string }) => f.rule === "compat.zip64");
     expect(zfinding.path).toBe("z64.zip");
+  });
+
+  it("writes metadata as a sidecar beside the archive under placement 'sidecar'", async () => {
+    const proj = await makeTree();
+    const output = path.join(dir, "side.zip");
+    await new ZipKit().create({
+      inputs: [proj],
+      output,
+      policy: { metadata: { name: "side.json", placement: "sidecar", hash: false } },
+    });
+
+    // The metadata is not an entry inside the archive...
+    const { entries } = readZip(await readFile(output));
+    expect(entries.find((e) => e.name === "side.json")).toBeUndefined();
+
+    // ...it lives next to the archive instead.
+    const sidecar = path.join(dir, "side.json");
+    expect(existsSync(sidecar)).toBe(true);
+    const doc = JSON.parse(await readFile(sidecar, "utf8"));
+    expect(doc.tool).toBe("zipkit");
+    expect(doc.entries.some((e: { archivePath: string }) => e.archivePath === "a.txt")).toBe(true);
+  });
+
+  it("records a SHA-256 that matches the file content", async () => {
+    const proj = await makeTree();
+    const output = path.join(dir, "hash.zip");
+    await new ZipKit().create({
+      inputs: [proj],
+      output,
+      policy: { metadata: { name: "_metadata.json", placement: "inside", hash: true } },
+    });
+
+    const { entries } = readZip(await readFile(output));
+    const doc = JSON.parse(entries.find((e) => e.name === "_metadata.json")!.content.toString("utf8"));
+    const fileEntry = doc.entries.find((e: { archivePath: string }) => e.archivePath === "a.txt");
+    const expected = createHash("sha256").update("hello hello hello hello").digest("hex");
+    expect(fileEntry.sha256).toBe(expected);
   });
 });
 

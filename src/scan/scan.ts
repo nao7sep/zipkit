@@ -282,6 +282,28 @@ export async function scan(
     outputExists = false;
   }
 
+  // The containment root and the cycle seed are compared against the realpath of
+  // symlink targets discovered during the walk, so they must live in the same
+  // canonical space. Canonicalizing here keeps an internal symlink from looking
+  // external (and being dropped under follow) merely because an ancestor of the
+  // input is itself a symlink — the macOS /tmp -> /private/tmp link being the
+  // common case. The crawl base and the resolved output stay in the caller's
+  // path space, so output self-exclusion and the returned output string are
+  // unaffected.
+  const canonicalRoots: string[] = [];
+  for (let i = 0; i < inputs.length; i++) {
+    const real = realInputPaths[i] as string;
+    if (!isDir[i]) {
+      canonicalRoots.push(real);
+      continue;
+    }
+    try {
+      canonicalRoots.push(await realpath(real));
+    } catch {
+      canonicalRoots.push(real);
+    }
+  }
+
   const ctx: ScanContext = {
     matcher: deps.matcher,
     symlinks: policy.symlinks,
@@ -295,10 +317,10 @@ export async function scan(
     entries: [],
     prunedDirs: [],
     followedDirs: new Set(),
-    inputRoots: realInputPaths,
+    inputRoots: canonicalRoots,
   };
   for (let i = 0; i < inputs.length; i++) {
-    if (isDir[i]) ctx.followedDirs.add(realInputPaths[i] as string);
+    if (isDir[i]) ctx.followedDirs.add(canonicalRoots[i] as string);
   }
 
   for (let i = 0; i < inputs.length; i++) {
