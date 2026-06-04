@@ -8,7 +8,8 @@
 
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
-import type { ExtractSpec, ZipKitOptions } from "../types.js";
+import { globExclude, regexExclude } from "../filter/rules.js";
+import type { ExtractSpec, FilterRule, ZipKitOptions } from "../types.js";
 import { emitJson } from "./json.js";
 import { createConsoleProgress, renderExtractReport } from "./render.js";
 
@@ -21,7 +22,6 @@ interface ExtractOpts {
   timezone?: string;
   onUnsafe?: "skip" | "abort";
   symlinks?: "restore" | "skip";
-  exclude?: string[];
   quiet?: boolean;
   verbose?: boolean;
   json?: boolean;
@@ -32,6 +32,16 @@ export function registerExtract(
   signal: AbortSignal,
   setExitCode: (code: number) => void,
 ): void {
+  const excludes: FilterRule[] = [];
+  const addGlob = (pattern: string) => {
+    excludes.push(globExclude(pattern));
+    return pattern;
+  };
+  const addRegex = (pattern: string) => {
+    excludes.push(regexExclude(pattern));
+    return pattern;
+  };
+
   const cmd = program
     .command("extract")
     .description("Extract or validate a ZIP archive")
@@ -46,12 +56,8 @@ export function registerExtract(
   cmd.option("--timezone <iana>", "zone for the DOS field when an entry has no UTC time extra");
   cmd.option("--on-unsafe <skip|abort>", "handling of paths that escape the destination (default skip)");
   cmd.option("--symlinks <restore|skip>", "symlink handling (default restore)");
-  cmd.option(
-    "--exclude <name>",
-    "entry name not to write (repeatable)",
-    (value: string, prev: string[]) => [...prev, value],
-    [] as string[],
-  );
+  cmd.option("--exclude <pattern>", "exclude glob, not written (repeatable); trailing slash = directory", addGlob);
+  cmd.option("--exclude-regex <pattern>", "exclude regex, not written (repeatable)", addRegex);
   cmd.option("--quiet", "suppress console progress");
   cmd.option("--verbose", "include per-entry detail in console progress");
   cmd.option("--json", "emit the report as JSON; suppress the human renderer");
@@ -73,7 +79,7 @@ export function registerExtract(
     if (opts.timezone !== undefined) spec.timezone = opts.timezone;
     if (opts.onUnsafe !== undefined) spec.onUnsafe = opts.onUnsafe;
     if (opts.symlinks !== undefined) spec.symlinks = opts.symlinks;
-    if (opts.exclude && opts.exclude.length > 0) spec.exclude = opts.exclude;
+    if (excludes.length > 0) spec.exclude = excludes;
 
     const report = await zip.extract(spec);
     if (opts.json) emitJson(report);

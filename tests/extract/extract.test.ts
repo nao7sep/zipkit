@@ -173,13 +173,43 @@ describe("path safety and exclusion", () => {
     ).rejects.toThrow(/escapes/i);
   });
 
-  it("does not write excluded entries", async () => {
+  it("does not write a literally-excluded entry", async () => {
     const archive = await writeArchive([fileEntry("keep.txt", "k"), fileEntry("_metadata.json", "{}")]);
     const dest = path.join(dir, "out");
-    const report = await new ZipKit().extract({ archive, dest, exclude: ["_metadata.json"] });
+    const report = await new ZipKit().extract({
+      archive,
+      dest,
+      exclude: [{ pattern: "_metadata.json", match: "literal", target: "both" }],
+    });
     expect(report.entries.find((e) => e.archivePath === "_metadata.json")?.skipped).toBe("excluded");
     await expect(stat(path.join(dest, "_metadata.json"))).rejects.toThrow();
     expect((await readFile(path.join(dest, "keep.txt"))).toString()).toBe("k");
+  });
+
+  it("applies glob/regex excludes on extract but still verifies the filtered entries", async () => {
+    const archive = await writeArchive([
+      fileEntry("a.txt", "a"),
+      fileEntry("logs/run.log", "L"),
+      fileEntry("keep.bin", "b"),
+    ]);
+    const dest = path.join(dir, "filtered");
+    const report = await new ZipKit().extract({
+      archive,
+      dest,
+      exclude: [
+        { pattern: "*.txt", match: "glob", target: "both" },
+        { pattern: "\\.log$", match: "regex", target: "both" },
+      ],
+    });
+    // Excluded from writing...
+    expect(report.entries.find((e) => e.archivePath === "a.txt")?.skipped).toBe("excluded");
+    expect(report.entries.find((e) => e.archivePath === "logs/run.log")?.skipped).toBe("excluded");
+    await expect(stat(path.join(dest, "a.txt"))).rejects.toThrow();
+    await expect(stat(path.join(dest, "logs/run.log"))).rejects.toThrow();
+    // ...but still CRC-verified (integrity covers the whole archive), and the rest written.
+    expect(report.entries.every((e) => e.crc === "ok")).toBe(true);
+    expect(report.ok).toBe(true);
+    expect((await readFile(path.join(dest, "keep.bin"))).toString()).toBe("b");
   });
 });
 

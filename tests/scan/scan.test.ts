@@ -28,7 +28,7 @@ afterEach(async () => {
 
 function deps(policy: ArchivePolicy) {
   return {
-    matcher: buildMatcher(policy),
+    matcher: buildMatcher(policy.filters, policy.junk === "builtin"),
     limit: <T>(fn: () => Promise<T>): Promise<T> => fn(),
     logger: createLogger(),
   };

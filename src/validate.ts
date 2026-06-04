@@ -39,7 +39,6 @@ function isSafePathComponent(name: string): boolean {
 
 const filterRuleSchema = z
   .strictObject({
-    action: z.enum(["include", "exclude"]),
     pattern: z.string(),
     match: z.enum(["glob", "regex", "literal"]).default("glob"),
     target: z.enum(["file", "dir", "both"]).default("both"),
@@ -167,7 +166,7 @@ const extractSpecSchema = z.strictObject({
     }),
   onUnsafe: z.enum(["skip", "abort"]).optional(),
   symlinks: z.enum(["restore", "skip"]).optional(),
-  exclude: z.array(z.string()).optional(),
+  exclude: z.array(filterRuleSchema).optional(),
 });
 
 /** Validate an extract spec; the non-serializable `signal` is carried around it. */

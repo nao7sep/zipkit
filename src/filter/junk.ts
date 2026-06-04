@@ -19,7 +19,6 @@ function junk(id: JunkRule["id"], pattern: string): JunkRule {
   return {
     id,
     rule: {
-      action: "exclude",
       pattern,
       match: "glob",
       target: isDir ? "dir" : "both",

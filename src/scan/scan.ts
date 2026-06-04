@@ -220,7 +220,7 @@ async function crawlDirectory(
       const archive = joinArchivePath(anchors.archive, toForwardSlash(rel));
       if (archive === "") return false;
       const rule = ctx.matcher.match(archive, true);
-      if (rule && rule.action === "exclude") {
+      if (rule) {
         const pruned: PrunedDir = { archivePath: archive, reason: rule.describe };
         if (rule.junkRule) pruned.rule = rule.junkRule;
         ctx.prunedDirs.push(pruned);

@@ -17,14 +17,19 @@ describe("validateSpec", () => {
   it("applies filter-rule defaults", () => {
     const spec = validateSpec({
       inputs: ["a"],
-      policy: { filters: [{ action: "exclude", pattern: "*.tmp" }] as never },
+      policy: { filters: [{ pattern: "*.tmp" }] as never },
     });
     expect(spec.policy?.filters?.[0]).toEqual({
-      action: "exclude",
       pattern: "*.tmp",
       match: "glob",
       target: "both",
     });
+  });
+
+  it("rejects a filter rule with an unknown 'action' key (include is gone)", () => {
+    expect(() =>
+      validateSpec({ inputs: ["a"], policy: { filters: [{ action: "include", pattern: "x" }] } as never }),
+    ).toThrow(PolicyError);
   });
 
   it("rejects an empty inputs array", () => {
@@ -45,7 +50,7 @@ describe("validateSpec", () => {
     expect(() =>
       validateSpec({
         inputs: ["a"],
-        policy: { filters: [{ action: "exclude", pattern: "[", match: "regex" }] as never },
+        policy: { filters: [{ pattern: "[", match: "regex" }] as never },
       }),
     ).toThrow(PolicyError);
   });
@@ -54,7 +59,7 @@ describe("validateSpec", () => {
     expect(() =>
       validateSpec({
         inputs: ["a"],
-        policy: { filters: [{ action: "exclude", pattern: "\\.log$", match: "regex" }] as never },
+        policy: { filters: [{ pattern: "\\.log$", match: "regex" }] as never },
       }),
     ).not.toThrow();
   });
@@ -68,7 +73,7 @@ describe("validateSpec", () => {
 
 describe("validatePolicy", () => {
   it("accepts a partial policy and applies filter defaults", () => {
-    const policy = validatePolicy({ filters: [{ action: "include", pattern: "x" }] as never });
+    const policy = validatePolicy({ filters: [{ pattern: "x" }] as never });
     expect(policy.filters?.[0]?.match).toBe("glob");
   });
 

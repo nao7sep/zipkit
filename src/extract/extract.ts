@@ -16,6 +16,7 @@ import { lstat, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/
 import path from "node:path";
 import zlib from "node:zlib";
 import { ReadError, throwIfAborted } from "../errors.js";
+import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
 import type { Logger } from "../log/logger.js";
@@ -115,7 +116,8 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
     symlinks: spec.symlinks ?? "restore",
   };
   const onUnsafe = spec.onUnsafe ?? "skip";
-  const excludeSet = new Set(spec.exclude ?? []);
+  // The same exclusion engine the archive side uses; no junk preset on read.
+  const matcher = buildMatcher(spec.exclude ?? [], false);
   const dest = spec.dest !== undefined ? path.resolve(spec.dest) : undefined;
 
   let buf: Buffer;
@@ -220,7 +222,7 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
       skip = "dry-run";
     } else if (!crcOk) {
       skip = "crc-fail";
-    } else if (excludeSet.has(entry.archivePath)) {
+    } else if (matcher.match(entry.archivePath, entry.type === "dir")) {
       skip = "excluded";
     } else {
       const target = safeJoin(dest as string, entry.archivePath);

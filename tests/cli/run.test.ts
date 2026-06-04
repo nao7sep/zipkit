@@ -1,8 +1,8 @@
 /**
  * CLI contract tests: exit codes (0 success, 1 not writable, 2 usage),
- * `--dry-run` as the plan form, and the normative interleave behaviour where
- * all include/exclude flags share one ordered list so first-match-wins works
- * across mixed flags.
+ * `--dry-run` as the plan form, and exclusion — `--exclude` and
+ * `--exclude-regex` both drop matching entries (the system is inclusive by
+ * default; any matching rule excludes).
  */
 
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -57,9 +57,10 @@ describe("exit codes", () => {
   });
 });
 
-describe("filter interleave", () => {
-  it("applies first-match-wins across mixed include/exclude flags", async () => {
+describe("exclusion", () => {
+  it("drops entries matched by --exclude (glob) and --exclude-regex, keeps the rest", async () => {
     const proj = await tree();
+    await writeFile(path.join(proj, "notes.log"), "log");
     const out = path.join(dir, "i.zip");
     const chunks: string[] = [];
     const spy = vi
@@ -78,10 +79,10 @@ describe("filter interleave", () => {
         "--dry-run",
         "--json",
         "--quiet",
-        "--include",
-        "keep.txt",
         "--exclude",
-        "*",
+        "drop.txt",
+        "--exclude-regex",
+        "\\.log$",
       ),
     );
     spy.mockRestore();
@@ -91,8 +92,9 @@ describe("filter interleave", () => {
     const byName = Object.fromEntries(
       plan.entries.map((e: { archivePath: string; excluded: boolean }) => [e.archivePath, e.excluded]),
     );
-    expect(byName["keep.txt"]).toBe(false);
-    expect(byName["drop.txt"]).toBe(true);
+    expect(byName["keep.txt"]).toBe(false); // kept by default (inclusive)
+    expect(byName["drop.txt"]).toBe(true); // glob exclude
+    expect(byName["notes.log"]).toBe(true); // regex exclude
     expect(existsSync(out)).toBe(false); // dry run writes nothing
   });
 });

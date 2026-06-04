@@ -77,7 +77,7 @@ zipkit create <inputs...> [options]
 
 The CLI has two subcommands: `create` builds archives (documented here) and `extract` reads them — extraction and validation (see [Extract and validate](#extract-and-validate)). Flags are grouped by concern, in the order the tool resolves them. Three behaviors are normative:
 
-- **Interleave is preserved.** `--include`, `--exclude`, `--include-regex`, and `--exclude-regex` append to one shared ordered list as the parser encounters them, so first-match-wins works across mixed flags — an explicit include can rescue a junk-listed file.
+- **Selection is inclusive by default; rules only subtract.** Everything under the inputs is archived unless an exclude matches it. There is no "include" — to archive a subset of a tree, narrow the **inputs**. `--exclude` and `--exclude-regex` accumulate into one list; any match drops the entry.
 - **A trailing slash means directory.** `--exclude 'node_modules/'` targets directories; `--exclude '*.tmp'` targets files and directories.
 - **`--dry-run` is the CLI form of calling `plan()`.**
 
@@ -102,19 +102,17 @@ By default a single directory input is **flattened**: its *contents* land at the
 | Flag | Default | Description |
 |---|---|---|
 | `--junk <builtin\|none>` | `builtin` | Built-in bidirectional junk preset. |
-| `--include <pattern>` | | Include glob (repeatable, ordered). |
-| `--exclude <pattern>` | | Exclude glob (repeatable, ordered). |
-| `--include-regex <pattern>` | | Include regex (repeatable, ordered). |
-| `--exclude-regex <pattern>` | | Exclude regex (repeatable, ordered). |
+| `--exclude <pattern>` | | Exclude glob (repeatable). A trailing slash targets directories. |
+| `--exclude-regex <pattern>` | | Exclude regex (repeatable). |
 | `--skip-empty-files` | off | Drop zero-byte files. |
 | `--empty-dirs <keep\|prune>` | `keep` | Empty-directory handling. |
 | `--empty-dir-def <strict\|recursive>` | `recursive` | What counts as empty. |
 
-All four include/exclude flags append to one shared ordered list in command-line order; first-match-wins. A trailing slash on a glob targets directories.
+Both exclude flags append to one list; any matching rule drops the entry (the system is inclusive by default, so order doesn't change the outcome — there is no include to override an exclude). A trailing slash on a glob targets directories. Globs follow gitignore conventions: unanchored patterns float at any depth, a leading or interior slash anchors to the root, and `**` spans segments. The same engine and flags are available on `extract` to choose which entries are written.
 
 #### Built-in junk preset
 
-`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk`) and never block, even under `--strict`. An explicit `--include` can rescue any of them, since first-match-wins on the shared ordered list. `--junk none` disables the preset.
+`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk`) and never block, even under `--strict`. `--junk none` disables the preset for the whole run.
 
 - **macOS:** `.DS_Store`, `__MACOSX/`, `._*` (AppleDouble files), `Icon\r` (custom folder icon), `.Spotlight-V100`, `.Trashes`, `.fseventsd`
 - **Windows:** `Thumbs.db`, `ehthumbs.db`, `desktop.ini`, `$RECYCLE.BIN/`, `System Volume Information/`
@@ -205,7 +203,8 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--timezone <iana>` | host zone | Zone used to read the DOS field when an entry carries no UTC time extra. |
 | `--on-unsafe <skip\|abort>` | `skip` | Handling of an entry whose path escapes the destination (zip-slip): skip it with a finding, or abort the run. |
 | `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. |
-| `--exclude <name>` | | Entry name not to write (repeatable). |
+| `--exclude <pattern>` | | Exclude glob — matching entries are verified but not written (repeatable). Trailing slash targets directories. |
+| `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
 | `--json` | | Emit the `ExtractReport` as JSON; suppress the human renderer. |
 
 Creation/birth time is not restored — no portable cross-platform API sets it. The exit code is `0` when the report is `ok`, else `1`, so validation scripts cleanly. zipkit deliberately does **not** validate its own output automatically after `create`: a tested compressor is trusted, and `extract --dry-run` is there for when you have a reason to check an archive.

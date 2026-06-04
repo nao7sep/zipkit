@@ -1,15 +1,16 @@
 /**
  * The `create` subcommand. Flags follow the master concern order. Three
- * behaviours are normative: all four include/exclude flags append to one
- * shared ordered list in command-line order (so first-match-wins works across
- * mixed flags); a trailing slash on a glob targets directories; and `--dry-run`
- * is the CLI form of calling `plan()`. The action maps flags to an
- * `ArchiveSpec` plus per-call policy, wires the log stream to the console and
- * the optional JSONL sink, and chooses `plan()` or `create()` by mode.
+ * behaviours are normative: `--exclude` and `--exclude-regex` append to one
+ * shared ordered list (any match drops the entry — the system is inclusive by
+ * default, so there is no include); a trailing slash on a glob targets
+ * directories; and `--dry-run` is the CLI form of calling `plan()`. The action
+ * maps flags to an `ArchiveSpec` plus per-call policy, wires the log stream to
+ * the console and the optional JSONL sink, and chooses `plan()` or `create()`.
  */
 
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
+import { globExclude, regexExclude } from "../filter/rules.js";
 import { DEFAULT_STORE_EXTENSIONS, METADATA_DEFAULTS } from "../policy.js";
 import type { LogSink } from "../log/logger.js";
 import type {
@@ -165,17 +166,12 @@ export function registerCreate(
 ): void {
   const filters: FilterRule[] = [];
 
-  const globFilter = (action: FilterRule["action"]) => (pattern: string) => {
-    filters.push({
-      action,
-      pattern,
-      match: "glob",
-      target: pattern.endsWith("/") ? "dir" : "both",
-    });
+  const addGlob = (pattern: string) => {
+    filters.push(globExclude(pattern));
     return pattern;
   };
-  const regexFilter = (action: FilterRule["action"]) => (pattern: string) => {
-    filters.push({ action, pattern, match: "regex", target: "both" });
+  const addRegex = (pattern: string) => {
+    filters.push(regexExclude(pattern));
     return pattern;
   };
 
@@ -197,18 +193,8 @@ export function registerCreate(
 
   // Selection
   cmd.option("--junk <builtin|none>", "junk preset (default builtin)");
-  cmd.option("--include <pattern>", "include glob (repeatable, ordered)", globFilter("include"));
-  cmd.option("--exclude <pattern>", "exclude glob (repeatable, ordered)", globFilter("exclude"));
-  cmd.option(
-    "--include-regex <pattern>",
-    "include regex (repeatable, ordered)",
-    regexFilter("include"),
-  );
-  cmd.option(
-    "--exclude-regex <pattern>",
-    "exclude regex (repeatable, ordered)",
-    regexFilter("exclude"),
-  );
+  cmd.option("--exclude <pattern>", "exclude glob (repeatable); trailing slash = directory", addGlob);
+  cmd.option("--exclude-regex <pattern>", "exclude regex (repeatable)", addRegex);
   cmd.option("--skip-empty-files", "drop zero-byte files");
   cmd.option("--empty-dirs <keep|prune>", "empty-directory handling (default keep)");
   cmd.option("--empty-dir-def <strict|recursive>", "empty-directory definition (default recursive)");

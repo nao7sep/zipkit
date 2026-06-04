@@ -8,8 +8,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_POLICY, DEFAULT_STORE_EXTENSIONS, resolvePolicy } from "../src/policy.js";
 import type { FilterRule } from "../src/types.js";
 
-const ruleA: FilterRule = { action: "exclude", pattern: "a", match: "glob", target: "both" };
-const ruleB: FilterRule = { action: "include", pattern: "b", match: "glob", target: "both" };
+const ruleA: FilterRule = { pattern: "a", match: "glob", target: "both" };
+const ruleB: FilterRule = { pattern: "b", match: "glob", target: "both" };
 
 describe("DEFAULT_POLICY", () => {
   it("uses the documented defaults", () => {

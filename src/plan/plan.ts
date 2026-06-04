@@ -31,7 +31,7 @@ import { applyZip64 } from "./zip64.js";
 import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.js";
 
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
-  const matcher = buildMatcher(policy);
+  const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
   const items = buildWorkItems(scan);
 
   applyPathFix(items);

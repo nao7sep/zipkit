@@ -1,27 +1,31 @@
 /**
- * The selection engine. Junk lists, includes, and excludes are one
- * ordered decision list over the full relative archive path, first-match-wins,
- * with user rules ranked above the junk preset so an explicit include can
- * rescue a junk-listed file. The matcher is pure; the scan layer uses it to
- * prune directory subtrees during the walk, and the plan layer uses it to
- * decide each surviving entry and emit findings — one engine, two callers.
+ * The exclusion engine, shared by every verb. User exclude rules and (for
+ * archiving) the junk preset form one ordered list; the first rule that matches
+ * a path excludes it, and the matched rule is returned so the caller can report
+ * *why*. The system is inclusive by default: a path with no matching rule is
+ * kept. There is no "include" — what goes in is chosen by the inputs, and what
+ * comes out by `dest`; rules only ever subtract.
  *
- * Pattern dialects follow gitignore conventions: a glob without a leading
- * slash is unanchored and matches at any depth; a leading slash (or any
- * interior slash) anchors to the archive root; `**` spans segments; a regex
- * matches anywhere unless anchored with `^`/`$`; literal is a plain path
- * comparison. The trailing-slash directory convention is expressed through
- * each rule's `target`, set by the caller, not re-derived here.
+ * The matcher is pure. On the archive side the scan layer uses it to prune
+ * excluded directory subtrees during the walk and the plan layer to decide each
+ * surviving entry; on the read side `extract` uses it to decide which entries
+ * are written. One engine, every caller.
+ *
+ * Pattern dialects follow gitignore conventions: a glob without a leading slash
+ * is unanchored and matches at any depth; a leading slash (or any interior
+ * slash) anchors to the root; `**` spans segments; a regex matches anywhere
+ * unless anchored with `^`/`$`; literal is a plain path comparison. The
+ * trailing-slash directory convention is expressed through each rule's `target`,
+ * set by the caller, not re-derived here.
  */
 
 import picomatch from "picomatch";
 import type { JunkRule } from "./junk.js";
 import { JUNK_RULES } from "./junk.js";
 import type { RuleId } from "../registry.js";
-import type { ArchivePolicy, FilterRule } from "../types.js";
+import type { FilterRule } from "../types.js";
 
 export interface CompiledRule {
-  action: "include" | "exclude";
   target: "file" | "dir" | "both";
   test: (path: string) => boolean;
   /** Registry rule id when this rule came from the junk preset. */
@@ -31,7 +35,7 @@ export interface CompiledRule {
 }
 
 export interface FilterMatcher {
-  /** The first rule that applies to the path, or null when none match. */
+  /** The first exclude rule that applies to the path, or null when none match. */
   match(path: string, isDir: boolean): CompiledRule | null;
 }
 
@@ -79,16 +83,14 @@ function compileTest(rule: FilterRule): (path: string) => boolean {
 
 function compileUserRule(rule: FilterRule): CompiledRule {
   return {
-    action: rule.action,
     target: rule.target,
     test: compileTest(rule),
-    describe: `${rule.action} rule: ${rule.pattern}`,
+    describe: `exclude rule: ${rule.pattern}`,
   };
 }
 
 function compileJunkRule(entry: JunkRule): CompiledRule {
   return {
-    action: entry.rule.action,
     target: entry.rule.target,
     test: compileTest(entry.rule),
     junkRule: entry.id,
@@ -102,12 +104,13 @@ function applies(target: CompiledRule["target"], isDir: boolean): boolean {
 }
 
 /**
- * Build the ordered matcher from a resolved policy: user rules first, then the
- * junk preset when enabled.
+ * Build the ordered matcher: user exclude rules first, then the junk preset when
+ * requested. Verb-agnostic — `create` passes its policy's filters and junk
+ * setting, `extract` passes its exclude rules with no junk.
  */
-export function buildMatcher(policy: ArchivePolicy): FilterMatcher {
-  const compiled: CompiledRule[] = policy.filters.map(compileUserRule);
-  if (policy.junk === "builtin") {
+export function buildMatcher(rules: FilterRule[], includeJunk: boolean): FilterMatcher {
+  const compiled: CompiledRule[] = rules.map(compileUserRule);
+  if (includeJunk) {
     for (const entry of JUNK_RULES) compiled.push(compileJunkRule(entry));
   }
   return {

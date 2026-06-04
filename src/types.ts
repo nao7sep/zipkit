@@ -14,12 +14,17 @@ export type Severity = "error" | "warning" | "info";
 // Configuration
 // ---------------------------------------------------------------------------
 
+/**
+ * An exclusion rule. Every rule excludes — the system is inclusive by default,
+ * so a path is kept unless a rule matches it. There is no "include": what goes
+ * into an archive is chosen by the inputs, not by re-including. To archive a
+ * subset of a tree, narrow the inputs.
+ */
 export interface FilterRule {
-  action: "include" | "exclude";
   pattern: string;
   /** Pattern dialect. Defaults to `"glob"`. */
   match: "glob" | "regex" | "literal";
-  /** Which entry kinds the rule applies to. Defaults to `"both"`. */
+  /** Which entry kinds the rule excludes. Defaults to `"both"`. */
   target: "file" | "dir" | "both";
 }
 
@@ -194,8 +199,12 @@ export interface ExtractSpec {
   onUnsafe?: "skip" | "abort";
   /** Whether to recreate symlink entries. Defaults to `restore`. */
   symlinks?: "restore" | "skip";
-  /** Entry names not to write to disk (e.g. the manifest itself). */
-  exclude?: string[];
+  /**
+   * Exclusion rules. A matching entry is still verified (CRC, and SHA under
+   * `checkMetadata`) but is not written to disk — filtering selects output,
+   * integrity always covers the whole archive.
+   */
+  exclude?: FilterRule[];
 
   // Control
   signal?: AbortSignal;

@@ -65,7 +65,7 @@ export class ZipKit {
     try {
       const validated = validateSpec(spec);
       const policy = resolvePolicy(this.#policy, validated.policy);
-      const matcher = buildMatcher(policy);
+      const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
       const limit = pLimit(this.#concurrency);
 
       const scanResult = await scan(validated, policy, { matcher, limit, logger: this.#logger });
