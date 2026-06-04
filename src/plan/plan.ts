@@ -65,7 +65,13 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
   for (const f of globalFindings) findings.push(f);
 
   const summary = buildSummary(items, findings, zip64);
-  const writable = computeWritable(findings, policy.strict, scan.outputExists, scan.overwrite);
+  const writable = computeWritable(
+    findings,
+    policy.strict,
+    scan.outputExists,
+    scan.overwrite,
+    scan.sidecar?.exists ?? false,
+  );
 
   const plan: Plan = {
     output: scan.output,

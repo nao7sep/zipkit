@@ -76,3 +76,34 @@ describe("validatePolicy", () => {
     expect(() => validatePolicy({ symlinks: "chase" } as never)).toThrow(PolicyError);
   });
 });
+
+describe("safe single-component fields", () => {
+  // The invalid-char replacement is substituted into a segment after the
+  // traversal pass, so a separator or `..` would re-introduce absolute/escaping
+  // entry names. It is held to the same single-safe-component standard as the
+  // metadata file name.
+  it.each(["/", "\\", "..", ".", "", "a/b", "../x", "<", "na:me"])(
+    "rejects an unsafe invalidCharReplacement %j",
+    (replacement) => {
+      expect(() => validatePolicy({ invalidCharReplacement: replacement })).toThrow(PolicyError);
+    },
+  );
+
+  it.each(["_", "-", "()", "__", "x", "fixed"])(
+    "accepts a safe invalidCharReplacement %j",
+    (replacement) => {
+      expect(() => validatePolicy({ invalidCharReplacement: replacement })).not.toThrow();
+    },
+  );
+
+  it.each(["a/b", "..", ".", "with/slash", "dir/_metadata.json"])(
+    "rejects an unsafe metadata.name %j",
+    (name) => {
+      expect(() => validatePolicy({ metadata: { name } } as never)).toThrow(PolicyError);
+    },
+  );
+
+  it("accepts a safe metadata.name", () => {
+    expect(() => validatePolicy({ metadata: { name: "_metadata.json" } } as never)).not.toThrow();
+  });
+});

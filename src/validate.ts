@@ -14,15 +14,22 @@ import { fixSegment } from "./plan/nameFix.js";
 import type { ArchivePolicy, ArchiveSpec } from "./types.js";
 
 /**
- * The metadata file name must be a single archive-path segment that the name
- * fixer would leave untouched — i.e. held to exactly the same standard as every
- * other archive name. This rejects slashes and traversal (`resolveSegments`),
- * and, via `fixSegment`, anything the fixer would rewrite: non-NFC forms,
- * Windows-invalid characters (including the bare colon a Windows drive prefix
- * needs), control characters, trailing dots/spaces, and reserved device names.
- * So the name is safe both as a ZIP entry name and as a sidecar filename.
+ * A single archive-path segment that the name fixer would leave untouched — the
+ * standard every archive name is held to. This rejects slashes and traversal
+ * (`resolveSegments`), and, via `fixSegment`, anything the fixer would rewrite:
+ * non-NFC forms, Windows-invalid characters (including the bare colon a Windows
+ * drive prefix needs), control characters, trailing dots/spaces, and reserved
+ * device names.
+ *
+ * Two uses share it. The metadata file name must satisfy it so the name is safe
+ * both as a ZIP entry and as a sidecar filename. The invalid-char replacement
+ * must satisfy it too: `name.invalid-char` substitutes it into a segment after
+ * the path-traversal pass has already run (see `nameFix.ts`), so a replacement
+ * carrying a separator or resolving to `..` would re-introduce exactly the
+ * absolute/traversal paths that pass stripped — holding it to a clean single
+ * component closes that off at the boundary rather than mid-pipeline.
  */
-function isSafeMetadataName(name: string): boolean {
+function isSafePathComponent(name: string): boolean {
   const { segments, escaped } = resolveSegments(toForwardSlash(name));
   if (escaped || segments.length !== 1) return false;
   const segment = segments[0] as string;
@@ -55,7 +62,15 @@ const partialPolicySchema = z.strictObject({
   emptyFiles: z.enum(["keep", "skip"]).optional(),
   emptyDirs: z.enum(["keep", "prune"]).optional(),
   emptyDirDefinition: z.enum(["strict", "recursive"]).optional(),
-  invalidCharReplacement: z.string().optional(),
+  // Substituted into a single segment after the path-traversal pass, so it must
+  // itself be a clean single component — never a separator or a `..` that would
+  // re-introduce an absolute or traversing entry name.
+  invalidCharReplacement: z
+    .string()
+    .optional()
+    .refine((r) => r === undefined || isSafePathComponent(r), {
+      error: "invalidCharReplacement must be a single path component (no slashes, not '.' or '..')",
+    }),
   symlinks: z.enum(["ignore", "preserve", "follow"]).optional(),
   followExternal: z.boolean().optional(),
   timestamps: z.enum(["clamp", "preserve"]).optional(),
@@ -77,7 +92,7 @@ const partialPolicySchema = z.strictObject({
         // The name becomes an archive entry name (inside) or is joined to the
         // output directory (sidecar), so it must be a single safe path
         // component — never a traversal that would escape the output directory.
-        .refine((m) => m.name === undefined || isSafeMetadataName(m.name), {
+        .refine((m) => m.name === undefined || isSafePathComponent(m.name), {
           error: "metadata.name must be a single path component (no slashes, not '.' or '..')",
           path: ["name"],
         }),

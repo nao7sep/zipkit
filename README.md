@@ -60,7 +60,7 @@ By default a single directory input is **flattened**: its *contents* land at the
 | Flag | Description |
 |---|---|
 | `-o, --output <path>` | Output archive path. When omitted, the archive is written beside what is archived (`<dirname>.zip`, `<stem>.zip`, or `<parent>.zip`). |
-| `--overwrite` | Overwrite an existing output. |
+| `--overwrite` | Overwrite an existing output. Required when either output file — the archive or its metadata sidecar — already exists. |
 
 ### Selection
 
@@ -88,7 +88,7 @@ All four include/exclude flags append to one shared ordered list in command-line
 
 | Flag | Default | Description |
 |---|---|---|
-| `--invalid-char <char>` | `_` | Replacement for invalid characters. |
+| `--invalid-char <char>` | `_` | Replacement for invalid characters. Must be a single path component (no slashes, not `.` or `..`), so substitution can never introduce a separator or escape the archive root. |
 
 NFC normalization, the other name fixes, and collision detection are unconditional and carry no knob.
 
@@ -116,6 +116,8 @@ The store list names already-compressed formats, where attempting deflate is was
 | `--metadata-placement <inside\|sidecar>` | `inside` | Inside the archive at its root, or beside the `.zip`. |
 
 The metadata file is a JSON record of the run: a header (`tool`, `version`, `createdUtc`, the resolved `policy`, the plan `summary`, and aggregate `totals` of uncompressed and compressed bytes); one record per written entry (`archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size` and `compressedSize`, `crc32`, optional `sha256`, `mode`, `mtimeNs`/`birthtimeNs`, `linkTarget` for preserved symlinks, and the `transformations` applied); the list of `excluded` entries with their `reason`; and all `findings`. It never stores absolute source paths, and under `--deterministic` the volatile time fields are omitted so the record is reproducible.
+
+A `sidecar` is a second output file and is treated as one: it is gated on `--overwrite` exactly like the archive (an existing sidecar without `--overwrite` makes the plan non-writable), it is excluded from the scan so it is never archived as input even when it sits inside the input tree, and a name that resolves to the archive path itself — case-insensitively, matching the `collision.case` rule, since `Meta.JSON` and `meta.json` are one file on default macOS/Windows filesystems — is rejected up front by the dry run.
 
 ### Container format
 
@@ -217,7 +219,7 @@ Progress is observed in real time through the optional `logger` callback, which 
 
 ## The clean-byte guarantee
 
-Archives carry the UTF-8 name flag, a FAT host byte (no Unix mode leaks), and a zero-length extra field — with two exceptions: the Zip64 extra when genuinely needed, and the Info-ZIP extended-timestamp extra only under timestamp preservation. Compression is Deflate via the platform `zlib`, with a store fallback when deflate does not shrink and store for already-compressed extensions. Output is atomic: a temporary file is written in the same directory, then renamed.
+Archives carry the UTF-8 name flag, a FAT host byte (no Unix mode leaks), and a zero-length extra field — with two exceptions: the Zip64 extra when genuinely needed, and the Info-ZIP extended-timestamp extra only under timestamp preservation. Compression is Deflate via the platform `zlib`, with a store fallback when deflate does not shrink and store for already-compressed extensions. Output is atomic: a temporary file is written in the same directory, then renamed. When the output lives inside the input tree, the archive never contains itself: the resolved output and the metadata sidecar are excluded by file identity (`dev:ino`) — exact on every filesystem, so a case-insensitive volume that aliases `Meta.json` to `meta.json` excludes it while a case-sensitive one keeps a same-named neighbour. Identity is the *only* self-exclusion: zipkit never guesses from a name that a file is a stale atomic-write temp, so a real neighbour such as `archive.zip.notes` or a dated `archive.zip.20240604` is always archived. (The current run's temp never exists during the scan, and a temp orphaned by a hard crash is rare and harmlessly archived as an ordinary file.)
 
 ## Scope
 

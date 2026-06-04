@@ -17,7 +17,7 @@ import { fdir } from "fdir";
 import type { BigIntStats } from "node:fs";
 import { lstat, readlink, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { ScanError, throwIfAborted } from "../errors.js";
+import { PolicyError, ScanError, throwIfAborted } from "../errors.js";
 import type { FilterMatcher } from "../filter/match.js";
 import { toForwardSlash } from "../internal/path.js";
 import type { PrunedDir, ScanEntry, ScanResult } from "../internal/types.js";
@@ -28,7 +28,7 @@ import {
   joinArchivePath,
   normalizeInputs,
 } from "../plan/arcname.js";
-import { resolveOutputPath } from "./output.js";
+import { resolveOutputPath, resolveSidecarPath } from "./output.js";
 import type { ArchivePolicy, ArchiveSpec } from "../types.js";
 
 export interface ScanDeps {
@@ -44,23 +44,33 @@ interface ScanContext {
   limit: <T>(fn: () => Promise<T>) => Promise<T>;
   signal: AbortSignal | undefined;
   logger: Logger;
-  output: string;
-  outputDir: string;
-  outputBase: string;
+  /**
+   * File identities (`dev:ino`) of this run's own output files — the archive and
+   * the metadata sidecar — when they already exist on disk. Compared against the
+   * identity of each walked entry so the run never archives itself, exactly on
+   * every filesystem: a case-insensitive volume aliases `Meta.json`/`meta.json`
+   * to one inode, while a case-sensitive one keeps a same-named neighbour
+   * distinct. A name comparison could not draw that line either way.
+   *
+   * This is the only self-exclusion the scan does. There is deliberately no
+   * name-based "looks like an atomic-write temp" rule: the current run's temp
+   * never exists during the scan (the scan completes before any write), and a
+   * stale temp survives only a hard crash that skipped write-file-atomic's
+   * cleanup — rare, and harmlessly archived as an ordinary file. Guessing from
+   * the name instead would silently drop a real neighbour such as a dated
+   * `archive.zip.20240604`, which is the worse failure.
+   */
+  artifactIds: Set<string>;
   entries: ScanEntry[];
   prunedDirs: PrunedDir[];
   followedDirs: Set<string>;
   inputRoots: string[];
 }
 
-/**
- * The resolved output and the atomic-write temp file (`write-file-atomic` names
- * it `<output>.<suffix>` in the same directory) are never archived, so an
- * archive cannot contain itself or a stale temp from an interrupted run.
- */
-function isOutputArtifact(ctx: ScanContext, abs: string): boolean {
-  if (abs === ctx.output) return true;
-  return path.dirname(abs) === ctx.outputDir && path.basename(abs).startsWith(`${ctx.outputBase}.`);
+/** A path's filesystem identity: same file ⇔ same `dev:ino`, regardless of how
+ * the name is cased or which link reached it. */
+function fileId(stats: BigIntStats): string {
+  return `${stats.dev}:${stats.ino}`;
 }
 
 /**
@@ -175,6 +185,9 @@ async function processPath(
   } catch (err) {
     throw new ScanError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
   }
+  // This run's own output or sidecar, reached under any casing: skip it so the
+  // archive can never contain itself.
+  if (ctx.artifactIds.has(fileId(st))) return;
   if (st.isSymbolicLink()) {
     await handleSymlink(ctx, abs, paths, inputIndex, st);
   } else if (st.isDirectory()) {
@@ -226,7 +239,7 @@ async function crawlDirectory(
   for (const raw of results) {
     throwIfAborted(ctx.signal);
     const abs = stripTrailingSlash(raw);
-    if (abs === absDir || isOutputArtifact(ctx, abs)) continue;
+    if (abs === absDir) continue; // the run's own output is excluded by identity in processPath
     const fwdRel = toForwardSlash(path.relative(absDir, abs));
     const archive = joinArchivePath(anchors.archive, fwdRel);
     if (archive === "") continue;
@@ -288,12 +301,44 @@ export async function scan(
   checkAnchorCollisions(inputs, anchors);
 
   const output = resolveOutputPath(spec.output, inputs, isDir, cwd);
+  // The identities of this run's own output files, used to exclude them from the
+  // walk by file identity rather than by name (see `ScanContext.artifactIds`).
+  const artifactIds = new Set<string>();
   let outputExists = false;
   try {
-    await stat(output);
+    artifactIds.add(fileId(await statBig(output)));
     outputExists = true;
   } catch {
     outputExists = false;
+  }
+
+  // The metadata sidecar is a second output file: resolve it here so it can be
+  // self-excluded from the walk and gated on overwrite in the plan, and reject a
+  // name that collides with the archive up front — a configuration error the dry
+  // run now reports rather than the write edge discovering it. The comparison is
+  // case-folded, matching the entry-level `collision.case` rule: on the default
+  // macOS/Windows filesystems `Meta.JSON` and `meta.json` are the same file, so
+  // a case-only difference would still let the sidecar overwrite the archive.
+  const sidecarPath = resolveSidecarPath(output, policy);
+  if (
+    sidecarPath !== undefined &&
+    path.resolve(sidecarPath).toLowerCase() === path.resolve(output).toLowerCase()
+  ) {
+    throw new PolicyError(
+      "metadata.sidecar-collision",
+      `the metadata sidecar name collides with the output archive (case-insensitively): ${output}`,
+    );
+  }
+  let sidecar: { path: string; exists: boolean } | undefined;
+  if (sidecarPath !== undefined) {
+    let exists = false;
+    try {
+      artifactIds.add(fileId(await statBig(sidecarPath)));
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    sidecar = { path: sidecarPath, exists };
   }
 
   // The containment root and the cycle seed are compared against the realpath of
@@ -325,9 +370,7 @@ export async function scan(
     limit: deps.limit,
     signal,
     logger: deps.logger,
-    output,
-    outputDir: path.dirname(output),
-    outputBase: path.basename(output),
+    artifactIds,
     entries: [],
     prunedDirs: [],
     followedDirs: new Set(),
@@ -352,13 +395,14 @@ export async function scan(
       ctx.logger.emit("scan", "debug", "scan.dir", { path: real });
       await crawlDirectory(ctx, real, anchorPaths, i);
     } else {
-      if (isOutputArtifact(ctx, real)) continue;
       let fileStats: BigIntStats;
       try {
         fileStats = await statBig(real);
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, { cause: err });
       }
+      // A file named directly as input that is itself the output/sidecar.
+      if (ctx.artifactIds.has(fileId(fileStats))) continue;
       ctx.entries.push(makeEntry(real, i, anchorPaths, "file", fileStats));
     }
   }
@@ -373,5 +417,6 @@ export async function scan(
     output,
     outputExists,
     overwrite: spec.overwrite === true,
+    ...(sidecar ? { sidecar } : {}),
   };
 }

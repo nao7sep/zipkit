@@ -212,7 +212,10 @@ export function registerCreate(
   cmd.option("--empty-dir-def <strict|recursive>", "empty-directory definition (default recursive)");
 
   // Naming
-  cmd.option("--invalid-char <char>", 'replacement for invalid characters (default "_")');
+  cmd.option(
+    "--invalid-char <char>",
+    'replacement for invalid characters; a single path component, no slashes (default "_")',
+  );
 
   // Entry data
   cmd.option("--symlinks <ignore|preserve|follow>", "symlink handling (default ignore)");

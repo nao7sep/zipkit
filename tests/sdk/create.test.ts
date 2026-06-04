@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WriteError, ZipKit } from "../../src/index.js";
+import { PolicyError, WriteError, ZipKit } from "../../src/index.js";
 import { readZip } from "../helpers/readZip.js";
 
 let dir: string;
@@ -57,18 +57,22 @@ describe("output resolution and round-trip", () => {
     expect(result.excluded).toBeGreaterThanOrEqual(1);
   });
 
-  it("excludes the output and its atomic-write temp artifacts when written inside an input", async () => {
+  it("excludes the output itself but keeps real neighbours that share its prefix", async () => {
     const proj = await makeTree();
     const output = path.join(proj, "archive.zip");
-    // A stale temp matching write-file-atomic's `<output>.<suffix>` pattern.
-    await writeFile(path.join(proj, "archive.zip.stale123"), "stale temp");
+    // Files that merely share the output's prefix are real and must be archived,
+    // even a numeric suffix that resembles a write-file-atomic temp: zipkit never
+    // guesses a file is a temp from its name.
+    await writeFile(path.join(proj, "archive.zip.20240604"), "a dated backup");
+    await writeFile(path.join(proj, "archive.zip.notes"), "release notes");
     await new ZipKit().create({ inputs: [proj], output, overwrite: true });
     // Second run re-scans the tree, which now contains the output itself.
     await new ZipKit().create({ inputs: [proj], output, overwrite: true });
 
     const names = readZip(await readFile(output)).entries.map((e) => e.name);
-    expect(names).not.toContain("archive.zip");
-    expect(names.some((n) => n.startsWith("archive.zip."))).toBe(false);
+    expect(names).not.toContain("archive.zip"); // excluded by identity
+    expect(names).toContain("archive.zip.20240604");
+    expect(names).toContain("archive.zip.notes");
   });
 });
 
@@ -152,6 +156,93 @@ describe("metadata", () => {
     const fileEntry = doc.entries.find((e: { archivePath: string }) => e.archivePath === "a.txt");
     const expected = createHash("sha256").update("hello hello hello hello").digest("hex");
     expect(fileEntry.sha256).toBe(expected);
+  });
+});
+
+describe("sidecar safety", () => {
+  it("refuses to overwrite an existing sidecar without overwrite, even when the archive is new", async () => {
+    const proj = await makeTree();
+    const output = path.join(dir, "side.zip"); // does not exist yet
+    const sidecar = path.join(dir, "pre.json");
+    await writeFile(sidecar, "do not clobber me");
+
+    const policy = { metadata: { name: "pre.json", placement: "sidecar" as const, hash: false } };
+    await expect(new ZipKit().create({ inputs: [proj], output, policy })).rejects.toBeInstanceOf(
+      WriteError,
+    );
+    // The sidecar is untouched by the refused run.
+    expect(await readFile(sidecar, "utf8")).toBe("do not clobber me");
+
+    // Authorizing overwrite lets both files be written.
+    await new ZipKit().create({ inputs: [proj], output, overwrite: true, policy });
+    expect(JSON.parse(await readFile(sidecar, "utf8")).tool).toBe("zipkit");
+  });
+
+  it("never archives a stale sidecar that lives inside the input tree", async () => {
+    const proj = await makeTree();
+    const output = path.join(proj, "a.zip"); // output (and sidecar) inside the input
+    await writeFile(path.join(proj, "meta.json"), "stale sidecar");
+
+    await new ZipKit().create({
+      inputs: [proj],
+      output,
+      overwrite: true,
+      policy: { metadata: { name: "meta.json", placement: "sidecar", hash: false } },
+    });
+
+    const names = readZip(await readFile(output)).entries.map((e) => e.name);
+    expect(names).not.toContain("meta.json");
+  });
+
+  it("never archives a differently-cased sidecar that aliases to the same file", async () => {
+    const proj = await makeTree();
+    const output = path.join(proj, "a.zip"); // output (and sidecar) inside the input
+    await writeFile(path.join(proj, "meta.json"), "stale sidecar");
+    // On a case-insensitive filesystem `Meta.json` and `meta.json` name one file;
+    // the configured sidecar therefore aliases the stale one. Detect the volume's
+    // behaviour so the assertion holds on both: exclusion is by file identity, so
+    // the file is dropped exactly when the two names are truly the same file.
+    const caseInsensitive = existsSync(path.join(proj, "Meta.json"));
+
+    await new ZipKit().create({
+      inputs: [proj],
+      output,
+      overwrite: true,
+      policy: { metadata: { name: "Meta.json", placement: "sidecar", hash: false } },
+    });
+
+    const names = readZip(await readFile(output)).entries.map((e) => e.name);
+    if (caseInsensitive) {
+      expect(names).not.toContain("meta.json"); // the sidecar under a different case
+    } else {
+      expect(names).toContain("meta.json"); // a genuinely distinct neighbour
+    }
+  });
+
+  it("rejects a sidecar name that resolves to the output archive", async () => {
+    const proj = await makeTree();
+    const output = path.join(dir, "clash.json");
+    await expect(
+      new ZipKit().create({
+        inputs: [proj],
+        output,
+        policy: { metadata: { name: "clash.json", placement: "sidecar", hash: false } },
+      }),
+    ).rejects.toBeInstanceOf(PolicyError);
+  });
+
+  it("rejects a sidecar name that collides with the output by case only", async () => {
+    const proj = await makeTree();
+    // On the default case-insensitive macOS/Windows filesystems these name the
+    // same file, so the sidecar would otherwise overwrite the archive.
+    const output = path.join(dir, "Clash.JSON");
+    await expect(
+      new ZipKit().create({
+        inputs: [proj],
+        output,
+        policy: { metadata: { name: "clash.json", placement: "sidecar", hash: false } },
+      }),
+    ).rejects.toBeInstanceOf(PolicyError);
   });
 });
 

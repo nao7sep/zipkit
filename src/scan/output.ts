@@ -11,6 +11,7 @@
 import path from "node:path";
 import { PolicyError } from "../errors.js";
 import type { ResolvedInput } from "../plan/arcname.js";
+import type { ArchivePolicy } from "../types.js";
 
 export function resolveOutputPath(
   output: string | undefined,
@@ -45,4 +46,16 @@ export function resolveOutputPath(
     "output.ambiguous",
     "cannot infer the output path: inputs live in different parents; pass an explicit output",
   );
+}
+
+/**
+ * The absolute path of the metadata sidecar, or `undefined` when no sidecar is
+ * written (metadata disabled, or placed inside the archive). It sits beside the
+ * archive: `<output dir>/<metadata name>`. The name is validated to be a single
+ * safe component, so the join cannot escape that directory. One source of truth
+ * shared by the scan edge (self-exclusion, existence) and the write edge.
+ */
+export function resolveSidecarPath(output: string, policy: ArchivePolicy): string | undefined {
+  if (policy.metadata === false || policy.metadata.placement !== "sidecar") return undefined;
+  return path.join(path.dirname(output), policy.metadata.name);
 }

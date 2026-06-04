@@ -12,7 +12,6 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import writeFileAtomic from "write-file-atomic";
 import { throwIfAborted, toAbortError, WriteError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
@@ -20,6 +19,7 @@ import type { WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import type { Plan, WriteResult } from "../types.js";
 import { computeZip64Need } from "../plan/zip64.js";
+import { resolveSidecarPath } from "../scan/output.js";
 import { compress } from "./deflate.js";
 import { buildMetadata } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
@@ -184,14 +184,11 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
         mode: 0,
       });
     } else {
-      const sidecarPath = path.join(path.dirname(plan.output), policy.metadata.name);
-      if (path.resolve(sidecarPath) === path.resolve(plan.output)) {
-        throw new WriteError(
-          "write.sidecar-collision",
-          `the metadata sidecar name "${policy.metadata.name}" collides with the output archive`,
-        );
-      }
-      sidecar = { path: sidecarPath, bytes: json };
+      // The sidecar path, its collision with the archive, and its overwrite
+      // gating were all settled at the scan/plan edge (see `resolveSidecarPath`
+      // and `computeWritable`); a writable plan means writing it is authorized.
+      const sidecarPath = resolveSidecarPath(plan.output, policy);
+      if (sidecarPath !== undefined) sidecar = { path: sidecarPath, bytes: json };
     }
   }
 

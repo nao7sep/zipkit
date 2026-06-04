@@ -156,17 +156,21 @@ describe("scan over a real tree", () => {
     expect(names(result)).toContain("f.txt");
   });
 
-  it("never archives the output file or its atomic-write temp artifacts", async () => {
+  it("never archives the output file itself, but keeps every real neighbour", async () => {
     const proj = path.join(dir, "proj");
     await mkdir(proj, { recursive: true });
     await writeFile(path.join(proj, "a.txt"), "a");
     const output = path.join(proj, "out.zip");
     await writeFile(output, "existing archive");
-    await writeFile(path.join(proj, "out.zip.stale123"), "stale temp");
+    // Siblings that share the output's prefix are real files, never guessed to be
+    // atomic-write temps — including a numeric suffix that resembles one. Only the
+    // output file itself (matched by identity) is excluded.
+    await writeFile(path.join(proj, "out.zip.20240604"), "a dated backup");
+    await writeFile(path.join(proj, "out.zip.notes"), "release notes");
 
     const result = await runScan({ inputs: [proj], output });
 
-    expect(names(result)).toEqual(["a.txt"]);
+    expect(names(result)).toEqual(["a.txt", "out.zip.20240604", "out.zip.notes"]);
     expect(result.outputExists).toBe(true);
   });
 });
