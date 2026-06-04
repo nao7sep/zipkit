@@ -1,5 +1,5 @@
 /**
- * Policy defaults and layering (§3, §5). Locks the default values, the merge
+ * Policy defaults and layering. Locks the default values, the merge
  * precedence (per-call over instance over default), the replace-not-concat
  * semantics for list fields, and the metadata partial-fill behaviour.
  */

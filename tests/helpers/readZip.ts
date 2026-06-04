@@ -1,5 +1,5 @@
 /**
- * A minimal ZIP reader for round-trip tests (§13): parse the central
+ * A minimal ZIP reader for round-trip tests: parse the central
  * directory and each local entry, inflating stored/deflated data so content and
  * the byte contract can be asserted. Handles the non-Zip64 case fully and
  * reports whether Zip64 end-of-central-directory structures are present.

@@ -1,5 +1,5 @@
 /**
- * Selection engine tests (§10.1): gitignore-flavoured glob anchoring, the `**`
+ * Selection engine tests: gitignore-flavoured glob anchoring, the `**`
  * span, regex and literal dialects, dotfile matching, target applicability, and
  * first-match-wins with user rules ranked above the junk preset.
  */

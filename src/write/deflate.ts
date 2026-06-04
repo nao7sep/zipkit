@@ -1,5 +1,5 @@
 /**
- * Compression and integrity (§11, §12). Deflate uses the platform zlib's raw
+ * Compression and integrity. Deflate uses the platform zlib's raw
  * deflate and the matching CRC-32 from the same library. Deflate falls back to
  * store when it does not shrink the data, so a compressed entry is never larger
  * than its stored form.

@@ -1,5 +1,5 @@
 /**
- * CLI wiring and exit codes (§7): `0` success; `1` the plan is not writable (a
+ * CLI wiring and exit codes: `0` success; `1` the plan is not writable (a
  * blocking finding, or an existing output without `--overwrite`); `2` usage
  * error. The single `create` subcommand leaves room for a future read/audit
  * subcommand without a breaking change. Commander's own errors map to a usage

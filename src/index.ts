@@ -1,5 +1,5 @@
 /**
- * The committed public surface (§6). The scan layer, the rule passes, and the
+ * The committed public surface. The scan layer, the rule passes, and the
  * writer are internal and may be refactored without affecting this surface.
  */
 

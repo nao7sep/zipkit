@@ -1,5 +1,5 @@
 /**
- * Empty-directory handling (§4 pass 5, §10.9), bottom-up by construction. A ZIP
+ * Empty-directory handling (pass 5), bottom-up by construction. A ZIP
  * is entry-based: a non-empty directory is implied by its files and needs no
  * entry, so only directories with no content survive the question.
  *

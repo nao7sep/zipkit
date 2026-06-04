@@ -1,5 +1,5 @@
 /**
- * Container feasibility (§11). Zip64 is needed when an entry size or a running
+ * Container feasibility. Zip64 is needed when an entry size or a running
  * offset reaches `0xFFFFFFFF`, or the entry count reaches `0xFFFF`. The need is
  * computed from uncompressed sizes — an upper bound, since compression only
  * shrinks data and the count is fixed — so the dry run's verdict is never an

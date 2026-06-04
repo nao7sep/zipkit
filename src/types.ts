@@ -1,8 +1,8 @@
 /**
- * The committed public type surface (§6). Every record's keys follow the
- * object-key role sequence of §3.4: identity, provenance, classification,
+ * The committed public type surface. Every record's keys follow the
+ * object-key role sequence: identity, provenance, classification,
  * state/outcome, quantities, subject attributes, nested detail. Configuration
- * surfaces follow the master concern order of §3.1.
+ * surfaces follow the master concern order.
  *
  * The scan layer, the rule passes, and the writer are internal and define
  * their own types elsewhere; nothing here depends on them.
@@ -39,7 +39,7 @@ export interface MetadataPolicy {
 /**
  * Processing rules only. Source, destination, and control live on the spec and
  * options; the policy is the portion that decides how each entry is treated.
- * Fields follow the master concern order (§3.1).
+ * Fields follow the master concern order.
  */
 export interface ArchivePolicy {
   // Selection

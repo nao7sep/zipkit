@@ -1,5 +1,5 @@
 /**
- * Timestamp policy (§4 pass 9, §10.7). The DOS time field can represent only
+ * Timestamp policy (pass 9). The DOS time field can represent only
  * 1980 through 2107; a modification time below that range raises
  * `time.pre-1980`, and one above it raises `time.post-2107`. Both are clamped
  * by the writer (to the DOS minimum or maximum respectively); this pass only

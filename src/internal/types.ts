@@ -1,10 +1,10 @@
 /**
  * Internal types shared across the scan → plan → write layers. None of these
- * are part of the committed surface (§6); they may be refactored freely.
+ * are part of the committed surface; they may be refactored freely.
  *
  * Time is carried as nanoseconds since the Unix epoch (UTC) in a `bigint`,
  * matching the precision the platform stat call exposes and the metadata
- * file's lossless record (§10.10). Conversion to DOS time happens only at the
+ * file's lossless record. Conversion to DOS time happens only at the
  * writer's edge.
  */
 
@@ -12,7 +12,7 @@ import type { RuleId } from "../registry.js";
 
 /** Raw metadata for one filesystem object, produced by the scan layer. */
 export interface ScanEntry {
-  /** Absolute source path on disk. Internal only; never serialized (§8). */
+  /** Absolute source path on disk. Internal only; never serialized. */
   absolutePath: string;
   /** Index into the resolved input list this entry was produced from. */
   inputIndex: number;
@@ -47,7 +47,7 @@ export interface ScanResult {
   overwrite: boolean;
 }
 
-/** One name fix applied to an entry, recorded for the metadata file (§10.10). */
+/** One name fix applied to an entry, recorded for the metadata file. */
 export interface Transformation {
   rule: RuleId;
   before: string;

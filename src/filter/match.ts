@@ -1,5 +1,5 @@
 /**
- * The selection engine (§10.1). Junk lists, includes, and excludes are one
+ * The selection engine. Junk lists, includes, and excludes are one
  * ordered decision list over the full relative archive path, first-match-wins,
  * with user rules ranked above the junk preset so an explicit include can
  * rescue a junk-listed file. The matcher is pure; the scan layer uses it to

@@ -54,7 +54,7 @@ UTF-8 filenames; the archive itself is well-formed, confirmed by three
 independent strict readers extracting it without error. This is an Info-ZIP
 limitation, not a defect in the output.
 
-## Selection (§10.1, §10.9)
+## Selection
 
 | Scenario | Result |
 |---|---|
@@ -68,7 +68,7 @@ limitation, not a defect in the output.
 | `--skip-empty-files` drops zero-byte files; emptied directory becomes an empty-dir entry | PASS |
 | Empty directories: `keep`+`recursive` (leaf only), `keep`+`strict` (every node), `prune` (none) | PASS — all three distinct and correct |
 
-## Naming (§10.2)
+## Naming
 
 | Scenario | Result |
 |---|---|
@@ -84,7 +84,7 @@ limitation, not a defect in the output.
 | Case collision between distinct sources is an error (`collision.case`) | PASS — not writable, exit 1 |
 | Substitution-induced collision is an error (`collision.post-fix`) | PASS — not writable, exit 1 |
 
-## Entry data (§10.6–§10.8)
+## Entry data
 
 | Scenario | Result |
 |---|---|
@@ -100,7 +100,7 @@ limitation, not a defect in the output.
 | Post-2107 time: DOS clamped to 2107-12-31 (`time.post-2107`), no crash | PASS |
 | Time beyond the UT field's range (> 2038): extended-timestamp extra omitted | PASS |
 
-## Companion output (§10.10)
+## Companion output
 
 | Scenario | Result |
 |---|---|
@@ -111,7 +111,7 @@ limitation, not a defect in the output.
 | `--metadata-placement sidecar`: written beside the `.zip`, not inside it | PASS |
 | Volatile fields omitted under `--deterministic` | PASS — `createdUtc` and per-entry times absent |
 
-## Container format (§11)
+## Container format
 
 | Scenario | Result |
 |---|---|
@@ -119,7 +119,7 @@ limitation, not a defect in the output.
 | `--zip64 never` on a 32-bit-representable tree: no error | PASS — exit 0 |
 | `--deterministic`: entries sorted, fixed time, byte-identical across runs | PASS |
 
-## Diagnostics, gating, and control (§7, §8)
+## Diagnostics, gating, and control
 
 | Scenario | Result |
 |---|---|
@@ -133,7 +133,7 @@ limitation, not a defect in the output.
 | Output resolution: inputs in different parents → error, no fallback | PASS — exit 2, clear message |
 | Overwrite gate: existing output without `--overwrite` refused; allowed with it | PASS — exit 1 vs 0 |
 
-## Exit codes (§7)
+## Exit codes
 
 | Scenario | Code | Result |
 |---|---|---|
@@ -141,7 +141,7 @@ limitation, not a defect in the output.
 | Plan not writable (collision, or existing output without overwrite) | 1 | PASS |
 | Usage error (no inputs, invalid enum, invalid regex, bad log path) | 2 | PASS |
 
-## SDK surface (§6)
+## SDK surface
 
 | Scenario | Result |
 |---|---|
@@ -150,7 +150,7 @@ limitation, not a defect in the output.
 | Empty inputs → `PolicyError` | PASS |
 | Pre-aborted `signal` → `AbortError` (`errorType: "abort"`) | PASS |
 
-## Source / arcname (§10.4–§10.5)
+## Source / arcname
 
 | Scenario | Result |
 |---|---|

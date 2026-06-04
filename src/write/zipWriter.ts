@@ -1,5 +1,5 @@
 /**
- * The in-house ZIP container framing (§11) — local file headers, the central
+ * The in-house ZIP container framing — local file headers, the central
  * directory, the end-of-central-directory record, and Zip64 structures. The
  * clean-byte contract is encoded here:
  *

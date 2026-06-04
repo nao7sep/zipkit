@@ -1,5 +1,5 @@
 /**
- * Collision detection (§4 pass 7, §10.3). The resolved tree — files and
+ * Collision detection (pass 7). The resolved tree — files and
  * directories — is case-folded on post-fix names. Distinct sources that fold
  * to the same path collide on a case-insensitive filesystem. An exact post-fix
  * match (often substitution-induced) is `collision.post-fix`; a case-only

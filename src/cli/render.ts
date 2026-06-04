@@ -1,5 +1,5 @@
 /**
- * The human console renderer (§10.11). Live progress aggregates into the
+ * The human console renderer. Live progress aggregates into the
  * current phase and a running count on stderr — no per-entry spam (that lives
  * in the JSONL log) and no progress bar. The final plan or result summary is
  * rendered to stdout, findings severity-sorted.

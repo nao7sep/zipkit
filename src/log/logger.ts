@@ -1,5 +1,5 @@
 /**
- * The log event multiplexer (§10.11). One `LogEvent` stream feeds every
+ * The log event multiplexer. One `LogEvent` stream feeds every
  * consumer — the SDK callback, the CLI console renderer, the `--log` JSONL sink
  * — with no separate machinery. The logger is the edge that stamps each event
  * with its emission time; when no sink is attached it does no work.

@@ -1,5 +1,5 @@
 /**
- * The scan edge (§2, §12). It walks the source tree with `fdir`, pruning
+ * The scan edge. It walks the source tree with `fdir`, pruning
  * excluded directory subtrees through the shared matcher during the walk, and
  * reads each entry's nanosecond timestamps, mode, and symlink target with a
  * direct stat call. It also performs the two I/O facts the pure planner needs
@@ -56,7 +56,7 @@ interface ScanContext {
 /**
  * The resolved output and the atomic-write temp file (`write-file-atomic` names
  * it `<output>.<suffix>` in the same directory) are never archived, so an
- * archive cannot contain itself or a stale temp from an interrupted run (§10.5).
+ * archive cannot contain itself or a stale temp from an interrupted run.
  */
 function isOutputArtifact(ctx: ScanContext, abs: string): boolean {
   if (abs === ctx.output) return true;

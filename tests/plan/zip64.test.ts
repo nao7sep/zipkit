@@ -1,5 +1,5 @@
 /**
- * Zip64 need estimate (§11). Locks the sentinel boundary: 0xFFFFFFFF and
+ * Zip64 need estimate. Locks the sentinel boundary: 0xFFFFFFFF and
  * 0xFFFF are reserved markers, not representable values, so they must be
  * compared with `>=`.
  */

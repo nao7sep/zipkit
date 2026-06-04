@@ -1,5 +1,5 @@
 /**
- * Spec and policy validation (§6). Malformed input is rejected with a
+ * Spec and policy validation. Malformed input is rejected with a
  * PolicyError; valid input gains its filter-rule defaults; the non-serializable
  * signal is carried through untouched.
  */

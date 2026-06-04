@@ -1,5 +1,5 @@
 /**
- * Metadata builder (§10.10). Locks the lossless symlink classification and the
+ * Metadata builder. Locks the lossless symlink classification and the
  * omission of volatile fields under deterministic output.
  */
 

@@ -1,8 +1,8 @@
 /**
- * Segment-level name fixing (§4 pass 4, §10.2). Each path segment is repaired
+ * Segment-level name fixing (pass 4). Each path segment is repaired
  * in a fixed order: NFC normalization, invalid-character substitution,
  * control-character stripping, trailing dot/space trimming, reserved-name
- * suffixing, and suspicious-character flagging (kept). The order is the §9.2
+ * suffixing, and suspicious-character flagging (kept). The order is the
  * registry order; `name.invalid-char` substitutes the Windows-illegal set while
  * `name.control-char` strips, per the registry's distinct dispositions.
  *
@@ -24,7 +24,7 @@ const INVALID_CHARS = /[<>:"|?*\\]/g;
 const TRAILING_DOT_SPACE = /[ .]+$/;
 
 // Zero-width, BOM/ZWNBSP, bidirectional overrides, and directional isolates:
-// flagged as suspicious but kept (§10.2).
+// flagged as suspicious but kept.
 const SUSPICIOUS_CODES = new Set<number>([
   0x200b, 0x200c, 0x200d, 0xfeff, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068,
   0x2069,

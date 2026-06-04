@@ -1,5 +1,5 @@
 /**
- * Symlink policy (§10.6) for the entries the scan still reports as links.
+ * Symlink policy for the entries the scan still reports as links.
  * Under `follow`, the scan already dereferenced the link into a regular entry,
  * so nothing of type `"symlink"` reaches here. Under `ignore` (default) the
  * link is excluded; under `preserve` it is stored as a Unix link entry — which

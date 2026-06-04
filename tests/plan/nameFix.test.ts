@@ -1,5 +1,5 @@
 /**
- * Segment name-fixing table tests (§10.2). Each row asserts the repaired
+ * Segment name-fixing table tests. Each row asserts the repaired
  * segment and which registry rules fired, in order. These are paths a
  * filesystem walk seldom produces, so they are tested directly. Special
  * characters are constructed via code points to keep the source readable and

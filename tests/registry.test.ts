@@ -1,9 +1,9 @@
 /**
- * The registry invariants (§9.3). These lock the severity contract: the tier of
+ * The registry invariants. These lock the severity contract: the tier of
  * a rule is coupled exactly to its blocking behaviour, so a tier cannot be
  * changed without a visible, tested change. Together with the planner tests
  * (which assert that error findings drive `writable = false`), these enforce
- * the three §9.3 invariants.
+ * the three registry invariants.
  */
 
 import { describe, expect, it } from "vitest";

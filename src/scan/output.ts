@@ -1,5 +1,5 @@
 /**
- * Output path resolution (§10.5). An explicit output wins. Otherwise the
+ * Output path resolution. An explicit output wins. Otherwise the
  * archive is written beside what is archived: a single directory yields
  * `<dirname>.zip` next to it, a single file yields `<stem>.zip` next to it, and
  * several things in one parent yield `<parent>.zip` in that parent. Several

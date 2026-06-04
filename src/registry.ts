@@ -1,12 +1,12 @@
 /**
- * The rule registry and severity contract (§9). Severity lives in exactly one
+ * The rule registry and severity contract. Severity lives in exactly one
  * place. Rules never write a tier inline; they call {@link finding}, which
  * stamps the severity from this table. The coupling is exact: an `error` is the
  * tier that blocks unconditionally, a `warning` blocks only under strict
  * gating, and `info` never blocks. Changing a tier changes observable blocking
- * behaviour and is a breaking change to strict-gating semantics (§9.3).
+ * behaviour and is a breaking change to strict-gating semantics.
  *
- * The table is in pipeline order (§4): path rooting, content selection, name
+ * The table is in pipeline order: path rooting, content selection, name
  * fixing, deduplication, collision detection, timestamp resolution, and
  * container feasibility.
  */
@@ -40,7 +40,7 @@ export interface RuleSpec {
   blocksNormally: boolean;
   /** Blocks the write under `--strict` (true for `error` and `warning`). */
   blocksUnderStrict: boolean;
-  /** Human-readable default disposition, mirroring the §9.2 table. */
+  /** Human-readable default disposition. */
   disposition: string;
 }
 
@@ -76,7 +76,7 @@ export function isKnownRule(rule: string): rule is RuleId {
 
 /**
  * Construct a finding, stamping its severity from the registry. This is the
- * only sanctioned way to create a finding, so invariant 2 of §9.3 — every
+ * only sanctioned way to create a finding, so the invariant — every
  * finding's severity equals its registry tier — holds by construction.
  */
 export function finding(

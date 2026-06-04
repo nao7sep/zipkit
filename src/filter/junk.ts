@@ -1,5 +1,5 @@
 /**
- * The built-in junk preset (§10.1), bidirectional across macOS and Windows.
+ * The built-in junk preset, bidirectional across macOS and Windows.
  * Each entry is a filter rule tagged with the registry rule it reports under,
  * so an excluded junk file produces the right `macos.junk` / `windows.junk`
  * info finding. A trailing slash marks a directory-only rule; the matcher

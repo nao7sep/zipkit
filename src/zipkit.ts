@@ -1,5 +1,5 @@
 /**
- * The ZipKit SDK class (§6). `plan()` scans and runs the pure planning pass,
+ * The ZipKit SDK class. `plan()` scans and runs the pure planning pass,
  * writing nothing; `write()` executes a plan; `create()` does both. The
  * `plan → inspect → write` flow is the reason ZipKit is an SDK and not only a
  * CLI: a caller computes the plan, reads `findings`, decides, then writes. The

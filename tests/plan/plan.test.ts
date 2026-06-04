@@ -1,12 +1,12 @@
 /**
- * The pure planning pipeline (§4), table-driven over synthetic scan entries
- * with no filesystem access (§13). These tests lock the load-bearing
+ * The pure planning pipeline, table-driven over synthetic scan entries
+ * with no filesystem access. These tests lock the load-bearing
  * behaviours: junk exclusion, name fixing and renames, collision and traversal
  * errors that block, dedup, empty-file and empty-directory handling, the two
  * empty-dir definitions, compression selection, the Zip64 verdict, timestamp
  * flagging, symlink modes, strict gating, and the output-existence gate.
  *
- * `writable` doubles as the §9.3 enforcement: error findings always block,
+ * `writable` doubles as the severity enforcement: error findings always block,
  * warnings block only under strict, info never blocks.
  */
 

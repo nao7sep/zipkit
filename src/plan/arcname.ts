@@ -1,5 +1,5 @@
 /**
- * Arcname resolution (§4 pass 1, §10.4–§10.5). Given an input's anchor and the
+ * Arcname resolution (pass 1). Given an input's anchor and the
  * shape of the run, compute the archive-path prefix under which the input's
  * contents land, then join it with each entry's path relative to that input.
  *
@@ -97,7 +97,7 @@ export function joinArchivePath(anchor: string, relative: string): string {
 
 /**
  * Distinct inputs that resolve to the same non-empty prefix would nest into one
- * another silently; that is an error (§10.4). Root-level merges (empty anchor)
+ * another silently; that is an error. Root-level merges (empty anchor)
  * are left to per-entry collision detection.
  */
 export function checkAnchorCollisions(inputs: ResolvedInput[], anchors: string[]): void {

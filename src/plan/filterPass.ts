@@ -1,5 +1,5 @@
 /**
- * Selection (§4 pass 2). Each surviving entry is run through the ordered
+ * Selection (pass 2). Each surviving entry is run through the ordered
  * matcher; the first matching rule decides. An exclude marks the entry and, for
  * a junk-preset rule, emits the corresponding `macos.junk`/`windows.junk` info
  * finding. An include or no match leaves the entry in. Directory subtrees that

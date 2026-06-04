@@ -1,5 +1,5 @@
 /**
- * The pure planning pipeline (§4) — the heart of ZipKit. Given the scan bundle
+ * The pure planning pipeline — the heart of ZipKit. Given the scan bundle
  * and a resolved policy, it runs every rule pass in load-bearing order and
  * returns a `Plan`. No I/O: the scan edge has already gathered the entries, the
  * resolved output, and its existence, so the dry run and the actual run share

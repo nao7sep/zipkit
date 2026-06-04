@@ -1,5 +1,5 @@
 /**
- * Path-level rooting (§10.2), the part of name fixing that operates on the
+ * Path-level rooting, the part of name fixing that operates on the
  * whole path rather than a single segment: strip absolute and drive-letter
  * prefixes (`path.absolute`), resolve `.`/`..` and reject paths that escape the
  * archive root (`path.traversal`), and flag over-length paths and components

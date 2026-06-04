@@ -1,5 +1,5 @@
 /**
- * Compression method selection (§4 pass 8, §10.8). Under `auto`, an entry whose
+ * Compression method selection (pass 8). Under `auto`, an entry whose
  * extension is in the store list is stored, otherwise deflated. `store-all` and
  * `compress-all` override per-extension behaviour. Directories and preserved
  * symlinks are always stored. The writer applies a further store fallback at

@@ -1,6 +1,6 @@
 /**
  * The plan → write handoff. A `Plan` is a public, serializable record and must
- * never carry absolute source paths (§8). But `write(plan)` is self-contained:
+ * never carry absolute source paths. But `write(plan)` is self-contained:
  * given only a plan, it must read the right bytes from disk. We reconcile the
  * two by attaching the writer's instructions to the plan through a
  * symbol-keyed, non-enumerable property. `JSON.stringify` — used by both

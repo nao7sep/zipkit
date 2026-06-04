@@ -1,5 +1,5 @@
 /**
- * Path-level rooting table tests (§10.2): absolute/drive-letter stripping,
+ * Path-level rooting table tests: absolute/drive-letter stripping,
  * `.`/`..` resolution and root-escape detection, backslash normalization, and
  * length limits. Tested directly because filesystem-scanned entries are already
  * clean relatives.

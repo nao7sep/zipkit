@@ -1,6 +1,6 @@
 /**
  * Builders for synthetic scan data, so the pure planner can be tested over
- * table-driven entry arrays with no filesystem access (§13).
+ * table-driven entry arrays with no filesystem access.
  */
 
 import type { ScanEntry, ScanResult } from "../../src/internal/types.js";

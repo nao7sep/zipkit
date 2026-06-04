@@ -10,7 +10,7 @@ import type { ArchivePolicy, MetadataPolicy } from "./types.js";
 
 /**
  * Extensions stored verbatim under `compression.mode: "auto"` — formats that
- * are already compressed, where deflate only wastes effort (§10.8). Lowercase,
+ * are already compressed, where deflate only wastes effort. Lowercase,
  * leading dot. Mirrors the spec's enumerated list exactly so the documented
  * default and the code never drift.
  */
@@ -40,9 +40,9 @@ export const METADATA_DEFAULTS: MetadataPolicy = {
 };
 
 /**
- * The built-in defaults. Enumerated-value defaults come first in each union
- * (§3.3). `emptyDirDefinition` defaults to `"recursive"`, matching the CLI's
- * documented default (§7) and the intuitive reading of §10.9 — a directory
+ * The built-in defaults. Enumerated-value defaults come first in each union.
+ * `emptyDirDefinition` defaults to `"recursive"`, matching the CLI's
+ * documented default and the intuitive reading — a directory
  * holding only empty files and empty subdirectories counts as empty.
  */
 export const DEFAULT_POLICY: ArchivePolicy = {

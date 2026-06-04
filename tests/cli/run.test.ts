@@ -1,5 +1,5 @@
 /**
- * CLI contract tests (§7): exit codes (0 success, 1 not writable, 2 usage),
+ * CLI contract tests: exit codes (0 success, 1 not writable, 2 usage),
  * `--dry-run` as the plan form, and the normative interleave behaviour where
  * all include/exclude flags share one ordered list so first-match-wins works
  * across mixed flags.

@@ -1,7 +1,7 @@
 /**
  * The ZipKit error hierarchy. A single abstract base carries a discriminating
  * `errorType` and a stable, dot-separated `code`; concrete subclasses fix the
- * type. This is the committed error surface (§6): consumers can branch on
+ * type. This is the committed error surface: consumers can branch on
  * `errorType` without importing the concrete classes.
  */
 

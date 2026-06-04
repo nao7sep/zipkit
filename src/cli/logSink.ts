@@ -1,6 +1,6 @@
 /**
  * The `--log` JSONL sink: one `LogEvent` per line, the same stream the SDK
- * callback and console renderer see (§10.11). The file is opened eagerly so an
+ * callback and console renderer see. The file is opened eagerly so an
  * unwritable path fails fast as a clean `PolicyError` rather than surfacing
  * later as an uncaught stream `error` event; a late write error is captured so
  * the best-effort log can never crash the run.

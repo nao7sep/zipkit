@@ -1,6 +1,6 @@
 /**
- * Plan aggregation: the summary counters and the go/no-go `writable` verdict
- * (§8). `writable` is false when any error-tier finding is present, when strict
+ * Plan aggregation: the summary counters and the go/no-go `writable` verdict.
+ * `writable` is false when any error-tier finding is present, when strict
  * gating is on and any warning-tier finding is present, or when the output
  * already exists without an authorized overwrite. There is no override for the
  * error tier.

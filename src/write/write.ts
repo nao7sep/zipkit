@@ -1,5 +1,5 @@
 /**
- * The write edge (§2). It consumes a writable plan, reads each entry's bytes,
+ * The write edge. It consumes a writable plan, reads each entry's bytes,
  * compresses and hashes them, frames the archive with the in-house writer, and
  * writes it atomically — a temporary file in the same directory, then a
  * same-filesystem rename. The metadata file is injected as an entry (inside) or
@@ -7,7 +7,7 @@
  * `carrier.ts`), so `write(plan)` needs no second argument.
  *
  * `writable` is the gate: a non-writable plan throws `WriteError`, with no
- * override for the error tier (§8).
+ * override for the error tier.
  */
 
 import { createHash } from "node:crypto";

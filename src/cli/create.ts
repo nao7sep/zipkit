@@ -1,5 +1,5 @@
 /**
- * The `create` subcommand (§7). Flags follow the master concern order. Three
+ * The `create` subcommand. Flags follow the master concern order. Three
  * behaviours are normative: all four include/exclude flags append to one
  * shared ordered list in command-line order (so first-match-wins works across
  * mixed flags); a trailing slash on a glob targets directories; and `--dry-run`

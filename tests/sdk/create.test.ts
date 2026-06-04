@@ -1,5 +1,5 @@
 /**
- * SDK integration over a real temporary tree (§13). Exercises output
+ * SDK integration over a real temporary tree. Exercises output
  * resolution, the scan → plan → write path, junk exclusion, the metadata file
  * and its no-absolute-paths guarantee, the plan/inspect/write flow, the
  * overwrite gate, deterministic output, and content round-trip.

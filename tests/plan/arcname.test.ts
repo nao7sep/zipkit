@@ -1,5 +1,5 @@
 /**
- * Arcname and root mapping tests (§10.4): the anchor for a single directory
+ * Arcname and root mapping tests: the anchor for a single directory
  * (flatten default and `--wrap`), multiple basename-prefixed inputs, `as`
  * overrides, root-relative anchoring, the root/as conflict, and the
  * same-prefix collision check.

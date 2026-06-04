@@ -1,5 +1,5 @@
 /**
- * Writer byte-contract tests (§11, §13). Build an archive, read it back, and
+ * Writer byte-contract tests. Build an archive, read it back, and
  * assert the cleanliness guarantees: the UTF-8 flag is set, the host byte is 0
  * (FAT), no unexpected extra field is present, directories end in a slash, and
  * stored/deflated content round-trips with a matching CRC. The deliberate
