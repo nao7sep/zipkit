@@ -36,6 +36,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
         absolutePath: "",
         inputIndex: -1,
         archivePath: dir.archivePath,
+        sourcePath: dir.archivePath,
         type: "dir",
         size: 0,
         mtimeNs: 0n,
@@ -105,6 +106,7 @@ export function buildWriteEntries(items: WorkItem[]): WriteEntry[] {
     const entry: WriteEntry = {
       archivePath: item.archivePath,
       originalPath: item.originalPath,
+      sourcePath: item.scan.sourcePath,
       type: item.type,
       method: item.method,
       absolutePath: item.scan.absolutePath,

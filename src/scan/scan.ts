@@ -67,6 +67,7 @@ function makeEntry(
   absolutePath: string,
   inputIndex: number,
   archivePath: string,
+  sourcePath: string,
   type: ScanEntry["type"],
   stats: BigIntStats,
   linkTarget?: string,
@@ -75,6 +76,7 @@ function makeEntry(
     absolutePath,
     inputIndex,
     archivePath,
+    sourcePath,
     type,
     size: Number(stats.size),
     mtimeNs: stats.mtimeNs,
@@ -107,6 +109,7 @@ async function handleSymlink(
   ctx: ScanContext,
   abs: string,
   archive: string,
+  source: string,
   inputIndex: number,
   link: BigIntStats,
 ): Promise<void> {
@@ -118,7 +121,7 @@ async function handleSymlink(
   }
 
   if (ctx.symlinks !== "follow") {
-    ctx.entries.push(makeEntry(abs, inputIndex, archive, "symlink", link, target));
+    ctx.entries.push(makeEntry(abs, inputIndex, archive, source, "symlink", link, target));
     return;
   }
 
@@ -144,9 +147,9 @@ async function handleSymlink(
     // same real directory cannot both pass the cycle guard.
     if (ctx.followedDirs.has(real)) return;
     ctx.followedDirs.add(real);
-    await crawlDirectory(ctx, real, archive, inputIndex);
+    await crawlDirectory(ctx, real, archive, source, inputIndex);
   } else if (resolved.isFile()) {
-    ctx.entries.push(makeEntry(real, inputIndex, archive, "file", resolved));
+    ctx.entries.push(makeEntry(real, inputIndex, archive, source, "file", resolved));
   }
 }
 
@@ -154,6 +157,7 @@ async function processPath(
   ctx: ScanContext,
   abs: string,
   archive: string,
+  source: string,
   inputIndex: number,
 ): Promise<void> {
   let st: BigIntStats;
@@ -163,11 +167,11 @@ async function processPath(
     throw new ScanError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
   }
   if (st.isSymbolicLink()) {
-    await handleSymlink(ctx, abs, archive, inputIndex, st);
+    await handleSymlink(ctx, abs, archive, source, inputIndex, st);
   } else if (st.isDirectory()) {
-    ctx.entries.push(makeEntry(abs, inputIndex, archive, "dir", st));
+    ctx.entries.push(makeEntry(abs, inputIndex, archive, source, "dir", st));
   } else if (st.isFile()) {
-    ctx.entries.push(makeEntry(abs, inputIndex, archive, "file", st));
+    ctx.entries.push(makeEntry(abs, inputIndex, archive, source, "file", st));
   }
   // sockets, fifos, and devices are not archivable and are skipped silently.
 }
@@ -176,6 +180,7 @@ async function crawlDirectory(
   ctx: ScanContext,
   absDir: string,
   anchor: string,
+  sourceAnchor: string,
   inputIndex: number,
 ): Promise<void> {
   const crawler = new fdir()
@@ -217,7 +222,8 @@ async function crawlDirectory(
     const rel = path.relative(absDir, abs);
     const archive = joinArchivePath(anchor, toForwardSlash(rel));
     if (archive === "") continue;
-    tasks.push(ctx.limit(() => processPath(ctx, abs, archive, inputIndex)));
+    const source = joinArchivePath(sourceAnchor, toForwardSlash(rel));
+    tasks.push(ctx.limit(() => processPath(ctx, abs, archive, source, inputIndex)));
   }
   await Promise.all(tasks);
 }
@@ -327,9 +333,12 @@ export async function scan(
     throwIfAborted(signal);
     const anchor = anchors[i] ?? "";
     const real = realInputPaths[i] as string;
+    // The source anchor always carries the input's own name, so an entry's
+    // sourcePath traces to disk even when the archive anchor is flattened away.
+    const sourceAnchor = path.basename(real);
     if (isDir[i]) {
       ctx.logger.emit("scan", "debug", "scan.dir", { path: real });
-      await crawlDirectory(ctx, real, anchor, i);
+      await crawlDirectory(ctx, real, anchor, sourceAnchor, i);
     } else {
       if (isOutputArtifact(ctx, real)) continue;
       let fileStats: BigIntStats;
@@ -338,7 +347,7 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, { cause: err });
       }
-      ctx.entries.push(makeEntry(real, i, anchor, "file", fileStats));
+      ctx.entries.push(makeEntry(real, i, anchor, sourceAnchor, "file", fileStats));
     }
   }
 

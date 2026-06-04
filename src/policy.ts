@@ -10,27 +10,42 @@ import type { ArchivePolicy, MetadataPolicy } from "./types.js";
 
 /**
  * Extensions stored verbatim under `compression.mode: "auto"` — formats that
- * are already compressed, where deflate only wastes effort. Lowercase,
- * leading dot. Mirrors the spec's enumerated list exactly so the documented
- * default and the code never drift.
+ * are reliably already compressed, where attempting deflate only wastes CPU
+ * with no realistic chance of shrinking. Lowercase, leading dot. This list is
+ * a CPU optimization, not a correctness setting: any file outside it is still
+ * deflated, and any entry whose deflate fails to shrink falls back to store.
+ * Borderline formats (e.g. PDF, which sometimes compresses) are deliberately
+ * left off so `auto` can keep the win when it exists.
  */
 export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
+  // Images
   ".jpg",
+  ".jpeg",
   ".png",
   ".gif",
   ".webp",
+  ".heic",
+  // Video
   ".mp4",
   ".mov",
   ".mkv",
+  ".webm",
+  // Audio
   ".mp3",
   ".aac",
+  ".m4a",
+  ".flac",
+  // Archives
   ".zip",
   ".gz",
   ".7z",
   ".rar",
+  // Office (zip-based)
   ".docx",
   ".xlsx",
   ".pptx",
+  // Fonts
+  ".woff2",
 ];
 
 export const METADATA_DEFAULTS: MetadataPolicy = {

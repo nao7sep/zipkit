@@ -11,6 +11,10 @@ import { PolicyError } from "./errors.js";
 import { formatZodError } from "./internal/zodError.js";
 import type { ArchivePolicy, ArchiveSpec } from "./types.js";
 
+function isSafeMetadataName(name: string): boolean {
+  return name.length > 0 && !name.includes("/") && !name.includes("\\") && name !== "." && name !== "..";
+}
+
 const filterRuleSchema = z
   .strictObject({
     action: z.enum(["include", "exclude"]),
@@ -50,11 +54,19 @@ const partialPolicySchema = z.strictObject({
   metadata: z
     .union([
       z.literal(false),
-      z.strictObject({
-        name: z.string().optional(),
-        placement: z.enum(["inside", "sidecar"]).optional(),
-        hash: z.boolean().optional(),
-      }),
+      z
+        .strictObject({
+          name: z.string().optional(),
+          placement: z.enum(["inside", "sidecar"]).optional(),
+          hash: z.boolean().optional(),
+        })
+        // The name becomes an archive entry name (inside) or is joined to the
+        // output directory (sidecar), so it must be a single safe path
+        // component — never a traversal that would escape the output directory.
+        .refine((m) => m.name === undefined || isSafeMetadataName(m.name), {
+          error: "metadata.name must be a single path component (no slashes, not '.' or '..')",
+          path: ["name"],
+        }),
     ])
     .optional(),
   zip64: z.enum(["auto", "never", "always"]).optional(),

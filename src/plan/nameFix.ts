@@ -23,11 +23,14 @@ import type { WorkItem } from "./workItem.js";
 const INVALID_CHARS = /[<>:"|?*\\]/g;
 const TRAILING_DOT_SPACE = /[ .]+$/;
 
-// Zero-width, BOM/ZWNBSP, bidirectional overrides, and directional isolates:
-// flagged as suspicious but kept.
+// Invisible and bidirectional-control characters with no legitimate use in a
+// filename: zero-width space, word joiner, BOM/ZWNBSP, the bidi embeddings and
+// overrides, and the directional isolates. Flagged as suspicious but kept.
+// ZWNJ (U+200C) and ZWJ (U+200D) are deliberately excluded: they are essential
+// in Persian/Indic scripts and emoji sequences respectively, so flagging them
+// would warn on legitimate names — and block them under --strict.
 const SUSPICIOUS_CODES = new Set<number>([
-  0x200b, 0x200c, 0x200d, 0xfeff, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068,
-  0x2069,
+  0x200b, 0x2060, 0xfeff, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069,
 ]);
 
 const RESERVED = new Set<string>([

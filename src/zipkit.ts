@@ -7,6 +7,7 @@
  * is self-contained. The per-call policy is merged over the instance policy.
  */
 
+import os from "node:os";
 import pLimit from "p-limit";
 import { buildMatcher } from "./filter/match.js";
 import { createLogger } from "./log/logger.js";
@@ -18,7 +19,18 @@ import { validatePolicy, validateSpec } from "./validate.js";
 import { writeArchive } from "./write/write.js";
 import type { ArchivePolicy, ArchiveSpec, Plan, WriteResult, ZipKitOptions } from "./types.js";
 
-const DEFAULT_CONCURRENCY = 8;
+/**
+ * The default concurrency tracks the host's available parallelism (which
+ * respects cgroup and CPU-affinity limits, so it does the right thing in CI and
+ * containers), capped so a many-core box does not run an unbounded number of
+ * file reads at once — each in-flight entry buffers its whole file in memory
+ * before deflating, so peak memory scales with this number.
+ */
+const MAX_DEFAULT_CONCURRENCY = 16;
+
+function defaultConcurrency(): number {
+  return Math.max(1, Math.min(os.availableParallelism(), MAX_DEFAULT_CONCURRENCY));
+}
 
 export class ZipKit {
   readonly #policy: Partial<ArchivePolicy> | undefined;
@@ -31,7 +43,7 @@ export class ZipKit {
     this.#concurrency =
       options.concurrency && options.concurrency > 0
         ? Math.floor(options.concurrency)
-        : DEFAULT_CONCURRENCY;
+        : defaultConcurrency();
   }
 
   /** Scan and plan; writes nothing. */

@@ -41,6 +41,7 @@ interface CreateOpts {
   compressAll?: boolean;
   metadata?: boolean;
   metadataHash?: boolean;
+  metadataName?: string;
   metadataPlacement?: "inside" | "sidecar";
   zip64?: "auto" | "never" | "always";
   deterministic?: boolean;
@@ -90,9 +91,9 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
     };
   }
 
-  if (opts.metadata || opts.metadataHash || opts.metadataPlacement) {
+  if (opts.metadata || opts.metadataHash || opts.metadataName || opts.metadataPlacement) {
     policy.metadata = {
-      name: METADATA_DEFAULTS.name,
+      name: opts.metadataName ?? METADATA_DEFAULTS.name,
       placement: opts.metadataPlacement ?? METADATA_DEFAULTS.placement,
       hash: opts.metadataHash === true,
     };
@@ -175,7 +176,10 @@ export function registerCreate(
 
   // Source
   cmd.option("--root <dir>", "root every input's archive path relative to this directory");
-  cmd.option("--wrap", "single directory: keep its name as the top layer");
+  cmd.option(
+    "--wrap",
+    "single directory: keep its name as the top folder (default: flatten its contents to the root)",
+  );
 
   // Destination
   cmd.option("-o, --output <path>", "output archive path");
@@ -214,6 +218,7 @@ export function registerCreate(
   // Companion output
   cmd.option("--metadata", "emit the metadata file");
   cmd.option("--metadata-hash", "include a SHA-256 per file in the metadata");
+  cmd.option("--metadata-name <name>", "metadata file name (default _metadata.json)");
   cmd.option("--metadata-placement <inside|sidecar>", "metadata placement (default inside)");
 
   // Container format

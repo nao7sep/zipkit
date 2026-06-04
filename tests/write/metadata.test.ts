@@ -22,6 +22,7 @@ const plan: Plan = {
 const symlink: WriteEntry = {
   archivePath: "link",
   originalPath: "link",
+  sourcePath: "link",
   type: "symlink",
   method: "store",
   absolutePath: "",

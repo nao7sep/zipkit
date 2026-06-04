@@ -32,6 +32,9 @@ export const JUNK_RULES: readonly JunkRule[] = [
   junk("macos.junk", ".DS_Store"),
   junk("macos.junk", "__MACOSX/"),
   junk("macos.junk", "._*"),
+  // The custom-folder-icon file: literally "Icon" followed by a carriage
+  // return. It rides along in any folder given a custom icon in Finder.
+  junk("macos.junk", "Icon\r"),
   junk("macos.junk", ".Spotlight-V100"),
   junk("macos.junk", ".Trashes"),
   junk("macos.junk", ".fseventsd"),

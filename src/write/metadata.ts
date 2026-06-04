@@ -27,6 +27,10 @@ function metadataEntry(input: MetadataEntryInput, deterministic: boolean): Recor
   const out: Record<string, unknown> = {
     archivePath: entry.archivePath,
     originalPath: entry.originalPath,
+    // Input-relative disk-trace path: carries the input's own name even when the
+    // archive path is flattened to a bare filename, so an entry stays traceable
+    // to where it came from on disk. Never absolute.
+    sourcePath: entry.sourcePath,
     // The writer's classification is recorded verbatim — including "symlink",
     // which the public PlannedEntry collapses to "file" — so the metadata is a
     // lossless record.

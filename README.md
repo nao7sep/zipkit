@@ -14,12 +14,14 @@ Three layers, with all side effects at the edges:
 
 A dry run is `scan + plan`; an actual run is `scan + plan + write`. Both share the one pure planning function, so the dry run is faithful to the actual run by construction.
 
-## Quick start
+## Install
 
 ```sh
 npm install
 npm run build
 ```
+
+The runtime is Node 22.12 or later, ESM.
 
 ```sh
 # Create a clean archive next to a directory
@@ -32,13 +34,147 @@ zipkit create ./my-project --dry-run
 zipkit create ./my-project --strict --dry-run
 ```
 
-## Severity contract and exit codes
+## CLI
 
-Every rule has a fixed tier, decided by one principle and enforced by a single registry (see [docs/rules.md](docs/rules.md)):
+```
+zipkit create <inputs...> [options]
+```
 
-- **error** — no safe, unambiguous automatic resolution exists; proceeding would corrupt, lose, or arbitrarily pick. An error always blocks.
-- **warning** — the tool safely auto-fixed a portability defect a careful author might fix upstream. A warning blocks only under `--strict`.
-- **info** — routine hygiene the tool performs by design. Info never blocks.
+The CLI exposes one subcommand, `create`, leaving room for a future read/audit subcommand without a breaking change. Flags are grouped by concern, in the order the tool resolves them. Three behaviors are normative:
+
+- **Interleave is preserved.** `--include`, `--exclude`, `--include-regex`, and `--exclude-regex` append to one shared ordered list as the parser encounters them, so first-match-wins works across mixed flags — an explicit include can rescue a junk-listed file.
+- **A trailing slash means directory.** `--exclude 'node_modules/'` targets directories; `--exclude '*.tmp'` targets files and directories.
+- **`--dry-run` is the CLI form of calling `plan()`.**
+
+### Source
+
+By default a single directory input is **flattened**: its *contents* land at the archive root, so `zipkit create ./project` stores `project/file.txt` as `file.txt`, not `project/file.txt`. This is by design — the output filename already carries the directory's name, so wrapping it in a same-named folder would only repeat it. Pass `--wrap` to keep the directory name as a top-level folder inside the archive instead.
+
+| Flag | Description |
+|---|---|
+| `--root <dir>` | Root every input's archive path relative to this directory. Cannot be combined with `--wrap` (CLI) or the SDK's per-input `as`/`flatten`. |
+| `--wrap` | For a single directory input, keep its name as the top folder instead of flattening its contents to the root — `project/file.txt` stays `project/file.txt`. |
+
+### Destination
+
+| Flag | Description |
+|---|---|
+| `-o, --output <path>` | Output archive path. When omitted, the archive is written beside what is archived (`<dirname>.zip`, `<stem>.zip`, or `<parent>.zip`). |
+| `--overwrite` | Overwrite an existing output. |
+
+### Selection
+
+| Flag | Default | Description |
+|---|---|---|
+| `--junk <builtin\|none>` | `builtin` | Built-in bidirectional junk preset. |
+| `--include <pattern>` | | Include glob (repeatable, ordered). |
+| `--exclude <pattern>` | | Exclude glob (repeatable, ordered). |
+| `--include-regex <pattern>` | | Include regex (repeatable, ordered). |
+| `--exclude-regex <pattern>` | | Exclude regex (repeatable, ordered). |
+| `--skip-empty-files` | off | Drop zero-byte files. |
+| `--empty-dirs <keep\|prune>` | `keep` | Empty-directory handling. |
+| `--empty-dir-def <strict\|recursive>` | `recursive` | What counts as empty. |
+
+All four include/exclude flags append to one shared ordered list in command-line order; first-match-wins. A trailing slash on a glob targets directories.
+
+#### Built-in junk preset
+
+`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk`) and never block, even under `--strict`. An explicit `--include` can rescue any of them, since first-match-wins on the shared ordered list. `--junk none` disables the preset.
+
+- **macOS:** `.DS_Store`, `__MACOSX/`, `._*` (AppleDouble files), `Icon\r` (custom folder icon), `.Spotlight-V100`, `.Trashes`, `.fseventsd`
+- **Windows:** `Thumbs.db`, `ehthumbs.db`, `desktop.ini`, `$RECYCLE.BIN/`, `System Volume Information/`
+
+### Naming
+
+| Flag | Default | Description |
+|---|---|---|
+| `--invalid-char <char>` | `_` | Replacement for invalid characters. |
+
+NFC normalization, the other name fixes, and collision detection are unconditional and carry no knob.
+
+### Entry data
+
+| Flag | Default | Description |
+|---|---|---|
+| `--symlinks <ignore\|preserve\|follow>` | `ignore` | Symlink handling. `ignore` drops the link (a warning, visible in the plan); `preserve` keeps it as a Unix link entry — it is *not* replaced by its target, but Windows extracts such entries as text files, breaking the clean-byte guarantee; `follow` replaces each link with the real file or directory it points to. Windows `.lnk` shortcut files are ordinary files, not symlinks, and are archived as-is regardless of this flag. |
+| `--follow-external` | off | Under `follow`, allow links that escape the input tree. |
+| `--timestamps <clamp\|preserve>` | `clamp` | Timestamp policy. |
+| `--store-ext <list>` | (built-in list) | Comma-separated extensions stored without deflating. |
+| `--no-store-ext` | | Deflate everything (clear the store list). |
+| `--store-all` | | Store every entry. |
+| `--compress-all` | | Deflate every entry. |
+
+The store list names already-compressed formats, where attempting deflate is wasted effort. Files outside the list are deflated, and any entry whose deflate does not shrink falls back to store — so the list is a CPU optimization, never a correctness setting. Borderline formats such as PDF are deliberately left off so `auto` keeps the win on the ones that do compress. Built-in list: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.mp4`, `.mov`, `.mkv`, `.webm`, `.mp3`, `.aac`, `.m4a`, `.flac`, `.zip`, `.gz`, `.7z`, `.rar`, `.docx`, `.xlsx`, `.pptx`, `.woff2`.
+
+### Companion output
+
+| Flag | Default | Description |
+|---|---|---|
+| `--metadata` | off | Emit the metadata file (serialized plan plus raw scan data). |
+| `--metadata-hash` | off | Include a SHA-256 per file. |
+| `--metadata-name <name>` | `_metadata.json` | Metadata file name. Must be a single path component (no slashes). |
+| `--metadata-placement <inside\|sidecar>` | `inside` | Inside the archive at its root, or beside the `.zip`. |
+
+### Container format
+
+| Flag | Default | Description |
+|---|---|---|
+| `--zip64 <auto\|never\|always>` | `auto` | Zip64 policy. |
+| `--deterministic` | off | Reproducible output: entries sorted lexically, a fixed modification time. |
+
+### Diagnostics and control
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Compute and render the plan; write nothing. The CLI form of `plan()`. |
+| `--strict` | Treat warnings as blocking. |
+| `--log <path.jsonl>` | Write the event stream as JSONL. |
+| `--quiet` | Suppress console progress. |
+| `--verbose` | Include per-entry detail in console progress. |
+| `--concurrency <n>` | Maximum concurrent file operations. |
+| `--json` | Emit the plan or result as JSON; suppress the human renderer. |
+
+`--json` suppresses the human renderer and emits the `Plan` (dry run) or `WriteResult` (actual run) as JSON. Errors always go to stderr, so stdout stays valid JSON.
+
+## Rules and severity contract
+
+Every rule has a fixed tier, decided by one principle and enforced by a single registry (the `RULE_REGISTRY` constant). Rules never write a tier inline; they read it from the registry, so the boundary between tiers is a single, tested definition and a consumer's CI verdict never flips on an unrelated change.
+
+- **error** — there is no safe, unambiguous automatic resolution; proceeding would corrupt data, lose data, or pick a winner arbitrarily. An error always blocks (`writable = false`), with or without strict gating.
+- **warning** — the tool safely auto-fixed the issue, but the finding reflects a portability defect in the source that a careful author might fix upstream. A warning blocks only under `--strict`.
+- **info** — routine hygiene the tool performs by design; nothing for the consumer to act on. Info never blocks.
+
+The coupling that prevents drift is exact: **error is the tier that blocks unconditionally.** Severity cannot be reclassified without changing observable blocking behavior, which is visible and tested.
+
+### The registry, in pipeline order
+
+| Rule | Tier | Blocks normally | Blocks under strict | Disposition |
+|---|---|---|---|---|
+| `path.absolute` | warning | no | yes | strip prefix |
+| `path.traversal` | error | yes | yes | abort |
+| `path.too-long` | warning | no | yes | keep |
+| `macos.junk` | info | no | no | exclude |
+| `windows.junk` | info | no | no | exclude |
+| `entry.symlink` | warning | no | yes | exclude |
+| `name.nfd` | warning | no | yes | normalize to NFC |
+| `name.invalid-char` | warning | no | yes | substitute |
+| `name.control-char` | warning | no | yes | strip |
+| `name.trailing-dot-space` | warning | no | yes | trim |
+| `name.reserved` | warning | no | yes | suffix |
+| `name.suspicious` | warning | no | yes | keep |
+| `entry.duplicate` | info | no | no | deduplicate |
+| `collision.case` | error | yes | yes | abort |
+| `collision.post-fix` | error | yes | yes | abort |
+| `time.pre-1980` | warning | no | yes | clamp |
+| `time.post-2107` | warning | no | yes | clamp |
+| `compat.zip64` | warning | no | yes | use Zip64 |
+| `compat.zip64-required` | error | yes | yes | abort |
+
+Junk removal and same-source deduplication are deliberately `info`: strict gating does not fail a build merely because the tool dropped a `.DS_Store` or collapsed a file that two overlapping inputs both supplied. Strict gating fires on source-side portability defects an author can fix upstream.
+
+Where a policy could otherwise flip a tier, the two outcomes are modeled as separate rules. A collision is always an error — there is no auto-rename option, because choosing which file to rename is the ambiguous resolution that defines the error tier. Zip64 distinguishes `compat.zip64` (used, a warning) from `compat.zip64-required` (needed but disabled by `zip64: never`, an error).
+
+### Exit codes
 
 The CLI exit codes make this a dependable automation contract:
 
@@ -48,20 +184,6 @@ The CLI exit codes make this a dependable automation contract:
 | `1` | the plan is not writable — a blocking finding, or an existing output without `--overwrite`. `--dry-run` honors this, making it a CI gate. |
 | `2` | usage error |
 | `130` | interrupted (SIGINT) |
-
-`--json` suppresses the human renderer and emits the `Plan` (dry run) or `WriteResult` (actual run) as JSON. Errors always go to stderr, so stdout stays valid JSON.
-
-## CLI
-
-```
-zipkit create <inputs...> [options]
-```
-
-Flags follow a fixed concern order: source, destination, selection, naming, entry data, companion output, container format, diagnostics. See [docs/cli.md](docs/cli.md) for the full reference. Three behaviors are normative:
-
-- **Interleave is preserved.** `--include`, `--exclude`, `--include-regex`, and `--exclude-regex` append to one shared ordered list as the parser encounters them, so first-match-wins works across mixed flags — an explicit include can rescue a junk-listed file.
-- **A trailing slash means directory.** `--exclude 'node_modules/'` targets directories; `--exclude '*.tmp'` targets files and directories.
-- **`--dry-run` is the CLI form of calling `plan()`.**
 
 ## SDK
 
@@ -104,8 +226,6 @@ npm run typecheck   # tsc --noEmit
 npm run build       # tsup → dist/
 npm test            # vitest
 ```
-
-The runtime is Node 22.12 or later, ESM.
 
 ## License
 

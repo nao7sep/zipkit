@@ -21,6 +21,14 @@ export interface ScanEntry {
    * path relative to that input. Forward slashes, relative, no leading slash.
    */
   archivePath: string;
+  /**
+   * The entry's path relative to its input's parent — i.e. the input's own name
+   * joined with the entry's path within it, independent of `--wrap`/flatten. It
+   * traces the entry back to its on-disk location (never absolute, so the
+   * clean-byte guarantee holds) even when the archive path is flattened to a
+   * bare filename. Recorded in the metadata file.
+   */
+  sourcePath: string;
   type: "file" | "dir" | "symlink";
   size: number;
   mtimeNs: bigint;
@@ -63,6 +71,7 @@ export interface Transformation {
 export interface WriteEntry {
   archivePath: string; // final, NFC, forward-slash, relative
   originalPath: string; // pre-fix archive path
+  sourcePath: string; // input-relative disk-trace path (see ScanEntry.sourcePath)
   type: "file" | "dir" | "symlink";
   method: "store" | "deflate";
   absolutePath: string; // "" for synthetic directory entries
