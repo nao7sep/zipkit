@@ -109,23 +109,27 @@ describe("dry-run validation", () => {
 });
 
 describe("heavy validation against a manifest", () => {
-  it("verifies SHA and reports missing and extra entries", async () => {
+  it("verifies SHA and reports missing and extra entries from the embedded manifest", async () => {
     const aData = Buffer.from("alpha", "utf8");
-    const archive = await writeArchive([fileEntry("a.txt", "alpha"), fileEntry("b.txt", "beta")]);
-    // Manifest claims a.txt (with its real sha) and c.txt (absent); omits b.txt.
+    // The manifest is embedded in the archive: it claims a.txt (real sha) and a
+    // phantom c.txt, and omits the real b.txt.
     const manifest = {
       entries: [
         { archivePath: "a.txt", sha256: createHash("sha256").update(aData).digest("hex") },
         { archivePath: "c.txt", sha256: "deadbeef" },
       ],
     };
-    await writeFile(path.join(dir, "_metadata.json"), JSON.stringify(manifest));
+    const archive = await writeArchive([
+      fileEntry("a.txt", "alpha"),
+      fileEntry("b.txt", "beta"),
+      fileEntry("_metadata.json", JSON.stringify(manifest)),
+    ]);
 
     const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
-    expect(report.manifest).toEqual({ source: "sidecar", name: "_metadata.json" });
+    expect(report.manifest?.name).toBe("_metadata.json");
     expect(report.entries.find((e) => e.archivePath === "a.txt")?.sha).toBe("ok");
-    expect(report.missing).toEqual(["c.txt"]);
-    expect(report.extra).toEqual(["b.txt"]);
+    expect(report.missing).toEqual(["c.txt"]); // in manifest, not in archive
+    expect(report.extra).toEqual(["b.txt"]); // in archive, not in manifest
     expect(report.ok).toBe(false);
   });
 
@@ -144,10 +148,10 @@ describe("heavy validation against a manifest", () => {
       inputs: [path.join(dir, "f1.txt"), path.join(dir, "f2.txt")],
       output: archive,
       overwrite: true,
-      policy: { metadata: { name: "_metadata.json", placement: "inside", hash: true } },
+      policy: { metadata: { name: "_metadata.json", hash: true } },
     });
     const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
-    expect(report.manifest?.source).toBe("inside");
+    expect(report.manifest?.name).toBe("_metadata.json");
     expect(report.ok).toBe(true);
     expect(report.missing).toEqual([]);
     expect(report.extra).toEqual([]);

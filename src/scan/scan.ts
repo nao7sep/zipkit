@@ -17,7 +17,7 @@ import { fdir } from "fdir";
 import type { BigIntStats } from "node:fs";
 import { lstat, readlink, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { PolicyError, ScanError, throwIfAborted } from "../errors.js";
+import { ScanError, throwIfAborted } from "../errors.js";
 import type { FilterMatcher } from "../filter/match.js";
 import { toForwardSlash } from "../internal/path.js";
 import type { PrunedDir, ScanEntry, ScanResult } from "../internal/types.js";
@@ -28,7 +28,7 @@ import {
   joinArchivePath,
   normalizeInputs,
 } from "../plan/arcname.js";
-import { resolveOutputPath, resolveSidecarPath } from "./output.js";
+import { resolveOutputPath } from "./output.js";
 import type { ArchivePolicy, ArchiveSpec } from "../types.js";
 
 export interface ScanDeps {
@@ -45,12 +45,13 @@ interface ScanContext {
   signal: AbortSignal | undefined;
   logger: Logger;
   /**
-   * File identities (`dev:ino`) of this run's own output files — the archive and
-   * the metadata sidecar — when they already exist on disk. Compared against the
-   * identity of each walked entry so the run never archives itself, exactly on
-   * every filesystem: a case-insensitive volume aliases `Meta.json`/`meta.json`
-   * to one inode, while a case-sensitive one keeps a same-named neighbour
-   * distinct. A name comparison could not draw that line either way.
+   * File identity (`dev:ino`) of this run's own output archive, when it already
+   * exists on disk. Compared against the identity of each walked entry so the
+   * run never archives itself, exactly on every filesystem: a case-insensitive
+   * volume aliases `Out.zip`/`out.zip` to one inode, while a case-sensitive one
+   * keeps a same-named neighbour distinct. A name comparison could not draw that
+   * line either way. (The metadata is embedded, so there is no second output
+   * file to exclude.)
    *
    * This is the only self-exclusion the scan does. There is deliberately no
    * name-based "looks like an atomic-write temp" rule: the current run's temp
@@ -187,7 +188,7 @@ async function processPath(
   } catch (err) {
     throw new ScanError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
   }
-  // This run's own output or sidecar, reached under any casing: skip it so the
+  // This run's own output archive, reached under any casing: skip it so the
   // archive can never contain itself.
   if (ctx.artifactIds.has(fileId(st))) return;
   if (st.isSymbolicLink()) {
@@ -314,35 +315,6 @@ export async function scan(
     outputExists = false;
   }
 
-  // The metadata sidecar is a second output file: resolve it here so it can be
-  // self-excluded from the walk and gated on overwrite in the plan, and reject a
-  // name that collides with the archive up front — a configuration error the dry
-  // run now reports rather than the write edge discovering it. The comparison is
-  // case-folded, matching the entry-level `collision.case` rule: on the default
-  // macOS/Windows filesystems `Meta.JSON` and `meta.json` are the same file, so
-  // a case-only difference would still let the sidecar overwrite the archive.
-  const sidecarPath = resolveSidecarPath(output, policy);
-  if (
-    sidecarPath !== undefined &&
-    path.resolve(sidecarPath).toLowerCase() === path.resolve(output).toLowerCase()
-  ) {
-    throw new PolicyError(
-      "metadata.sidecar-collision",
-      `the metadata sidecar name collides with the output archive (case-insensitively): ${output}`,
-    );
-  }
-  let sidecar: { path: string; exists: boolean } | undefined;
-  if (sidecarPath !== undefined) {
-    let exists = false;
-    try {
-      artifactIds.add(fileId(await statBig(sidecarPath)));
-      exists = true;
-    } catch {
-      exists = false;
-    }
-    sidecar = { path: sidecarPath, exists };
-  }
-
   // The containment root and the cycle seed are compared against the realpath of
   // symlink targets discovered during the walk, so they must live in the same
   // canonical space. Canonicalizing here keeps an internal symlink from looking
@@ -403,7 +375,7 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, { cause: err });
       }
-      // A file named directly as input that is itself the output/sidecar.
+      // A file named directly as input that is itself the output archive.
       if (ctx.artifactIds.has(fileId(fileStats))) continue;
       ctx.entries.push(makeEntry(real, i, anchorPaths, "file", fileStats));
     }
@@ -419,6 +391,5 @@ export async function scan(
     output,
     outputExists,
     overwrite: spec.overwrite === true,
-    ...(sidecar ? { sidecar } : {}),
   };
 }

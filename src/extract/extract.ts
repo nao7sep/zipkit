@@ -131,40 +131,31 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
     data: { entries: parsed.entries.length, write },
   });
 
-  // Manifest resolution (heavy mode): prefer an entry inside the zip, else a
-  // sidecar file alongside it. Requested-but-absent is a hard failure.
+  // Manifest resolution (heavy mode): the manifest is the entry embedded in the
+  // archive. Requested-but-absent is a hard failure.
   let manifest: ExtractReport["manifest"] = null;
   let manifestEntryPath: string | undefined;
   const manifestMap = new Map<string, ManifestRecord>();
   if (spec.checkMetadata) {
     const name = spec.metadataName ?? "_metadata.json";
     const inside = parsed.entries.find((e) => e.archivePath === name);
-    let doc: { entries?: unknown } | undefined;
-    if (inside) {
-      manifestEntryPath = inside.archivePath;
-      try {
-        doc = JSON.parse(readEntryData(buf, inside).toString("utf8"));
-      } catch (err) {
-        throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
-          cause: err,
-        });
-      }
-      manifest = { source: "inside", name };
-    } else {
-      try {
-        doc = JSON.parse(await readFile(path.join(path.dirname(spec.archive), name), "utf8"));
-        manifest = { source: "sidecar", name };
-      } catch {
-        /* falls through to the missing-manifest error below */
-      }
-    }
-    if (!manifest) {
+    if (!inside) {
       throw new ReadError(
         "read.manifest-missing",
-        `metadata validation requested but no manifest '${name}' was found inside the archive or alongside it`,
+        `metadata validation requested but no manifest '${name}' is embedded in the archive`,
       );
     }
-    const docEntries = Array.isArray(doc?.entries) ? (doc.entries as ManifestRecord[]) : [];
+    manifestEntryPath = inside.archivePath;
+    let doc: { entries?: unknown };
+    try {
+      doc = JSON.parse(readEntryData(buf, inside).toString("utf8"));
+    } catch (err) {
+      throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
+        cause: err,
+      });
+    }
+    manifest = { name };
+    const docEntries = Array.isArray(doc.entries) ? (doc.entries as ManifestRecord[]) : [];
     for (const m of docEntries) {
       if (typeof m.archivePath === "string") manifestMap.set(m.archivePath, m);
     }

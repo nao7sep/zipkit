@@ -1,9 +1,9 @@
 /**
  * Plan aggregation: the summary counters and the go/no-go `writable` verdict.
  * `writable` is false when any error-tier finding is present, when strict
- * gating is on and any warning-tier finding is present, or when either output
- * file — the archive or its metadata sidecar — already exists without an
- * authorized overwrite. There is no override for the error tier.
+ * gating is on and any warning-tier finding is present, or when the output
+ * archive already exists without an authorized overwrite. There is no override
+ * for the error tier.
  */
 
 import type { Finding, PlanSummary } from "../types.js";
@@ -45,15 +45,13 @@ export function computeWritable(
   strict: boolean,
   outputExists: boolean,
   overwrite: boolean,
-  sidecarExists = false,
 ): boolean {
   for (const f of findings) {
     if (f.severity === "error") return false;
     if (strict && f.severity === "warning") return false;
   }
-  // Either output file pre-existing without an authorized overwrite blocks the
-  // write: the metadata sidecar is a real file on disk and is gated exactly like
-  // the archive, so a run can never silently clobber one the user did not name.
-  if ((outputExists || sidecarExists) && !overwrite) return false;
+  // The output archive pre-existing without an authorized overwrite blocks the
+  // write, so a run never silently clobbers a file the user did not name.
+  if (outputExists && !overwrite) return false;
   return true;
 }

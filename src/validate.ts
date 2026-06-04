@@ -23,7 +23,7 @@ import type { ArchivePolicy, ArchiveSpec, ExtractSpec } from "./types.js";
  * device names.
  *
  * Two uses share it. The metadata file name must satisfy it so the name is safe
- * both as a ZIP entry and as a sidecar filename. The invalid-char replacement
+ * as a ZIP entry. The invalid-char replacement
  * must satisfy it too: `name.invalid-char` substitutes it into a segment after
  * the path-traversal pass has already run (see `nameFix.ts`), so a replacement
  * carrying a separator or resolving to `..` would re-introduce exactly the
@@ -94,12 +94,10 @@ const partialPolicySchema = z.strictObject({
       z
         .strictObject({
           name: z.string().optional(),
-          placement: z.enum(["inside", "sidecar"]).optional(),
           hash: z.boolean().optional(),
         })
-        // The name becomes an archive entry name (inside) or is joined to the
-        // output directory (sidecar), so it must be a single safe path
-        // component — never a traversal that would escape the output directory.
+        // The name becomes an archive entry name, so it must be a single safe
+        // path component — never a traversal that would escape the archive root.
         .refine((m) => m.name === undefined || isSafePathComponent(m.name), {
           error: "metadata.name must be a single path component (no slashes, not '.' or '..')",
           path: ["name"],

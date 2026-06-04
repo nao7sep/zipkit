@@ -35,8 +35,8 @@ export interface CompressionPolicy {
 }
 
 export interface MetadataPolicy {
+  /** The metadata file's entry name; it is always embedded in the archive. */
   name: string;
-  placement: "inside" | "sidecar";
   /**
    * Compute a SHA-256 per file in addition to the always-present CRC-32.
    * Defaults to `true` whenever metadata is emitted — the manifest's purpose is
@@ -187,7 +187,7 @@ export interface ExtractSpec {
   dryRun?: boolean;
   /** Reconcile entries against the manifest and verify recorded SHA-256s. */
   checkMetadata?: boolean;
-  /** Manifest name to look for (inside the zip, else as a sidecar). */
+  /** Manifest entry name to look for inside the archive. */
   metadataName?: string;
 
   // Restore policy (write only)
@@ -226,8 +226,8 @@ export interface ExtractReport {
   archive: string; // identity
   dest?: string;
   wrote: boolean; // state: whether any file was written
-  /** The manifest used, when `checkMetadata` was requested. */
-  manifest: { source: "inside" | "sidecar"; name: string } | null;
+  /** The embedded manifest used, when `checkMetadata` was requested. */
+  manifest: { name: string } | null;
   entries: ExtractEntryResult[];
   /** In the manifest but absent from the archive (`checkMetadata`). */
   missing: string[];

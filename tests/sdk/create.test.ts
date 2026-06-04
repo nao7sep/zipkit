@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PolicyError, WriteError, ZipKit } from "../../src/index.js";
+import { WriteError, ZipKit } from "../../src/index.js";
 import { readZip } from "../helpers/readZip.js";
 
 let dir: string;
@@ -83,7 +83,7 @@ describe("metadata", () => {
     await new ZipKit().create({
       inputs: [proj],
       output,
-      policy: { metadata: { name: "_metadata.json", placement: "inside", hash: true } },
+      policy: { metadata: { name: "_metadata.json", hash: true } },
     });
 
     const { entries } = readZip(await readFile(output));
@@ -108,7 +108,7 @@ describe("metadata", () => {
     await new ZipKit().create({
       inputs: [proj],
       output,
-      policy: { zip64: "always", metadata: { name: "_metadata.json", placement: "inside", hash: false } },
+      policy: { zip64: "always", metadata: { name: "_metadata.json", hash: false } },
     });
 
     const { entries } = readZip(await readFile(output));
@@ -121,34 +121,13 @@ describe("metadata", () => {
     expect(zfinding.path).toBe("z64.zip");
   });
 
-  it("writes metadata as a sidecar beside the archive under placement 'sidecar'", async () => {
-    const proj = await makeTree();
-    const output = path.join(dir, "side.zip");
-    await new ZipKit().create({
-      inputs: [proj],
-      output,
-      policy: { metadata: { name: "side.json", placement: "sidecar", hash: false } },
-    });
-
-    // The metadata is not an entry inside the archive...
-    const { entries } = readZip(await readFile(output));
-    expect(entries.find((e) => e.name === "side.json")).toBeUndefined();
-
-    // ...it lives next to the archive instead.
-    const sidecar = path.join(dir, "side.json");
-    expect(existsSync(sidecar)).toBe(true);
-    const doc = JSON.parse(await readFile(sidecar, "utf8"));
-    expect(doc.tool).toBe("zipkit");
-    expect(doc.entries.some((e: { archivePath: string }) => e.archivePath === "a.txt")).toBe(true);
-  });
-
   it("records a SHA-256 that matches the file content", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "hash.zip");
     await new ZipKit().create({
       inputs: [proj],
       output,
-      policy: { metadata: { name: "_metadata.json", placement: "inside", hash: true } },
+      policy: { metadata: { name: "_metadata.json", hash: true } },
     });
 
     const { entries } = readZip(await readFile(output));
@@ -156,93 +135,6 @@ describe("metadata", () => {
     const fileEntry = doc.entries.find((e: { archivePath: string }) => e.archivePath === "a.txt");
     const expected = createHash("sha256").update("hello hello hello hello").digest("hex");
     expect(fileEntry.sha256).toBe(expected);
-  });
-});
-
-describe("sidecar safety", () => {
-  it("refuses to overwrite an existing sidecar without overwrite, even when the archive is new", async () => {
-    const proj = await makeTree();
-    const output = path.join(dir, "side.zip"); // does not exist yet
-    const sidecar = path.join(dir, "pre.json");
-    await writeFile(sidecar, "do not clobber me");
-
-    const policy = { metadata: { name: "pre.json", placement: "sidecar" as const, hash: false } };
-    await expect(new ZipKit().create({ inputs: [proj], output, policy })).rejects.toBeInstanceOf(
-      WriteError,
-    );
-    // The sidecar is untouched by the refused run.
-    expect(await readFile(sidecar, "utf8")).toBe("do not clobber me");
-
-    // Authorizing overwrite lets both files be written.
-    await new ZipKit().create({ inputs: [proj], output, overwrite: true, policy });
-    expect(JSON.parse(await readFile(sidecar, "utf8")).tool).toBe("zipkit");
-  });
-
-  it("never archives a stale sidecar that lives inside the input tree", async () => {
-    const proj = await makeTree();
-    const output = path.join(proj, "a.zip"); // output (and sidecar) inside the input
-    await writeFile(path.join(proj, "meta.json"), "stale sidecar");
-
-    await new ZipKit().create({
-      inputs: [proj],
-      output,
-      overwrite: true,
-      policy: { metadata: { name: "meta.json", placement: "sidecar", hash: false } },
-    });
-
-    const names = readZip(await readFile(output)).entries.map((e) => e.name);
-    expect(names).not.toContain("meta.json");
-  });
-
-  it("never archives a differently-cased sidecar that aliases to the same file", async () => {
-    const proj = await makeTree();
-    const output = path.join(proj, "a.zip"); // output (and sidecar) inside the input
-    await writeFile(path.join(proj, "meta.json"), "stale sidecar");
-    // On a case-insensitive filesystem `Meta.json` and `meta.json` name one file;
-    // the configured sidecar therefore aliases the stale one. Detect the volume's
-    // behaviour so the assertion holds on both: exclusion is by file identity, so
-    // the file is dropped exactly when the two names are truly the same file.
-    const caseInsensitive = existsSync(path.join(proj, "Meta.json"));
-
-    await new ZipKit().create({
-      inputs: [proj],
-      output,
-      overwrite: true,
-      policy: { metadata: { name: "Meta.json", placement: "sidecar", hash: false } },
-    });
-
-    const names = readZip(await readFile(output)).entries.map((e) => e.name);
-    if (caseInsensitive) {
-      expect(names).not.toContain("meta.json"); // the sidecar under a different case
-    } else {
-      expect(names).toContain("meta.json"); // a genuinely distinct neighbour
-    }
-  });
-
-  it("rejects a sidecar name that resolves to the output archive", async () => {
-    const proj = await makeTree();
-    const output = path.join(dir, "clash.json");
-    await expect(
-      new ZipKit().create({
-        inputs: [proj],
-        output,
-        policy: { metadata: { name: "clash.json", placement: "sidecar", hash: false } },
-      }),
-    ).rejects.toBeInstanceOf(PolicyError);
-  });
-
-  it("rejects a sidecar name that collides with the output by case only", async () => {
-    const proj = await makeTree();
-    // On the default case-insensitive macOS/Windows filesystems these name the
-    // same file, so the sidecar would otherwise overwrite the archive.
-    const output = path.join(dir, "Clash.JSON");
-    await expect(
-      new ZipKit().create({
-        inputs: [proj],
-        output,
-        policy: { metadata: { name: "clash.json", placement: "sidecar", hash: false } },
-      }),
-    ).rejects.toBeInstanceOf(PolicyError);
   });
 });
 

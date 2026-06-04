@@ -67,12 +67,6 @@ export interface ScanResult {
   output: string;
   outputExists: boolean;
   overwrite: boolean;
-  /**
-   * The metadata sidecar's path and prior existence, present only when a
-   * sidecar will be written. A second output file, so it is gated on overwrite
-   * exactly like the archive (see `computeWritable`).
-   */
-  sidecar?: { path: string; exists: boolean };
 }
 
 /** One name fix applied to an entry, recorded for the metadata file. */

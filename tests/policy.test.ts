@@ -57,14 +57,14 @@ describe("resolvePolicy", () => {
     expect(resolved.compression.storeExtensions).toEqual([".foo"]);
   });
 
-  it("fills metadata defaults — including hash on — for a partial metadata object", () => {
-    const resolved = resolvePolicy(undefined, { metadata: { placement: "sidecar" } });
-    expect(resolved.metadata).toEqual({ name: "_metadata.json", placement: "sidecar", hash: true });
+  it("fills metadata defaults — name and hash on — for a partial metadata object", () => {
+    const resolved = resolvePolicy(undefined, { metadata: {} });
+    expect(resolved.metadata).toEqual({ name: "_metadata.json", hash: true });
   });
 
   it("keeps an explicit hash:false opt-out", () => {
     const resolved = resolvePolicy(undefined, { metadata: { hash: false } });
-    expect(resolved.metadata).toEqual({ name: "_metadata.json", placement: "inside", hash: false });
+    expect(resolved.metadata).toEqual({ name: "_metadata.json", hash: false });
   });
 
   it("keeps metadata disabled when set to false", () => {

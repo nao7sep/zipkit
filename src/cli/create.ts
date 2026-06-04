@@ -44,7 +44,6 @@ interface CreateOpts {
   metadata?: boolean;
   metadataNoHash?: boolean;
   metadataName?: string;
-  metadataPlacement?: "inside" | "sidecar";
   zip64?: "auto" | "never" | "always";
   deterministic?: boolean;
   dryRun?: boolean;
@@ -94,10 +93,9 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
     };
   }
 
-  if (opts.metadata || opts.metadataNoHash || opts.metadataName || opts.metadataPlacement) {
+  if (opts.metadata || opts.metadataNoHash || opts.metadataName) {
     policy.metadata = {
       name: opts.metadataName ?? METADATA_DEFAULTS.name,
-      placement: opts.metadataPlacement ?? METADATA_DEFAULTS.placement,
       hash: opts.metadataNoHash !== true,
     };
   }
@@ -226,9 +224,8 @@ export function registerCreate(
   cmd.option("--metadata-no-hash", "omit the per-file SHA-256 (CRC-32 is always recorded)");
   cmd.option(
     "--metadata-name <name>",
-    "metadata file name, a single path component (default _metadata.json)",
+    "metadata entry name, a single path component (default _metadata.json)",
   );
-  cmd.option("--metadata-placement <inside|sidecar>", "metadata placement (default inside)");
 
   // Container format
   cmd.option("--zip64 <auto|never|always>", "Zip64 policy (default auto)");

@@ -98,9 +98,9 @@ export function buildMetadata(
   document.policy = policy;
   document.summary = plan.summary;
   // Aggregate byte totals across the written entries. The on-disk archive size
-  // (which also counts ZIP headers and the central directory, and for inside
-  // placement would include this metadata file) is not knowable here — stat the
-  // output for that; these are the content totals the writer can compute.
+  // (which also counts ZIP headers, the central directory, and this embedded
+  // metadata file) is not knowable here — stat the output for that; these are
+  // the content totals the writer can compute.
   document.totals = {
     uncompressedBytes: entries.reduce((sum, e) => sum + e.writeEntry.size, 0),
     compressedBytes: entries.reduce((sum, e) => sum + e.compressedSize, 0),

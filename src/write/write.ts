@@ -2,9 +2,9 @@
  * The write edge. It consumes a writable plan, reads each entry's bytes,
  * compresses and hashes them, frames the archive with the in-house writer, and
  * writes it atomically — a temporary file in the same directory, then a
- * same-filesystem rename. The metadata file is injected as an entry (inside) or
- * written as a sidecar. The writer instructions ride on the plan (see
- * `carrier.ts`), so `write(plan)` needs no second argument.
+ * same-filesystem rename. The metadata file is always injected as an entry. The
+ * writer instructions ride on the plan (see `carrier.ts`), so `write(plan)`
+ * needs no second argument.
  *
  * `writable` is the gate: a non-writable plan throws `WriteError`, with no
  * override for the error tier.
@@ -20,7 +20,6 @@ import type { WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import type { Plan, WriteResult } from "../types.js";
 import { computeZip64Need } from "../plan/zip64.js";
-import { resolveSidecarPath } from "../scan/output.js";
 import { compress } from "./deflate.js";
 import { buildMetadata } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
@@ -166,7 +165,6 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
   }
 
   const zipEntries: PreparedEntry[] = prepared.map((p) => p.entry);
-  let sidecar: { path: string; bytes: Buffer } | undefined;
 
   if (policy.metadata !== false) {
     const metadataEntries: MetadataEntryInput[] = prepared.map((p) => {
@@ -182,27 +180,21 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
     const document = buildMetadata(plan, policy, metadataEntries, createdNs, effectiveTimeZone);
     const json = Buffer.from(JSON.stringify(document, null, 2), "utf8");
 
-    if (policy.metadata.placement === "inside") {
-      const compressed = await compress(json, "deflate");
-      zipEntries.push({
-        name: policy.metadata.name,
-        type: "file",
-        method: compressed.method,
-        crc32: compressed.crc32,
-        data: compressed.data,
-        uncompressedSize: compressed.size,
-        mtimeNs: createdNs,
-        atimeNs: createdNs,
-        birthtimeNs: createdNs,
-        mode: 0,
-      });
-    } else {
-      // The sidecar path, its collision with the archive, and its overwrite
-      // gating were all settled at the scan/plan edge (see `resolveSidecarPath`
-      // and `computeWritable`); a writable plan means writing it is authorized.
-      const sidecarPath = resolveSidecarPath(plan.output, policy);
-      if (sidecarPath !== undefined) sidecar = { path: sidecarPath, bytes: json };
-    }
+    // The metadata is always embedded as an entry: a ZIP is a container, so the
+    // manifest rides inside it rather than as a loose file that could drift away.
+    const compressed = await compress(json, "deflate");
+    zipEntries.push({
+      name: policy.metadata.name,
+      type: "file",
+      method: compressed.method,
+      crc32: compressed.crc32,
+      data: compressed.data,
+      uncompressedSize: compressed.size,
+      mtimeNs: createdNs,
+      atimeNs: createdNs,
+      birthtimeNs: createdNs,
+      mode: 0,
+    });
   }
 
   if (policy.deterministic) {
@@ -233,16 +225,6 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
     await writeFileAtomic(plan.output, bytes);
   } catch (err) {
     throw new WriteError("write.atomic-failed", `failed to write ${plan.output}`, { cause: err });
-  }
-
-  if (sidecar) {
-    try {
-      await writeFileAtomic(sidecar.path, sidecar.bytes);
-    } catch (err) {
-      throw new WriteError("write.atomic-failed", `failed to write sidecar ${sidecar.path}`, {
-        cause: err,
-      });
-    }
   }
 
   deps.logger.emit("write", "info", "write.done", { data: { bytes: bytes.length, zip64 } });

@@ -89,7 +89,7 @@ export function renderExtractReport(report: ExtractReport): string {
   ];
   if (report.manifest) {
     lines.push(
-      `  manifest:  ${report.manifest.name} (${report.manifest.source}) — ${s.shaMismatched} SHA mismatches, ${report.missing.length} missing, ${report.extra.length} extra`,
+      `  manifest:  ${report.manifest.name} — ${s.shaMismatched} SHA mismatches, ${report.missing.length} missing, ${report.extra.length} extra`,
     );
   }
   return `${lines.join("\n")}\n${renderFindings(report.findings)}`;

@@ -41,14 +41,11 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
   applyNameFix(items, policy);
   applyEmptyDirs(items, policy);
   applyDedup(items);
-  // The writer injects the inside-metadata file at the archive root after
+  // The writer injects the embedded metadata file at the archive root after
   // planning; reserve its name so a real entry that would collide with it is
   // caught here (and predicted by the dry run) rather than silently producing a
   // duplicate ZIP entry.
-  const reserved =
-    policy.metadata !== false && policy.metadata.placement === "inside"
-      ? [policy.metadata.name]
-      : [];
+  const reserved = policy.metadata !== false ? [policy.metadata.name] : [];
   applyCollision(items, reserved);
   applyCompression(items, policy);
   applyTimestamps(items);
@@ -65,13 +62,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
   for (const f of globalFindings) findings.push(f);
 
   const summary = buildSummary(items, findings, zip64);
-  const writable = computeWritable(
-    findings,
-    policy.strict,
-    scan.outputExists,
-    scan.overwrite,
-    scan.sidecar?.exists ?? false,
-  );
+  const writable = computeWritable(findings, policy.strict, scan.outputExists, scan.overwrite);
 
   const plan: Plan = {
     output: scan.output,

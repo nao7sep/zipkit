@@ -51,7 +51,7 @@ export function registerExtract(
   cmd.option("--dry-run", "validate only: verify CRC and write nothing");
   cmd.option("--overwrite", "overwrite existing files at the destination");
   cmd.option("--check-metadata", "reconcile entries against the manifest and verify SHA-256");
-  cmd.option("--metadata-name <name>", "manifest name to look for (default _metadata.json)");
+  cmd.option("--metadata-name <name>", "manifest entry name inside the archive (default _metadata.json)");
   cmd.option("--no-timestamps", "do not restore modification/access times");
   cmd.option("--timezone <iana>", "zone for the DOS field when an entry has no UTC time extra");
   cmd.option("--on-unsafe <skip|abort>", "handling of paths that escape the destination (default skip)");
