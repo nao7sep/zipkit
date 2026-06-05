@@ -1,7 +1,7 @@
 /**
  * Policy defaults and layering. Locks the default values, the merge
  * precedence (per-call over instance over default), the replace-not-concat
- * semantics for list fields, the additive `storeExtra`, and the metadata
+ * semantics for list fields, the additive `store`, and the metadata
  * partial-fill behaviour.
  */
 
@@ -23,8 +23,8 @@ describe("DEFAULT_POLICY", () => {
     expect(DEFAULT_POLICY.collisionCase).toBe("insensitive");
     expect(DEFAULT_POLICY.symlinks).toBe("ignore");
     expect(DEFAULT_POLICY.timestamps).toBe("preserve");
-    expect(DEFAULT_POLICY.compression.mode).toBe("auto");
-    expect(DEFAULT_POLICY.compression.storeExtra).toEqual([]);
+    expect(DEFAULT_POLICY.compression.stored).toBe("builtin");
+    expect(DEFAULT_POLICY.compression.store).toEqual([]);
     expect(DEFAULT_POLICY.compression.level).toBe(6);
     expect(DEFAULT_POLICY.metadata).toEqual({ name: "_metadata.json", hash: true });
     expect(DEFAULT_POLICY.zip64).toBe("auto");
@@ -67,19 +67,26 @@ describe("resolvePolicy", () => {
     expect(resolved.filters).toEqual([ruleB]);
   });
 
-  it("keeps storeExtra empty when only the mode is overridden", () => {
-    const resolved = resolvePolicy(undefined, { compression: { mode: "store-all" } });
-    expect(resolved.compression.mode).toBe("store-all");
-    expect(resolved.compression.storeExtra).toEqual([]);
+  it("keeps store empty when only the baseline is overridden", () => {
+    const resolved = resolvePolicy(undefined, { compression: { stored: "none" } });
+    expect(resolved.compression.stored).toBe("none");
+    expect(resolved.compression.store).toEqual([]);
     expect(resolved.compression.level).toBe(6);
   });
 
-  it("carries storeExtra additions and a level override", () => {
+  it("carries store additions and a level override", () => {
     const resolved = resolvePolicy(undefined, {
-      compression: { storeExtra: [".foo"], level: 9 },
+      compression: { store: [".foo"], level: 9 },
     });
-    expect(resolved.compression.storeExtra).toEqual([".foo"]);
+    expect(resolved.compression.store).toEqual([".foo"]);
     expect(resolved.compression.level).toBe(9);
+  });
+
+  it("normalizes store extensions to lowercase-dotted form", () => {
+    const resolved = resolvePolicy(undefined, {
+      compression: { store: ["txt", ".BIN", ".Iso"] },
+    });
+    expect(resolved.compression.store).toEqual([".txt", ".bin", ".iso"]);
   });
 
   it("fills metadata defaults — name and hash on — for a partial metadata object", () => {
@@ -97,15 +104,15 @@ describe("resolvePolicy", () => {
   });
 
   it("does not mutate DEFAULT_POLICY across calls", () => {
-    resolvePolicy(undefined, { filters: [ruleA], compression: { storeExtra: [".x"] } });
+    resolvePolicy(undefined, { filters: [ruleA], compression: { store: [".x"] } });
     expect(DEFAULT_POLICY.filters).toEqual([]);
-    expect(DEFAULT_POLICY.compression.storeExtra).toEqual([]);
+    expect(DEFAULT_POLICY.compression.store).toEqual([]);
   });
 
   it("does not share the compression object with DEFAULT_POLICY", () => {
     const resolved = resolvePolicy();
     expect(resolved.compression).not.toBe(DEFAULT_POLICY.compression);
-    resolved.compression.mode = "store-all";
-    expect(DEFAULT_POLICY.compression.mode).toBe("auto");
+    resolved.compression.stored = "none";
+    expect(DEFAULT_POLICY.compression.stored).toBe("builtin");
   });
 });

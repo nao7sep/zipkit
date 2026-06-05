@@ -100,8 +100,8 @@ const partialPolicySchema = z.strictObject({
     }),
   compression: z
     .strictObject({
-      mode: z.enum(["auto", "store-all", "compress-all"]).optional(),
-      storeExtra: z.array(z.string()).optional(),
+      stored: z.enum(["builtin", "none"]).optional(),
+      store: z.array(z.string()).optional(),
       level: z.number().int().min(1).max(9).optional(),
     })
     .optional(),

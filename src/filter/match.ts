@@ -29,7 +29,7 @@ export interface CompiledRule {
   target: "file" | "dir" | "both";
   test: (path: string) => boolean;
   /** Registry rule id when this rule came from the junk preset. */
-  junkRule?: Extract<RuleId, "macos.junk" | "windows.junk">;
+  junkRule?: Extract<RuleId, "macos.junk" | "windows.junk" | "linux.junk">;
   /** Human-readable description for an entry's `excludeReason`. */
   describe: string;
 }

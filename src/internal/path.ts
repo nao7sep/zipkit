@@ -19,6 +19,17 @@ export function extnameLower(archivePath: string): string {
 }
 
 /**
+ * Normalize a user-supplied extension to the form {@link extnameLower}
+ * produces: lowercase with a single leading dot. Accepts `.txt`, `txt`, and
+ * `.TXT` alike, so a store extension specified either way matches an entry. The
+ * one place both the SDK (`resolvePolicy`) and the CLI agree on the dialect.
+ */
+export function normalizeExtension(ext: string): string {
+  const e = ext.trim().toLowerCase();
+  return e.startsWith(".") ? e : `.${e}`;
+}
+
+/**
  * Resolve `.` and `..` against the path root, dropping empty segments. Returns
  * the surviving segments and whether a `..` escaped above the root. Shared by
  * path fixing and `as`-value validation so both agree on what a path means.

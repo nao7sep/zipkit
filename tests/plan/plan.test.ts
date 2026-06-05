@@ -246,28 +246,21 @@ describe("compression", () => {
     expect(byName["notes.txt"]).toBe("deflate");
   });
 
-  it("stores everything under store-all", () => {
-    const p = plan([scanEntry({ archivePath: "notes.txt" })], {
-      compression: { mode: "store-all" },
-    });
-    expect(p.entries[0]?.method).toBe("store");
-  });
-
-  it("deflates everything under compress-all, even a built-in store extension", () => {
+  it("deflates everything under stored:none, even a built-in store extension", () => {
     const p = plan([scanEntry({ archivePath: "photo.jpg" })], {
-      compression: { mode: "compress-all" },
+      compression: { stored: "none" },
     });
     expect(p.entries[0]?.method).toBe("deflate");
   });
 
-  it("stores a storeExtra extension on top of the built-in set", () => {
+  it("stores a store extension on top of the built-in set", () => {
     const p = plan(
       [
         scanEntry({ archivePath: "model.bin" }),
         scanEntry({ archivePath: "photo.jpg" }),
         scanEntry({ archivePath: "notes.txt" }),
       ],
-      { compression: { storeExtra: [".bin"] } },
+      { compression: { store: [".bin"] } },
     );
     const byName = Object.fromEntries(p.entries.map((e) => [e.archivePath, e.method]));
     expect(byName["model.bin"]).toBe("store"); // added
@@ -275,16 +268,33 @@ describe("compression", () => {
     expect(byName["notes.txt"]).toBe("deflate"); // neither
   });
 
-  it("matches storeExtra case-insensitively", () => {
+  it("under stored:none, store names the only stored extensions", () => {
+    const p = plan(
+      [scanEntry({ archivePath: "model.bin" }), scanEntry({ archivePath: "photo.jpg" })],
+      { compression: { stored: "none", store: [".bin"] } },
+    );
+    const byName = Object.fromEntries(p.entries.map((e) => [e.archivePath, e.method]));
+    expect(byName["model.bin"]).toBe("store"); // the only stored extension
+    expect(byName["photo.jpg"]).toBe("deflate"); // built-in set is off
+  });
+
+  it("matches store case-insensitively", () => {
     const p = plan([scanEntry({ archivePath: "DATA.BIN" })], {
-      compression: { storeExtra: [".BIN"] },
+      compression: { store: [".BIN"] },
     });
     expect(p.entries[0]?.method).toBe("store");
   });
 
-  it("always stores a directory entry regardless of mode", () => {
+  it("accepts a store extension written without a leading dot", () => {
+    const p = plan([scanEntry({ archivePath: "model.bin" })], {
+      compression: { store: ["bin"] },
+    });
+    expect(p.entries[0]?.method).toBe("store");
+  });
+
+  it("always stores a directory entry regardless of compression policy", () => {
     const p = plan([scanEntry({ archivePath: "dir", type: "dir" })], {
-      compression: { mode: "compress-all" },
+      compression: { stored: "none" },
     });
     expect(p.entries[0]?.method).toBe("store");
   });

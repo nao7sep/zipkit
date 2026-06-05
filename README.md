@@ -114,10 +114,13 @@ Both exclude flags append to one list; any matching rule drops the entry (the sy
 
 #### Built-in junk preset
 
-`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk`) and never block. `--junk none` disables the preset for the whole run.
+`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk` / `linux.junk`) and never block. `--junk none` disables the preset for the whole run.
 
-- **macOS:** `.DS_Store`, `__MACOSX/`, `._*` (AppleDouble files), `Icon\r` (custom folder icon), `.Spotlight-V100`, `.Trashes`, `.fseventsd`
+**What earns a place in the preset:** only files an **operating system generates on its own** — thumbnail caches, trash/index folders, resource-fork sidecars, volume metadata — names that are never a real user file, so dropping them is always safe. Project artifacts (`.git/`, `node_modules/`, build output) and editor backups (`*~`, `.swp`) are deliberately *not* junk: they are real files you might want, so excluding them is your explicit `--exclude` decision, not a silent default.
+
+- **macOS:** `.DS_Store`, `__MACOSX/`, `._*` (AppleDouble files), `Icon\r` (custom folder icon), `.Spotlight-V100`, `.DocumentRevisions-V100`, `.TemporaryItems`, `.Trashes`, `.fseventsd`, `.apdisk`, `.com.apple.timemachine.donotpresent`, `.VolumeIcon.icns`
 - **Windows:** `Thumbs.db`, `ehthumbs.db`, `desktop.ini`, `$RECYCLE.BIN/`, `System Volume Information/`
+- **Linux / freedesktop:** `.Trash-*/`, `.directory` (KDE), `.nfs*` (NFS silly-rename temporaries)
 
 ### Naming
 
@@ -151,12 +154,22 @@ A collision is always an `error` (there is no auto-rename — choosing which fil
 | `--follow-external` | off | Under `follow`, allow links that escape the input tree. |
 | `--timestamps <preserve\|clamp>` | `preserve` | Timestamp policy. `preserve` (default) writes the DOS local-time field *and* two absolute-UTC extras: the NTFS extra (`0x000a`) carries modification, access, and creation times at 100-ns precision across the full date range (what Windows restores), and the Info-ZIP extended-timestamp (`0x5455`) carries the same three times as 1-second UTC values *where each fits its signed 32-bit range* (~1901–2038) — times outside that range are kept only in the NTFS extra and the metadata. A creation time the OS doesn't actually track is omitted rather than fabricated. Unknown extras are skipped by every conforming reader, so this is safe for old tools. `clamp` writes only the DOS local-time field (2-second resolution, clamped to 1980–2107) for a minimal, zero-extra archive. |
 | `--timezone <iana>` | host zone | IANA zone (e.g. `Asia/Tokyo`, `UTC`) the DOS local-time field is rendered in. The DOS field stores local wall-clock with no zone attached, so a same-zone reader sees the file's real modification time. Affects only the DOS field — the UTC extras and the metadata record are always UTC. |
-| `--store-ext <list>` | (none) | Extra comma-separated extensions to store, **added** to the built-in set. |
-| `--store-all` | | Store every entry (no compression). |
-| `--compress-all` | | Deflate every entry (ignore the store set). |
+| `--stored <builtin\|none>` | `builtin` | Baseline of extensions kept uncompressed. `builtin` seeds the store set with the curated already-compressed formats; `none` seeds it empty, so everything is deflated unless named by `--store`. |
+| `--store <ext>` | (none) | Keep this extension uncompressed, **added** to the `--stored` baseline. Written with or without a leading dot and in any case (`bin`, `.bin`, `.BIN` are equivalent). Repeatable, and a single flag may carry a comma list (`--store bin,iso`). |
 | `--level <1-9>` | `6` | Deflate level, 1 (fastest) to 9 (smallest). Affects only deflated entries. |
 
-Under `auto` (the default), the store set is the built-in list of already-compressed formats — where attempting deflate is wasted effort — plus any extensions you add with `--store-ext`. Files outside the set are deflated; the method is decided up front from the extension and is final, so a deflated entry can rarely end up a few bytes larger than its stored form (the writer streams once and does not reconsider). The set is a CPU optimization, never a correctness setting, so there is no way to *remove* a built-in: deflating an already-compressed format only burns CPU, and `--compress-all` covers "deflate everything" anyway. Borderline formats such as PDF are deliberately left off so `auto` keeps the win on the ones that do compress. Built-in list: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.mp4`, `.mov`, `.mkv`, `.webm`, `.mp3`, `.aac`, `.m4a`, `.flac`, `.zip`, `.gz`, `.7z`, `.rar`, `.docx`, `.xlsx`, `.pptx`, `.woff2`.
+The store set is the `--stored` baseline plus any extensions you add with `--store`; a file whose extension is in the set is stored, otherwise deflated. The method is decided up front from the extension and is final, so a deflated entry can rarely end up a few bytes larger than its stored form (the writer streams once and does not reconsider). Under the default `--stored builtin` the baseline is the curated list below, and `--store` extends it. Use `--stored none` to drop the built-ins entirely: on its own it deflates everything (`--stored none` with no `--store`), or with `--store` it stores *only* the extensions you name.
+
+**What earns a place in the built-in set:** an extension is included only when it is **both used often and almost always already compressed**, so deflating it spends CPU for no realistic gain. A large list does no harm as long as both hold. Because the method is final, a wrong "store" guess is a permanent miss, so formats that are common but *not* reliably compressed are deliberately left off — PDF (sometimes compresses), `.iso` (raw image), `.wav`/`.aiff` (PCM audio), `.bmp`/`.tiff` (often uncompressed), `.ttf`/`.otf` (raw font tables — only `.woff`/`.woff2` are pre-compressed), and `.ts` (almost always TypeScript source, not an MPEG transport stream). If a listed extension turns out not to be reliably compressed, it should be removed.
+
+Built-in list:
+- **Images:** `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.heif`, `.avif`
+- **Video:** `.mp4`, `.mov`, `.mkv`, `.webm`, `.m4v`, `.wmv`
+- **Audio:** `.mp3`, `.aac`, `.m4a`, `.flac`, `.ogg`, `.oga`, `.opus`, `.wma`
+- **Archives (already compressed):** `.zip`, `.gz`, `.7z`, `.rar`, `.bz2`, `.xz`, `.zst`, `.tgz`
+- **Documents (zip-based):** `.docx`, `.xlsx`, `.pptx`, `.docm`, `.xlsm`, `.pptm`, `.odt`, `.ods`, `.odp`, `.epub`
+- **Packages (zip-based):** `.jar`, `.war`, `.apk`, `.ipa`, `.whl`, `.nupkg`, `.vsix`
+- **Fonts:** `.woff2`, `.woff`
 
 ### Companion output
 
@@ -194,12 +207,10 @@ The metadata file is **always embedded** as an entry at the archive root — a Z
 | `--concurrency <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. Peak memory is roughly `chunkSize × concurrency` (see [Performance](#performance)). |
 | `--chunk-size <size>` | Chunk size for all streamed I/O, in bytes; accepts a `k`/`m` suffix (e.g. `64k`, `1m`). Defaults to 64 KB. |
 | `--json` | Emit the report envelope as pretty JSON on stdout; convert progress to JSONL on stderr. |
-| `--json-out <path>` | Also write the pretty report envelope to a file (byte-identical to `--json` stdout). Independent of `--json`. |
-| `--metadata-out <path>` | Also write the embedded `_metadata.json` content to a file, byte-identical to the entry in the archive. Independent of `--json`. |
 
-stdout always carries **exactly one report**, emitted once at the end — on success *and* failure. Without `--json` it is the human render; with `--json` it is the report envelope `{ schemaVersion, tool, toolVersion, verb, ok, data }`, where `data` is the `CreateData` payload (a discriminated union on `mode: "plan" | "write"`). `--json` stdout is always pretty (indent 2) and byte-identical to `--json-out`.
+stdout always carries **exactly one report**, emitted once at the end — on success *and* failure. Without `--json` it is the human render; with `--json` it is the report envelope `{ schemaVersion, tool, toolVersion, verb, ok, data }`, where `data` is the `CreateData` payload (a discriminated union on `mode: "plan" | "write"`). `--json` stdout is always pretty (indent 2). stdout is the result channel and is cleanly redirectable to a file (`zipkit create … --json > report.json`).
 
-Under `--json`, stderr is line-framed JSONL: progress as `zipkit[progress]:{…}` and faults as `zipkit[error]:{…}`, each a single minified record with no space after the colon. Drain stdout and stderr concurrently. The `--json-out` and `--metadata-out` levers are independent of `--json`, so you can have a human stdout *and* a JSON file at once.
+Under `--json`, stderr is line-framed JSONL: progress as `zipkit[progress]:{…}` and faults as `zipkit[error]:{…}`, each a single minified record with no space after the colon. Drain stdout and stderr concurrently.
 
 A malformed numeric flag — `--chunk-size`, `--concurrency`, or `--level` given a non-number, or a value the SDK rejects as out of range (a non-positive size, a level outside 1–9) — is a usage error (exit `2`), never silently ignored. The command line only coerces the string to a number; the SDK owns the bounds, so a library caller and the CLI reject the same values.
 
@@ -236,7 +247,6 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
 | `--log <path.jsonl>` | | Write the event stream as JSONL (the same stream the console renderer and SDK `onProgress` hook see). Written regardless of `--quiet`. |
 | `--json` | | Emit the report envelope (with the `ExtractData` payload) as pretty JSON on stdout; convert progress to JSONL on stderr. |
-| `--json-out <path>` | | Also write the pretty report envelope to a file, byte-identical to `--json` stdout. Independent of `--json`. |
 
 - **Creation/birth time is not restored** — no portable cross-platform API sets it.
 - **Exit code** is `0` when the report's domain verdict `reportOk` holds, `1` when it does not (a clean run that simply failed validation), and `5` when reading the archive itself threw mid-run — so validation scripts cleanly.
@@ -261,6 +271,7 @@ Most rules have a fixed tier, stamped by a single registry (the `RULE_REGISTRY` 
 | `path.too-long` | warning | keep |
 | `macos.junk` | info | exclude |
 | `windows.junk` | info | exclude |
+| `linux.junk` | info | exclude |
 | `entry.symlink` | warning | exclude |
 | `name.nfd` | per action | normalize to NFC |
 | `name.invalid-char` | per action | substitute |

@@ -8,7 +8,6 @@
  * the console and the optional JSONL sink, and chooses `plan()` or `create()`.
  */
 
-import { writeFile } from "node:fs/promises";
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
 import { exitCodeFor, ZipKitError } from "../errors.js";
@@ -27,7 +26,7 @@ import type {
   ZipKitCallOptions,
   ZipKitOptions,
 } from "../types.js";
-import { emitFaultLive, emitReport, faultFinding, toFault, writeReportFile } from "./json.js";
+import { emitFaultLive, emitReport, faultFinding, toFault } from "./json.js";
 import { parseByteSize, parseInteger } from "./parsers.js";
 import { buildReporter } from "./reporter.js";
 import { renderCreateData } from "./render.js";
@@ -56,9 +55,7 @@ interface CreateOpts {
   followExternal?: boolean;
   timestamps?: "clamp" | "preserve";
   timezone?: string;
-  storeExt?: string;
-  storeAll?: boolean;
-  compressAll?: boolean;
+  stored?: "builtin" | "none";
   level?: number;
   comment?: string;
   metadata?: boolean; // commander's --no-metadata sets this false (default true)
@@ -72,19 +69,25 @@ interface CreateOpts {
   concurrency?: number;
   chunkSize?: number;
   json?: boolean;
-  jsonOut?: string;
-  metadataOut?: string;
 }
 
+/** Split a `--store` value's comma list into trimmed, non-empty tokens. A
+ *  single flag may carry a comma list (`jpg,png`) and the flag is repeatable, so
+ *  both `--store jpg,png` and `--store jpg --store png` reach the same set.
+ *  Extension-dialect normalization (case, leading dot) is the SDK's job
+ *  (`resolvePolicy`), so this only handles the comma-list shape. */
 function splitList(value: string): string[] {
   return value
     .split(",")
     .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .map((s) => (s.startsWith(".") ? s.toLowerCase() : `.${s.toLowerCase()}`));
+    .filter((s) => s.length > 0);
 }
 
-function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePolicy> {
+function buildPolicy(
+  opts: CreateOpts,
+  filters: FilterRule[],
+  storeAdds: string[],
+): Partial<ArchivePolicy> {
   const policy: Partial<ArchivePolicy> = {};
 
   if (opts.junk) policy.junk = opts.junk;
@@ -112,13 +115,12 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
   if (opts.timestamps) policy.timestamps = opts.timestamps;
   if (opts.timezone !== undefined) policy.timezone = opts.timezone;
 
-  const mode = opts.compressAll ? "compress-all" : opts.storeAll ? "store-all" : undefined;
-  const storeExtra = opts.storeExt !== undefined ? splitList(opts.storeExt) : undefined;
+  const store = storeAdds.length > 0 ? storeAdds : undefined;
   const level = opts.level;
-  if (mode !== undefined || storeExtra !== undefined || level !== undefined) {
+  if (opts.stored !== undefined || store !== undefined || level !== undefined) {
     const compression: Partial<CompressionPolicy> = {};
-    if (mode !== undefined) compression.mode = mode;
-    if (storeExtra !== undefined) compression.storeExtra = storeExtra;
+    if (opts.stored !== undefined) compression.stored = opts.stored;
+    if (store !== undefined) compression.store = store;
     if (level !== undefined) compression.level = level;
     policy.compression = compression as CompressionPolicy;
   }
@@ -144,6 +146,7 @@ function buildSpec(
   rawInputs: string[],
   opts: CreateOpts,
   filters: FilterRule[],
+  storeAdds: string[],
 ): ArchiveSpec {
   const inputs: ArchiveInput[] =
     opts.wrap && rawInputs.length === 1 && rawInputs[0] !== undefined
@@ -156,7 +159,7 @@ function buildSpec(
   if (opts.overwrite) spec.overwrite = true;
   if (opts.comment !== undefined) spec.comment = opts.comment;
 
-  const policy = buildPolicy(opts, filters);
+  const policy = buildPolicy(opts, filters, storeAdds);
   if (Object.keys(policy).length > 0) spec.policy = policy;
 
   return spec;
@@ -168,6 +171,7 @@ export function registerCreate(
   setExitCode: (code: number) => void,
 ): void {
   const filters: FilterRule[] = [];
+  const storeAdds: string[] = [];
 
   const addGlob = (pattern: string) => {
     filters.push(globExclude(pattern));
@@ -176,6 +180,10 @@ export function registerCreate(
   const addRegex = (pattern: string) => {
     filters.push(regexExclude(pattern));
     return pattern;
+  };
+  const addStore = (value: string) => {
+    storeAdds.push(...splitList(value));
+    return value;
   };
 
   const cmd = program
@@ -236,11 +244,14 @@ export function registerCreate(
     "IANA zone for the DOS local-time field, e.g. Asia/Tokyo (default: host zone)",
   );
   cmd.option(
-    "--store-ext <list>",
-    "extra comma-separated extensions to store, added to the built-in set",
+    "--stored <builtin|none>",
+    "baseline of extensions kept uncompressed (default builtin); none deflates everything not named by --store",
   );
-  cmd.option("--store-all", "store every entry (no compression)");
-  cmd.option("--compress-all", "deflate every entry (ignore the store set)");
+  cmd.option(
+    "--store <ext>",
+    "keep this extension uncompressed, with or without a leading dot (repeatable, comma-list ok); adds to the --stored baseline",
+    addStore,
+  );
   cmd.option("--level <1-9>", "deflate level, 1 (fastest) to 9 (smallest) (default 6)", parseInteger);
 
   // Companion output
@@ -270,11 +281,6 @@ export function registerCreate(
     parseByteSize,
   );
   cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");
-  cmd.option("--json-out <path>", "also write the pretty report envelope to a file");
-  cmd.option(
-    "--metadata-out <path>",
-    "also write the embedded _metadata.json content to a file (byte-identical)",
-  );
 
   cmd.action(async (rawInputs: string[], opts: CreateOpts) => {
     // Construct the SDK first so an out-of-range --concurrency/--chunk-size fails
@@ -287,7 +293,7 @@ export function registerCreate(
 
     const reporter = buildReporter(opts);
     const callOptions: ZipKitCallOptions = { onProgress: reporter.sink, signal };
-    const spec = buildSpec(rawInputs, opts, filters);
+    const spec = buildSpec(rawInputs, opts, filters, storeAdds);
 
     try {
       // The SDK's plan() → write() split is what lets the CLI own the envelope:
@@ -297,7 +303,7 @@ export function registerCreate(
       const plan = await zip.plan(spec, callOptions);
 
       if (opts.dryRun) {
-        await emit(opts, plan);
+        emit(opts, plan);
         if (!plan.writable) setExitCode(1);
         return;
       }
@@ -306,14 +312,14 @@ export function registerCreate(
       // writer. Emit a write-mode report carrying the blocking findings and a
       // not-written verdict, then exit 1 (a negative domain verdict).
       if (!plan.writable) {
-        await emit(opts, notWritten(plan));
+        emit(opts, notWritten(plan));
         setExitCode(1);
         return;
       }
 
       try {
         const result = await zip.write(plan, callOptions);
-        await emit(opts, result);
+        emit(opts, result);
         if (!result.written) setExitCode(1);
       } catch (err) {
         if (err instanceof ZipKitError && err.errorType === "abort") throw err;
@@ -324,7 +330,7 @@ export function registerCreate(
         emitFaultLive(opts.json === true, fault);
         const data = notWritten(plan);
         data.findings = [...plan.findings, faultFinding(fault)];
-        await emit(opts, data);
+        emit(opts, data);
         setExitCode(exitCodeFor(err));
       }
     } finally {
@@ -349,17 +355,8 @@ function notWritten(plan: PlanData): Extract<CreateData, { mode: "write" }> {
   };
 }
 
-/** Emit the create report: the envelope (or human render) on stdout, plus the
- *  independent `--json-out` and create-only `--metadata-out` file levers. */
-async function emit(opts: CreateOpts, data: CreateData): Promise<void> {
-  const report = buildReport("create", data);
-  if (opts.json) emitReport(report);
+/** Emit the create report: the envelope (or human render) on stdout. */
+function emit(opts: CreateOpts, data: CreateData): void {
+  if (opts.json) emitReport(buildReport("create", data));
   else process.stdout.write(renderCreateData(data));
-  if (opts.jsonOut !== undefined) await writeReportFile(opts.jsonOut, report);
-  // Byte-identical to the embedded entry, which is serialized without a trailing
-  // newline (see write/write.ts), so `--metadata-out` can be diffed against
-  // `unzip -p out.zip _metadata.json`.
-  if (opts.metadataOut !== undefined && data.mode === "write" && data.metadata !== null) {
-    await writeFile(opts.metadataOut, JSON.stringify(data.metadata, null, 2));
-  }
 }

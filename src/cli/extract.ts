@@ -18,7 +18,7 @@ import type {
   ZipKitCallOptions,
   ZipKitOptions,
 } from "../types.js";
-import { emitFaultLive, emitReport, faultFinding, toFault, writeReportFile } from "./json.js";
+import { emitFaultLive, emitReport, faultFinding, toFault } from "./json.js";
 import { parseByteSize, parseInteger } from "./parsers.js";
 import { buildReporter } from "./reporter.js";
 import { renderExtractData } from "./render.js";
@@ -38,7 +38,6 @@ interface ExtractOpts {
   concurrency?: number;
   chunkSize?: number;
   json?: boolean;
-  jsonOut?: string;
 }
 
 /** A skeleton extract payload carrying only an operational fault — used when the
@@ -105,7 +104,6 @@ export function registerExtract(
     parseByteSize,
   );
   cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");
-  cmd.option("--json-out <path>", "also write the pretty report envelope to a file");
 
   cmd.action(async (archive: string, dest: string | undefined, opts: ExtractOpts) => {
     // Construct the SDK first so an out-of-range --concurrency/--chunk-size fails
@@ -133,7 +131,7 @@ export function registerExtract(
 
     try {
       const data = await zip.extract(spec, callOptions);
-      await emit(opts, data);
+      emit(opts, data);
       if (!data.reportOk) setExitCode(1);
     } catch (err) {
       if (err instanceof ZipKitError && err.errorType === "abort") throw err;
@@ -144,7 +142,7 @@ export function registerExtract(
       if (isUsageFault(err)) throw err;
       const fault = toFault(err, spec.archive);
       emitFaultLive(opts.json === true, fault);
-      await emit(opts, faultData(spec, fault));
+      emit(opts, faultData(spec, fault));
       setExitCode(exitCodeFor(err));
     } finally {
       await reporter.finalize();
@@ -152,11 +150,8 @@ export function registerExtract(
   });
 }
 
-/** Emit the extract report: the envelope (or human render) on stdout, plus the
- *  independent `--json-out` file lever. */
-async function emit(opts: ExtractOpts, data: ExtractData): Promise<void> {
-  const report = buildReport("extract", data);
-  if (opts.json) emitReport(report);
+/** Emit the extract report: the envelope (or human render) on stdout. */
+function emit(opts: ExtractOpts, data: ExtractData): void {
+  if (opts.json) emitReport(buildReport("extract", data));
   else process.stdout.write(renderExtractData(data));
-  if (opts.jsonOut !== undefined) await writeReportFile(opts.jsonOut, report);
 }

@@ -23,6 +23,7 @@ export type RuleId =
   | "path.too-long"
   | "macos.junk"
   | "windows.junk"
+  | "linux.junk"
   | "entry.symlink"
   | "name.nfd"
   | "name.invalid-char"
@@ -52,6 +53,7 @@ export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
   "path.too-long": { severity: "warning", disposition: "keep" },
   "macos.junk": { severity: "info", disposition: "exclude" },
   "windows.junk": { severity: "info", disposition: "exclude" },
+  "linux.junk": { severity: "info", disposition: "exclude" },
   "entry.symlink": { severity: "warning", disposition: "exclude" },
   // The name rules' severity is set per run from the `names` policy action
   // (fix → info, warn → warning, error → error); these defaults are only used

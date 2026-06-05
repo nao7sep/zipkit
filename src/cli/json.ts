@@ -1,9 +1,7 @@
 /**
  * Machine output framing. stdout carries exactly one report envelope, emitted
- * once at the end; `--json` renders it as the pretty (indent 2) envelope, and
- * `--json-out <path>` writes the byte-identical pretty envelope through the same
- * serializer. There is no TTY-based compact/pretty switch — `--json` stdout and
- * `--json-out` are byte-for-byte equal.
+ * once at the end; `--json` renders it as the pretty (indent 2) envelope. There
+ * is no TTY-based compact/pretty switch.
  *
  * stderr carries line-framed chunks. Under `--json` progress and faults convert
  * to prefixed minified JSONL (`zipkit[progress]:{…}` / `zipkit[error]:{…}`, no
@@ -11,7 +9,6 @@
  * line so two chunks' bytes never interleave.
  */
 
-import { writeFile } from "node:fs/promises";
 import { ZipKitError } from "../errors.js";
 import { finding } from "../registry.js";
 import type { Finding } from "../types.js";
@@ -54,8 +51,7 @@ export function faultFinding(fault: Fault): Finding {
 }
 
 /** The canonical envelope serializer: pretty (indent 2) with one trailing
- *  newline. The single source of truth so `--json` stdout and `--json-out`
- *  cannot drift. The internals carrier on a plan is non-enumerable, so
+ *  newline. The internals carrier on a plan is non-enumerable, so
  *  `JSON.stringify` never serializes the absolute source paths it holds. */
 export function serializeReport(report: Report<string, { findings: Finding[] }>): string {
   return `${JSON.stringify(report, null, 2)}\n`;
@@ -64,15 +60,6 @@ export function serializeReport(report: Report<string, { findings: Finding[] }>)
 /** Emit the one report envelope to stdout as the pretty JSON form. */
 export function emitReport(report: Report<string, { findings: Finding[] }>): void {
   process.stdout.write(serializeReport(report));
-}
-
-/** Write the pretty envelope to a file (`--json-out`), byte-identical to the
- *  `--json` stdout form. */
-export async function writeReportFile(
-  path: string,
-  report: Report<string, { findings: Finding[] }>,
-): Promise<void> {
-  await writeFile(path, serializeReport(report));
 }
 
 /** Emit a progress chunk to stderr as one minified, prefixed JSONL line. */

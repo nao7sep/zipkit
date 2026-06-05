@@ -32,6 +32,7 @@ describe("RULE_REGISTRY", () => {
       "path.too-long",
       "macos.junk",
       "windows.junk",
+      "linux.junk",
       "entry.symlink",
       "name.nfd",
       "name.invalid-char",

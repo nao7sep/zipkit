@@ -1,9 +1,8 @@
 /**
  * The output behavior at the CLI seam: the one report envelope on stdout, JSONL
- * progress/error framing on stderr, the byte-identical `--json-out`/
- * `--metadata-out` file levers, faults folded into findings, and the pre-verb
- * minimal envelope. stdout/stderr are captured by spying on the process write
- * streams; the SDK paths are covered elsewhere.
+ * progress/error framing on stderr, faults folded into findings, and the
+ * pre-verb minimal envelope. stdout/stderr are captured by spying on the process
+ * write streams; the SDK paths are covered elsewhere.
  */
 
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -89,24 +88,6 @@ describe("create envelope", () => {
     expect(Array.isArray(report.data.entries)).toBe(true);
   });
 
-  it("writes --json-out byte-identical to --json stdout, and --metadata-out byte-identical to the embedded manifest", async () => {
-    const proj = await tree();
-    const archive = path.join(dir, "ident.zip");
-    const jsonOut = path.join(dir, "report.json");
-    const metaOut = path.join(dir, "meta.json");
-    const code = await runCli(
-      argv("create", proj, "-o", archive, "--json", "--json-out", jsonOut, "--metadata-out", metaOut),
-    );
-    expect(code).toBe(0);
-
-    expect((await readFile(jsonOut)).toString()).toBe(out.join(""));
-
-    // The metadata-out file equals the embedded entry's bytes (no trailing
-    // newline), so it can be diffed against `unzip -p`.
-    const report = stdoutJson();
-    const embedded = `${JSON.stringify((report.data as { metadata: unknown }).metadata, null, 2)}`;
-    expect((await readFile(metaOut)).toString()).toBe(embedded);
-  });
 });
 
 describe("create fault folding", () => {

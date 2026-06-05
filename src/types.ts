@@ -30,18 +30,18 @@ export interface FilterRule {
 
 export interface CompressionPolicy {
   /**
-   * `auto` stores the built-in set of already-compressed extensions and
-   * deflates the rest; `store-all` stores every entry (no compression);
-   * `compress-all` deflates every entry (the built-in store set is ignored).
+   * The baseline set of extensions kept stored (uncompressed). `builtin` seeds
+   * it with the curated already-compressed formats and deflates the rest;
+   * `none` seeds it empty, so everything is deflated unless `store` lists it.
    */
-  mode: "auto" | "store-all" | "compress-all";
+  stored: "builtin" | "none";
   /**
-   * Extra lowercase extensions (with leading dot) added to the built-in store
-   * set under `"auto"`. Additive — there is no way to drop a built-in, because
-   * deflating an already-compressed format only wastes CPU; to deflate
-   * everything use `compress-all`.
+   * Extra extensions added to the baseline store set. Given with or without a
+   * leading dot and in any case — `.txt`, `txt`, and `.TXT` are equivalent and
+   * normalized to lowercase-dotted form. With `stored: "builtin"` they extend
+   * the curated set; with `stored: "none"` they are the only stored extensions.
    */
-  storeExtra: string[];
+  store: string[];
   /** Deflate level 1 (fastest) to 9 (smallest); affects only deflated entries. */
   level: number;
 }

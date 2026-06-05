@@ -1,7 +1,8 @@
 /**
  * Selection (pass 2). Each surviving entry is run through the ordered
  * matcher; the first matching rule excludes it and, for a junk-preset rule,
- * emits the corresponding `macos.junk`/`windows.junk` info finding. No match
+ * emits the corresponding `macos.junk`/`windows.junk`/`linux.junk` info finding.
+ * No match
  * leaves the entry in (inclusive by default). Directory subtrees that a junk or
  * user rule excluded were already pruned by the walk and arrive as pre-excluded
  * items, so they are skipped here.

@@ -6,18 +6,24 @@
  */
 
 import { defu } from "defu";
+import { normalizeExtension } from "./internal/path.js";
 import type { ArchivePolicy, MetadataPolicy, NameRules } from "./types.js";
 
 /**
- * The built-in set stored verbatim under `compression.mode: "auto"` — formats
- * that are reliably already compressed, where attempting deflate only wastes
- * CPU with no realistic chance of shrinking. Lowercase, leading dot. This is a
- * CPU optimization, not a correctness setting: any file outside it is still
- * deflated, and `compression.storeExtra` only adds to it. The method is decided
- * at plan time and is final — the streaming writer does not reconsider it — so a
- * deflated entry can rarely be a few bytes larger than its stored form.
- * Borderline formats (e.g. PDF, which sometimes compresses) are deliberately
- * left off so `auto` can keep the win when it exists.
+ * The built-in set stored verbatim under `compression.stored: "builtin"`. An
+ * extension earns a place only when it is BOTH used often AND almost always
+ * already compressed — so attempting deflate wastes CPU with no realistic
+ * chance of shrinking. Lowercase, leading dot. This is a CPU optimization, not a
+ * correctness setting: any file outside it is still deflated, and
+ * `compression.store` only adds to it. The method is decided at plan time and is
+ * final — the streaming writer does not reconsider it — so a deflated entry can
+ * rarely be a few bytes larger than its stored form.
+ *
+ * Formats that are common but NOT reliably compressed are deliberately left off,
+ * because a wrong "store" guess is a permanent miss: PDF (sometimes compresses),
+ * `.iso` (raw image), `.wav`/`.aiff` (PCM), `.bmp`/`.tiff` (often uncompressed),
+ * `.ttf`/`.otf` (raw font tables — only `.woff`/`.woff2` are pre-compressed),
+ * and `.ts` (almost always TypeScript source, not an MPEG transport stream).
  */
 export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   // Images
@@ -27,27 +33,55 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".gif",
   ".webp",
   ".heic",
+  ".heif",
+  ".avif",
   // Video
   ".mp4",
   ".mov",
   ".mkv",
   ".webm",
+  ".m4v",
+  ".wmv",
   // Audio
   ".mp3",
   ".aac",
   ".m4a",
   ".flac",
-  // Archives
+  ".ogg",
+  ".oga",
+  ".opus",
+  ".wma",
+  // Archives (already compressed)
   ".zip",
   ".gz",
   ".7z",
   ".rar",
-  // Office (zip-based)
+  ".bz2",
+  ".xz",
+  ".zst",
+  ".tgz",
+  // Documents (zip-based)
   ".docx",
   ".xlsx",
   ".pptx",
+  ".docm",
+  ".xlsm",
+  ".pptm",
+  ".odt",
+  ".ods",
+  ".odp",
+  ".epub",
+  // Packages (zip-based)
+  ".jar",
+  ".war",
+  ".apk",
+  ".ipa",
+  ".whl",
+  ".nupkg",
+  ".vsix",
   // Fonts
   ".woff2",
+  ".woff",
 ];
 
 export const METADATA_DEFAULTS: MetadataPolicy = {
@@ -98,7 +132,7 @@ export const DEFAULT_POLICY: ArchivePolicy = {
   symlinks: "ignore",
   followExternal: false,
   timestamps: "preserve",
-  compression: { mode: "auto", storeExtra: [], level: DEFAULT_DEFLATE_LEVEL },
+  compression: { stored: "builtin", store: [], level: DEFAULT_DEFLATE_LEVEL },
 
   // Companion output — the embedded metadata record is zipkit's reason to
   // exist (faithful, high-precision persistence), so it is on by default;
@@ -134,11 +168,15 @@ export function resolvePolicy(
   const filters = firstDefined(call?.filters, instance?.filters);
   merged.filters = filters !== undefined ? filters : [];
 
-  const storeExtra = firstDefined(
-    call?.compression?.storeExtra,
-    instance?.compression?.storeExtra,
+  // Normalize store extensions to the canonical lowercase-dotted form here, so
+  // the resolved policy is the single place that fixes the dialect — a caller
+  // passing `txt`, `.txt`, or `.TXT` reaches `applyCompression` identically,
+  // whether the values came from the SDK or the CLI.
+  const store = firstDefined(
+    call?.compression?.store,
+    instance?.compression?.store,
   );
-  merged.compression.storeExtra = storeExtra !== undefined ? storeExtra : [];
+  merged.compression.store = store !== undefined ? store.map(normalizeExtension) : [];
 
   if (merged.metadata !== false) {
     merged.metadata = defu(merged.metadata, METADATA_DEFAULTS) as MetadataPolicy;
