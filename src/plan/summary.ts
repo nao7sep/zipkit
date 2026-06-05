@@ -1,10 +1,10 @@
 /**
- * Plan aggregation: the summary counters and the go/no-go `writable` verdict.
- * `writable` is false when any error-tier finding is present, or when the output
- * archive already exists without an authorized overwrite. Severity alone gates —
- * an `error` blocks, a `warning` and an `info` never do. There is no override
+ * Plan aggregation: the summary counters. The go/no-go `writable` verdict is
+ * derived by the planner from `summary.errors` — severity alone gates, an
+ * `error` blocks while a `warning` and an `info` never do. There is no override
  * for the error tier; a caller who wants an issue to block sets that issue to
- * `error` (for name rules, via the `names` policy).
+ * `error` (for name rules, via the `names` policy; the pre-existing-output gate
+ * raises an `output.exists` error finding).
  */
 
 import type { Finding, PlanSummary } from "../types.js";
@@ -39,18 +39,4 @@ export function buildSummary(items: WorkItem[], findings: Finding[], zip64: bool
     errors,
     zip64,
   };
-}
-
-export function computeWritable(
-  findings: Finding[],
-  outputExists: boolean,
-  overwrite: boolean,
-): boolean {
-  for (const f of findings) {
-    if (f.severity === "error") return false;
-  }
-  // The output archive pre-existing without an authorized overwrite blocks the
-  // write, so a run never silently clobbers a file the user did not name.
-  if (outputExists && !overwrite) return false;
-  return true;
 }

@@ -403,12 +403,57 @@ export interface ExtractData {
 // Events
 // ---------------------------------------------------------------------------
 
-export interface LogEvent {
-  ts: string; // time of emission, ISO 8601 UTC
-  stage: "scan" | "plan" | "write" | "extract"; // classification
-  level: "debug" | "info" | "warn" | "error";
-  message: string;
-  rule?: string; // context
-  path?: string;
-  data?: Record<string, unknown>; // payload
+/** The phase a {@link LogEvent} belongs to. */
+export type LogStage = "scan" | "plan" | "write" | "extract";
+
+/** The severity of a {@link LogEvent}. */
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
+/**
+ * The typed body of a {@link LogEvent}, a discriminated union on `event`. Each
+ * variant carries exactly the fields it means — there is no untyped `data` bag,
+ * so a producer and every consumer (the SDK `onProgress` hook, the console and
+ * JSONL renderers, the `--log` sink) agree on each event's shape by the type
+ * system, not by string convention.
+ */
+export type LogEventBody =
+  | { event: "scan.start"; inputs: number }
+  | { event: "scan.dir"; path: string }
+  | { event: "scan.done"; entries: number; prunedDirs: number }
+  | {
+      event: "plan.done";
+      total: number;
+      included: number;
+      excluded: number;
+      renamed: number;
+      warnings: number;
+      errors: number;
+      writable: boolean;
+    }
+  | { event: "entry.excluded"; path: string; reason?: string }
+  | { event: "entry.renamed"; path: string; from: string }
+  | { event: "entry.flagged"; rule: string; path: string; severity: Severity }
+  | { event: "write.start"; entries: number }
+  | { event: "entry.written"; path: string }
+  | { event: "write.done"; bytes: number; zip64: boolean }
+  | { event: "extract.start"; entries: number; write: boolean }
+  | { event: "entry.verified"; path: string }
+  | {
+      event: "extract.done";
+      total: number;
+      crcFailed: number;
+      shaMismatched: number;
+      written: number;
+      skipped: number;
+      reportOk: boolean;
+    }
+  | { event: "fault"; code: string; message: string; cause?: string };
+
+/** The common metadata every event carries; `ts` is stamped by the logger. */
+export interface LogMeta {
+  stage: LogStage;
+  level: LogLevel;
 }
+
+/** A single structured event in the one log/progress stream. */
+export type LogEvent = { ts: string } & LogMeta & LogEventBody;

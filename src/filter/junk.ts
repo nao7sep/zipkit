@@ -4,7 +4,8 @@
  * so an excluded junk file produces the right `macos.junk` / `windows.junk` /
  * `linux.junk` info finding. A trailing slash marks a directory-only rule; the
  * matcher honours `target`, so the slash is purely declarative here. Every
- * pattern names OS-generated metadata that is never a real user file.
+ * pattern names OS-generated metadata that is never a real user file, and the
+ * matcher applies them case-insensitively since the casing varies by filesystem.
  */
 
 import type { RuleId } from "../registry.js";

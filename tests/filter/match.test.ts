@@ -154,6 +154,42 @@ describe("junk preset, ordering, and the inclusive default", () => {
     expect(m.match("Thumbs.db", false)?.junkRule).toBe("windows.junk");
   });
 
+  it("matches junk case-insensitively (OS names vary in case across filesystems)", () => {
+    const m = matcher([], true);
+    expect(m.match("thumbs.db", false)?.junkRule).toBe("windows.junk");
+    expect(m.match(".ds_store", false)?.junkRule).toBe("macos.junk");
+    expect(m.match("DESKTOP.INI", false)?.junkRule).toBe("windows.junk");
+    expect(m.match("dir/.DS_STORE", false)?.junkRule).toBe("macos.junk");
+  });
+
+  it("matches the added macOS metadata names", () => {
+    const m = matcher([], true);
+    for (const name of [
+      ".DocumentRevisions-V100",
+      ".TemporaryItems",
+      ".apdisk",
+      ".com.apple.timemachine.donotpresent",
+      ".VolumeIcon.icns",
+    ]) {
+      expect(m.match(name, false)?.junkRule).toBe("macos.junk");
+    }
+  });
+
+  it("matches Linux/freedesktop junk (.directory, .nfs* temporaries, .Trash-<uid>/)", () => {
+    const m = matcher([], true);
+    expect(m.match(".directory", false)?.junkRule).toBe("linux.junk");
+    expect(m.match(".nfs0000000000abcdef00000001", false)?.junkRule).toBe("linux.junk");
+    // `.Trash-<uid>` is a directory-only rule (trailing slash).
+    expect(m.match(".Trash-1000", true)?.junkRule).toBe("linux.junk");
+    expect(m.match(".Trash-1000", false)).toBeNull();
+  });
+
+  it("matches directory junk case-insensitively too", () => {
+    const m = matcher([], true);
+    expect(m.match("__macosx", true)?.junkRule).toBe("macos.junk");
+    expect(m.match(".trash-1000", true)?.junkRule).toBe("linux.junk");
+  });
+
   it("matches AppleDouble junk", () => {
     const m = matcher([], true);
     expect(m.match("._payload", false)?.junkRule).toBe("macos.junk");

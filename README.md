@@ -91,6 +91,8 @@ By default a single directory input is **flattened**: its *contents* land at the
 | `--root <dir>` | Root every input's archive path relative to this directory. Cannot be combined with `--wrap` (CLI) or the SDK's per-input `as`/`flatten`. |
 | `--wrap` | For a single directory input, keep its name as the top folder instead of flattening its contents to the root — `project/file.txt` stays `project/file.txt`. |
 
+The CLI applies one rooting/flattening choice to all inputs (`--root` or `--wrap`). The SDK is finer-grained: each `ArchiveInput` can be `{ path, as, flatten }`, so a library caller can rename a single input's root (`as`) or flatten one input but not another. This per-input control is intentionally **SDK-only** — per-input attributes don't map cleanly onto flat command-line flags, and `--root`/`--wrap` cover the common cases. A caller who needs the finer control uses the library.
+
 ### Destination
 
 | Flag | Description |
@@ -114,7 +116,7 @@ Both exclude flags append to one list; any matching rule drops the entry (the sy
 
 #### Built-in junk preset
 
-`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk` / `linux.junk`) and never block. `--junk none` disables the preset for the whole run.
+`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk` / `linux.junk`) and never block. `--junk none` disables the preset for the whole run. Junk matching is **case-insensitive** (these names vary in case across filesystems, and none is ever a real file); user `--exclude` rules stay case-sensitive.
 
 **What earns a place in the preset:** only files an **operating system generates on its own** — thumbnail caches, trash/index folders, resource-fork sidecars, volume metadata — names that are never a real user file, so dropping them is always safe. Project artifacts (`.git/`, `node_modules/`, build output) and editor backups (`*~`, `.swp`) are deliberately *not* junk: they are real files you might want, so excluding them is your explicit `--exclude` decision, not a silent default.
 
@@ -164,12 +166,15 @@ The store set is the `--stored` baseline plus any extensions you add with `--sto
 
 Built-in list:
 - **Images:** `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.heif`, `.avif`
-- **Video:** `.mp4`, `.mov`, `.mkv`, `.webm`, `.m4v`, `.wmv`
+- **Video:** `.mp4`, `.mov`, `.mkv`, `.webm`, `.m4v`, `.wmv`, `.avi`, `.mpg`, `.mpeg`, `.flv`
 - **Audio:** `.mp3`, `.aac`, `.m4a`, `.flac`, `.ogg`, `.oga`, `.opus`, `.wma`
-- **Archives (already compressed):** `.zip`, `.gz`, `.7z`, `.rar`, `.bz2`, `.xz`, `.zst`, `.tgz`
-- **Documents (zip-based):** `.docx`, `.xlsx`, `.pptx`, `.docm`, `.xlsm`, `.pptm`, `.odt`, `.ods`, `.odp`, `.epub`
-- **Packages (zip-based):** `.jar`, `.war`, `.apk`, `.ipa`, `.whl`, `.nupkg`, `.vsix`
+- **Archives (already compressed):** `.zip`, `.gz`, `.7z`, `.rar`, `.bz2`, `.xz`, `.zst`, `.tgz`, `.lz4`, `.lzma`, `.br`
+- **Documents (zip-based):** `.docx`, `.xlsx`, `.pptx`, `.docm`, `.xlsm`, `.pptm`, `.odt`, `.ods`, `.odp`, `.epub`, `.pages`, `.numbers`, `.key`
+- **Packages (zip-based):** `.jar`, `.war`, `.apk`, `.ipa`, `.whl`, `.nupkg`, `.vsix`, `.crx`, `.xpi`, `.aar`, `.egg`
+- **Disk images & OS packages (compressed payloads):** `.dmg`, `.deb`, `.rpm`
 - **Fonts:** `.woff2`, `.woff`
+
+The zip-based and natively-compressed entries (the bulk of the list) are stored with full confidence — their bytes are already deflated. The container formats — `.avi`, `.mpg`/`.mpeg`, `.flv`, `.dmg`, `.deb`, `.rpm` — are included because their real-world payloads are compressed codecs or compressed package data in the overwhelming majority of files; the rare uncompressed instance simply misses a compression opportunity (a few wasted bytes), never a correctness problem. Formats where the *uncompressed* case is common, not rare, stay off the list (see above).
 
 ### Companion output
 
@@ -298,7 +303,7 @@ The CLI exit codes make this a dependable automation contract:
 | Code | Meaning |
 |---|---|
 | `0` | success — the verb's domain verdict is satisfied |
-| `1` | a negative **domain verdict**: the verb ran cleanly but its result is "no" — for `create`, a non-writable plan (a blocking finding, or an existing output without `--overwrite`); for `extract`, a report whose `reportOk` is false (a CRC failure, an unsafe path, or — under `--check-metadata` — a missing/extra entry or SHA mismatch). `--dry-run` honors these, making either a CI gate. |
+| `1` | a negative **domain verdict**: the verb ran cleanly but its result is "no" — for `create`, a non-writable plan, i.e. any `error`-tier finding (a name rule set to `error`, a collision, or a pre-existing output without `--overwrite`, which records an `output.exists` error); for `extract`, a report whose `reportOk` is false (a CRC failure, an unsafe path, or — under `--check-metadata` — a missing/extra entry or SHA mismatch). `--dry-run` honors these, making either a CI gate. |
 | `2` | usage error: a malformed flag or value, a missing input path, an archive that cannot be opened, or `extract` without a destination or `--dry-run` |
 | `3` | a **scan** runtime fault — a filesystem read failed while walking the source tree |
 | `4` | a **write** runtime fault — emitting the archive failed mid-run |
@@ -320,6 +325,12 @@ const zip = new ZipKit({ policy: { names: { invalidChars: "error", reserved: "er
 // Plan, inspect, then write.
 // `plan()` returns the CreateData "plan" payload; `write()`/`create()` return the
 // "write" payload (or throw a ZipKitError on an operational fault).
+//
+// The plan is a *live handle*: pass the same object to `write()`. It is safe to
+// inspect and `JSON.stringify` (it carries no absolute source paths), but the
+// writer's instructions ride on it out of band — a cloned or re-serialized copy
+// cannot be written (it fails with `write.no-internals`). Inspect freely; write
+// from the original.
 const plan = await zip.plan({ inputs: ["./my-project"], output: "out.zip" });
 if (plan.writable) {
   const result = await zip.write(plan);
@@ -340,15 +351,15 @@ await zip.extract({ archive: "out.zip", dest: "./restored", overwrite: true });
 
 The SDK is idiomatic: its methods return the per-verb `data` payloads — `CreateData` from `plan()`/`write()`/`create()`, `ExtractData` from `extract()` — and **throw** `ZipKitError` on an operational fault. The CLI is the layer that wraps a payload in the report envelope and folds a thrown fault into `findings`; the `buildReport` helper is exported for callers who want to produce the same envelope.
 
-The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ZipKitCallOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent`; the report envelope `Report` with the stderr records `ProgressEvent`/`ErrorEvent`, the `buildReport`/`isOk` helpers, and the `SCHEMA_VERSION` constant; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
+The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ZipKitCallOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent` (with `LogStage`/`LogLevel`); the report envelope `Report` with the stderr records `ProgressEvent`/`ErrorEvent`, the `buildReport`/`isOk` helpers, and the `SCHEMA_VERSION` constant; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
 
-Progress is observed in real time through an optional `onProgress` hook passed to each verb call (`ZipKitCallOptions`), which receives a `LogEvent` stream as the pipeline works. The hook lives on the per-call options rather than the instance, so each call decides where its events go; with no hook the SDK is silent and writes to no stream. The same stream feeds this hook, the CLI console renderer, and the `--log` JSONL sink — one producer, many sinks.
+Progress is observed in real time through an optional `onProgress` hook passed to each verb call (`ZipKitCallOptions`), which receives a `LogEvent` stream as the pipeline works. Each `LogEvent` is a discriminated union on its `event` field (`scan.done`, `entry.written`, `fault`, …) carrying typed fields per variant, plus a common `stage`/`level`/`ts`; narrow on `event.event` to read a variant's fields. The hook lives on the per-call options rather than the instance, so each call decides where its events go; with no hook the SDK is silent and writes to no stream. The same stream feeds this hook, the CLI console renderer, and the `--log` JSONL sink — one producer, many sinks.
 
 ```ts
 const zip = new ZipKit();
 await zip.create(
   { inputs: ["./my-project"], output: "out.zip", overwrite: true },
-  { onProgress: (event) => console.error(`${event.stage}: ${event.message}`) },
+  { onProgress: (event) => console.error(`${event.stage}: ${event.event}`) },
 );
 ```
 

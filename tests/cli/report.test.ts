@@ -185,9 +185,48 @@ describe("--log JSONL sink (both verbs)", () => {
 
     const lines = (await readFile(logPath)).toString().trim().split("\n").filter(Boolean);
     expect(lines.length).toBeGreaterThan(0);
-    const events = lines.map((l) => JSON.parse(l) as { stage: string; message: string });
+    const events = lines.map((l) => JSON.parse(l) as { stage: string; event: string });
     // Every line is a well-formed LogEvent, and the run's terminal event is present.
-    expect(events.every((e) => typeof e.stage === "string" && typeof e.message === "string")).toBe(true);
-    expect(events.some((e) => e.message === "extract.done")).toBe(true);
+    expect(events.every((e) => typeof e.stage === "string" && typeof e.event === "string")).toBe(true);
+    expect(events.some((e) => e.event === "extract.done")).toBe(true);
+    // Extraction emits per-entry progress (one entry.verified per archive entry).
+    expect(events.some((e) => e.event === "entry.verified")).toBe(true);
+  });
+
+  it("writes scan.dir and per-entry entry.written as JSONL on create", async () => {
+    const proj = await tree();
+    const archive = path.join(dir, "logged-create.zip");
+    const logPath = path.join(dir, "create.jsonl");
+    const code = await runCli(argv("create", proj, "-o", archive, "--quiet", "--log", logPath));
+    expect(code).toBe(0);
+
+    const events = (await readFile(logPath))
+      .toString()
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { event: string; stage: string });
+    expect(events.some((e) => e.event === "scan.dir")).toBe(true);
+    expect(events.some((e) => e.event === "entry.written")).toBe(true);
+    expect(events.some((e) => e.event === "write.done")).toBe(true);
+  });
+
+  it("records a fault event whose stage comes from the fault's domain, not its code string", async () => {
+    const archive = path.join(dir, "bogus.zip");
+    await writeFile(archive, "plainly not a zip archive");
+    const logPath = path.join(dir, "fault.jsonl");
+
+    const code = await runCli(argv("extract", archive, "--dry-run", "--quiet", "--log", logPath));
+    expect(code).toBe(5); // a read runtime fault
+
+    const events = (await readFile(logPath))
+      .toString()
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { event: string; stage: string; code?: string });
+    const fault = events.find((e) => e.event === "fault");
+    expect(fault?.stage).toBe("extract"); // read errorType → extract stage, not a "read." prefix
+    expect(fault?.code).toBe("read.not-zip");
   });
 });

@@ -9,8 +9,8 @@
 
 import os from "node:os";
 import pLimit from "p-limit";
-import { ZipKitError } from "./errors.js";
-import { buildMatcher } from "./filter/match.js";
+import { ZipKitError, type ZipKitErrorType } from "./errors.js";
+import { matcherFor } from "./filter/match.js";
 import { createLogger } from "./log/logger.js";
 import type { Logger } from "./log/logger.js";
 import { extractArchive } from "./extract/extract.js";
@@ -31,7 +31,7 @@ import type {
   CreateData,
   ExtractData,
   ExtractSpec,
-  LogEvent,
+  LogStage,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.js";
@@ -81,13 +81,21 @@ export class ZipKit {
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
   }
 
-  /** Scan and plan; writes nothing. Returns the `mode:"plan"` payload. */
+  /**
+   * Scan and plan; writes nothing. Returns the `mode:"plan"` payload, which is a
+   * **live handle**: pass the *same* object to {@link ZipKit.write}. It is safe to
+   * inspect and `JSON.stringify` (it carries no absolute source paths), but the
+   * writer's instructions ride on it out of band, so a cloned or re-serialized
+   * copy cannot be written — inspect freely, but write from the original.
+   */
   async plan(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<PlanData> {
     const logger = createLogger(options.onProgress);
     return this.#plan(spec, logger, options.signal);
   }
 
-  /** Execute a plan produced by {@link ZipKit.plan}. */
+  /** Execute a plan produced by {@link ZipKit.plan}. Must be the exact object
+   *  `plan()` returned — not a clone or a re-serialized copy, which drops the
+   *  out-of-band writer instructions and fails with `write.no-internals`. */
   async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData> {
     const logger = createLogger(options.onProgress);
     return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal });
@@ -131,7 +139,7 @@ export class ZipKit {
     try {
       const validated = validateSpec(spec);
       const policy = resolvePolicy(this.#policy, validated.policy);
-      const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
+      const matcher = matcherFor(policy);
       const limit = pLimit(this.#concurrency);
 
       const scanResult = await scan(validated, policy, { matcher, limit, logger, signal });
@@ -162,55 +170,72 @@ export class ZipKit {
   /** Emit a terminal error event so a `--log` JSONL trail (and any SDK logger)
    *  records the failure instead of going silent mid-stream. Best-effort: the
    *  logger swallows its own faults, and the original error is always rethrown
-   *  by the caller. */
+   *  by the caller. The stage comes from the fault's `errorType` — the same axis
+   *  the exit-code classifier reads — so the log stage and the exit code can
+   *  never disagree. */
   #reportError(logger: Logger, err: unknown): void {
+    const stage: LogStage = err instanceof ZipKitError ? STAGE_FOR_ERROR_TYPE[err.errorType] : "plan";
     const code = err instanceof ZipKitError ? err.code : "unknown";
-    const stage: LogEvent["stage"] = code.startsWith("scan.")
-      ? "scan"
-      : code.startsWith("write.")
-        ? "write"
-        : code.startsWith("read.")
-          ? "extract"
-          : "plan";
     const message = err instanceof Error ? err.message : String(err);
     const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
-    logger.emit(stage, "error", message, {
-      data: cause !== undefined ? { code, cause } : { code },
-    });
+    logger.emit(
+      cause !== undefined
+        ? { stage, level: "error", event: "fault", code, message, cause }
+        : { stage, level: "error", event: "fault", code, message },
+    );
   }
 
   #reportPlan(logger: Logger, plan: PlanData): void {
     for (const entry of plan.entries) {
       if (entry.excluded) {
-        logger.emit("plan", "debug", "entry.excluded", {
-          path: entry.archivePath,
-          data: entry.excludeReason !== undefined ? { reason: entry.excludeReason } : undefined,
-        });
+        logger.emit(
+          entry.excludeReason !== undefined
+            ? { stage: "plan", level: "debug", event: "entry.excluded", path: entry.archivePath, reason: entry.excludeReason }
+            : { stage: "plan", level: "debug", event: "entry.excluded", path: entry.archivePath },
+        );
       } else if (entry.archivePath !== entry.originalPath) {
-        logger.emit("plan", "debug", "entry.renamed", {
+        logger.emit({
+          stage: "plan",
+          level: "debug",
+          event: "entry.renamed",
           path: entry.archivePath,
-          data: { from: entry.originalPath },
+          from: entry.originalPath,
         });
       }
     }
     for (const f of plan.findings) {
       const level = f.severity === "error" ? "error" : f.severity === "warning" ? "warn" : "info";
-      logger.emit("plan", level, "entry.flagged", {
+      logger.emit({
+        stage: "plan",
+        level,
+        event: "entry.flagged",
         rule: f.rule,
         path: f.path,
-        data: { severity: f.severity },
+        severity: f.severity,
       });
     }
-    logger.emit("plan", "info", "plan.done", {
-      data: {
-        total: plan.summary.total,
-        included: plan.summary.included,
-        excluded: plan.summary.excluded,
-        renamed: plan.summary.renamed,
-        warnings: plan.summary.warnings,
-        errors: plan.summary.errors,
-        writable: plan.writable,
-      },
+    logger.emit({
+      stage: "plan",
+      level: "info",
+      event: "plan.done",
+      total: plan.summary.total,
+      included: plan.summary.included,
+      excluded: plan.summary.excluded,
+      renamed: plan.summary.renamed,
+      warnings: plan.summary.warnings,
+      errors: plan.summary.errors,
+      writable: plan.writable,
     });
   }
 }
+
+/** Map a fault's domain (`errorType`) to the log stage its terminal event is
+ *  recorded under. Keyed off the same axis as the exit-code classifier — never a
+ *  code-string prefix — so the two views of a fault stay in agreement. */
+const STAGE_FOR_ERROR_TYPE: Record<ZipKitErrorType, LogStage> = {
+  scan: "scan",
+  policy: "plan",
+  write: "write",
+  read: "extract",
+  abort: "plan",
+};

@@ -263,7 +263,7 @@ export async function scan(
   const signal = deps.signal;
   throwIfAborted(signal);
 
-  deps.logger.emit("scan", "info", "scan.start", { data: { inputs: inputs.length } });
+  deps.logger.emit({ stage: "scan", level: "info", event: "scan.start", inputs: inputs.length });
 
   const root = spec.root !== undefined ? path.resolve(cwd, spec.root) : undefined;
 
@@ -274,7 +274,10 @@ export async function scan(
     try {
       link = await lstatBig(input.path);
     } catch (err) {
-      throw new ScanError("scan.input-missing", `cannot stat input: ${input.path}`, { cause: err });
+      throw new ScanError("scan.input-missing", `cannot stat input: ${input.path}`, {
+        cause: err,
+        usage: true,
+      });
     }
     if (link.isSymbolicLink()) {
       let real: string;
@@ -283,6 +286,7 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot resolve symlink input: ${input.path}`, {
           cause: err,
+          usage: true,
         });
       }
       let resolved: BigIntStats;
@@ -291,6 +295,7 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot stat symlink target: ${input.path}`, {
           cause: err,
+          usage: true,
         });
       }
       isDir.push(resolved.isDirectory());
@@ -367,14 +372,17 @@ export async function scan(
       source: path.basename(inputs[i]?.path ?? real),
     };
     if (isDir[i]) {
-      ctx.logger.emit("scan", "debug", "scan.dir", { path: real });
+      ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: real });
       await crawlDirectory(ctx, real, anchorPaths, i);
     } else {
       let fileStats: BigIntStats;
       try {
         fileStats = await statBig(real);
       } catch (err) {
-        throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, { cause: err });
+        throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, {
+          cause: err,
+          usage: true,
+        });
       }
       // A file named directly as input that is itself the output archive.
       if (ctx.artifactIds.has(fileId(fileStats))) continue;
@@ -382,8 +390,12 @@ export async function scan(
     }
   }
 
-  deps.logger.emit("scan", "info", "scan.done", {
-    data: { entries: ctx.entries.length, prunedDirs: ctx.prunedDirs.length },
+  deps.logger.emit({
+    stage: "scan",
+    level: "info",
+    event: "scan.done",
+    entries: ctx.entries.length,
+    prunedDirs: ctx.prunedDirs.length,
   });
 
   const result: ScanResult = {

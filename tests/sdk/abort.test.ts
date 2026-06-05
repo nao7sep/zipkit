@@ -74,7 +74,7 @@ describe("abort propagation", () => {
         {
           signal: controller.signal,
           onProgress: (event) => {
-            if (event.message === "write.start") controller.abort();
+            if (event.event === "write.start") controller.abort();
           },
         },
       ),
@@ -99,7 +99,7 @@ describe("abort propagation", () => {
         {
           signal: controller.signal,
           onProgress: (event) => {
-            if (event.message === "entry.written") controller.abort();
+            if (event.event === "entry.written") controller.abort();
           },
         },
       ),

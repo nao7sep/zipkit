@@ -17,6 +17,8 @@ export type {
   Finding,
   FilterRule,
   LogEvent,
+  LogLevel,
+  LogStage,
   Metadata,
   MetadataEntry,
   MetadataExcluded,

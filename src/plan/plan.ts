@@ -12,9 +12,10 @@
  * to the plan out of band (see `carrier.ts`).
  */
 
-import { buildMatcher } from "../filter/match.js";
+import { matcherFor } from "../filter/match.js";
 import { attachInternals } from "../internal/carrier.js";
 import type { ScanResult } from "../internal/types.js";
+import { finding } from "../registry.js";
 import type { ArchivePolicy, CreateData, Finding } from "../types.js";
 
 /** The `mode:"plan"` member of {@link CreateData} — the dry-run payload and the
@@ -28,14 +29,14 @@ import { applyEmptyFiles } from "./emptyFiles.js";
 import { applyFilter } from "./filterPass.js";
 import { applyNameFix } from "./nameFix.js";
 import { applyPathFix } from "./pathFix.js";
-import { buildSummary, computeWritable } from "./summary.js";
+import { buildSummary } from "./summary.js";
 import { applySymlinks } from "./symlinks.js";
 import { applyTimestamps } from "./timestamps.js";
 import { applyZip64 } from "./zip64.js";
 import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.js";
 
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
-  const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
+  const matcher = matcherFor(policy);
   const items = buildWorkItems(scan);
 
   applyPathFix(items);
@@ -57,6 +58,14 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   const writeEntries = buildWriteEntries(items);
   const globalFindings: Finding[] = [];
   const zip64 = applyZip64(writeEntries, policy, scan.output, globalFindings);
+  // The output pre-existing without an authorized overwrite blocks the write —
+  // recorded as an error finding so it surfaces with a reason and so `writable`
+  // derives from one place (the findings), never silently diverging from `ok`.
+  if (scan.outputExists && !scan.overwrite) {
+    globalFindings.push(
+      finding("output.exists", scan.output, "output archive already exists; authorize overwrite to replace it"),
+    );
+  }
 
   const entries = items.map(toPlannedEntry);
   const findings: Finding[] = [];
@@ -66,7 +75,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   for (const f of globalFindings) findings.push(f);
 
   const summary = buildSummary(items, findings, zip64);
-  const writable = computeWritable(findings, scan.outputExists, scan.overwrite);
+  const writable = summary.errors === 0;
 
   const plan: PlanData = {
     mode: "plan",

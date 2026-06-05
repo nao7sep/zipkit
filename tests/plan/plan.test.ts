@@ -369,4 +369,17 @@ describe("output gate", () => {
     const p = plan([scanEntry({ archivePath: "a.txt" })], {}, { outputExists: true, overwrite: true });
     expect(p.writable).toBe(true);
   });
+
+  it("records the block as an output.exists error finding (so writable and ok agree)", () => {
+    const p = plan([scanEntry({ archivePath: "a.txt" })], {}, { outputExists: true });
+    expect(p.writable).toBe(false);
+    const f = p.findings.find((x) => x.rule === "output.exists");
+    expect(f?.severity).toBe("error");
+    expect(p.summary.errors).toBe(1);
+  });
+
+  it("raises no output.exists finding once overwrite is authorized", () => {
+    const p = plan([scanEntry({ archivePath: "a.txt" })], {}, { outputExists: true, overwrite: true });
+    expect(p.findings.some((x) => x.rule === "output.exists")).toBe(false);
+  });
 });

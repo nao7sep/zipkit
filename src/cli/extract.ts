@@ -83,11 +83,11 @@ export function registerExtract(
   cmd.option("--dry-run", "validate only: verify CRC and write nothing");
   cmd.option("--overwrite", "overwrite existing files at the destination");
   cmd.option("--check-metadata", "reconcile entries against the manifest and verify SHA-256");
-  cmd.option("--metadata-name <name>", "manifest entry name inside the archive (default _metadata.json)");
+  cmd.option("--metadata-name <name>", "manifest entry name inside the archive");
   cmd.option("--no-timestamps", "do not restore modification/access times");
   cmd.option("--timezone <iana>", "zone for the DOS field when an entry has no UTC time extra");
-  cmd.option("--on-unsafe <skip|abort>", "handling of paths that escape the destination (default skip)");
-  cmd.option("--symlinks <restore|skip>", "symlink handling (default restore)");
+  cmd.option("--on-unsafe <skip|abort>", "handling of paths that escape the destination (zip-slip)");
+  cmd.option("--symlinks <restore|skip>", "symlink handling");
   cmd.option("--exclude <pattern>", "exclude glob, not written (repeatable); trailing slash = directory", addGlob);
   cmd.option("--exclude-regex <pattern>", "exclude regex, not written (repeatable)", addRegex);
   cmd.option("--log <path.jsonl>", "write the event stream as JSONL");
@@ -95,12 +95,12 @@ export function registerExtract(
   cmd.option("--verbose", "include per-entry detail in console progress");
   cmd.option(
     "--concurrency <n>",
-    "maximum entries extracted in parallel (default: available CPUs, bounded 4–16)",
+    "maximum entries extracted in parallel",
     parseInteger,
   );
   cmd.option(
     "--chunk-size <size>",
-    "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
+    "streamed-I/O chunk size in bytes; accepts a k/m suffix",
     parseByteSize,
   );
   cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");

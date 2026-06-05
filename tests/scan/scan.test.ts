@@ -10,7 +10,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildMatcher } from "../../src/filter/match.js";
+import { matcherFor } from "../../src/filter/match.js";
 import { createLogger } from "../../src/log/logger.js";
 import { resolvePolicy } from "../../src/policy.js";
 import { scan } from "../../src/scan/scan.js";
@@ -28,7 +28,7 @@ afterEach(async () => {
 
 function deps(policy: ArchivePolicy) {
   return {
-    matcher: buildMatcher(policy.filters, policy.junk === "builtin"),
+    matcher: matcherFor(policy),
     limit: <T>(fn: () => Promise<T>): Promise<T> => fn(),
     logger: createLogger(),
   };

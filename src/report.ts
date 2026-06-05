@@ -65,11 +65,13 @@ export function buildReport<Verb extends string, Data extends { findings: Findin
 export interface ProgressEvent {
   schemaVersion: number;
   event:
+    | "scan.dir"
     | "scan.done"
     | "plan.done"
     | "write.done"
     | "extract.done"
     | "entry.written"
+    | "entry.verified"
     | "entry.excluded"
     | "entry.renamed";
   entries?: number;

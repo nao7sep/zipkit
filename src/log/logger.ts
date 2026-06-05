@@ -5,42 +5,26 @@
  * with its emission time; when no sink is attached it does no work.
  */
 
-import type { LogEvent } from "../types.js";
+import type { LogEvent, LogEventBody, LogMeta } from "../types.js";
 
 export type LogSink = (event: LogEvent) => void;
 
-export interface LogFields {
-  rule?: string;
-  path?: string;
-  data?: Record<string, unknown>;
-}
+/** A typed event as emitted, before the logger stamps `ts`. */
+export type EmittedEvent = LogMeta & LogEventBody;
 
 export interface Logger {
-  emit(
-    stage: LogEvent["stage"],
-    level: LogEvent["level"],
-    message: string,
-    fields?: LogFields,
-  ): void;
+  emit(event: EmittedEvent): void;
 }
 
 export function createLogger(sink?: LogSink): Logger {
   return {
-    emit(stage, level, message, fields) {
+    emit(event) {
       if (!sink) return;
-      const event: LogEvent = {
-        ts: new Date().toISOString(),
-        stage,
-        level,
-        message,
-      };
-      if (fields?.rule !== undefined) event.rule = fields.rule;
-      if (fields?.path !== undefined) event.path = fields.path;
-      if (fields?.data !== undefined) event.data = fields.data;
+      const stamped = { ts: new Date().toISOString(), ...event } as LogEvent;
       // Logging is best-effort observability: a consumer's sink that throws
       // must never abort the archive operation it is reporting on.
       try {
-        sink(event);
+        sink(stamped);
       } catch {
         /* swallow — the sink's failure is not the run's failure */
       }

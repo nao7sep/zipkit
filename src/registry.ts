@@ -37,7 +37,8 @@ export type RuleId =
   | "time.pre-1980"
   | "time.post-2107"
   | "compat.zip64"
-  | "compat.zip64-required";
+  | "compat.zip64-required"
+  | "output.exists";
 
 export interface RuleSpec {
   /** The rule's severity, which alone decides blocking (`error` blocks). For
@@ -71,6 +72,7 @@ export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
   "time.post-2107": { severity: "warning", disposition: "clamp" },
   "compat.zip64": { severity: "warning", disposition: "use Zip64" },
   "compat.zip64-required": { severity: "error", disposition: "abort" },
+  "output.exists": { severity: "error", disposition: "overwrite" },
 };
 
 /** The rule ids in pipeline order. */

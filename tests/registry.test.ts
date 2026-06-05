@@ -47,6 +47,7 @@ describe("RULE_REGISTRY", () => {
       "time.post-2107",
       "compat.zip64",
       "compat.zip64-required",
+      "output.exists",
     ]);
   });
 

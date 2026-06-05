@@ -11,83 +11,83 @@ import { emitProgressEvent } from "./json.js";
 import type { CreateData, ExtractData, Finding, Severity } from "../types.js";
 
 /** Human progress: aggregate phase lines on stderr, no per-entry spam (that
- *  lives in the JSONL log) unless `--verbose`. */
+ *  lives in the JSONL log) unless `--verbose`. Each event's fields are typed by
+ *  its `event` discriminant — no field is read by string key. */
 export function createConsoleProgress(verbose: boolean): LogSink {
   return (event) => {
-    const data = event.data ?? {};
-    const field = (key: string): string => String(data[key] ?? "");
-    switch (event.message) {
+    switch (event.event) {
       case "scan.done":
-        process.stderr.write(`scan: ${field("entries")} entries\n`);
+        process.stderr.write(`scan: ${event.entries} entries\n`);
         break;
       case "plan.done":
         process.stderr.write(
-          `plan: ${field("included")} included, ${field("excluded")} excluded, ${field("warnings")} warnings, ${field("errors")} errors\n`,
+          `plan: ${event.included} included, ${event.excluded} excluded, ${event.warnings} warnings, ${event.errors} errors\n`,
         );
         break;
       case "write.done":
-        process.stderr.write(`write: ${field("bytes")} bytes\n`);
+        process.stderr.write(`write: ${event.bytes} bytes\n`);
         break;
       case "extract.done":
         process.stderr.write(
-          `extract: ${field("total")} entries, ${field("written")} written, ${field("crcFailed")} CRC failures\n`,
+          `extract: ${event.total} entries, ${event.written} written, ${event.crcFailed} CRC failures\n`,
         );
         break;
+      // Per-item progress for the long phases (scan walk, write, extract) plus
+      // the plan's per-entry decisions — all path-only, shown under --verbose.
+      case "scan.dir":
+      case "entry.written":
+      case "entry.verified":
+      case "entry.excluded":
+      case "entry.renamed":
+        if (verbose) process.stderr.write(`${event.event}: ${event.path}\n`);
+        break;
+      case "entry.flagged":
+        if (verbose) process.stderr.write(`entry.flagged: ${event.path} [${event.rule}]\n`);
+        break;
       default:
-        if (
-          verbose &&
-          (event.message === "entry.excluded" ||
-            event.message === "entry.renamed" ||
-            event.message === "entry.flagged")
-        ) {
-          const rule = event.rule ? ` [${event.rule}]` : "";
-          process.stderr.write(`${event.message}: ${event.path ?? ""}${rule}\n`);
-        }
+        break;
     }
   };
-}
-
-/** Numeric field from a log event's data bag, or undefined when absent. */
-function numField(data: Record<string, unknown> | undefined, key: string): number | undefined {
-  const v = data?.[key];
-  return typeof v === "number" ? v : undefined;
 }
 
 /**
  * `--json` progress: convert the same log stream to prefixed minified JSONL on
  * stderr per the `ProgressEvent` shape. The terminal `.done` events always
  * frame; the per-entry events frame only under `--verbose`, mirroring the human
- * renderer's volume.
+ * renderer's volume. Fields are read off the typed event, not a string bag.
  */
 export function createJsonlProgress(verbose: boolean): LogSink {
   return (event) => {
-    const data = event.data;
-    switch (event.message) {
+    switch (event.event) {
       case "scan.done":
-        emitProgressEvent({ event: "scan.done", entries: numField(data, "entries") ?? 0 });
+        emitProgressEvent({ event: "scan.done", entries: event.entries });
         break;
       case "plan.done":
-        emitProgressEvent({
-          event: "plan.done",
-          included: numField(data, "included") ?? 0,
-          excluded: numField(data, "excluded") ?? 0,
-        });
+        emitProgressEvent({ event: "plan.done", included: event.included, excluded: event.excluded });
         break;
       case "write.done":
-        emitProgressEvent({ event: "write.done", bytes: numField(data, "bytes") ?? 0 });
+        emitProgressEvent({ event: "write.done", bytes: event.bytes });
         break;
       case "extract.done":
-        emitProgressEvent({ event: "extract.done", entries: numField(data, "total") ?? 0 });
+        emitProgressEvent({ event: "extract.done", entries: event.total });
+        break;
+      case "scan.dir":
+        if (verbose) emitProgressEvent({ event: "scan.dir", path: event.path });
+        break;
+      case "entry.written":
+        if (verbose) emitProgressEvent({ event: "entry.written", path: event.path });
+        break;
+      case "entry.verified":
+        if (verbose) emitProgressEvent({ event: "entry.verified", path: event.path });
+        break;
+      case "entry.excluded":
+        if (verbose) emitProgressEvent({ event: "entry.excluded", path: event.path });
+        break;
+      case "entry.renamed":
+        if (verbose) emitProgressEvent({ event: "entry.renamed", path: event.path });
         break;
       default:
-        if (!verbose) return;
-        if (event.message === "entry.written" && event.path !== undefined) {
-          emitProgressEvent({ event: "entry.written", path: event.path });
-        } else if (event.message === "entry.excluded" && event.path !== undefined) {
-          emitProgressEvent({ event: "entry.excluded", path: event.path });
-        } else if (event.message === "entry.renamed" && event.path !== undefined) {
-          emitProgressEvent({ event: "entry.renamed", path: event.path });
-        }
+        break;
     }
   };
 }

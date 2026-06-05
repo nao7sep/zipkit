@@ -135,7 +135,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   const signal = deps.signal;
   throwIfAborted(signal);
 
-  deps.logger.emit("write", "info", "write.start", { data: { entries: writeEntries.length } });
+  deps.logger.emit({ stage: "write", level: "info", event: "write.start", entries: writeEntries.length });
 
   const hash = policy.metadata !== false && policy.metadata.hash;
   const createdNs = BigInt(Date.now()) * 1_000_000n;
@@ -181,7 +181,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       if (source.type === "dir") {
         await writer.addDir(toWriteEntryInput(source));
         streamed.push({ source, crc32: 0, compressedSize: 0 });
-        deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
+        deps.logger.emit({ stage: "write", level: "debug", event: "entry.written", path: source.archivePath });
         continue;
       }
 
@@ -201,7 +201,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
         };
         if (hash) entry.sha256 = createHash("sha256").update(raw).digest("hex");
         streamed.push(entry);
-        deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
+        deps.logger.emit({ stage: "write", level: "debug", event: "entry.written", path: source.archivePath });
         continue;
       }
 
@@ -214,7 +214,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       };
       if (hasher) entry.sha256 = hasher.digest("hex");
       streamed.push(entry);
-      deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
+      deps.logger.emit({ stage: "write", level: "debug", event: "entry.written", path: source.archivePath });
     }
 
     // Phase edge between streaming and finalize: a cancellation that arrived
@@ -270,7 +270,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     zip64 = final.zip64;
     bytes = final.bytes;
 
-    deps.logger.emit("write", "info", "write.done", { data: { bytes, zip64 } });
+    deps.logger.emit({ stage: "write", level: "info", event: "write.done", bytes, zip64 });
 
     return {
       mode: "write",

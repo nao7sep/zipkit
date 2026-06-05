@@ -10,11 +10,21 @@ export type ZipKitErrorType = "scan" | "policy" | "write" | "read" | "abort";
 export abstract class ZipKitError extends Error {
   abstract readonly errorType: ZipKitErrorType;
   readonly code: string;
+  /**
+   * Whether this fault is the caller's to fix — a malformed invocation or input
+   * — as opposed to a runtime failure the world handed us. This is orthogonal to
+   * `errorType`, which says *where* it failed: a scan or a read can fail for
+   * either reason, so the attribution lives on its own axis rather than being
+   * inferred from the domain or the code string. It drives the usage exit code
+   * (2) and the CLI's report-vs-rethrow split.
+   */
+  readonly usage: boolean;
 
-  constructor(code: string, message: string, options?: { cause?: unknown }) {
+  constructor(code: string, message: string, options?: { cause?: unknown; usage?: boolean }) {
     super(message, options);
     this.code = code;
     this.name = this.constructor.name;
+    this.usage = options?.usage ?? false;
   }
 }
 
@@ -23,9 +33,14 @@ export class ScanError extends ZipKitError {
   readonly errorType = "scan" as const;
 }
 
-/** The spec or policy is invalid or under-specified (a configuration fault). */
+/** The spec or policy is invalid or under-specified (a configuration fault).
+ *  Always a usage fault — the caller controls the spec, policy, and options. */
 export class PolicyError extends ZipKitError {
   readonly errorType = "policy" as const;
+
+  constructor(code: string, message: string, options?: { cause?: unknown }) {
+    super(code, message, { ...options, usage: true });
+  }
 }
 
 /** Writing the archive failed, or the plan was not writable. */
@@ -58,17 +73,12 @@ export class AbortError extends ZipKitError {
  * opened, or a missing destination. These occur before a verb produces any
  * report, so they carry an exit-2 (usage) code and a CLI verb action re-throws
  * them to the run layer rather than folding them into a report; operational
- * faults that arise mid-run are folded instead. The single source of truth for
- * that split, shared by the exit-code mapping and the verb actions.
+ * faults that arise mid-run are folded instead. The attribution rides on each
+ * error's {@link ZipKitError.usage} flag — set at the throw site, not inferred
+ * from a code-string allowlist — so this is a single, drift-free predicate.
  */
 export function isUsageFault(err: unknown): boolean {
-  if (!(err instanceof ZipKitError)) return false;
-  if (err.errorType === "policy") return true;
-  return (
-    err.code === "scan.input-missing" ||
-    err.code === "read.open-failed" ||
-    err.code === "read.no-dest"
-  );
+  return err instanceof ZipKitError && err.usage;
 }
 
 /**

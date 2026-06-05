@@ -16,14 +16,15 @@
  * slash) anchors to the root; `**` spans segments; a regex matches anywhere
  * unless anchored with `^`/`$`; literal is a plain path comparison. The
  * trailing-slash directory convention is expressed through each rule's `target`,
- * set by the caller, not re-derived here.
+ * set by the caller, not re-derived here. User exclude rules match
+ * case-sensitively; the junk preset matches case-insensitively.
  */
 
 import picomatch from "picomatch";
 import type { JunkRule } from "./junk.js";
 import { JUNK_RULES } from "./junk.js";
 import type { RuleId } from "../registry.js";
-import type { FilterRule } from "../types.js";
+import type { ArchivePolicy, FilterRule } from "../types.js";
 
 export interface CompiledRule {
   target: "file" | "dir" | "both";
@@ -49,42 +50,53 @@ function isAnchored(pattern: string): boolean {
   return pattern.startsWith("/") || pattern.includes("/");
 }
 
-function compileGlob(pattern: string): (path: string) => boolean {
+function compileGlob(pattern: string, nocase: boolean): (path: string) => boolean {
   let body = stripTrailingSlash(pattern);
   const anchored = isAnchored(body);
   if (body.startsWith("/")) body = body.slice(1);
   // Unanchored patterns must match at any depth, so also match under any
   // prefix; `dot: true` lets dotfile junk (`.DS_Store`) match.
   const globs = anchored ? [body] : [body, `**/${body}`];
-  const isMatch = picomatch(globs, { dot: true });
+  const isMatch = picomatch(globs, { dot: true, nocase });
   return (path) => isMatch(path);
 }
 
-function compileLiteral(pattern: string): (path: string) => boolean {
+function compileLiteral(pattern: string, nocase: boolean): (path: string) => boolean {
   let body = stripTrailingSlash(pattern);
   const anchored = isAnchored(body);
   if (body.startsWith("/")) body = body.slice(1);
+  if (nocase) {
+    const want = body.toLowerCase();
+    if (anchored) return (path) => path.toLowerCase() === want;
+    return (path) => {
+      const p = path.toLowerCase();
+      return p === want || p.endsWith(`/${want}`);
+    };
+  }
   if (anchored) return (path) => path === body;
   return (path) => path === body || path.endsWith(`/${body}`);
 }
 
-function compileTest(rule: FilterRule): (path: string) => boolean {
+function compileTest(rule: FilterRule, nocase: boolean): (path: string) => boolean {
   switch (rule.match) {
     case "regex": {
-      const re = new RegExp(rule.pattern);
+      const re = new RegExp(rule.pattern, nocase ? "i" : "");
       return (path) => re.test(path);
     }
     case "literal":
-      return compileLiteral(rule.pattern);
+      return compileLiteral(rule.pattern, nocase);
     case "glob":
-      return compileGlob(rule.pattern);
+      return compileGlob(rule.pattern, nocase);
   }
 }
 
+// User exclude rules are case-sensitive (gitignore convention); the junk preset
+// is case-insensitive, because OS-generated names (`Thumbs.db`, `.DS_Store`)
+// vary in case across filesystems and none is ever a real file worth keeping.
 function compileUserRule(rule: FilterRule): CompiledRule {
   return {
     target: rule.target,
-    test: compileTest(rule),
+    test: compileTest(rule, false),
     describe: `exclude rule: ${rule.pattern}`,
   };
 }
@@ -92,7 +104,7 @@ function compileUserRule(rule: FilterRule): CompiledRule {
 function compileJunkRule(entry: JunkRule): CompiledRule {
   return {
     target: entry.rule.target,
-    test: compileTest(entry.rule),
+    test: compileTest(entry.rule, true),
     junkRule: entry.id,
     describe: `junk: ${entry.rule.pattern}`,
   };
@@ -122,4 +134,14 @@ export function buildMatcher(rules: FilterRule[], includeJunk: boolean): FilterM
       return null;
     },
   };
+}
+
+/**
+ * Derive the exclusion matcher from a resolved archive policy — the single place
+ * the junk toggle (`junk === "builtin"`) is read. The scan walk and the plan
+ * filter pass both go through here, so they can never build the matcher from
+ * divergent arguments.
+ */
+export function matcherFor(policy: ArchivePolicy): FilterMatcher {
+  return buildMatcher(policy.filters, policy.junk === "builtin");
 }

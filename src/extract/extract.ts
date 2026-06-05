@@ -182,6 +182,7 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
     throw new ReadError(
       "read.no-dest",
       "extract requires a destination directory unless dryRun is set",
+      { usage: true },
     );
   }
   const timeZone = spec.timezone ?? machineTimeZone();
@@ -202,13 +203,20 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
     fd = await openAsync(spec.archive, "r");
     fileSize = (await statAsync(spec.archive)).size;
   } catch (err) {
-    throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, { cause: err });
+    throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, {
+      cause: err,
+      usage: true,
+    });
   }
 
   try {
     const parsed = await parseZip(fd, fileSize);
-    deps.logger.emit("extract", "info", "extract.start", {
-      data: { entries: parsed.entries.length, write },
+    deps.logger.emit({
+      stage: "extract",
+      level: "info",
+      event: "extract.start",
+      entries: parsed.entries.length,
+      write,
     });
 
     // Manifest resolution (heavy mode): the manifest is the entry embedded in
@@ -361,6 +369,12 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
       if (verified.sha !== undefined) result.sha = verified.sha;
       if (skip !== undefined) result.skipped = skip;
       if (outputPath !== undefined) result.outputPath = outputPath;
+      deps.logger.emit({
+        stage: "extract",
+        level: "debug",
+        event: "entry.verified",
+        path: entry.archivePath,
+      });
       return result;
     }
 
@@ -434,8 +448,16 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
       unsafe === 0 &&
       (!spec.checkMetadata || (missing.length === 0 && extra.length === 0 && shaMismatched === 0));
 
-    deps.logger.emit("extract", "info", "extract.done", {
-      data: { total: entries.length, crcFailed, shaMismatched, written, skipped, reportOk },
+    deps.logger.emit({
+      stage: "extract",
+      level: "info",
+      event: "extract.done",
+      total: entries.length,
+      crcFailed,
+      shaMismatched,
+      written,
+      skipped,
+      reportOk,
     });
 
     return {

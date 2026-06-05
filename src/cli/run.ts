@@ -24,10 +24,12 @@ import { registerCreate } from "./create.js";
 import { registerExtract } from "./extract.js";
 import { emitHumanError, emitReport, faultFinding, toFault } from "./json.js";
 
-/** The verb the user named, for stamping the pre-verb envelope. */
-function detectVerb(argv: string[]): "create" | "extract" | "unknown" {
+/** The verb the user named, matched against the registered command names (so the
+ *  verb set lives in exactly one place — the registrations), for stamping the
+ *  pre-verb envelope. */
+function detectVerb(argv: string[], known: ReadonlySet<string>): string {
   for (const arg of argv.slice(2)) {
-    if (arg === "create" || arg === "extract") return arg;
+    if (known.has(arg)) return arg;
     if (!arg.startsWith("-")) break;
   }
   return "unknown";
@@ -40,11 +42,11 @@ function wantsJson(argv: string[]): boolean {
 
 /** Emit the pre-data fault: a human line + (under `--json`) the minimal one-
  *  finding envelope, so a `--json` caller always parses one report. */
-function emitPreVerbFault(err: unknown, argv: string[]): void {
+function emitPreVerbFault(err: unknown, argv: string[], verbs: ReadonlySet<string>): void {
   const fault = toFault(err, "");
   if (wantsJson(argv)) {
     const findings: Finding[] = [faultFinding(fault)];
-    emitReport(buildReport(detectVerb(argv), { findings }));
+    emitReport(buildReport(detectVerb(argv, verbs), { findings }));
   } else {
     emitHumanError(fault.code, fault.message);
   }
@@ -67,6 +69,7 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
   };
   registerCreate(program, signal, setExit);
   registerExtract(program, signal, setExit);
+  const verbs = new Set(program.commands.map((c) => c.name()));
 
   try {
     await program.parseAsync(argv);
@@ -80,11 +83,11 @@ export async function runCli(argv: string[] = process.argv): Promise<number> {
       if (commanderError.exitCode === 0) return 0;
       if (wantsJson(argv)) {
         const fault = toFault(err, "");
-        emitReport(buildReport(detectVerb(argv), { findings: [faultFinding(fault)] }));
+        emitReport(buildReport(detectVerb(argv, verbs), { findings: [faultFinding(fault)] }));
       }
       return 2;
     }
-    emitPreVerbFault(err, argv);
+    emitPreVerbFault(err, argv, verbs);
     return exitCodeFor(err);
   }
 }

@@ -76,7 +76,7 @@ interface CreateOpts {
  *  both `--store jpg,png` and `--store jpg --store png` reach the same set.
  *  Extension-dialect normalization (case, leading dot) is the SDK's job
  *  (`resolvePolicy`), so this only handles the comma-list shape. */
-function splitList(value: string): string[] {
+function splitCsv(value: string): string[] {
   return value
     .split(",")
     .map((s) => s.trim())
@@ -182,7 +182,7 @@ export function registerCreate(
     return pattern;
   };
   const addStore = (value: string) => {
-    storeAdds.push(...splitList(value));
+    storeAdds.push(...splitCsv(value));
     return value;
   };
 
@@ -195,7 +195,7 @@ export function registerCreate(
   cmd.option("--root <dir>", "root every input's archive path relative to this directory");
   cmd.option(
     "--wrap",
-    "single directory: keep its name as the top folder (default: flatten its contents to the root)",
+    "single directory: keep its name as the top folder instead of flattening its contents to the root",
   );
 
   // Destination
@@ -204,12 +204,12 @@ export function registerCreate(
   cmd.option("--comment <text>", "archive comment, stored in the ZIP and the metadata");
 
   // Selection
-  cmd.option("--junk <builtin|none>", "junk preset (default builtin)");
+  cmd.option("--junk <builtin|none>", "built-in OS-junk preset (case-insensitive)");
   cmd.option("--exclude <pattern>", "exclude glob (repeatable); trailing slash = directory", addGlob);
   cmd.option("--exclude-regex <pattern>", "exclude regex (repeatable)", addRegex);
   cmd.option("--skip-empty-files", "drop zero-byte files");
-  cmd.option("--empty-dirs <keep|prune>", "empty-directory handling (default keep)");
-  cmd.option("--empty-dir-def <strict|recursive>", "empty-directory definition (default recursive)");
+  cmd.option("--empty-dirs <keep|prune>", "empty-directory handling");
+  cmd.option("--empty-dir-def <strict|recursive>", "empty-directory definition");
 
   // Naming. Each name guardrail takes an action: fix (repair, the default) |
   // warn (report, do not block) | error (report and fail) | none (silent).
@@ -225,45 +225,45 @@ export function registerCreate(
   );
   cmd.option(
     "--invalid-char <char>",
-    'replacement for invalid characters; a single path component, no slashes (default "_")',
+    "replacement for invalid characters; a single path component, no slashes",
   );
   cmd.option(
     "--collision-case <insensitive|sensitive>",
-    "whether case-only path differences collide (default insensitive)",
+    "whether case-only path differences collide",
   );
 
   // Entry data
-  cmd.option("--symlinks <ignore|preserve|follow>", "symlink handling (default ignore)");
+  cmd.option("--symlinks <ignore|preserve|follow>", "symlink handling");
   cmd.option("--follow-external", "under follow, allow links that escape the input tree");
   cmd.option(
     "--timestamps <preserve|clamp>",
-    "timestamp policy (default preserve): preserve writes the UTC extras, clamp writes only the DOS field",
+    "timestamp policy: preserve writes the UTC extras, clamp writes only the DOS field",
   );
   cmd.option(
     "--timezone <iana>",
-    "IANA zone for the DOS local-time field, e.g. Asia/Tokyo (default: host zone)",
+    "IANA zone for the DOS local-time field, e.g. Asia/Tokyo",
   );
   cmd.option(
     "--stored <builtin|none>",
-    "baseline of extensions kept uncompressed (default builtin); none deflates everything not named by --store",
+    "baseline of extensions kept uncompressed; none deflates everything not named by --store",
   );
   cmd.option(
     "--store <ext>",
     "keep this extension uncompressed, with or without a leading dot (repeatable, comma-list ok); adds to the --stored baseline",
     addStore,
   );
-  cmd.option("--level <1-9>", "deflate level, 1 (fastest) to 9 (smallest) (default 6)", parseInteger);
+  cmd.option("--level <1-9>", "deflate level, 1 (fastest) to 9 (smallest)", parseInteger);
 
   // Companion output
   cmd.option("--no-metadata", "do not embed the metadata file (produce a plain archive)");
   cmd.option("--metadata-no-hash", "omit the per-file SHA-256 (CRC-32 is always recorded)");
   cmd.option(
     "--metadata-name <name>",
-    "metadata entry name, a single path component (default _metadata.json)",
+    "metadata entry name, a single path component",
   );
 
   // Container format
-  cmd.option("--zip64 <auto|never|always>", "Zip64 policy (default auto)");
+  cmd.option("--zip64 <auto|never|always>", "Zip64 policy");
 
   // Diagnostics and control
   cmd.option("--dry-run", "compute and render the plan; write nothing");
@@ -272,12 +272,12 @@ export function registerCreate(
   cmd.option("--verbose", "include per-entry detail in console progress");
   cmd.option(
     "--concurrency <n>",
-    "maximum concurrent file operations (default: available CPUs, bounded 4–16)",
+    "maximum concurrent file operations (the scan and hashing; the archive write is sequential)",
     parseInteger,
   );
   cmd.option(
     "--chunk-size <size>",
-    "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
+    "streamed-I/O chunk size in bytes; accepts a k/m suffix",
     parseByteSize,
   );
   cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");

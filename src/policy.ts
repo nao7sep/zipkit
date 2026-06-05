@@ -42,6 +42,10 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".webm",
   ".m4v",
   ".wmv",
+  ".avi",
+  ".mpg",
+  ".mpeg",
+  ".flv",
   // Audio
   ".mp3",
   ".aac",
@@ -60,6 +64,9 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".xz",
   ".zst",
   ".tgz",
+  ".lz4",
+  ".lzma",
+  ".br",
   // Documents (zip-based)
   ".docx",
   ".xlsx",
@@ -71,6 +78,9 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".ods",
   ".odp",
   ".epub",
+  ".pages",
+  ".numbers",
+  ".key",
   // Packages (zip-based)
   ".jar",
   ".war",
@@ -79,6 +89,14 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".whl",
   ".nupkg",
   ".vsix",
+  ".crx",
+  ".xpi",
+  ".aar",
+  ".egg",
+  // Disk images & OS packages (compressed payloads)
+  ".dmg",
+  ".deb",
+  ".rpm",
   // Fonts
   ".woff2",
   ".woff",
