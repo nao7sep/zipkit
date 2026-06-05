@@ -21,7 +21,7 @@ import { lstat, mkdir, rename, rm, symlink, utimes } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ReadError, throwIfAborted } from "../errors.js";
+import { ReadError, throwIfAborted, toAbortError } from "../errors.js";
 import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
@@ -98,6 +98,7 @@ async function verifyEntry(
   storedSha: string | null,
   stageTo: string | null,
   captureLink: boolean,
+  signal: AbortSignal | undefined,
 ): Promise<VerifyResult> {
   if (entry.type === "dir") {
     return { crcOk: true, sha: checkSha ? (storedSha ? "ok" : "absent") : undefined };
@@ -108,6 +109,7 @@ async function verifyEntry(
   const out = stageTo ? createWriteStream(stageTo) : null;
 
   const sink = async (chunk: Buffer): Promise<void> => {
+    throwIfAborted(signal);
     if (hasher) hasher.update(chunk);
     if (captureLink) linkChunks.push(chunk);
     if (out) {
@@ -120,6 +122,10 @@ async function verifyEntry(
     ({ crc32 } = await readEntryData(fd, entry, sink, chunkSize));
   } catch (err) {
     if (out) {
+      // The staging stream is being discarded (the read aborted or failed). A
+      // write queued before the failure may complete after destroy and emit
+      // ERR_STREAM_DESTROYED — swallow it, since the temp file is removed anyway.
+      out.on("error", () => {});
       out.destroy();
       await rm(stageTo as string, { force: true });
     }
@@ -307,6 +313,7 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
         storedSha,
         tempPath,
         captureLink,
+        signal,
       );
 
       let didWrite = false;
@@ -318,6 +325,11 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
         if (verified.tempPath) await rm(verified.tempPath, { force: true });
       } else if (target !== null) {
         try {
+          // The entry is verified but not yet published. Honor a cancellation
+          // that arrived since its last streamed chunk so no file lands after
+          // the abort instant — relevant under concurrency, where a sibling
+          // entry may still be streaming.
+          throwIfAborted(signal);
           if (entry.type === "dir") {
             await mkdir(target, { recursive: true });
             didWrite = true;
@@ -330,6 +342,9 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
           }
         } catch (err) {
           if (verified.tempPath) await rm(verified.tempPath, { force: true });
+          // An abort is control flow, not a write fault: let it propagate as an
+          // AbortError rather than mislabeling it read.write-failed (exit 5).
+          if (signal?.aborted) throw toAbortError(signal.reason);
           throw new ReadError("read.write-failed", `cannot write ${entry.archivePath}`, {
             cause: err,
           });

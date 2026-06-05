@@ -270,13 +270,27 @@ export async function readEntryData(
   // sink may pause on backpressure, and overlapping writes would interleave.
   let chain: Promise<void> = Promise.resolve();
   let sinkError: unknown;
-  inflate.on("data", (chunk: Buffer) => {
-    chain = chain.then(() => consume(chunk).catch((err) => void (sinkError ??= err)));
-  });
 
   try {
     await new Promise<void>((resolve, reject) => {
-      inflate.on("end", resolve);
+      // A sink failure (e.g. an abort raised in the sink) must stop the pipeline
+      // at the next inflated chunk, not after the whole entry drains, so a large
+      // entry cancels promptly. Stop the source by unhooking and pausing it —
+      // never `destroy()`, which would close the archive fd that is shared across
+      // concurrent entries — and tear down the (fd-less) inflate. The error is
+      // recorded so the catch propagates it unwrapped, not as a corrupt-stream
+      // fault.
+      const onSinkError = (err: unknown): void => {
+        sinkError ??= err;
+        reader.removeAllListeners("data");
+        reader.pause();
+        inflate.destroy();
+        reject(err);
+      };
+      inflate.on("data", (chunk: Buffer) => {
+        chain = chain.then(() => consume(chunk)).catch(onSinkError);
+      });
+      inflate.on("end", () => void chain.then(resolve, () => {}));
       inflate.on("error", reject);
       reader.on("error", reject);
       reader.on("data", (chunk) => {
@@ -287,13 +301,14 @@ export async function readEntryData(
       });
       reader.on("end", () => inflate.end());
     });
-    await chain;
   } catch (err) {
+    // The sink's own throw (e.g. AbortError) propagates unwrapped; a genuine
+    // inflate/read failure is a corrupt-stream fault.
+    if (sinkError !== undefined) throw sinkError;
     throw new ReadError("read.inflate-failed", `cannot inflate ${entry.archivePath}`, {
       cause: err,
     });
   }
-  if (sinkError !== undefined) throw sinkError;
   return { crc32: crc >>> 0, uncompressedSize };
 }
 

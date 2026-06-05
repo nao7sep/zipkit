@@ -217,6 +217,12 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       deps.logger.emit("write", "debug", "entry.written", { path: source.archivePath });
     }
 
+    // Phase edge between streaming and finalize: a cancellation that arrived
+    // during the last entry has no later boundary to trip, and past finalize the
+    // output is renamed into place. Honor it here so a cancelled write leaves
+    // nothing behind — the catch's writer.abort() discards the temp file.
+    throwIfAborted(signal);
+
     // The structured record is always built and returned — it is the run's full
     // state. Embedding it as `_metadata.json` is the only part gated by policy.
     const metadataEntries: MetadataEntryInput[] = streamed.map((s) => {
@@ -260,7 +266,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       );
     }
 
-    const final = await writer.finalize(forceZip64, comment);
+    const final = await writer.finalize(forceZip64, comment, signal);
     zip64 = final.zip64;
     bytes = final.bytes;
 

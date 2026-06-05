@@ -36,6 +36,7 @@
 import { close, fsync, open, rename, write as fsWrite } from "node:fs";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { throwIfAborted } from "../errors.js";
 import { wallClockInZone } from "../internal/timeZone.js";
 import { EntryCompressor, type ChunkSink } from "./deflate.js";
 
@@ -518,7 +519,11 @@ export class ZipWriter {
    * whether Zip64 structures were emitted and the final byte length. An optional
    * archive comment is written into the EOCD comment field (UTF-8).
    */
-  async finalize(forceZip64: boolean, comment?: string): Promise<{ zip64: boolean; bytes: number }> {
+  async finalize(
+    forceZip64: boolean,
+    comment?: string,
+    signal?: AbortSignal,
+  ): Promise<{ zip64: boolean; bytes: number }> {
     const cdStart = this.#offset;
     for (const record of this.#central) await this.#append(record);
     const cdSize = this.#offset - cdStart;
@@ -570,6 +575,11 @@ export class ZipWriter {
     await fsyncAsync(this.#fd);
     await closeAsync(this.#fd);
     this.#fd = -1;
+    // The rename is the publish point: a cancellation that arrived during the
+    // central-directory write or fsync must stop here, before the archive
+    // becomes visible. The fd is already closed, so the caller's writer.abort()
+    // removes the orphaned temp file.
+    throwIfAborted(signal);
     await renameAsync(this.#tempPath, this.#output);
     return { zip64: needZip64, bytes };
   }

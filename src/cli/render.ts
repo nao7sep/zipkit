@@ -1,9 +1,9 @@
 /**
  * The console renderers. Progress is live on stderr: without `--json` as human
- * phase lines, under `--json` as the prefixed minified JSONL the contract
- * defines (§3) — `--json` now *converts* progress rather than suppressing it.
- * The final report is rendered to stdout once, severity-sorting its findings and
- * showing a failed verdict clearly; `--json` renders the envelope instead (§7).
+ * phase lines, under `--json` as prefixed minified JSONL — `--json` *converts*
+ * progress rather than suppressing it. The final report is rendered to stdout
+ * once, severity-sorting its findings and showing a failed verdict clearly;
+ * `--json` renders the envelope instead.
  */
 
 import type { LogSink } from "../log/logger.js";
