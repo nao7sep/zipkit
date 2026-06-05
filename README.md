@@ -173,7 +173,7 @@ The metadata file is a JSON record of the run, in four parts:
 - **`excluded`** — dropped entries, each with its `reason`.
 - **`findings`** — every finding from the run.
 
-It never stores absolute source paths. The same document is returned from every `create` as `WriteResult.metadata` (typed `Metadata`), so a caller has the full record — timestamps and findings included — without reading the archive back, even when `--no-metadata` skips embedding it.
+It never stores absolute source paths. The same document is returned from every `create` as `CreateData.metadata` (typed `Metadata`) on a real write, so a caller has the full record — timestamps and findings included — without reading the archive back, even when `--no-metadata` skips embedding it.
 
 The metadata file is **always embedded** as an entry at the archive root — a ZIP is a container, so the manifest rides inside it rather than as a loose file that could be separated from the archive or drift out of sync with it. It is therefore covered by the archive's own CRC, and `extract --check-metadata` reads it straight from the zip.
 
@@ -193,9 +193,13 @@ The metadata file is **always embedded** as an entry at the archive root — a Z
 | `--verbose` | Include per-entry detail in console progress. |
 | `--concurrency <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. Peak memory is roughly `chunkSize × concurrency` (see [Performance](#performance)). |
 | `--chunk-size <size>` | Chunk size for all streamed I/O, in bytes; accepts a `k`/`m` suffix (e.g. `64k`, `1m`). Defaults to 64 KB. |
-| `--json` | Emit the plan or result as JSON; suppress the human renderer. |
+| `--json` | Emit the report envelope as pretty JSON on stdout; convert progress to JSONL on stderr. |
+| `--json-out <path>` | Also write the pretty report envelope to a file (byte-identical to `--json` stdout). Independent of `--json`. |
+| `--metadata-out <path>` | Also write the embedded `_metadata.json` content to a file, byte-identical to the entry in the archive. Independent of `--json`. |
 
-`--json` suppresses the human renderer and emits the `Plan` (dry run) or `WriteResult` (actual run) as JSON. Errors always go to stderr, so stdout stays valid JSON.
+stdout always carries **exactly one report**, emitted once at the end — on success *and* failure. Without `--json` it is the human render; with `--json` it is the report envelope `{ schemaVersion, tool, toolVersion, verb, ok, data }`, where `data` is the `CreateData` payload (a discriminated union on `mode: "plan" | "write"`). `--json` stdout is always pretty (indent 2) and byte-identical to `--json-out`.
+
+Under `--json`, stderr is line-framed JSONL: progress as `zipkit[progress]:{…}` and faults as `zipkit[error]:{…}`, each a single minified record with no space after the colon. Drain stdout and stderr concurrently. The `--json-out` and `--metadata-out` levers are independent of `--json`, so you can have a human stdout *and* a JSON file at once.
 
 ## Extract and validate
 
@@ -228,10 +232,11 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. |
 | `--exclude <pattern>` | | Exclude glob — matching entries are verified but not written (repeatable). Trailing slash targets directories. |
 | `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
-| `--json` | | Emit the `ExtractReport` as JSON; suppress the human renderer. |
+| `--json` | | Emit the report envelope (with the `ExtractData` payload) as pretty JSON on stdout; convert progress to JSONL on stderr. |
+| `--json-out <path>` | | Also write the pretty report envelope to a file, byte-identical to `--json` stdout. Independent of `--json`. |
 
 - **Creation/birth time is not restored** — no portable cross-platform API sets it.
-- **Exit code** is `0` when the report is `ok`, else `1`, so validation scripts cleanly.
+- **Exit code** is `0` when the report's domain verdict `reportOk` holds, else `1`, so validation scripts cleanly.
 - **No automatic self-validation** — zipkit does not validate its own output after `create` (a tested compressor is trusted); `extract --dry-run` is there for when you have a reason to check an archive.
 
 ## Rules and severity contract
@@ -279,11 +284,11 @@ The CLI exit codes make this a dependable automation contract:
 | Code | Meaning |
 |---|---|
 | `0` | success |
-| `1` | the run did not produce its result — for `create`, a non-writable plan (a blocking finding, or an existing output without `--overwrite`) or a write failure; for `extract`, a report that is not `ok` (a CRC failure, an unsafe path, or — under `--check-metadata` — a missing/extra entry or SHA mismatch). `--dry-run` honors these, making either a CI gate. |
+| `1` | the run did not produce its result — for `create`, a non-writable plan (a blocking finding, or an existing output without `--overwrite`) or a write failure; for `extract`, a report whose `reportOk` is false (a CRC failure, an unsafe path, or — under `--check-metadata` — a missing/extra entry or SHA mismatch). `--dry-run` honors these, making either a CI gate. |
 | `2` | usage error: a missing input path, an archive that cannot be opened, or `extract` without a destination or `--dry-run` |
 | `130` | interrupted (SIGINT) |
 
-Errors are written to stderr as `zipkit [<code>]: <message> (<cause>)` — the dot-separated `code` is a stable handle for scripting, and the cause carries the OS-level reason. Under `--json`, errors stay on stderr so stdout remains valid JSON.
+The exit code keys off the per-verb **domain verdict**, not the envelope's derived `ok` (which only says the verb ran without an error-tier finding). An operational fault is folded into the report as an error-tier `Finding` (its fault code in `rule`, `severity: "error"`, the OS cause folded into `message`), so even on failure stdout still carries the one report. Without `--json`, a human fault line `zipkit [<code>]: <message>` is also written to stderr; under `--json`, the live fault rides out as a `zipkit[error]:{…}` JSONL record on stderr while the same fault lands as a finding in the final stdout report. Even a pre-verb usage error under `--json` emits a minimal envelope on stdout, so a `--json` caller always parses one report.
 
 ## SDK
 
@@ -296,10 +301,12 @@ import { ZipKit } from "zipkit";
 const zip = new ZipKit({ policy: { names: { invalidChars: "error", reserved: "error" } } });
 
 // Plan, inspect, then write.
+// `plan()` returns the CreateData "plan" payload; `write()`/`create()` return the
+// "write" payload (or throw a ZipKitError on an operational fault).
 const plan = await zip.plan({ inputs: ["./my-project"], output: "out.zip" });
 if (plan.writable) {
   const result = await zip.write(plan);
-  console.log(`wrote ${result.entries} entries (${result.bytes} bytes)`);
+  console.log(`wrote ${result.metadata?.entries.length} entries (${result.bytes} bytes)`);
 } else {
   console.error(plan.findings);
 }
@@ -309,12 +316,14 @@ await zip.create({ inputs: ["./my-project"], output: "out.zip", overwrite: true 
 
 // Read side: validate (write nothing) or extract. CRC is always checked.
 const report = await zip.extract({ archive: "out.zip", dryRun: true, checkMetadata: true });
-if (!report.ok) console.error(report.findings);
+if (!report.reportOk) console.error(report.findings);
 
 await zip.extract({ archive: "out.zip", dest: "./restored", overwrite: true });
 ```
 
-The committed export surface is the `ZipKit` class; the types `ZipKitOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `Plan`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `WriteResult`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractReport`, `ExtractEntryResult`, `LogEvent`; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
+The SDK is idiomatic: its methods return the per-verb `data` payloads — `CreateData` from `plan()`/`write()`/`create()`, `ExtractData` from `extract()` — and **throw** `ZipKitError` on an operational fault. The CLI is the layer that wraps a payload in the report envelope and folds a thrown fault into `findings`; the `buildReport` helper is exported for callers who want to produce the same envelope.
+
+The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent`; the report envelope `Report` with the stderr records `ProgressEvent`/`ErrorEvent`, the `buildReport`/`isOk` helpers, and the `SCHEMA_VERSION` constant; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
 
 Progress is observed in real time through the optional `logger` callback, which receives a `LogEvent` stream as the pipeline works. The same stream feeds the SDK callback, the CLI console renderer, and the `--log` JSONL sink.
 

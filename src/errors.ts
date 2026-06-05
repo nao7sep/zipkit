@@ -52,6 +52,25 @@ export class AbortError extends ZipKitError {
   }
 }
 
+/**
+ * Whether a thrown value is a *usage* fault — the caller's invocation was
+ * malformed: an invalid spec/policy, a named input/archive that cannot be
+ * opened, or a missing destination. These occur before a verb produces any
+ * report, so they carry an exit-2 (usage) code and a CLI verb action re-throws
+ * them to the run layer rather than folding them into a report; operational
+ * faults that arise mid-run are folded instead. The single source of truth for
+ * that split, shared by the exit-code mapping and the verb actions.
+ */
+export function isUsageFault(err: unknown): boolean {
+  if (!(err instanceof ZipKitError)) return false;
+  if (err.errorType === "policy") return true;
+  return (
+    err.code === "scan.input-missing" ||
+    err.code === "read.open-failed" ||
+    err.code === "read.no-dest"
+  );
+}
+
 /** Coerce an arbitrary thrown value into an {@link AbortError}. */
 export function toAbortError(err: unknown, fallback = "operation aborted"): AbortError {
   if (err instanceof AbortError) return err;

@@ -26,7 +26,8 @@ import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
 import type { Logger } from "../log/logger.js";
-import type { ExtractEntryResult, ExtractReport, ExtractSpec, Finding } from "../types.js";
+import { finding } from "../registry.js";
+import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
 import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipReader.js";
 
@@ -65,10 +66,6 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function finding(rule: string, severity: Finding["severity"], path: string, message: string): Finding {
-  return { rule, severity, path, message };
 }
 
 interface ManifestRecord {
@@ -170,7 +167,7 @@ async function commitFile(
   return true;
 }
 
-export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Promise<ExtractReport> {
+export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Promise<ExtractData> {
   const signal = deps.signal;
   throwIfAborted(signal);
 
@@ -211,7 +208,7 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
     // Manifest resolution (heavy mode): the manifest is the entry embedded in
     // the archive, read via positioned reads. Requested-but-absent is a hard
     // failure.
-    let manifest: ExtractReport["manifest"] = null;
+    let manifest: ExtractData["manifest"] = null;
     let manifestEntryPath: string | undefined;
     const manifestMap = new Map<string, ManifestRecord>();
     if (spec.checkMetadata) {
@@ -368,18 +365,17 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
       if (r.crc === "fail") {
         crcFailed++;
         findings.push(
-          finding("extract.crc-fail", "error", r.archivePath, "CRC-32 mismatch: entry is corrupt"),
+          finding("extract.crc-fail", r.archivePath, "CRC-32 mismatch: entry is corrupt", {
+            severity: "error",
+          }),
         );
       }
       if (r.sha === "mismatch") {
         shaMismatched++;
         findings.push(
-          finding(
-            "extract.sha-mismatch",
-            "error",
-            r.archivePath,
-            "content hash does not match the manifest",
-          ),
+          finding("extract.sha-mismatch", r.archivePath, "content hash does not match the manifest", {
+            severity: "error",
+          }),
         );
       }
       if (r.skipped === "unsafe") {
@@ -387,9 +383,9 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
         findings.push(
           finding(
             "extract.unsafe-path",
-            "error",
             r.archivePath,
             "entry path escapes the destination directory",
+            { severity: "error" },
           ),
         );
       }
@@ -404,38 +400,42 @@ export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Prom
       for (const key of seen) if (!manifestMap.has(key)) extra.push(key);
       for (const m of missing) {
         findings.push(
-          finding("extract.missing", "error", m, "entry is in the manifest but absent from the archive"),
+          finding("extract.missing", m, "entry is in the manifest but absent from the archive", {
+            severity: "error",
+          }),
         );
       }
       for (const e of extra) {
         findings.push(
-          finding("extract.extra", "warning", e, "entry is in the archive but absent from the manifest"),
+          finding("extract.extra", e, "entry is in the archive but absent from the manifest", {
+            severity: "warning",
+          }),
         );
       }
     }
 
-    const ok =
+    const reportOk =
       crcFailed === 0 &&
       unsafe === 0 &&
       (!spec.checkMetadata || (missing.length === 0 && extra.length === 0 && shaMismatched === 0));
 
     deps.logger.emit("extract", "info", "extract.done", {
-      data: { total: entries.length, crcFailed, shaMismatched, written, skipped, ok },
+      data: { total: entries.length, crcFailed, shaMismatched, written, skipped, reportOk },
     });
 
-    const report: ExtractReport = {
+    return {
       archive: spec.archive,
+      dest: write && spec.dest !== undefined ? spec.dest : null,
+      dryRun: !write,
       wrote: written > 0,
+      reportOk,
       manifest,
+      summary: { total: entries.length, written, skipped, crcFailed, shaMismatched },
       entries,
       missing,
       extra,
       findings,
-      summary: { total: entries.length, crcFailed, shaMismatched, written, skipped },
-      ok,
     };
-    if (spec.dest !== undefined) report.dest = spec.dest;
-    return report;
   } finally {
     await closeAsync(fd).catch(() => {});
   }

@@ -8,24 +8,42 @@
  * the console and the optional JSONL sink, and chooses `plan()` or `create()`.
  */
 
+import { writeFile } from "node:fs/promises";
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
+import { ZipKitError } from "../errors.js";
 import { globExclude, regexExclude } from "../filter/rules.js";
 import { METADATA_DEFAULTS } from "../policy.js";
+import { buildReport } from "../report.js";
 import type { LogSink } from "../log/logger.js";
 import type {
   ArchiveInput,
   ArchivePolicy,
   ArchiveSpec,
   CompressionPolicy,
+  CreateData,
   FilterRule,
   NameAction,
   NameRules,
   ZipKitOptions,
 } from "../types.js";
-import { emitJson } from "./json.js";
+import {
+  emitErrorEvent,
+  emitHumanError,
+  emitReport,
+  faultFinding,
+  toFault,
+  writeReportFile,
+} from "./json.js";
 import { createJsonlSink } from "./logSink.js";
-import { createConsoleProgress, renderPlan, renderResult } from "./render.js";
+import {
+  createConsoleProgress,
+  createJsonlProgress,
+  renderCreateData,
+} from "./render.js";
+
+/** The `mode:"plan"` member of {@link CreateData}; what `plan()` returns. */
+type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 interface CreateOpts {
   root?: string;
@@ -64,6 +82,8 @@ interface CreateOpts {
   concurrency?: string;
   chunkSize?: string;
   json?: boolean;
+  jsonOut?: string;
+  metadataOut?: string;
 }
 
 /**
@@ -174,8 +194,12 @@ function buildReporter(opts: CreateOpts): { sink: LogSink; finalize: () => Promi
     jsonl = createJsonlSink(opts.log);
     sinks.push(jsonl.sink);
   }
-  if (!opts.json && !opts.quiet) {
-    sinks.push(createConsoleProgress(opts.verbose === true));
+  // `--json` converts progress to prefixed JSONL on stderr; without it, human
+  // phase lines. `--quiet` silences either.
+  if (!opts.quiet) {
+    sinks.push(
+      opts.json ? createJsonlProgress(opts.verbose === true) : createConsoleProgress(opts.verbose === true),
+    );
   }
   return {
     sink: (event) => {
@@ -300,7 +324,12 @@ export function registerCreate(
     "--chunk-size <size>",
     "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
   );
-  cmd.option("--json", "emit the plan or result as JSON; suppress the human renderer");
+  cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");
+  cmd.option("--json-out <path>", "also write the pretty report envelope to a file");
+  cmd.option(
+    "--metadata-out <path>",
+    "also write the embedded _metadata.json content to a file (byte-identical)",
+  );
 
   cmd.action(async (rawInputs: string[], opts: CreateOpts) => {
     const reporter = buildReporter(opts);
@@ -317,18 +346,77 @@ export function registerCreate(
     const spec = buildSpec(rawInputs, opts, filters, signal);
 
     try {
+      // The SDK's plan() → write() split is what lets the CLI own the envelope
+      // (contract D1): on a write fault it still holds the plan, folds the fault
+      // into findings, and emits the report. A plan() throw has no data yet, so
+      // it propagates to the run layer (usage exit, D5 minimal envelope).
+      const plan = await zip.plan(spec);
+
       if (opts.dryRun) {
-        const plan = await zip.plan(spec);
-        if (opts.json) emitJson(plan);
-        else process.stdout.write(renderPlan(plan));
+        await emit(opts, plan);
         if (!plan.writable) setExitCode(1);
-      } else {
-        const result = await zip.create(spec);
-        if (opts.json) emitJson(result);
-        else process.stdout.write(renderResult(result));
+        return;
+      }
+
+      // The create soft-failure gate: a non-writable plan never reaches the
+      // writer. Emit a write-mode report carrying the blocking findings and a
+      // not-written verdict, then exit 1.
+      if (!plan.writable) {
+        await emit(opts, notWritten(plan));
+        setExitCode(1);
+        return;
+      }
+
+      try {
+        const result = await zip.write(plan);
+        await emit(opts, result);
+        if (!result.written) setExitCode(1);
+      } catch (err) {
+        if (err instanceof ZipKitError && err.errorType === "abort") throw err;
+        // An operational write fault: surface it live on stderr, fold it into
+        // the held plan's findings as an error-tier finding, and emit the
+        // write-mode report. The verdict is failed (exit 1).
+        const fault = toFault(err, plan.output);
+        if (opts.json) emitErrorEvent({ code: fault.code, message: fault.message, path: fault.path });
+        else emitHumanError(fault.code, fault.message);
+        const data = notWritten(plan);
+        data.findings = [...plan.findings, faultFinding(fault)];
+        await emit(opts, data);
+        setExitCode(1);
       }
     } finally {
       await reporter.finalize();
     }
   });
+}
+
+/** The write-mode report for a create that never wrote — the soft-failure gate
+ *  and the write-fault path both produce this, carrying the plan's SSOT. */
+function notWritten(plan: PlanData): Extract<CreateData, { mode: "write" }> {
+  return {
+    mode: "write",
+    output: plan.output,
+    writable: plan.writable,
+    written: false,
+    bytes: null,
+    zip64: false,
+    summary: plan.summary,
+    findings: plan.findings,
+    metadata: null,
+  };
+}
+
+/** Emit the create report: the envelope (or human render) on stdout, plus the
+ *  independent `--json-out` and create-only `--metadata-out` file levers. */
+async function emit(opts: CreateOpts, data: CreateData): Promise<void> {
+  const report = buildReport("create", data);
+  if (opts.json) emitReport(report);
+  else process.stdout.write(renderCreateData(data));
+  if (opts.jsonOut !== undefined) await writeReportFile(opts.jsonOut, report);
+  // Byte-identical to the embedded entry, which is serialized without a trailing
+  // newline (see write/write.ts), so `--metadata-out` can be diffed against
+  // `unzip -p out.zip _metadata.json`.
+  if (opts.metadataOut !== undefined && data.mode === "write" && data.metadata !== null) {
+    await writeFile(opts.metadataOut, JSON.stringify(data.metadata, null, 2));
+  }
 }

@@ -9,7 +9,7 @@
  * object across the handoff with no instance coupling.
  */
 
-import type { ArchivePolicy, Plan } from "../types.js";
+import type { ArchivePolicy } from "../types.js";
 import type { WriteEntry } from "./types.js";
 
 export interface PlanInternals {
@@ -27,9 +27,14 @@ interface Carried {
   [CARRIER]?: PlanInternals;
 }
 
-/** Attach writer instructions to a plan without making them enumerable. */
-export function attachInternals(plan: Plan, internals: PlanInternals): void {
-  Object.defineProperty(plan, CARRIER, {
+/**
+ * Attach the writer's instructions to a plan object without making them
+ * enumerable, so `JSON.stringify` — used by `--json` and the metadata serializer
+ * — never sees them and the absolute source paths they hold are stripped by
+ * construction. They travel with the object across the plan → write handoff.
+ */
+export function attachInternals(target: object, internals: PlanInternals): void {
+  Object.defineProperty(target, CARRIER, {
     value: internals,
     enumerable: false,
     writable: false,
@@ -37,7 +42,7 @@ export function attachInternals(plan: Plan, internals: PlanInternals): void {
   });
 }
 
-/** Read writer instructions previously attached to a plan, if present. */
-export function readInternals(plan: Plan): PlanInternals | undefined {
-  return (plan as Carried)[CARRIER];
+/** Read writer instructions previously attached to a plan object, if present. */
+export function readInternals(target: object): PlanInternals | undefined {
+  return (target as Carried)[CARRIER];
 }

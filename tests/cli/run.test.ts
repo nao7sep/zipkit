@@ -88,9 +88,15 @@ describe("exclusion", () => {
     spy.mockRestore();
 
     expect(code).toBe(0);
-    const plan = JSON.parse(chunks.join(""));
+    const report = JSON.parse(chunks.join(""));
+    expect(report.schemaVersion).toBe(1);
+    expect(report.verb).toBe("create");
+    expect(report.data.mode).toBe("plan");
     const byName = Object.fromEntries(
-      plan.entries.map((e: { archivePath: string; excluded: boolean }) => [e.archivePath, e.excluded]),
+      report.data.entries.map((e: { archivePath: string; excluded: boolean }) => [
+        e.archivePath,
+        e.excluded,
+      ]),
     );
     expect(byName["keep.txt"]).toBe(false); // kept by default (inclusive)
     expect(byName["drop.txt"]).toBe(true); // glob exclude

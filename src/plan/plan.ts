@@ -15,7 +15,11 @@
 import { buildMatcher } from "../filter/match.js";
 import { attachInternals } from "../internal/carrier.js";
 import type { ScanResult } from "../internal/types.js";
-import type { ArchivePolicy, Finding, Plan } from "../types.js";
+import type { ArchivePolicy, CreateData, Finding } from "../types.js";
+
+/** The `mode:"plan"` member of {@link CreateData} — the dry-run payload and the
+ *  writer's input. The carrier (writer instructions) rides on it out of band. */
+type PlanData = Extract<CreateData, { mode: "plan" }>;
 import { applyCollision } from "./collision.js";
 import { applyCompression } from "./compression.js";
 import { applyDedup } from "./dedup.js";
@@ -30,7 +34,7 @@ import { applyTimestamps } from "./timestamps.js";
 import { applyZip64 } from "./zip64.js";
 import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.js";
 
-export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
+export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
   const items = buildWorkItems(scan);
 
@@ -64,14 +68,13 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): Plan {
   const summary = buildSummary(items, findings, zip64);
   const writable = computeWritable(findings, scan.outputExists, scan.overwrite);
 
-  const plan: Plan = {
+  const plan: PlanData = {
+    mode: "plan",
     output: scan.output,
-    outputExists: scan.outputExists,
-    overwrite: scan.overwrite,
     writable,
     summary,
-    entries,
     findings,
+    entries,
   };
   attachInternals(plan, { writeEntries, policy, comment: scan.comment });
   return plan;

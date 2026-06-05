@@ -1,19 +1,33 @@
 /**
- * Machine and error output. `--json` emits the `Plan` (dry run) or
- * `WriteResult` (actual run) to stdout; the carrier holding absolute source
- * paths is non-enumerable, so `JSON.stringify` never serializes it. Errors go
- * to stderr so they never corrupt the JSON on stdout.
+ * Machine output framing. stdout carries exactly one report envelope, emitted
+ * once at the end; `--json` renders it as the pretty (indent 2) envelope, and
+ * `--json-out <path>` writes the byte-identical pretty envelope through the same
+ * serializer. There is no TTY-based compact/pretty switch — `--json` stdout and
+ * `--json-out` are byte-for-byte equal (output contract §4).
+ *
+ * stderr carries line-framed chunks. Under `--json` progress and faults convert
+ * to prefixed minified JSONL (`zipkit[progress]:{…}` / `zipkit[error]:{…}`, no
+ * space after the colon), each written as a single `write()` of the complete
+ * line (output contract §3).
  */
 
+import { writeFile } from "node:fs/promises";
 import { ZipKitError } from "../errors.js";
+import { finding } from "../registry.js";
+import type { Finding } from "../types.js";
+import { SCHEMA_VERSION } from "../report.js";
+import type { ErrorEvent, ProgressEvent, Report } from "../report.js";
 
-export function emitJson(value: unknown): void {
-  const indent = process.stdout.isTTY ? 2 : 0;
-  process.stdout.write(`${JSON.stringify(value, null, indent)}\n`);
+/** A thrown operational fault, distilled into the pieces the CLI needs: a stable
+ *  code, a single-line message with the OS cause folded in, and a subject path. */
+export interface Fault {
+  code: string;
+  message: string;
+  path: string;
 }
 
-/** The underlying cause's message, when the error carries one — this is where
- *  the OS detail lives (e.g. "EACCES: permission denied, stat '/x'"). */
+/** The underlying cause's message — where the OS detail lives
+ *  (e.g. "EACCES: permission denied, open '/x'"). */
 function causeMessage(err: unknown): string | undefined {
   const cause = err instanceof Error ? err.cause : undefined;
   if (cause instanceof Error && cause.message) return cause.message;
@@ -21,12 +35,62 @@ function causeMessage(err: unknown): string | undefined {
   return undefined;
 }
 
-export function emitError(err: unknown): void {
+/**
+ * Distill a thrown value into a {@link Fault}: the stable `ZipKitError` code (or
+ * `"unknown"`), and a single-line message with the OS cause folded in. `path` is
+ * the subject the CLI knows — the output for create, the archive for extract.
+ */
+export function toFault(err: unknown, path: string): Fault {
   const code = err instanceof ZipKitError ? err.code : "unknown";
-  const message = err instanceof Error ? err.message : String(err);
+  const base = err instanceof Error ? err.message : String(err);
   const cause = causeMessage(err);
-  // The stable code is a greppable handle for scripting; the cause carries the
-  // OS-level reason that says *why* the operation failed.
+  const message = cause !== undefined ? `${base}: ${cause}` : base;
+  return { code, message, path };
+}
+
+/** An operational fault as an error-tier finding (the SSOT fault carrier, D3). */
+export function faultFinding(fault: Fault): Finding {
+  return finding(fault.code, fault.path, fault.message, { severity: "error" });
+}
+
+/** The canonical envelope serializer: pretty (indent 2) with one trailing
+ *  newline. The single source of truth so `--json` stdout and `--json-out`
+ *  cannot drift. The internals carrier on a plan is non-enumerable, so
+ *  `JSON.stringify` never serializes the absolute source paths it holds. */
+export function serializeReport(report: Report<string, { findings: Finding[] }>): string {
+  return `${JSON.stringify(report, null, 2)}\n`;
+}
+
+/** Emit the one report envelope to stdout as the pretty JSON form. */
+export function emitReport(report: Report<string, { findings: Finding[] }>): void {
+  process.stdout.write(serializeReport(report));
+}
+
+/** Write the pretty envelope to a file (`--json-out`), byte-identical to the
+ *  `--json` stdout form. */
+export async function writeReportFile(
+  path: string,
+  report: Report<string, { findings: Finding[] }>,
+): Promise<void> {
+  await writeFile(path, serializeReport(report));
+}
+
+/** Emit a progress chunk to stderr as one minified, prefixed JSONL line. */
+export function emitProgressEvent(event: Omit<ProgressEvent, "schemaVersion">): void {
+  const record: ProgressEvent = { schemaVersion: SCHEMA_VERSION, ...event };
+  process.stderr.write(`zipkit[progress]:${JSON.stringify(record)}\n`);
+}
+
+/** Emit a fault chunk to stderr as one minified, prefixed JSONL line. The same
+ *  fault also lands as a finding in the final stdout report. */
+export function emitErrorEvent(event: Omit<ErrorEvent, "schemaVersion">): void {
+  const record: ErrorEvent = { schemaVersion: SCHEMA_VERSION, ...event };
+  process.stderr.write(`zipkit[error]:${JSON.stringify(record)}\n`);
+}
+
+/** A plain human fault line on stderr (no `--json`). The stable code is a
+ *  greppable handle; the OS cause says why the operation failed. */
+export function emitHumanError(code: string, message: string, cause?: string): void {
   const suffix = cause !== undefined ? ` (${cause})` : "";
   process.stderr.write(`zipkit [${code}]: ${message}${suffix}\n`);
 }

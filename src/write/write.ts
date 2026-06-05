@@ -20,7 +20,15 @@ import { readInternals } from "../internal/carrier.js";
 import { machineTimeZone } from "../internal/timeZone.js";
 import type { WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
-import type { Plan, WriteResult } from "../types.js";
+import type { CreateData } from "../types.js";
+
+/** The `mode:"plan"` member of {@link CreateData} — the writer's input, carrying
+ *  the resolved output, the writable gate, summary, findings, and (out of band,
+ *  via `carrier.ts`) the writer's instructions. */
+type PlanData = Extract<CreateData, { mode: "plan" }>;
+
+/** The `mode:"write"` member of {@link CreateData}; the writer's success shape. */
+type WriteData = Extract<CreateData, { mode: "write" }>;
 import { computeZip64Need } from "../plan/zip64.js";
 import { buildMetadata } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
@@ -103,7 +111,7 @@ async function streamBuffer(
   });
 }
 
-export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteResult> {
+export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<WriteData> {
   const internals = readInternals(plan);
   if (!internals) {
     throw new WriteError(
@@ -259,13 +267,15 @@ export async function writeArchive(plan: Plan, deps: WriteDeps): Promise<WriteRe
     deps.logger.emit("write", "info", "write.done", { data: { bytes, zip64 } });
 
     return {
+      mode: "write",
       output: plan.output,
-      zip64,
-      entries: streamed.length + (policy.metadata !== false ? 1 : 0),
-      excluded: plan.summary.excluded,
+      writable: plan.writable,
+      written: true,
       bytes,
+      zip64,
+      summary: plan.summary,
+      findings: plan.findings,
       metadata,
-      plan,
     };
   } catch (err) {
     await writer.abort();

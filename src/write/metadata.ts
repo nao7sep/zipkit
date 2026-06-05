@@ -19,13 +19,17 @@
 import type { WriteEntry } from "../internal/types.js";
 import type {
   ArchivePolicy,
+  CreateData,
   Metadata,
   MetadataEntry,
   MetadataExcluded,
-  Plan,
   UtcTime,
 } from "../types.js";
 import { VERSION } from "../version.js";
+
+/** The `mode:"plan"` member of {@link CreateData} — the planning view the
+ *  metadata document is built from (entries, summary, findings). */
+type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 export interface MetadataEntryInput {
   writeEntry: WriteEntry;
@@ -79,7 +83,7 @@ function metadataEntry(input: MetadataEntryInput): MetadataEntry {
 }
 
 export function buildMetadata(
-  plan: Plan,
+  plan: PlanData,
   policy: ArchivePolicy,
   entries: MetadataEntryInput[],
   createdNs: bigint,

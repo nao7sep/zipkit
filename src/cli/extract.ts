@@ -8,11 +8,20 @@
 
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
+import { isUsageFault, ZipKitError } from "../errors.js";
 import { globExclude, regexExclude } from "../filter/rules.js";
-import type { ExtractSpec, FilterRule, ZipKitOptions } from "../types.js";
+import { buildReport } from "../report.js";
+import type { ExtractData, ExtractSpec, FilterRule, ZipKitOptions } from "../types.js";
 import { parseChunkSize } from "./create.js";
-import { emitJson } from "./json.js";
-import { createConsoleProgress, renderExtractReport } from "./render.js";
+import {
+  emitErrorEvent,
+  emitHumanError,
+  emitReport,
+  faultFinding,
+  toFault,
+  writeReportFile,
+} from "./json.js";
+import { createConsoleProgress, createJsonlProgress, renderExtractData } from "./render.js";
 
 interface ExtractOpts {
   dryRun?: boolean;
@@ -28,6 +37,26 @@ interface ExtractOpts {
   concurrency?: string;
   chunkSize?: string;
   json?: boolean;
+  jsonOut?: string;
+}
+
+/** A skeleton extract payload carrying only an operational fault — used when the
+ *  read throws before any per-entry report exists, so the report invariant still
+ *  holds (one envelope, with the fault as its SSOT finding). */
+function faultData(spec: ExtractSpec, fault: ReturnType<typeof toFault>): ExtractData {
+  return {
+    archive: spec.archive,
+    dest: spec.dryRun ? null : spec.dest ?? null,
+    dryRun: spec.dryRun === true,
+    wrote: false,
+    reportOk: false,
+    manifest: null,
+    summary: { total: 0, written: 0, skipped: 0, crcFailed: 0, shaMismatched: 0 },
+    entries: [],
+    missing: [],
+    extra: [],
+    findings: [faultFinding(fault)],
+  };
 }
 
 export function registerExtract(
@@ -71,12 +100,17 @@ export function registerExtract(
     "--chunk-size <size>",
     "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
   );
-  cmd.option("--json", "emit the report as JSON; suppress the human renderer");
+  cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");
+  cmd.option("--json-out <path>", "also write the pretty report envelope to a file");
 
   cmd.action(async (archive: string, dest: string | undefined, opts: ExtractOpts) => {
     const zkOptions: ZipKitOptions = {};
-    if (!opts.json && !opts.quiet) {
-      zkOptions.logger = createConsoleProgress(opts.verbose === true);
+    // `--json` converts progress to prefixed JSONL on stderr; without it, human
+    // phase lines. `--quiet` silences either.
+    if (!opts.quiet) {
+      zkOptions.logger = opts.json
+        ? createJsonlProgress(opts.verbose === true)
+        : createConsoleProgress(opts.verbose === true);
     }
     if (opts.concurrency !== undefined) {
       const n = Number.parseInt(opts.concurrency, 10);
@@ -100,9 +134,31 @@ export function registerExtract(
     if (opts.symlinks !== undefined) spec.symlinks = opts.symlinks;
     if (excludes.length > 0) spec.exclude = excludes;
 
-    const report = await zip.extract(spec);
-    if (opts.json) emitJson(report);
-    else process.stdout.write(renderExtractReport(report));
-    if (!report.ok) setExitCode(1);
+    try {
+      const data = await zip.extract(spec);
+      await emit(opts, data);
+      if (!data.reportOk) setExitCode(1);
+    } catch (err) {
+      if (err instanceof ZipKitError && err.errorType === "abort") throw err;
+      // A usage fault is pre-verb — no per-entry report to fold into — so
+      // re-throw it to the run layer (exit 2 + the D5 minimal envelope under
+      // `--json`). Any other read fault is operational and is folded into the
+      // report as its SSOT finding.
+      if (isUsageFault(err)) throw err;
+      const fault = toFault(err, spec.archive);
+      if (opts.json) emitErrorEvent({ code: fault.code, message: fault.message, path: fault.path });
+      else emitHumanError(fault.code, fault.message);
+      await emit(opts, faultData(spec, fault));
+      setExitCode(1);
+    }
   });
+}
+
+/** Emit the extract report: the envelope (or human render) on stdout, plus the
+ *  independent `--json-out` file lever. */
+async function emit(opts: ExtractOpts, data: ExtractData): Promise<void> {
+  const report = buildReport("extract", data);
+  if (opts.json) emitReport(report);
+  else process.stdout.write(renderExtractData(data));
+  if (opts.jsonOut !== undefined) await writeReportFile(opts.jsonOut, report);
 }

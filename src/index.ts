@@ -10,8 +10,9 @@ export type {
   ArchivePolicy,
   ArchiveSpec,
   CompressionPolicy,
+  CreateData,
+  ExtractData,
   ExtractEntryResult,
-  ExtractReport,
   ExtractSpec,
   Finding,
   FilterRule,
@@ -20,15 +21,16 @@ export type {
   MetadataEntry,
   MetadataExcluded,
   MetadataPolicy,
-  Plan,
   PlanSummary,
   PlannedEntry,
   Severity,
   Transformation,
   UtcTime,
-  WriteResult,
   ZipKitOptions,
 } from "./types.js";
+
+export { buildReport, isOk, SCHEMA_VERSION } from "./report.js";
+export type { ErrorEvent, ProgressEvent, Report } from "./report.js";
 
 export {
   AbortError,

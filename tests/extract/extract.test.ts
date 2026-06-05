@@ -63,7 +63,7 @@ describe("extract round-trip", () => {
     const dest = path.join(dir, "out");
     const report = await new ZipKit().extract({ archive, dest });
 
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     expect(report.wrote).toBe(true);
     expect(report.entries[0]?.crc).toBe("ok");
     const out = path.join(dest, "docs", "readme.txt");
@@ -92,7 +92,7 @@ describe("dry-run validation", () => {
   it("verifies CRC and writes nothing on any zip", async () => {
     const archive = await writeArchive([fileEntry("a.txt", "x"), fileEntry("b.txt", "y")]);
     const report = await new ZipKit().extract({ archive, dryRun: true });
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     expect(report.wrote).toBe(false);
     expect(report.entries.every((e) => e.crc === "ok" && e.skipped === "dry-run")).toBe(true);
   });
@@ -109,7 +109,7 @@ describe("dry-run validation", () => {
 
     const dest = path.join(dir, "out");
     const report = await new ZipKit().extract({ archive, dest });
-    expect(report.ok).toBe(false);
+    expect(report.reportOk).toBe(false);
     expect(report.entries[0]?.crc).toBe("fail");
     expect(report.entries[0]?.written).toBe(false);
     expect(report.findings.some((f) => f.rule === "extract.crc-fail")).toBe(true);
@@ -140,7 +140,7 @@ describe("heavy validation against a manifest", () => {
     expect(report.entries.find((e) => e.archivePath === "a.txt")?.sha).toBe("ok");
     expect(report.missing).toEqual(["c.txt"]); // in manifest, not in archive
     expect(report.extra).toEqual(["b.txt"]); // in archive, not in manifest
-    expect(report.ok).toBe(false);
+    expect(report.reportOk).toBe(false);
   });
 
   it("hard-fails when heavy validation is requested but no manifest exists", async () => {
@@ -162,7 +162,7 @@ describe("heavy validation against a manifest", () => {
     });
     const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
     expect(report.manifest?.name).toBe("_metadata.json");
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     expect(report.missing).toEqual([]);
     expect(report.extra).toEqual([]);
   });
@@ -173,7 +173,7 @@ describe("path safety and exclusion", () => {
     const archive = await writeArchive([fileEntry("../evil.txt", "pwned"), fileEntry("ok.txt", "fine")]);
     const dest = path.join(dir, "out");
     const report = await new ZipKit().extract({ archive, dest });
-    expect(report.ok).toBe(false);
+    expect(report.reportOk).toBe(false);
     expect(report.entries.find((e) => e.archivePath === "../evil.txt")?.skipped).toBe("unsafe");
     expect(report.entries.find((e) => e.archivePath === "ok.txt")?.written).toBe(true);
     // The escaping path was not created next to the destination.
@@ -244,7 +244,7 @@ describe("path safety and exclusion", () => {
     await expect(stat(path.join(dest, "logs/run.log"))).rejects.toThrow();
     // ...but still CRC-verified (integrity covers the whole archive), and the rest written.
     expect(report.entries.every((e) => e.crc === "ok")).toBe(true);
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     expect((await readFile(path.join(dest, "keep.bin"))).toString()).toBe("b");
   });
 });
@@ -276,7 +276,7 @@ describe("symlinks and zip64", () => {
     const archive = await writeArchive([fileEntry("empty.txt", ""), fileEntry("a.txt", "x")]);
     const dest = path.join(dir, "empties");
     const report = await new ZipKit().extract({ archive, dest });
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     const empty = await stat(path.join(dest, "empty.txt"));
     expect(empty.size).toBe(0);
     expect((await readFile(path.join(dest, "a.txt"))).toString()).toBe("x");
@@ -286,7 +286,7 @@ describe("symlinks and zip64", () => {
     const archive = await writeArchive([fileEntry("z.txt", "zip64 content")], { zip64: true });
     const dest = path.join(dir, "out");
     const report = await new ZipKit().extract({ archive, dest });
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     expect((await readFile(path.join(dest, "z.txt"))).toString()).toBe("zip64 content");
   });
 });
@@ -311,7 +311,7 @@ describe("large-file streaming round-trip", () => {
 
     const dest = path.join(dir, "big-out");
     const report = await new ZipKit().extract({ archive, dest });
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     const roundTripped = await readFile(path.join(dest, "big.bin"));
     expect(createHash("sha256").update(roundTripped).digest("hex")).toBe(expectedSha);
   });
@@ -327,7 +327,7 @@ describe("large-file streaming round-trip", () => {
     await new ZipKit({ chunkSize: 64 }).create({ inputs: [src], output: archive, overwrite: true });
     const dest = path.join(dir, "chunked-out");
     const report = await new ZipKit({ chunkSize: 64 }).extract({ archive, dest });
-    expect(report.ok).toBe(true);
+    expect(report.reportOk).toBe(true);
     expect((await readFile(path.join(dest, "c.txt"))).equals(content)).toBe(true);
   });
 });

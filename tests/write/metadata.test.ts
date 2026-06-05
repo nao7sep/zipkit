@@ -7,16 +7,15 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_POLICY } from "../../src/policy.js";
 import { buildMetadata } from "../../src/write/metadata.js";
 import type { WriteEntry } from "../../src/internal/types.js";
-import type { Plan } from "../../src/types.js";
+import type { CreateData } from "../../src/types.js";
 
-const plan: Plan = {
+const plan: Extract<CreateData, { mode: "plan" }> = {
+  mode: "plan",
   output: "out.zip",
-  outputExists: false,
-  overwrite: false,
   writable: true,
   summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false },
-  entries: [],
   findings: [],
+  entries: [],
 };
 
 const symlink: WriteEntry = {

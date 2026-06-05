@@ -80,23 +80,38 @@ export function isKnownRule(rule: string): rule is RuleId {
 }
 
 /**
- * Construct a finding. The severity defaults to the registry tier; a caller
- * passes an explicit `severity` only for the configurable name rules, whose
- * tier is chosen per run from the policy action. This stays the single
- * sanctioned way to create a finding, so every finding still carries a tier.
+ * Construct a finding — the single sanctioned way, so every finding carries a
+ * tier. It takes either form:
+ *
+ * - a registry `RuleId`, whose severity defaults to the registry tier (a caller
+ *   passes an explicit `severity` only for the configurable name rules, whose
+ *   tier is chosen per run from the policy action); or
+ * - an arbitrary `rule` string with an explicit `severity`, which is how an
+ *   operational fault rides as a finding (its fault code in `rule`,
+ *   `severity:"error"`, the OS cause folded into `message` — contract D3) and
+ *   how the extract pass records its CRC/SHA/path findings.
  */
 export function finding(
   rule: RuleId,
   path: string,
   message: string,
   opts?: { fix?: Finding["fix"]; severity?: Severity },
+): Finding;
+export function finding(
+  rule: string,
+  path: string,
+  message: string,
+  opts: { fix?: Finding["fix"]; severity: Severity },
+): Finding;
+export function finding(
+  rule: string,
+  path: string,
+  message: string,
+  opts?: { fix?: Finding["fix"]; severity?: Severity },
 ): Finding {
-  const f: Finding = {
-    rule,
-    severity: opts?.severity ?? RULE_REGISTRY[rule].severity,
-    path,
-    message,
-  };
+  const severity =
+    opts?.severity ?? (isKnownRule(rule) ? RULE_REGISTRY[rule].severity : "error");
+  const f: Finding = { rule, severity, path, message };
   if (opts?.fix) f.fix = opts.fix;
   return f;
 }

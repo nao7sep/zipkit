@@ -192,31 +192,40 @@ export interface PlanSummary {
   zip64: boolean;
 }
 
-export interface Plan {
-  output: string; // identity
-  outputExists: boolean; // state
-  overwrite: boolean; // state (authorized intent from the spec)
-  writable: boolean; // state
-  summary: PlanSummary; // quantities (aggregate)
-  entries: PlannedEntry[]; // nested detail
-  findings: Finding[];
-}
-
-export interface WriteResult {
-  output: string; // identity
-  zip64: boolean; // classification
-  entries: number; // quantities
-  excluded: number;
-  bytes: number;
-  /**
-   * The complete structured record of the run — the same document embedded as
-   * `_metadata.json` (unless `metadata` is `false`). Always present, regardless
-   * of whether it was embedded, so a caller can inspect the run without reading
-   * the archive back.
-   */
-  metadata: Metadata;
-  plan: Plan; // nested detail
-}
+/**
+ * The `create` verb's payload, modeled as a discriminated union on `mode` so
+ * neither shape carries a field it cannot honestly fill. A dry run plans but
+ * reads/hashes nothing; a real write produces post-write truth (crc/sha/sizes).
+ *
+ * Per-entry detail is never duplicated: `mode:"plan"` carries `entries`
+ * (pre-write, no crc/sha); `mode:"write"` carries the post-write per-entry SSOT
+ * inside `metadata.entries`. `plan()` returns the `"plan"` member; `write()` and
+ * `create()` return the `"write"` member (or throw on an operational fault).
+ */
+export type CreateData =
+  | {
+      mode: "plan"; // --dry-run: planned, nothing written
+      output: string; // resolved output path (the intended target)
+      writable: boolean; // the gate
+      summary: PlanSummary;
+      findings: Finding[]; // SSOT
+      entries: PlannedEntry[]; // pre-write view (no crc/sha)
+    }
+  | {
+      mode: "write"; // actual create
+      output: string;
+      writable: boolean;
+      written: boolean; // archive fully streamed, fsync'd, renamed?
+      bytes: number | null; // final on-disk size; null if not written
+      zip64: boolean;
+      summary: PlanSummary;
+      findings: Finding[]; // SSOT (domain + operational)
+      /**
+       * The embedded `_metadata.json` document = the post-write per-entry SSOT
+       * (crc/sha/sizes/times). `null` only if a fault hit before it was built.
+       */
+      metadata: Metadata | null;
+    };
 
 // ---------------------------------------------------------------------------
 // Metadata record
@@ -347,28 +356,34 @@ export interface ExtractEntryResult {
   outputPath?: string;
 }
 
-export interface ExtractReport {
+/**
+ * The `extract` verb's payload. `findings` is the SSOT fault carrier. The domain
+ * verdict is `reportOk` — no CRC failure, no unsafe path, and (under
+ * `checkMetadata`) no missing/extra entry and no SHA mismatch — distinct from
+ * the envelope's derived `ok`; the exit code keys off `reportOk` (output
+ * contract §8).
+ */
+export interface ExtractData {
   archive: string; // identity
-  dest?: string;
+  dest: string | null; // null on --dry-run
+  dryRun: boolean;
   wrote: boolean; // state: whether any file was written
+  reportOk: boolean; // domain verdict (the delete-gate reads this)
   /** The embedded manifest used, when `checkMetadata` was requested. */
   manifest: { name: string } | null;
+  summary: {
+    total: number;
+    written: number;
+    skipped: number;
+    crcFailed: number;
+    shaMismatched: number;
+  };
   entries: ExtractEntryResult[];
   /** In the manifest but absent from the archive (`checkMetadata`). */
   missing: string[];
   /** In the archive but absent from the manifest (`checkMetadata`). */
   extra: string[];
-  findings: Finding[];
-  summary: {
-    total: number;
-    crcFailed: number;
-    shaMismatched: number;
-    written: number;
-    skipped: number;
-  };
-  /** Overall pass: no CRC failure, no unsafe path, and — under `checkMetadata` —
-   *  no missing/extra entry and no SHA mismatch. The delete-gate reads this. */
-  ok: boolean;
+  findings: Finding[]; // SSOT
 }
 
 // ---------------------------------------------------------------------------

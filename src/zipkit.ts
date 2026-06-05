@@ -22,13 +22,20 @@ import { writeArchive } from "./write/write.js";
 import type {
   ArchivePolicy,
   ArchiveSpec,
-  ExtractReport,
+  CreateData,
+  ExtractData,
   ExtractSpec,
   LogEvent,
-  Plan,
-  WriteResult,
   ZipKitOptions,
 } from "./types.js";
+
+/** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns and
+ *  `write()` consumes (it also carries the writer's instructions out of band). */
+type PlanData = Extract<CreateData, { mode: "plan" }>;
+
+/** The `mode:"write"` member of {@link CreateData}: what `write()`/`create()`
+ *  return on success. */
+type WriteData = Extract<CreateData, { mode: "write" }>;
 
 /**
  * The default concurrency tracks the host's available parallelism (which
@@ -69,8 +76,8 @@ export class ZipKit {
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
   }
 
-  /** Scan and plan; writes nothing. */
-  async plan(spec: ArchiveSpec): Promise<Plan> {
+  /** Scan and plan; writes nothing. Returns the `mode:"plan"` payload. */
+  async plan(spec: ArchiveSpec): Promise<PlanData> {
     try {
       const validated = validateSpec(spec);
       const policy = resolvePolicy(this.#policy, validated.policy);
@@ -88,12 +95,12 @@ export class ZipKit {
   }
 
   /** Execute a plan produced by {@link ZipKit.plan}. */
-  async write(plan: Plan): Promise<WriteResult> {
+  async write(plan: PlanData): Promise<WriteData> {
     return this.#runWrite(plan, { logger: this.#logger, chunkSize: this.#chunkSize });
   }
 
   /** Plan and write in one call. */
-  async create(spec: ArchiveSpec): Promise<WriteResult> {
+  async create(spec: ArchiveSpec): Promise<WriteData> {
     const plan = await this.plan(spec);
     const deps = spec.signal
       ? { logger: this.#logger, chunkSize: this.#chunkSize, signal: spec.signal }
@@ -107,7 +114,7 @@ export class ZipKit {
    * `dryRun` is set — write the verified entries to `dest`. A dry run writes
    * nothing and is a pure integrity test that works on any ZIP.
    */
-  async extract(spec: ExtractSpec): Promise<ExtractReport> {
+  async extract(spec: ExtractSpec): Promise<ExtractData> {
     try {
       const validated = validateExtractSpec(spec);
       const limit = pLimit(this.#concurrency);
@@ -125,9 +132,9 @@ export class ZipKit {
    *  propagates. `plan()` reports its own failures, so `create()` does not
    *  double-report when its inner `plan()` throws. */
   async #runWrite(
-    plan: Plan,
+    plan: PlanData,
     deps: { logger: Logger; chunkSize: number; signal?: AbortSignal },
-  ): Promise<WriteResult> {
+  ): Promise<WriteData> {
     try {
       return await writeArchive(plan, deps);
     } catch (err) {
@@ -156,7 +163,7 @@ export class ZipKit {
     });
   }
 
-  #reportPlan(plan: Plan): void {
+  #reportPlan(plan: PlanData): void {
     for (const entry of plan.entries) {
       if (entry.excluded) {
         this.#logger.emit("plan", "debug", "entry.excluded", {

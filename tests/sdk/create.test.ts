@@ -55,7 +55,7 @@ describe("output resolution and round-trip", () => {
     const result = await new ZipKit().create({ inputs: [proj] });
     const { entries } = readZip(await readFile(result.output));
     expect(entries.find((e) => e.name === ".DS_Store")).toBeUndefined();
-    expect(result.excluded).toBeGreaterThanOrEqual(1);
+    expect(result.summary.excluded).toBeGreaterThanOrEqual(1);
   });
 
   it("excludes the output itself but keeps real neighbours that share its prefix", async () => {
@@ -188,9 +188,13 @@ describe("plan / inspect / write flow", () => {
     expect(plan.writable).toBe(true);
 
     const result = await zip.write(plan);
+    expect(result.mode).toBe("write");
+    expect(result.written).toBe(true);
     expect(existsSync(output)).toBe(true);
     const { entries } = readZip(await readFile(output));
-    expect(result.entries).toBe(entries.length);
+    // The metadata document lists every written entry except the embedded
+    // _metadata.json itself, which rides as the archive's final entry.
+    expect((result.metadata?.entries.length ?? 0) + 1).toBe(entries.length);
   });
 });
 
