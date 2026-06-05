@@ -17,7 +17,13 @@ import { extractArchive } from "./extract/extract.js";
 import { planArchive } from "./plan/plan.js";
 import { resolvePolicy } from "./policy.js";
 import { scan } from "./scan/scan.js";
-import { validateChunkSize, validateExtractSpec, validatePolicy, validateSpec } from "./validate.js";
+import {
+  validateChunkSize,
+  validateConcurrency,
+  validateExtractSpec,
+  validatePolicy,
+  validateSpec,
+} from "./validate.js";
 import { writeArchive } from "./write/write.js";
 import type {
   ArchivePolicy,
@@ -26,6 +32,7 @@ import type {
   ExtractData,
   ExtractSpec,
   LogEvent,
+  ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.js";
 
@@ -61,50 +68,39 @@ function defaultConcurrency(): number {
 
 export class ZipKit {
   readonly #policy: Partial<ArchivePolicy> | undefined;
-  readonly #logger: Logger;
   readonly #concurrency: number;
   readonly #chunkSize: number;
 
   constructor(options: ZipKitOptions = {}) {
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
-    this.#logger = createLogger(options.logger);
     this.#concurrency =
-      options.concurrency && options.concurrency > 0
-        ? Math.floor(options.concurrency)
+      options.concurrency !== undefined
+        ? validateConcurrency(options.concurrency)
         : defaultConcurrency();
     this.#chunkSize =
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
   }
 
   /** Scan and plan; writes nothing. Returns the `mode:"plan"` payload. */
-  async plan(spec: ArchiveSpec): Promise<PlanData> {
-    try {
-      const validated = validateSpec(spec);
-      const policy = resolvePolicy(this.#policy, validated.policy);
-      const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
-      const limit = pLimit(this.#concurrency);
-
-      const scanResult = await scan(validated, policy, { matcher, limit, logger: this.#logger });
-      const plan = planArchive(scanResult, policy);
-      this.#reportPlan(plan);
-      return plan;
-    } catch (err) {
-      this.#reportError(err);
-      throw err;
-    }
+  async plan(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<PlanData> {
+    const logger = createLogger(options.onProgress);
+    return this.#plan(spec, logger);
   }
 
   /** Execute a plan produced by {@link ZipKit.plan}. */
-  async write(plan: PlanData): Promise<WriteData> {
-    return this.#runWrite(plan, { logger: this.#logger, chunkSize: this.#chunkSize });
+  async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData> {
+    const logger = createLogger(options.onProgress);
+    return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize });
   }
 
-  /** Plan and write in one call. */
-  async create(spec: ArchiveSpec): Promise<WriteData> {
-    const plan = await this.plan(spec);
+  /** Plan and write in one call. One logger serves both inner steps, so the
+   *  caller's single `onProgress` hook sees the whole run. */
+  async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData> {
+    const logger = createLogger(options.onProgress);
+    const plan = await this.#plan(spec, logger);
     const deps = spec.signal
-      ? { logger: this.#logger, chunkSize: this.#chunkSize, signal: spec.signal }
-      : { logger: this.#logger, chunkSize: this.#chunkSize };
+      ? { logger, chunkSize: this.#chunkSize, signal: spec.signal }
+      : { logger, chunkSize: this.#chunkSize };
     return this.#runWrite(plan, deps);
   }
 
@@ -114,23 +110,43 @@ export class ZipKit {
    * `dryRun` is set — write the verified entries to `dest`. A dry run writes
    * nothing and is a pure integrity test that works on any ZIP.
    */
-  async extract(spec: ExtractSpec): Promise<ExtractData> {
+  async extract(spec: ExtractSpec, options: ZipKitCallOptions = {}): Promise<ExtractData> {
+    const logger = createLogger(options.onProgress);
     try {
       const validated = validateExtractSpec(spec);
       const limit = pLimit(this.#concurrency);
       const deps = spec.signal
-        ? { limit, logger: this.#logger, chunkSize: this.#chunkSize, signal: spec.signal }
-        : { limit, logger: this.#logger, chunkSize: this.#chunkSize };
+        ? { limit, logger, chunkSize: this.#chunkSize, signal: spec.signal }
+        : { limit, logger, chunkSize: this.#chunkSize };
       return await extractArchive(validated, deps);
     } catch (err) {
-      this.#reportError(err);
+      this.#reportError(logger, err);
+      throw err;
+    }
+  }
+
+  /** The shared plan path. `plan()` and `create()` both route through it with
+   *  the logger built from their own call's `onProgress` hook. */
+  async #plan(spec: ArchiveSpec, logger: Logger): Promise<PlanData> {
+    try {
+      const validated = validateSpec(spec);
+      const policy = resolvePolicy(this.#policy, validated.policy);
+      const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
+      const limit = pLimit(this.#concurrency);
+
+      const scanResult = await scan(validated, policy, { matcher, limit, logger });
+      const plan = planArchive(scanResult, policy);
+      this.#reportPlan(logger, plan);
+      return plan;
+    } catch (err) {
+      this.#reportError(logger, err);
       throw err;
     }
   }
 
   /** Execute the writer, reporting any failure to the log stream before it
-   *  propagates. `plan()` reports its own failures, so `create()` does not
-   *  double-report when its inner `plan()` throws. */
+   *  propagates. `#plan()` reports its own failures, so `create()` does not
+   *  double-report when its inner plan throws. */
   async #runWrite(
     plan: PlanData,
     deps: { logger: Logger; chunkSize: number; signal?: AbortSignal },
@@ -138,7 +154,7 @@ export class ZipKit {
     try {
       return await writeArchive(plan, deps);
     } catch (err) {
-      this.#reportError(err);
+      this.#reportError(deps.logger, err);
       throw err;
     }
   }
@@ -147,7 +163,7 @@ export class ZipKit {
    *  records the failure instead of going silent mid-stream. Best-effort: the
    *  logger swallows its own faults, and the original error is always rethrown
    *  by the caller. */
-  #reportError(err: unknown): void {
+  #reportError(logger: Logger, err: unknown): void {
     const code = err instanceof ZipKitError ? err.code : "unknown";
     const stage: LogEvent["stage"] = code.startsWith("scan.")
       ? "scan"
@@ -158,20 +174,20 @@ export class ZipKit {
           : "plan";
     const message = err instanceof Error ? err.message : String(err);
     const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
-    this.#logger.emit(stage, "error", message, {
+    logger.emit(stage, "error", message, {
       data: cause !== undefined ? { code, cause } : { code },
     });
   }
 
-  #reportPlan(plan: PlanData): void {
+  #reportPlan(logger: Logger, plan: PlanData): void {
     for (const entry of plan.entries) {
       if (entry.excluded) {
-        this.#logger.emit("plan", "debug", "entry.excluded", {
+        logger.emit("plan", "debug", "entry.excluded", {
           path: entry.archivePath,
           data: entry.excludeReason !== undefined ? { reason: entry.excludeReason } : undefined,
         });
       } else if (entry.archivePath !== entry.originalPath) {
-        this.#logger.emit("plan", "debug", "entry.renamed", {
+        logger.emit("plan", "debug", "entry.renamed", {
           path: entry.archivePath,
           data: { from: entry.originalPath },
         });
@@ -179,13 +195,13 @@ export class ZipKit {
     }
     for (const f of plan.findings) {
       const level = f.severity === "error" ? "error" : f.severity === "warning" ? "warn" : "info";
-      this.#logger.emit("plan", level, "entry.flagged", {
+      logger.emit("plan", level, "entry.flagged", {
         rule: f.rule,
         path: f.path,
         data: { severity: f.severity },
       });
     }
-    this.#logger.emit("plan", "info", "plan.done", {
+    logger.emit("plan", "info", "plan.done", {
       data: {
         total: plan.summary.total,
         included: plan.summary.included,

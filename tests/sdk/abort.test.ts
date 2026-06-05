@@ -45,16 +45,19 @@ describe("abort propagation", () => {
     const proj = await makeTree();
     const output = path.join(dir, "abort.zip");
     const controller = new AbortController();
-    // Abort the instant the write phase begins; the per-entry abort check then
-    // trips before any bytes reach disk.
-    const zip = new ZipKit({
-      logger: (event) => {
-        if (event.message === "write.start") controller.abort();
-      },
-    });
+    const zip = new ZipKit();
 
+    // Abort the instant the write phase begins, via the per-call onProgress hook;
+    // the per-entry abort check then trips before any bytes reach disk.
     await expect(
-      zip.create({ inputs: [proj], output, signal: controller.signal }),
+      zip.create(
+        { inputs: [proj], output, signal: controller.signal },
+        {
+          onProgress: (event) => {
+            if (event.message === "write.start") controller.abort();
+          },
+        },
+      ),
     ).rejects.toBeInstanceOf(AbortError);
     expect(existsSync(output)).toBe(false);
   });

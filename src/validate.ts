@@ -218,6 +218,22 @@ export function validateChunkSize(chunkSize: number): number {
   return chunkSize;
 }
 
+/**
+ * Validate the concurrency limit: a positive integer count of in-flight file
+ * operations. Like {@link validateChunkSize} this is a runtime knob, not policy,
+ * but its bound is still the SDK's to own — a non-positive or fractional value
+ * is a caller mistake rejected at the boundary rather than silently defaulted.
+ */
+export function validateConcurrency(concurrency: number): number {
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new PolicyError(
+      "options.invalid",
+      `concurrency must be a positive integer (got ${concurrency})`,
+    );
+  }
+  return concurrency;
+}
+
 /** Validate an instance-level policy, applying filter-rule defaults. */
 export function validatePolicy(policy: Partial<ArchivePolicy>): Partial<ArchivePolicy> {
   const result = partialPolicySchema.safeParse(policy);

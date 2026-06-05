@@ -55,6 +55,30 @@ describe("exit codes", () => {
     const code = await runCli(argv("create"));
     expect(code).toBe(2);
   });
+
+  it("returns 2 for a non-coercible --chunk-size (rejected at the parse edge)", async () => {
+    const proj = await tree();
+    const out = path.join(dir, "c.zip");
+    const code = await runCli(argv("create", proj, "-o", out, "--quiet", "--chunk-size", "abc"));
+    expect(code).toBe(2);
+    expect(existsSync(out)).toBe(false); // never ran
+  });
+
+  it("returns 2 for a non-positive --chunk-size (rejected by the SDK bound)", async () => {
+    const proj = await tree();
+    const out = path.join(dir, "z.zip");
+    const code = await runCli(argv("create", proj, "-o", out, "--quiet", "--chunk-size", "0"));
+    expect(code).toBe(2);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it("returns 2 for a non-coercible --concurrency", async () => {
+    const proj = await tree();
+    const out = path.join(dir, "n.zip");
+    const code = await runCli(argv("create", proj, "-o", out, "--quiet", "--concurrency", "lots"));
+    expect(code).toBe(2);
+    expect(existsSync(out)).toBe(false);
+  });
 });
 
 describe("exclusion", () => {

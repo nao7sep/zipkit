@@ -149,7 +149,6 @@ export interface ArchiveSpec {
 
 export interface ZipKitOptions {
   policy?: Partial<ArchivePolicy>;
-  logger?: (event: LogEvent) => void;
   concurrency?: number;
   /**
    * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
@@ -158,6 +157,17 @@ export interface ZipKitOptions {
    * Peak memory is roughly this times `concurrency`. Defaults to 65536 (64 KB).
    */
   chunkSize?: number;
+}
+
+/**
+ * Per-call options. Progress is observed through `onProgress`, a hook supplied
+ * to each verb call rather than to the instance: with no hook the SDK is silent
+ * and pure (it writes to no stream), and the caller decides per call where the
+ * event stream goes. The same structured `LogEvent` stream feeds this hook, the
+ * CLI's console renderer, and the `--log` JSONL sink — one producer, many sinks.
+ */
+export interface ZipKitCallOptions {
+  onProgress?: (event: LogEvent) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,8 +370,8 @@ export interface ExtractEntryResult {
  * The `extract` verb's payload. `findings` is the SSOT fault carrier. The domain
  * verdict is `reportOk` — no CRC failure, no unsafe path, and (under
  * `checkMetadata`) no missing/extra entry and no SHA mismatch — distinct from
- * the envelope's derived `ok`; the exit code keys off `reportOk` (output
- * contract §8).
+ * the envelope's derived `ok`; a clean run that is simply "not ok" exits 1, and
+ * the CLI keys that gate off `reportOk`.
  */
 export interface ExtractData {
   archive: string; // identity

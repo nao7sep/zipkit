@@ -8,20 +8,20 @@
 
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
-import { isUsageFault, ZipKitError } from "../errors.js";
+import { exitCodeFor, isUsageFault, ZipKitError } from "../errors.js";
 import { globExclude, regexExclude } from "../filter/rules.js";
 import { buildReport } from "../report.js";
-import type { ExtractData, ExtractSpec, FilterRule, ZipKitOptions } from "../types.js";
-import { parseChunkSize } from "./create.js";
-import {
-  emitErrorEvent,
-  emitHumanError,
-  emitReport,
-  faultFinding,
-  toFault,
-  writeReportFile,
-} from "./json.js";
-import { createConsoleProgress, createJsonlProgress, renderExtractData } from "./render.js";
+import type {
+  ExtractData,
+  ExtractSpec,
+  FilterRule,
+  ZipKitCallOptions,
+  ZipKitOptions,
+} from "../types.js";
+import { emitFaultLive, emitReport, faultFinding, toFault, writeReportFile } from "./json.js";
+import { parseByteSize, parseInteger } from "./parsers.js";
+import { buildReporter } from "./reporter.js";
+import { renderExtractData } from "./render.js";
 
 interface ExtractOpts {
   dryRun?: boolean;
@@ -32,10 +32,11 @@ interface ExtractOpts {
   timezone?: string;
   onUnsafe?: "skip" | "abort";
   symlinks?: "restore" | "skip";
+  log?: string;
   quiet?: boolean;
   verbose?: boolean;
-  concurrency?: string;
-  chunkSize?: string;
+  concurrency?: number;
+  chunkSize?: number;
   json?: boolean;
   jsonOut?: string;
 }
@@ -90,37 +91,33 @@ export function registerExtract(
   cmd.option("--symlinks <restore|skip>", "symlink handling (default restore)");
   cmd.option("--exclude <pattern>", "exclude glob, not written (repeatable); trailing slash = directory", addGlob);
   cmd.option("--exclude-regex <pattern>", "exclude regex, not written (repeatable)", addRegex);
+  cmd.option("--log <path.jsonl>", "write the event stream as JSONL");
   cmd.option("--quiet", "suppress console progress");
   cmd.option("--verbose", "include per-entry detail in console progress");
   cmd.option(
     "--concurrency <n>",
     "maximum entries extracted in parallel (default: available CPUs, bounded 4–16)",
+    parseInteger,
   );
   cmd.option(
     "--chunk-size <size>",
     "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
+    parseByteSize,
   );
   cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");
   cmd.option("--json-out <path>", "also write the pretty report envelope to a file");
 
   cmd.action(async (archive: string, dest: string | undefined, opts: ExtractOpts) => {
+    // Construct the SDK first so an out-of-range --concurrency/--chunk-size fails
+    // (a usage exit) before the --log file is opened. Format coercion already
+    // happened at the parse edge; the SDK owns the bounds.
     const zkOptions: ZipKitOptions = {};
-    // `--json` converts progress to prefixed JSONL on stderr; without it, human
-    // phase lines. `--quiet` silences either.
-    if (!opts.quiet) {
-      zkOptions.logger = opts.json
-        ? createJsonlProgress(opts.verbose === true)
-        : createConsoleProgress(opts.verbose === true);
-    }
-    if (opts.concurrency !== undefined) {
-      const n = Number.parseInt(opts.concurrency, 10);
-      if (Number.isFinite(n) && n > 0) zkOptions.concurrency = n;
-    }
-    if (opts.chunkSize !== undefined) {
-      const bytes = parseChunkSize(opts.chunkSize);
-      if (bytes !== null) zkOptions.chunkSize = bytes;
-    }
+    if (opts.concurrency !== undefined) zkOptions.concurrency = opts.concurrency;
+    if (opts.chunkSize !== undefined) zkOptions.chunkSize = opts.chunkSize;
     const zip = new ZipKit(zkOptions);
+
+    const reporter = buildReporter(opts);
+    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink };
 
     const spec: ExtractSpec = { archive, signal };
     if (dest !== undefined) spec.dest = dest;
@@ -135,21 +132,22 @@ export function registerExtract(
     if (excludes.length > 0) spec.exclude = excludes;
 
     try {
-      const data = await zip.extract(spec);
+      const data = await zip.extract(spec, callOptions);
       await emit(opts, data);
       if (!data.reportOk) setExitCode(1);
     } catch (err) {
       if (err instanceof ZipKitError && err.errorType === "abort") throw err;
       // A usage fault is pre-verb — no per-entry report to fold into — so
-      // re-throw it to the run layer (exit 2 + the D5 minimal envelope under
-      // `--json`). Any other read fault is operational and is folded into the
-      // report as its SSOT finding.
+      // re-throw it to the run layer (exit 2 + the minimal envelope under
+      // `--json`). Any other read fault is operational: fold it into the report
+      // as its SSOT finding and exit with its domain code (read → 5).
       if (isUsageFault(err)) throw err;
       const fault = toFault(err, spec.archive);
-      if (opts.json) emitErrorEvent({ code: fault.code, message: fault.message, path: fault.path });
-      else emitHumanError(fault.code, fault.message);
+      emitFaultLive(opts.json === true, fault);
       await emit(opts, faultData(spec, fault));
-      setExitCode(1);
+      setExitCode(exitCodeFor(err));
+    } finally {
+      await reporter.finalize();
     }
   });
 }

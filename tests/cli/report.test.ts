@@ -1,9 +1,9 @@
 /**
- * The frozen output contract (docs/output-contract.md) at the CLI seam: the one
- * report envelope on stdout, JSONL progress/error framing on stderr, the
- * byte-identical `--json-out`/`--metadata-out` file levers, faults folded into
- * findings, and the D5 pre-verb minimal envelope. stdout/stderr are captured by
- * spying on the process write streams; the SDK paths are covered elsewhere.
+ * The output behavior at the CLI seam: the one report envelope on stdout, JSONL
+ * progress/error framing on stderr, the byte-identical `--json-out`/
+ * `--metadata-out` file levers, faults folded into findings, and the pre-verb
+ * minimal envelope. stdout/stderr are captured by spying on the process write
+ * streams; the SDK paths are covered elsewhere.
  */
 
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -110,12 +110,12 @@ describe("create envelope", () => {
 });
 
 describe("create fault folding", () => {
-  it("folds an operational write fault into findings, emits a live error event, and exits 1", async () => {
+  it("folds an operational write fault into findings, emits a live error event, and exits 4 (write domain)", async () => {
     const proj = await tree();
     const archive = path.join(dir, "missing-dir", "o.zip"); // parent does not exist
     const code = await runCli(argv("create", proj, "-o", archive, "--json"));
 
-    expect(code).toBe(1);
+    expect(code).toBe(4); // write runtime fault → domain exit code 4
     const report = stdoutJson();
     expect(report.ok).toBe(false);
     expect(report.data.mode).toBe("write");
@@ -131,7 +131,7 @@ describe("create fault folding", () => {
   });
 });
 
-describe("D5 pre-verb minimal envelope", () => {
+describe("pre-verb minimal envelope", () => {
   it("still emits one minimal envelope on stdout under --json for a missing input", async () => {
     const archive = path.join(dir, "x.zip");
     const code = await runCli(argv("create", path.join(dir, "nope"), "-o", archive, "--json"));
@@ -171,5 +171,42 @@ describe("extract envelope", () => {
     expect(report.data.reportOk).toBe(true);
     expect(report.data.dryRun).toBe(true);
     expect(report.data.dest).toBeNull();
+  });
+
+  it("folds a read runtime fault into findings and exits 5 (read domain)", async () => {
+    // An openable file that is not a ZIP throws read.not-zip mid-run — a runtime
+    // fault (distinct from read.open-failed, which is a usage error).
+    const archive = path.join(dir, "bogus.zip");
+    await writeFile(archive, "this is plainly not a zip archive");
+
+    const code = await runCli(argv("extract", archive, "--dry-run", "--json"));
+    expect(code).toBe(5); // read runtime fault → domain exit code 5
+    const report = stdoutJson();
+    expect(report.verb).toBe("extract");
+    expect(report.ok).toBe(false);
+    const findings = report.data.findings as Array<{ severity: string }>;
+    expect(findings.some((f) => f.severity === "error")).toBe(true);
+
+    // The same fault rode out live on stderr as a [error] event.
+    expect(err.join("").includes("zipkit[error]:")).toBe(true);
+  });
+});
+
+describe("--log JSONL sink (both verbs)", () => {
+  it("writes the event stream as JSONL on extract, independent of --quiet", async () => {
+    const proj = await tree();
+    const archive = path.join(dir, "logged.zip");
+    await runCli(argv("create", proj, "-o", archive, "--quiet"));
+
+    const logPath = path.join(dir, "extract.jsonl");
+    const code = await runCli(argv("extract", archive, "--dry-run", "--quiet", "--log", logPath));
+    expect(code).toBe(0);
+
+    const lines = (await readFile(logPath)).toString().trim().split("\n").filter(Boolean);
+    expect(lines.length).toBeGreaterThan(0);
+    const events = lines.map((l) => JSON.parse(l) as { stage: string; message: string });
+    // Every line is a well-formed LogEvent, and the run's terminal event is present.
+    expect(events.every((e) => typeof e.stage === "string" && typeof e.message === "string")).toBe(true);
+    expect(events.some((e) => e.message === "extract.done")).toBe(true);
   });
 });

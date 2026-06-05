@@ -71,6 +71,39 @@ export function isUsageFault(err: unknown): boolean {
   );
 }
 
+/**
+ * The single exit-code classifier, shared by the CLI's top-level mapping and by
+ * each verb's operational-fault fold so the two can never disagree. The category
+ * is *whose fault*, then *which domain*:
+ *
+ * - cancellation → `130`;
+ * - usage faults (a malformed invocation — see {@link isUsageFault}) → `2`;
+ * - runtime faults map to a distinct code per domain — `scan` → `3`,
+ *   `write` → `4`, `read` → `5` — so a caller can branch on which side of the
+ *   pipeline failed;
+ * - anything else → `1`.
+ *
+ * Exit `1` is reserved by the CLI for a *negative domain verdict* (a non-writable
+ * plan, an extract whose `reportOk` is false): the verb ran cleanly but its
+ * result is "no." That is set directly by the verb, not routed through here —
+ * this function classifies *thrown* faults only.
+ */
+export function exitCodeFor(err: unknown): number {
+  if (err instanceof ZipKitError && err.errorType === "abort") return 130;
+  if (isUsageFault(err)) return 2;
+  if (err instanceof ZipKitError) {
+    switch (err.errorType) {
+      case "scan":
+        return 3;
+      case "write":
+        return 4;
+      case "read":
+        return 5;
+    }
+  }
+  return 1;
+}
+
 /** Coerce an arbitrary thrown value into an {@link AbortError}. */
 export function toAbortError(err: unknown, fallback = "operation aborted"): AbortError {
   if (err instanceof AbortError) return err;

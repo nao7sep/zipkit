@@ -201,6 +201,8 @@ stdout always carries **exactly one report**, emitted once at the end — on suc
 
 Under `--json`, stderr is line-framed JSONL: progress as `zipkit[progress]:{…}` and faults as `zipkit[error]:{…}`, each a single minified record with no space after the colon. Drain stdout and stderr concurrently. The `--json-out` and `--metadata-out` levers are independent of `--json`, so you can have a human stdout *and* a JSON file at once.
 
+A malformed numeric flag — `--chunk-size`, `--concurrency`, or `--level` given a non-number, or a value the SDK rejects as out of range (a non-positive size, a level outside 1–9) — is a usage error (exit `2`), never silently ignored. The command line only coerces the string to a number; the SDK owns the bounds, so a library caller and the CLI reject the same values.
+
 ## Extract and validate
 
 ```
@@ -232,11 +234,12 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. |
 | `--exclude <pattern>` | | Exclude glob — matching entries are verified but not written (repeatable). Trailing slash targets directories. |
 | `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
+| `--log <path.jsonl>` | | Write the event stream as JSONL (the same stream the console renderer and SDK `onProgress` hook see). Written regardless of `--quiet`. |
 | `--json` | | Emit the report envelope (with the `ExtractData` payload) as pretty JSON on stdout; convert progress to JSONL on stderr. |
 | `--json-out <path>` | | Also write the pretty report envelope to a file, byte-identical to `--json` stdout. Independent of `--json`. |
 
 - **Creation/birth time is not restored** — no portable cross-platform API sets it.
-- **Exit code** is `0` when the report's domain verdict `reportOk` holds, else `1`, so validation scripts cleanly.
+- **Exit code** is `0` when the report's domain verdict `reportOk` holds, `1` when it does not (a clean run that simply failed validation), and `5` when reading the archive itself threw mid-run — so validation scripts cleanly.
 - **No automatic self-validation** — zipkit does not validate its own output after `create` (a tested compressor is trusted); `extract --dry-run` is there for when you have a reason to check an archive.
 
 ## Rules and severity contract
@@ -283,12 +286,15 @@ The CLI exit codes make this a dependable automation contract:
 
 | Code | Meaning |
 |---|---|
-| `0` | success |
-| `1` | the run did not produce its result — for `create`, a non-writable plan (a blocking finding, or an existing output without `--overwrite`) or a write failure; for `extract`, a report whose `reportOk` is false (a CRC failure, an unsafe path, or — under `--check-metadata` — a missing/extra entry or SHA mismatch). `--dry-run` honors these, making either a CI gate. |
-| `2` | usage error: a missing input path, an archive that cannot be opened, or `extract` without a destination or `--dry-run` |
+| `0` | success — the verb's domain verdict is satisfied |
+| `1` | a negative **domain verdict**: the verb ran cleanly but its result is "no" — for `create`, a non-writable plan (a blocking finding, or an existing output without `--overwrite`); for `extract`, a report whose `reportOk` is false (a CRC failure, an unsafe path, or — under `--check-metadata` — a missing/extra entry or SHA mismatch). `--dry-run` honors these, making either a CI gate. |
+| `2` | usage error: a malformed flag or value, a missing input path, an archive that cannot be opened, or `extract` without a destination or `--dry-run` |
+| `3` | a **scan** runtime fault — a filesystem read failed while walking the source tree |
+| `4` | a **write** runtime fault — emitting the archive failed mid-run |
+| `5` | a **read** runtime fault — reading or extracting the archive failed mid-run |
 | `130` | interrupted (SIGINT) |
 
-The exit code keys off the per-verb **domain verdict**, not the envelope's derived `ok` (which only says the verb ran without an error-tier finding). An operational fault is folded into the report as an error-tier `Finding` (its fault code in `rule`, `severity: "error"`, the OS cause folded into `message`), so even on failure stdout still carries the one report. Without `--json`, a human fault line `zipkit [<code>]: <message>` is also written to stderr; under `--json`, the live fault rides out as a `zipkit[error]:{…}` JSONL record on stderr while the same fault lands as a finding in the final stdout report. Even a pre-verb usage error under `--json` emits a minimal envelope on stdout, so a `--json` caller always parses one report.
+Two questions, two answers. Code `1` is a clean run with a negative verdict (a "no"), distinct from the envelope's derived `ok` (which only says no error-tier finding fired). Codes `3`/`4`/`5` are a *thrown* runtime fault, coded by which side of the pipeline failed — so a caller can tell a bad source tree from a bad output path from a bad archive. A single classifier owns the thrown-fault half, so the exit code and the rendered report can never disagree. An operational fault is still folded into the report as an error-tier `Finding` (its fault code in `rule`, `severity: "error"`, the OS cause folded into `message`), so even on failure stdout carries the one report. Without `--json`, a human fault line `zipkit [<code>]: <message>` is also written to stderr; under `--json`, the live fault rides out as a `zipkit[error]:{…}` JSONL record on stderr while the same fault lands as a finding in the final stdout report. Even a pre-verb usage error under `--json` emits a minimal envelope on stdout, so a `--json` caller always parses one report.
 
 ## SDK
 
@@ -323,9 +329,17 @@ await zip.extract({ archive: "out.zip", dest: "./restored", overwrite: true });
 
 The SDK is idiomatic: its methods return the per-verb `data` payloads — `CreateData` from `plan()`/`write()`/`create()`, `ExtractData` from `extract()` — and **throw** `ZipKitError` on an operational fault. The CLI is the layer that wraps a payload in the report envelope and folds a thrown fault into `findings`; the `buildReport` helper is exported for callers who want to produce the same envelope.
 
-The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent`; the report envelope `Report` with the stderr records `ProgressEvent`/`ErrorEvent`, the `buildReport`/`isOk` helpers, and the `SCHEMA_VERSION` constant; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
+The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ZipKitCallOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent`; the report envelope `Report` with the stderr records `ProgressEvent`/`ErrorEvent`, the `buildReport`/`isOk` helpers, and the `SCHEMA_VERSION` constant; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
 
-Progress is observed in real time through the optional `logger` callback, which receives a `LogEvent` stream as the pipeline works. The same stream feeds the SDK callback, the CLI console renderer, and the `--log` JSONL sink.
+Progress is observed in real time through an optional `onProgress` hook passed to each verb call (`ZipKitCallOptions`), which receives a `LogEvent` stream as the pipeline works. The hook lives on the per-call options rather than the instance, so each call decides where its events go; with no hook the SDK is silent and writes to no stream. The same stream feeds this hook, the CLI console renderer, and the `--log` JSONL sink — one producer, many sinks.
+
+```ts
+const zip = new ZipKit();
+await zip.create(
+  { inputs: ["./my-project"], output: "out.zip", overwrite: true },
+  { onProgress: (event) => console.error(`${event.stage}: ${event.message}`) },
+);
+```
 
 ## The clean-byte guarantee
 

@@ -1,23 +1,23 @@
 /**
- * The frozen output contract: the universal report envelope and the stderr
- * event records. The envelope is thin and verb-agnostic — a generic reader does
+ * The output envelope: the universal report wrapper and the stderr event
+ * records. The envelope is thin and verb-agnostic — a generic reader does
  * `read stdout → parse → switch (verb)` without knowing any payload shape. The
  * per-verb `data` payloads (CreateData, ExtractData) live in `types.ts` with the
  * rest of the public surface; this module owns the wrapper, the stderr records,
  * and the small builders that stamp `schemaVersion`, derive `ok`, and turn an
  * operational fault into an error-tier finding.
  *
- * The boundary is deliberate (see the output contract, decision D1): the SDK
- * stays idiomatic — it returns the `data` payloads on success and throws on
- * operational faults — and the CLI is the one that wraps a payload in this
- * envelope and folds a thrown fault into `findings`.
+ * The boundary is deliberate: the SDK stays idiomatic — it returns the `data`
+ * payloads on success and throws on operational faults — and the CLI is the one
+ * that wraps a payload in this envelope and folds a thrown fault into `findings`.
  */
 
 import { VERSION } from "./version.js";
 import type { Finding } from "./types.js";
 
-/** The frozen contract version. Integer, the first key of every envelope and
- *  every stderr record; bumped only on a breaking change (output contract §9). */
+/** The output schema version. Integer, the first key of every envelope and
+ *  every stderr record; additive changes keep it, bumped only on a breaking
+ *  change (a removed/renamed field or a changed meaning). */
 export const SCHEMA_VERSION = 1;
 
 /**

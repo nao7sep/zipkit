@@ -26,6 +26,7 @@ export type {
   Severity,
   Transformation,
   UtcTime,
+  ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.js";
 

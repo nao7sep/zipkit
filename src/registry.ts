@@ -88,8 +88,8 @@ export function isKnownRule(rule: string): rule is RuleId {
  *   tier is chosen per run from the policy action); or
  * - an arbitrary `rule` string with an explicit `severity`, which is how an
  *   operational fault rides as a finding (its fault code in `rule`,
- *   `severity:"error"`, the OS cause folded into `message` — contract D3) and
- *   how the extract pass records its CRC/SHA/path findings.
+ *   `severity:"error"`, the OS cause folded into `message`) and how the extract
+ *   pass records its CRC/SHA/path findings.
  */
 export function finding(
   rule: RuleId,

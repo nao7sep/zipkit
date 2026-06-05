@@ -11,11 +11,10 @@
 import { writeFile } from "node:fs/promises";
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
-import { ZipKitError } from "../errors.js";
+import { exitCodeFor, ZipKitError } from "../errors.js";
 import { globExclude, regexExclude } from "../filter/rules.js";
 import { METADATA_DEFAULTS } from "../policy.js";
 import { buildReport } from "../report.js";
-import type { LogSink } from "../log/logger.js";
 import type {
   ArchiveInput,
   ArchivePolicy,
@@ -25,22 +24,13 @@ import type {
   FilterRule,
   NameAction,
   NameRules,
+  ZipKitCallOptions,
   ZipKitOptions,
 } from "../types.js";
-import {
-  emitErrorEvent,
-  emitHumanError,
-  emitReport,
-  faultFinding,
-  toFault,
-  writeReportFile,
-} from "./json.js";
-import { createJsonlSink } from "./logSink.js";
-import {
-  createConsoleProgress,
-  createJsonlProgress,
-  renderCreateData,
-} from "./render.js";
+import { emitFaultLive, emitReport, faultFinding, toFault, writeReportFile } from "./json.js";
+import { parseByteSize, parseInteger } from "./parsers.js";
+import { buildReporter } from "./reporter.js";
+import { renderCreateData } from "./render.js";
 
 /** The `mode:"plan"` member of {@link CreateData}; what `plan()` returns. */
 type PlanData = Extract<CreateData, { mode: "plan" }>;
@@ -69,7 +59,7 @@ interface CreateOpts {
   storeExt?: string;
   storeAll?: boolean;
   compressAll?: boolean;
-  level?: string;
+  level?: number;
   comment?: string;
   metadata?: boolean; // commander's --no-metadata sets this false (default true)
   metadataNoHash?: boolean;
@@ -79,25 +69,11 @@ interface CreateOpts {
   log?: string;
   quiet?: boolean;
   verbose?: boolean;
-  concurrency?: string;
-  chunkSize?: string;
+  concurrency?: number;
+  chunkSize?: number;
   json?: boolean;
   jsonOut?: string;
   metadataOut?: string;
-}
-
-/**
- * Parse a byte size with an optional `k`/`m` suffix (e.g. `64k`, `1m`, `65536`)
- * into an integer byte count, or null when it is not a positive size. Small and
- * case-insensitive; the SDK does the authoritative validation.
- */
-export function parseChunkSize(value: string): number | null {
-  const m = /^(\d+)([km]?)$/i.exec(value.trim());
-  if (!m) return null;
-  const n = Number.parseInt(m[1] as string, 10);
-  const scale = m[2]?.toLowerCase() === "m" ? 1024 * 1024 : m[2]?.toLowerCase() === "k" ? 1024 : 1;
-  const bytes = n * scale;
-  return bytes > 0 ? bytes : null;
 }
 
 function splitList(value: string): string[] {
@@ -138,7 +114,7 @@ function buildPolicy(opts: CreateOpts, filters: FilterRule[]): Partial<ArchivePo
 
   const mode = opts.compressAll ? "compress-all" : opts.storeAll ? "store-all" : undefined;
   const storeExtra = opts.storeExt !== undefined ? splitList(opts.storeExt) : undefined;
-  const level = opts.level !== undefined ? Number.parseInt(opts.level, 10) : undefined;
+  const level = opts.level;
   if (mode !== undefined || storeExtra !== undefined || level !== undefined) {
     const compression: Partial<CompressionPolicy> = {};
     if (mode !== undefined) compression.mode = mode;
@@ -185,38 +161,6 @@ function buildSpec(
   if (Object.keys(policy).length > 0) spec.policy = policy;
 
   return spec;
-}
-
-function buildReporter(opts: CreateOpts): { sink: LogSink; finalize: () => Promise<void> } {
-  const sinks: LogSink[] = [];
-  let jsonl: ReturnType<typeof createJsonlSink> | undefined;
-  if (opts.log !== undefined) {
-    jsonl = createJsonlSink(opts.log);
-    sinks.push(jsonl.sink);
-  }
-  // `--json` converts progress to prefixed JSONL on stderr; without it, human
-  // phase lines. `--quiet` silences either.
-  if (!opts.quiet) {
-    sinks.push(
-      opts.json ? createJsonlProgress(opts.verbose === true) : createConsoleProgress(opts.verbose === true),
-    );
-  }
-  return {
-    sink: (event) => {
-      // Each sink is isolated: a failure in one (e.g. a broken console pipe)
-      // must not starve the others (e.g. the JSONL audit log).
-      for (const sink of sinks) {
-        try {
-          sink(event);
-        } catch {
-          /* best-effort: one sink's failure does not stop the rest */
-        }
-      }
-    },
-    finalize: async () => {
-      if (jsonl) await jsonl.close();
-    },
-  };
 }
 
 export function registerCreate(
@@ -298,7 +242,7 @@ export function registerCreate(
   );
   cmd.option("--store-all", "store every entry (no compression)");
   cmd.option("--compress-all", "deflate every entry (ignore the store set)");
-  cmd.option("--level <1-9>", "deflate level, 1 (fastest) to 9 (smallest) (default 6)");
+  cmd.option("--level <1-9>", "deflate level, 1 (fastest) to 9 (smallest) (default 6)", parseInteger);
 
   // Companion output
   cmd.option("--no-metadata", "do not embed the metadata file (produce a plain archive)");
@@ -319,10 +263,12 @@ export function registerCreate(
   cmd.option(
     "--concurrency <n>",
     "maximum concurrent file operations (default: available CPUs, bounded 4–16)",
+    parseInteger,
   );
   cmd.option(
     "--chunk-size <size>",
     "streamed-I/O chunk size in bytes; accepts a k/m suffix (default 64k)",
+    parseByteSize,
   );
   cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");
   cmd.option("--json-out <path>", "also write the pretty report envelope to a file");
@@ -332,25 +278,24 @@ export function registerCreate(
   );
 
   cmd.action(async (rawInputs: string[], opts: CreateOpts) => {
-    const reporter = buildReporter(opts);
-    const zkOptions: ZipKitOptions = { logger: reporter.sink };
-    if (opts.concurrency !== undefined) {
-      const n = Number.parseInt(opts.concurrency, 10);
-      if (Number.isFinite(n) && n > 0) zkOptions.concurrency = n;
-    }
-    if (opts.chunkSize !== undefined) {
-      const bytes = parseChunkSize(opts.chunkSize);
-      if (bytes !== null) zkOptions.chunkSize = bytes;
-    }
+    // Construct the SDK first so an out-of-range --concurrency/--chunk-size fails
+    // (a usage exit) before the --log file is opened. Format coercion already
+    // happened at the parse edge; the SDK owns the bounds.
+    const zkOptions: ZipKitOptions = {};
+    if (opts.concurrency !== undefined) zkOptions.concurrency = opts.concurrency;
+    if (opts.chunkSize !== undefined) zkOptions.chunkSize = opts.chunkSize;
     const zip = new ZipKit(zkOptions);
+
+    const reporter = buildReporter(opts);
+    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink };
     const spec = buildSpec(rawInputs, opts, filters, signal);
 
     try {
-      // The SDK's plan() → write() split is what lets the CLI own the envelope
-      // (contract D1): on a write fault it still holds the plan, folds the fault
-      // into findings, and emits the report. A plan() throw has no data yet, so
-      // it propagates to the run layer (usage exit, D5 minimal envelope).
-      const plan = await zip.plan(spec);
+      // The SDK's plan() → write() split is what lets the CLI own the envelope:
+      // on a write fault it still holds the plan, folds the fault into findings,
+      // and emits the report. A plan() throw has no data yet, so it propagates to
+      // the run layer (the pre-verb fault path).
+      const plan = await zip.plan(spec, callOptions);
 
       if (opts.dryRun) {
         await emit(opts, plan);
@@ -360,7 +305,7 @@ export function registerCreate(
 
       // The create soft-failure gate: a non-writable plan never reaches the
       // writer. Emit a write-mode report carrying the blocking findings and a
-      // not-written verdict, then exit 1.
+      // not-written verdict, then exit 1 (a negative domain verdict).
       if (!plan.writable) {
         await emit(opts, notWritten(plan));
         setExitCode(1);
@@ -368,21 +313,20 @@ export function registerCreate(
       }
 
       try {
-        const result = await zip.write(plan);
+        const result = await zip.write(plan, callOptions);
         await emit(opts, result);
         if (!result.written) setExitCode(1);
       } catch (err) {
         if (err instanceof ZipKitError && err.errorType === "abort") throw err;
         // An operational write fault: surface it live on stderr, fold it into
         // the held plan's findings as an error-tier finding, and emit the
-        // write-mode report. The verdict is failed (exit 1).
+        // write-mode report. The exit code is the fault's domain (write → 4).
         const fault = toFault(err, plan.output);
-        if (opts.json) emitErrorEvent({ code: fault.code, message: fault.message, path: fault.path });
-        else emitHumanError(fault.code, fault.message);
+        emitFaultLive(opts.json === true, fault);
         const data = notWritten(plan);
         data.findings = [...plan.findings, faultFinding(fault)];
         await emit(opts, data);
-        setExitCode(1);
+        setExitCode(exitCodeFor(err));
       }
     } finally {
       await reporter.finalize();

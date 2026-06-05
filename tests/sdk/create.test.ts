@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WriteError, ZipKit } from "../../src/index.js";
+import { PolicyError, WriteError, ZipKit } from "../../src/index.js";
 import { readZip } from "../helpers/readZip.js";
 
 let dir: string;
@@ -195,6 +195,22 @@ describe("plan / inspect / write flow", () => {
     // The metadata document lists every written entry except the embedded
     // _metadata.json itself, which rides as the archive's final entry.
     expect((result.metadata?.entries.length ?? 0) + 1).toBe(entries.length);
+  });
+});
+
+describe("options validation", () => {
+  it("rejects a non-positive or fractional concurrency at construction (the SDK owns the bound)", () => {
+    expect(() => new ZipKit({ concurrency: 0 })).toThrow(PolicyError);
+    expect(() => new ZipKit({ concurrency: -2 })).toThrow(PolicyError);
+    expect(() => new ZipKit({ concurrency: 1.5 })).toThrow(PolicyError);
+  });
+
+  it("rejects a non-positive chunkSize at construction", () => {
+    expect(() => new ZipKit({ chunkSize: 0 })).toThrow(PolicyError);
+  });
+
+  it("accepts a valid concurrency", () => {
+    expect(() => new ZipKit({ concurrency: 8 })).not.toThrow();
   });
 });
 

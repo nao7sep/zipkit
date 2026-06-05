@@ -3,12 +3,12 @@
  * once at the end; `--json` renders it as the pretty (indent 2) envelope, and
  * `--json-out <path>` writes the byte-identical pretty envelope through the same
  * serializer. There is no TTY-based compact/pretty switch — `--json` stdout and
- * `--json-out` are byte-for-byte equal (output contract §4).
+ * `--json-out` are byte-for-byte equal.
  *
  * stderr carries line-framed chunks. Under `--json` progress and faults convert
  * to prefixed minified JSONL (`zipkit[progress]:{…}` / `zipkit[error]:{…}`, no
  * space after the colon), each written as a single `write()` of the complete
- * line (output contract §3).
+ * line so two chunks' bytes never interleave.
  */
 
 import { writeFile } from "node:fs/promises";
@@ -48,7 +48,7 @@ export function toFault(err: unknown, path: string): Fault {
   return { code, message, path };
 }
 
-/** An operational fault as an error-tier finding (the SSOT fault carrier, D3). */
+/** An operational fault as an error-tier finding (the SSOT fault carrier). */
 export function faultFinding(fault: Fault): Finding {
   return finding(fault.code, fault.path, fault.message, { severity: "error" });
 }
@@ -93,4 +93,12 @@ export function emitErrorEvent(event: Omit<ErrorEvent, "schemaVersion">): void {
 export function emitHumanError(code: string, message: string, cause?: string): void {
   const suffix = cause !== undefined ? ` (${cause})` : "";
   process.stderr.write(`zipkit [${code}]: ${message}${suffix}\n`);
+}
+
+/** Surface an operational fault live on stderr — the one path both verbs use:
+ *  a prefixed `[error]` JSONL record under `--json`, else a human line. The same
+ *  fault also lands as a finding in the final stdout report. */
+export function emitFaultLive(json: boolean, fault: Fault): void {
+  if (json) emitErrorEvent({ code: fault.code, message: fault.message, path: fault.path });
+  else emitHumanError(fault.code, fault.message);
 }
