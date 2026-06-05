@@ -291,6 +291,7 @@ Most rules have a fixed tier, stamped by a single registry (the `RULE_REGISTRY` 
 | `time.post-2107` | warning | clamp |
 | `compat.zip64` | warning | use Zip64 |
 | `compat.zip64-required` | error | abort |
+| `output.exists` | error | overwrite |
 
 The name rules show **per action** because their tier follows the `--name-*` setting (default `fix`, reported as `info`). Junk removal and same-source deduplication are deliberately `info`: dropping a `.DS_Store` or collapsing a file two overlapping inputs both supplied is not something to fail a build over. A collision is always an `error` — there is no auto-rename option, because choosing which file to rename is the ambiguous resolution that defines the tier — and Zip64 distinguishes `compat.zip64` (used, a warning) from `compat.zip64-required` (needed but disabled by `zip64: never`, an error).
 
