@@ -35,6 +35,7 @@ export interface ScanDeps {
   matcher: FilterMatcher;
   limit: <T>(fn: () => Promise<T>) => Promise<T>;
   logger: Logger;
+  signal: AbortSignal | undefined;
 }
 
 interface ScanContext {
@@ -259,7 +260,7 @@ export async function scan(
 ): Promise<ScanResult> {
   const cwd = process.cwd();
   const inputs = normalizeInputs(spec.inputs, cwd);
-  const signal = spec.signal;
+  const signal = deps.signal;
   throwIfAborted(signal);
 
   deps.logger.emit("scan", "info", "scan.start", { data: { inputs: inputs.length } });

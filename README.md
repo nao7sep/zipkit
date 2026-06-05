@@ -341,6 +341,15 @@ await zip.create(
 );
 ```
 
+Cancellation is the other per-call option: an `AbortSignal` on `ZipKitCallOptions` stops any verb — `plan`, `write`, `create`, `extract` — cleanly at its next boundary (a phase edge, a walked entry, a streamed chunk), rejecting with `AbortError`. It is control rather than data, so it lives on the call options beside `onProgress`, not on the spec. A cancelled `create` leaves no archive behind, since the output is renamed into place only after a complete write. The CLI installs this for you: Ctrl-C (`SIGINT`) aborts the run and exits `130`.
+
+```ts
+const controller = new AbortController();
+const plan = await zip.plan({ inputs: ["./my-project"], output: "out.zip" });
+// …decide based on plan.findings, then write under a cancellable signal:
+await zip.write(plan, { signal: controller.signal });
+```
+
 ## The clean-byte guarantee
 
 Every archive holds to a fixed byte contract, so it reads cleanly across platforms and old tools:

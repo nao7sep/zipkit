@@ -84,24 +84,22 @@ export class ZipKit {
   /** Scan and plan; writes nothing. Returns the `mode:"plan"` payload. */
   async plan(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<PlanData> {
     const logger = createLogger(options.onProgress);
-    return this.#plan(spec, logger);
+    return this.#plan(spec, logger, options.signal);
   }
 
   /** Execute a plan produced by {@link ZipKit.plan}. */
   async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData> {
     const logger = createLogger(options.onProgress);
-    return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize });
+    return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal });
   }
 
-  /** Plan and write in one call. One logger serves both inner steps, so the
-   *  caller's single `onProgress` hook sees the whole run. */
+  /** Plan and write in one call. One logger and one signal serve both inner
+   *  steps, so the caller's single `onProgress` hook sees the whole run and one
+   *  cancellation stops it at whichever phase it is in. */
   async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData> {
     const logger = createLogger(options.onProgress);
-    const plan = await this.#plan(spec, logger);
-    const deps = spec.signal
-      ? { logger, chunkSize: this.#chunkSize, signal: spec.signal }
-      : { logger, chunkSize: this.#chunkSize };
-    return this.#runWrite(plan, deps);
+    const plan = await this.#plan(spec, logger, options.signal);
+    return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal });
   }
 
   /**
@@ -115,10 +113,12 @@ export class ZipKit {
     try {
       const validated = validateExtractSpec(spec);
       const limit = pLimit(this.#concurrency);
-      const deps = spec.signal
-        ? { limit, logger, chunkSize: this.#chunkSize, signal: spec.signal }
-        : { limit, logger, chunkSize: this.#chunkSize };
-      return await extractArchive(validated, deps);
+      return await extractArchive(validated, {
+        limit,
+        logger,
+        chunkSize: this.#chunkSize,
+        signal: options.signal,
+      });
     } catch (err) {
       this.#reportError(logger, err);
       throw err;
@@ -126,15 +126,15 @@ export class ZipKit {
   }
 
   /** The shared plan path. `plan()` and `create()` both route through it with
-   *  the logger built from their own call's `onProgress` hook. */
-  async #plan(spec: ArchiveSpec, logger: Logger): Promise<PlanData> {
+   *  the logger and signal from their own call's options. */
+  async #plan(spec: ArchiveSpec, logger: Logger, signal: AbortSignal | undefined): Promise<PlanData> {
     try {
       const validated = validateSpec(spec);
       const policy = resolvePolicy(this.#policy, validated.policy);
       const matcher = buildMatcher(policy.filters, policy.junk === "builtin");
       const limit = pLimit(this.#concurrency);
 
-      const scanResult = await scan(validated, policy, { matcher, limit, logger });
+      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal });
       const plan = planArchive(scanResult, policy);
       this.#reportPlan(logger, plan);
       return plan;

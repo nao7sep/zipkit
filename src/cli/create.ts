@@ -144,14 +144,13 @@ function buildSpec(
   rawInputs: string[],
   opts: CreateOpts,
   filters: FilterRule[],
-  signal: AbortSignal,
 ): ArchiveSpec {
   const inputs: ArchiveInput[] =
     opts.wrap && rawInputs.length === 1 && rawInputs[0] !== undefined
       ? [{ path: rawInputs[0], flatten: false }]
       : rawInputs;
 
-  const spec: ArchiveSpec = { inputs, signal };
+  const spec: ArchiveSpec = { inputs };
   if (opts.root !== undefined) spec.root = opts.root;
   if (opts.output !== undefined) spec.output = opts.output;
   if (opts.overwrite) spec.overwrite = true;
@@ -287,8 +286,8 @@ export function registerCreate(
     const zip = new ZipKit(zkOptions);
 
     const reporter = buildReporter(opts);
-    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink };
-    const spec = buildSpec(rawInputs, opts, filters, signal);
+    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink, signal };
+    const spec = buildSpec(rawInputs, opts, filters);
 
     try {
       // The SDK's plan() → write() split is what lets the CLI own the envelope:

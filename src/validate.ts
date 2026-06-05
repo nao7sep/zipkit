@@ -2,8 +2,9 @@
  * Spec and policy validation at the SDK boundary. Malformed input is rejected
  * with a `PolicyError` rather than allowed to fail deep inside a pass. Filter
  * rules gain their `match`/`target` defaults here, so every rule that reaches
- * the engine is complete. The `signal` is not serializable and is carried
- * around the schema, then re-attached.
+ * the engine is complete. A spec is pure serializable data — cancellation is
+ * per-call control on {@link ZipKitCallOptions}, not a spec field — so the whole
+ * object is validated directly with nothing carried around the schema.
  */
 
 import { z } from "zod";
@@ -154,13 +155,11 @@ const specSchema = z.strictObject({
  * type (nested objects may be partial); `resolvePolicy` completes it.
  */
 export function validateSpec(spec: ArchiveSpec): ArchiveSpec {
-  const { signal, ...rest } = spec;
-  const result = specSchema.safeParse(rest);
+  const result = specSchema.safeParse(spec);
   if (!result.success) {
     throw new PolicyError("spec.invalid", `invalid archive spec: ${formatZodError(result.error)}`);
   }
-  const data = result.data as Omit<ArchiveSpec, "signal">;
-  return signal ? { ...data, signal } : { ...data };
+  return result.data as ArchiveSpec;
 }
 
 const extractSpecSchema = z.strictObject({
@@ -189,18 +188,16 @@ const extractSpecSchema = z.strictObject({
   exclude: z.array(filterRuleSchema).optional(),
 });
 
-/** Validate an extract spec; the non-serializable `signal` is carried around it. */
+/** Validate an extract spec; cancellation is per-call control, not a spec field. */
 export function validateExtractSpec(spec: ExtractSpec): ExtractSpec {
-  const { signal, ...rest } = spec;
-  const result = extractSpecSchema.safeParse(rest);
+  const result = extractSpecSchema.safeParse(spec);
   if (!result.success) {
     throw new PolicyError(
       "spec.invalid",
       `invalid extract spec: ${formatZodError(result.error)}`,
     );
   }
-  const data = result.data as Omit<ExtractSpec, "signal">;
-  return signal ? { ...data, signal } : { ...data };
+  return result.data as ExtractSpec;
 }
 
 /**

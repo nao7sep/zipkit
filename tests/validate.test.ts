@@ -1,7 +1,6 @@
 /**
  * Spec and policy validation. Malformed input is rejected with a
- * PolicyError; valid input gains its filter-rule defaults; the non-serializable
- * signal is carried through untouched.
+ * PolicyError; valid input gains its filter-rule defaults.
  */
 
 import { describe, expect, it } from "vitest";
@@ -62,12 +61,6 @@ describe("validateSpec", () => {
         policy: { filters: [{ pattern: "\\.log$", match: "regex" }] as never },
       }),
     ).not.toThrow();
-  });
-
-  it("preserves the abort signal", () => {
-    const controller = new AbortController();
-    const spec = validateSpec({ inputs: ["a"], signal: controller.signal });
-    expect(spec.signal).toBe(controller.signal);
   });
 });
 

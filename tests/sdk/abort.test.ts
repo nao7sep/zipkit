@@ -37,8 +37,24 @@ describe("abort propagation", () => {
     controller.abort();
 
     await expect(
-      new ZipKit().plan({ inputs: [proj], signal: controller.signal }),
+      new ZipKit().plan({ inputs: [proj] }, { signal: controller.signal }),
     ).rejects.toBeInstanceOf(AbortError);
+  });
+
+  it("rejects write() when the signal is already aborted", async () => {
+    const proj = await makeTree();
+    const output = path.join(dir, "abort-write.zip");
+    const zip = new ZipKit();
+
+    // The plan→inspect→write flow: plan() with no signal, then a write() whose
+    // own call options carry an already-aborted signal. The writer must stop at
+    // its first boundary and leave nothing behind.
+    const plan = await zip.plan({ inputs: [proj], output });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(zip.write(plan, { signal: controller.signal })).rejects.toBeInstanceOf(AbortError);
+    expect(existsSync(output)).toBe(false);
   });
 
   it("rejects create() when aborted mid-write and writes no output", async () => {
@@ -51,8 +67,9 @@ describe("abort propagation", () => {
     // the per-entry abort check then trips before any bytes reach disk.
     await expect(
       zip.create(
-        { inputs: [proj], output, signal: controller.signal },
+        { inputs: [proj], output },
         {
+          signal: controller.signal,
           onProgress: (event) => {
             if (event.message === "write.start") controller.abort();
           },

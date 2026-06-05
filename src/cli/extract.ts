@@ -117,9 +117,9 @@ export function registerExtract(
     const zip = new ZipKit(zkOptions);
 
     const reporter = buildReporter(opts);
-    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink };
+    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink, signal };
 
-    const spec: ExtractSpec = { archive, signal };
+    const spec: ExtractSpec = { archive };
     if (dest !== undefined) spec.dest = dest;
     if (opts.dryRun) spec.dryRun = true;
     if (opts.overwrite) spec.overwrite = true;

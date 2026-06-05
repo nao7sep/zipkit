@@ -142,9 +142,6 @@ export interface ArchiveSpec {
 
   // Configuration
   policy?: Partial<ArchivePolicy>;
-
-  // Control
-  signal?: AbortSignal;
 }
 
 export interface ZipKitOptions {
@@ -160,14 +157,23 @@ export interface ZipKitOptions {
 }
 
 /**
- * Per-call options. Progress is observed through `onProgress`, a hook supplied
- * to each verb call rather than to the instance: with no hook the SDK is silent
- * and pure (it writes to no stream), and the caller decides per call where the
- * event stream goes. The same structured `LogEvent` stream feeds this hook, the
- * CLI's console renderer, and the `--log` JSONL sink — one producer, many sinks.
+ * Per-call control and observation. Both members are per-call rather than
+ * per-instance, so each verb call decides where its progress goes and which
+ * cancellation it answers to.
+ *
+ * `onProgress` is the progress hook: with no hook the SDK is silent and pure (it
+ * writes to no stream), and the caller decides per call where the event stream
+ * goes. The same structured `LogEvent` stream feeds this hook, the CLI's console
+ * renderer, and the `--log` JSONL sink — one producer, many sinks.
+ *
+ * `signal` is the cancellation signal. Every verb — `plan`, `write`, `create`,
+ * `extract` — honors it, stopping cleanly at the next boundary (a phase edge, a
+ * walked entry, a streamed chunk) and rejecting with {@link AbortError}. It is
+ * control, not data, so it lives here and not on the spec.
  */
 export interface ZipKitCallOptions {
   onProgress?: (event: LogEvent) => void;
+  signal?: AbortSignal;
 }
 
 // ---------------------------------------------------------------------------
@@ -349,9 +355,6 @@ export interface ExtractSpec {
    * integrity always covers the whole archive.
    */
   exclude?: FilterRule[];
-
-  // Control
-  signal?: AbortSignal;
 }
 
 export interface ExtractEntryResult {
