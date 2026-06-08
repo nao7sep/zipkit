@@ -1,8 +1,10 @@
 /**
  * A minimal ZIP reader for round-trip tests: parse the central
  * directory and each local entry, inflating stored/deflated data so content and
- * the byte contract can be asserted. Handles the non-Zip64 case fully and
- * reports whether Zip64 end-of-central-directory structures are present.
+ * the byte contract can be asserted. Resolves a per-entry Zip64 record — when a
+ * 32-bit size or offset field holds the sentinel, the real value is read from the
+ * `0x0001` extra (in its fixed order) — and reports whether the Zip64
+ * end-of-central-directory structures are present.
  */
 
 import { readFileSync } from "node:fs";
@@ -79,15 +81,28 @@ export function readZip(buf: Buffer): ReadZip {
     const name = buf.toString("utf8", p + 46, p + 46 + nameLen);
     const centralExtra = buf.subarray(p + 46 + nameLen, p + 46 + nameLen + centralExtraLength);
 
-    if (buf.readUInt32LE(localOffset) !== 0x04034b50) throw new Error("bad local header signature");
-    const localNameLen = buf.readUInt16LE(localOffset + 26);
-    const localExtraLength = buf.readUInt16LE(localOffset + 28);
+    // Resolve Zip64: a sentinel 32-bit field means the real value lives in the
+    // `0x0001` extra, in the fixed order uncompressed, compressed, offset.
+    let realUncompSize = uncompSize;
+    let realCompSize = compSize;
+    let realOffset = localOffset;
+    const z64 = findExtra(centralExtra, 0x0001);
+    if (z64) {
+      let o = 0;
+      if (uncompSize === 0xffffffff) { realUncompSize = Number(z64.readBigUInt64LE(o)); o += 8; }
+      if (compSize === 0xffffffff) { realCompSize = Number(z64.readBigUInt64LE(o)); o += 8; }
+      if (localOffset === 0xffffffff) { realOffset = Number(z64.readBigUInt64LE(o)); o += 8; }
+    }
+
+    if (buf.readUInt32LE(realOffset) !== 0x04034b50) throw new Error("bad local header signature");
+    const localNameLen = buf.readUInt16LE(realOffset + 26);
+    const localExtraLength = buf.readUInt16LE(realOffset + 28);
     const localExtra = buf.subarray(
-      localOffset + 30 + localNameLen,
-      localOffset + 30 + localNameLen + localExtraLength,
+      realOffset + 30 + localNameLen,
+      realOffset + 30 + localNameLen + localExtraLength,
     );
-    const dataStart = localOffset + 30 + localNameLen + localExtraLength;
-    const raw = buf.subarray(dataStart, dataStart + compSize);
+    const dataStart = realOffset + 30 + localNameLen + localExtraLength;
+    const raw = buf.subarray(dataStart, dataStart + realCompSize);
     const content = method === 8 ? zlib.inflateRawSync(raw) : Buffer.from(raw);
 
     entries.push({
@@ -97,8 +112,8 @@ export function readZip(buf: Buffer): ReadZip {
       dosTime,
       dosDate,
       crc32,
-      compSize,
-      uncompSize,
+      compSize: realCompSize,
+      uncompSize: realUncompSize,
       versionMadeBy,
       hostByte: (versionMadeBy >> 8) & 0xff,
       externalAttr,

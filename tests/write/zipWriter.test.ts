@@ -14,6 +14,7 @@ import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.js";
 import { findExtra, readZipFile } from "../helpers/readZip.js";
+import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../src/plan/zip64.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 // 100-ns ticks between 1601 (FILETIME epoch) and 1970, for decoding NTFS times.
@@ -132,6 +133,10 @@ describe("timestamps", () => {
     expect(e.localExtraLength).toBe(4 + 13 + (4 + 32));
     // UT central carries only the modtime (flags + 1×4 = 5 data bytes).
     expect(e.centralExtraLength).toBe(4 + 5 + (4 + 32));
+    // These maxima are what the Zip64 estimate counts per record; keep them in
+    // lockstep so a change to the writer's extras can't silently underreport.
+    expect(e.localExtraLength).toBe(LOCAL_TIMESTAMP_EXTRA_MAX);
+    expect(e.centralExtraLength).toBe(CENTRAL_TIMESTAMP_EXTRA_MAX);
 
     const utLocal = findExtra(e.localExtra, 0x5455)!;
     expect(utLocal[0]).toBe(0x07); // mod | access | create
@@ -243,5 +248,27 @@ describe("zip64", () => {
     const result = await build([fileEntry("small.txt", Buffer.from("hi"), true)], { zip64: true });
     expect(result.hasZip64Eocd).toBe(true);
     expect(result.entries[0]?.content.toString("utf8")).toBe("hi");
+  });
+
+  it("picks the Zip64 header format for a near-4 GiB deflate entry, but not for store", async () => {
+    // Deflate can expand incompressible input, so an entry whose declared size is
+    // just under the 32-bit limit could compress to ≥ 4 GiB and overflow a 32-bit
+    // size field at patch time. The writer must choose the Zip64 format up front
+    // from the deflate bound. A store entry of the same size cannot expand, so it
+    // stays in classic format. (The streamed bytes are tiny — a real 4 GiB payload
+    // can't be created in a unit test; only the declared size drives the format.)
+    const justUnder = 0xffffffff - 1000;
+
+    const deflated = fileEntry("big.bin", Buffer.from("x"), true);
+    deflated.uncompressedSize = justUnder;
+    const d = await build([deflated]);
+    expect(findExtra(d.entries[0]!.localExtra, 0x0001)).not.toBeNull(); // Zip64 local extra present
+    expect(d.entries[0]?.content.toString("utf8")).toBe("x"); // still round-trips
+
+    const stored = fileEntry("big.bin", Buffer.from("x"), false);
+    stored.uncompressedSize = justUnder;
+    const s = await build([stored]);
+    expect(findExtra(s.entries[0]!.localExtra, 0x0001)).toBeNull(); // store: no expansion, no Zip64
+    expect(s.entries[0]?.content.toString("utf8")).toBe("x");
   });
 });

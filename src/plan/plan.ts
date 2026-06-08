@@ -32,7 +32,7 @@ import { applyPathFix } from "./pathFix.js";
 import { buildSummary } from "./summary.js";
 import { applySymlinks } from "./symlinks.js";
 import { applyTimestamps } from "./timestamps.js";
-import { writeEntriesNeedZip64 } from "./zip64.js";
+import { planNeedsZip64, type MetadataContent } from "./zip64.js";
 import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.js";
 
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
@@ -56,8 +56,8 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   applyTimestamps(items);
 
   const writeEntries = buildWriteEntries(items);
+
   const globalFindings: Finding[] = [];
-  const zip64 = writeEntriesNeedZip64(writeEntries);
   // The output pre-existing without an authorized overwrite blocks the write —
   // recorded as an error finding so it surfaces with a reason and so `writable`
   // derives from one place (the findings), never silently diverging from `ok`.
@@ -73,6 +73,23 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
     for (const f of item.findings) findings.push(f);
   }
   for (const f of globalFindings) findings.push(f);
+
+  // The Zip64 verdict includes the metadata file the writer injects, sized from
+  // its real content — the written entries, the dropped ones, and every finding —
+  // so the dry run's `summary.zip64` matches what the write will emit.
+  const excluded = items
+    .filter((item) => item.excluded)
+    .map((item) => {
+      const record: MetadataContent["excluded"][number] = {
+        archivePath: item.archivePath,
+        originalPath: item.originalPath,
+      };
+      if (item.excludeReason !== undefined) record.reason = item.excludeReason;
+      return record;
+    });
+  const content: MetadataContent = { entries: writeEntries, excluded, findings };
+  if (scan.comment !== undefined) content.comment = scan.comment;
+  const zip64 = planNeedsZip64(content, policy);
 
   const summary = buildSummary(items, findings, zip64);
   const writable = summary.errors === 0;

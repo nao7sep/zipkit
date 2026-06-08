@@ -25,8 +25,10 @@
  * host byte and link mode, because there is no other faithful representation.
  *
  * CRC-32 and the compressed size are not known until an entry has streamed, but
- * the uncompressed size (from `stat`) and therefore the Zip64 decision are known
- * up front, so the header FORMAT is fixed before the header is written. The
+ * the uncompressed size (from `stat`) and a worst-case bound on the compressed
+ * size (deflate cannot expand past `deflateBound`) — and therefore the Zip64
+ * decision — are known up front, so the header FORMAT is fixed before the header
+ * is written. The
  * local header is written with placeholder crc/size fields, the data is
  * streamed, then the real values are patched back into the header at its
  * recorded offset with positioned writes — no data descriptors, no GP bit 3, so
@@ -38,6 +40,7 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { throwIfAborted } from "../errors.js";
 import { wallClockInZone } from "../internal/timeZone.js";
+import { deflateBound } from "../plan/zip64.js";
 import { EntryCompressor, type ChunkSink } from "./deflate.js";
 
 const openAsync = promisify(open);
@@ -363,10 +366,15 @@ export class ZipWriter {
     const nameBuf = Buffer.from(name, "utf8");
     const { date, time } = dosFor(entry, this.#options);
     const headerOffset = this.#offset;
-    // The uncompressed size and offset are known now; the compressed size can
-    // only shrink, so an entry that does not need Zip64 by uncompressed size or
-    // offset never needs it by compressed size. The format is therefore fixed.
-    const useZip64 = entry.uncompressedSize >= U32 || headerOffset >= U32;
+    // The compressed size is not known until the entry streams, but deflate
+    // cannot expand past `deflateBound`, so the worst-case payload size fixes the
+    // header format up front: a store entry's payload is its exact size, a deflate
+    // entry's is bounded. Using that bound means a near-4 GiB incompressible
+    // deflate entry gets Zip64 size fields rather than overflowing a 32-bit size
+    // field when its real compressed size is patched in.
+    const payloadBound =
+      entry.method === "deflate" ? deflateBound(entry.uncompressedSize) : entry.uncompressedSize;
+    const useZip64 = payloadBound >= U32 || headerOffset >= U32;
     if (useZip64) this.#anyEntryZip64 = true;
     const info = hostInfo(entry);
     const versionNeeded = useZip64 ? 45 : info.baseVersion;

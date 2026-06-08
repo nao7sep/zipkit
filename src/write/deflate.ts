@@ -48,6 +48,11 @@ export class EntryCompressor {
     this.#method = method;
     this.#sink = sink;
     if (method === "deflate") {
+      // Chunks are fed with plain `write()` and finalized once at `end()` — no
+      // mid-stream `Z_SYNC_FLUSH`/`Z_FULL_FLUSH`. That keeps the output within
+      // zlib's `deflateBound`, which the writer's per-entry Zip64 decision relies
+      // on (a flush per chunk adds bytes and could push a near-4 GiB entry past
+      // the bound). Do not introduce intermediate flushes here.
       this.#deflate = zlib.createDeflateRaw({ chunkSize, level });
       // Output chunks arrive on the stream's "data" events, already in order.
       // Forward each to the sink strictly sequentially — the sink advances a

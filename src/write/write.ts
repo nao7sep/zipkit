@@ -29,7 +29,6 @@ type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 /** The `mode:"write"` member of {@link CreateData}; the writer's success shape. */
 type WriteData = Extract<CreateData, { mode: "write" }>;
-import { computeZip64Need } from "../plan/zip64.js";
 import { buildMetadata } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
 import { EntryCompressor, ZipWriter } from "./zipWriter.js";
@@ -140,20 +139,12 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   const hash = policy.metadata !== false && policy.metadata.hash;
   const createdNs = BigInt(Date.now()) * 1_000_000n;
 
-  // Decide Zip64 over the final entry set up front — it includes the injected
-  // metadata entry that the plan-time estimate could not see. The header format
-  // depends only on the uncompressed sizes and offsets, all known here, so the
-  // decision is fixed before any byte is written, and Zip64 is used iff needed.
-  const metadataPlaceholderSize = policy.metadata !== false ? estimateMetadataSize(writeEntries) : 0;
-  const sizedEntries = writeEntries.map((e) => ({
-    name: e.archivePath,
-    size: e.size,
-    isDir: e.type === "dir",
-  }));
-  if (policy.metadata !== false) {
-    sizedEntries.push({ name: policy.metadata.name, size: metadataPlaceholderSize, isDir: false });
-  }
-  const zip64Needed = computeZip64Need(sizedEntries);
+  // The plan already computed the Zip64 verdict over the full content (entries
+  // plus the manifest the writer injects); reuse it as the up-front decision
+  // rather than rebuilding and re-estimating here. `finalize()` recomputes the
+  // truth from the real offsets and returns it as `zip64`; this up-front value
+  // only forces Zip64 on when the estimate already requires it.
+  const zip64Needed = plan.summary.zip64;
 
   const writer = new ZipWriter(plan.output, {
     timeZone: effectiveTimeZone,
@@ -267,8 +258,12 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       output: plan.output,
       writable: plan.writable,
       written: true,
+      // The exact post-write outcome from finalize.
       bytes,
       zip64,
+      // The plan summary, carried verbatim — the same object the embedded manifest
+      // holds. Its `zip64` is the pre-write upper-bound estimate; the top-level
+      // `zip64` above is the exact outcome, so a caller reads that for the truth.
       summary: plan.summary,
       findings: plan.findings,
       metadata,
@@ -279,16 +274,4 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     if (err instanceof WriteError) throw err;
     throw new WriteError("write.failed", `failed to write ${plan.output}`, { cause: err });
   }
-}
-
-/**
- * A safe upper bound on the embedded metadata file's uncompressed size, used
- * only to decide Zip64 before the entries stream. The metadata JSON is tiny
- * relative to any archive that could approach the 4 GiB threshold, so a generous
- * per-entry estimate cannot flip the decision incorrectly: it can only err
- * toward Zip64 on an archive already at the very edge, which is harmless.
- */
-function estimateMetadataSize(entries: WriteEntry[]): number {
-  // Roughly the JSON weight of one entry record plus a fixed header allowance.
-  return 4096 + entries.length * 512;
 }

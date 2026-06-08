@@ -144,6 +144,18 @@ describe("metadata", () => {
     expect(a?.mtime.ns).toBeTypeOf("string"); // times always present in the return
   });
 
+  it("returns the same summary the manifest embeds; the exact zip64 is the top-level field", async () => {
+    const proj = await makeTree();
+    const result = await new ZipKit().create({ inputs: [proj], output: path.join(dir, "s.zip") });
+
+    // The returned summary is the very object embedded in the manifest, so
+    // `summary.zip64` (the plan's pre-write estimate) can never diverge between
+    // the two — guards against forking it back into a separate object.
+    expect(result.summary).toBe(result.metadata!.summary);
+    // The exact post-write Zip64 outcome is the top-level field on the result.
+    expect(result.zip64).toBeTypeOf("boolean");
+  });
+
   it("produces a plain archive under metadata:false but still returns the record", async () => {
     const proj = await makeTree();
     const result = await new ZipKit().create({
