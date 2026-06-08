@@ -81,7 +81,7 @@ function fileId(stats: BigIntStats): string {
  * Used both as a per-entry pair and, at a directory level, as the anchor pair.
  */
 interface EntryPaths {
-  /** The archive path (honors `--wrap`/`--root`/`as`/flatten). */
+  /** The archive path (single-dir flatten, else basename-anchored per input). */
   archive: string;
   /** The input-relative disk-trace path (see {@link ScanEntry.sourcePath}). */
   source: string;
@@ -265,8 +265,6 @@ export async function scan(
 
   deps.logger.emit({ stage: "scan", level: "info", event: "scan.start", inputs: inputs.length });
 
-  const root = spec.root !== undefined ? path.resolve(cwd, spec.root) : undefined;
-
   const isDir: boolean[] = [];
   const realInputPaths: string[] = [];
   for (const input of inputs) {
@@ -306,7 +304,7 @@ export async function scan(
     }
   }
 
-  const anchors = inputs.map((input, i) => computeAnchor(input, isDir[i] ?? false, inputs.length, root));
+  const anchors = inputs.map((input, i) => computeAnchor(input, isDir[i] ?? false, inputs.length));
   checkAnchorCollisions(inputs, anchors);
 
   const output = resolveOutputPath(spec.output, inputs, isDir, cwd);

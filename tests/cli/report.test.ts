@@ -1,8 +1,10 @@
 /**
- * The output behavior at the CLI seam: the one report envelope on stdout, JSONL
- * progress/error framing on stderr, faults folded into findings, and the
- * pre-verb minimal envelope. stdout/stderr are captured by spying on the process
- * write streams; the SDK paths are covered elsewhere.
+ * The output behavior at the CLI seam: exactly one typed result document on
+ * stdout (JSON, no envelope), bare JSONL progress on stderr, and faults rendered
+ * on stderr only — stdout stays empty on failure. A negative verdict (a
+ * non-writable plan, a not-ok extract) is a clean run: its result rides on
+ * stdout and the exit code is 1. stdout/stderr are captured by spying on the
+ * process write streams; the SDK paths are covered elsewhere.
  */
 
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -46,130 +48,124 @@ async function tree(): Promise<string> {
   return proj;
 }
 
-function stdoutJson(): { schemaVersion: number; verb: string; ok: boolean; data: Record<string, unknown> } {
+/** The single result document on stdout, parsed. There is no envelope: stdout is
+ *  the verb's typed result object (CreateData / ExtractData) directly. */
+function stdoutJson(): Record<string, unknown> {
   return JSON.parse(out.join(""));
 }
 
-describe("create envelope", () => {
-  it("emits exactly one pretty write-mode envelope on stdout and JSONL progress on stderr", async () => {
+/** Every stderr line that parses as JSON (the bare-JSONL progress + a final
+ *  error object on failure), in order. */
+function stderrObjects(): Record<string, unknown>[] {
+  return err
+    .join("")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line) as Record<string, unknown>];
+      } catch {
+        return [];
+      }
+    });
+}
+
+describe("create output", () => {
+  it("emits one result document on stdout and bare JSONL progress on stderr", async () => {
     const proj = await tree();
     const archive = path.join(dir, "o.zip");
-    const code = await runCli(argv("create", proj, "-o", archive, "--json"));
+    const code = await runCli(argv("create", proj, "-o", archive));
 
     expect(code).toBe(0);
-    // One report, parseable, with the frozen wrapper keys.
-    const report = stdoutJson();
-    expect(report.schemaVersion).toBe(1);
-    expect(report).toMatchObject({ tool: "zipkit", verb: "create", ok: true });
-    expect(report.data.mode).toBe("write");
-    expect(report.data.written).toBe(true);
-    expect(report.data.bytes).toBeTypeOf("number");
+    // The raw write-mode result, no wrapping envelope.
+    const result = stdoutJson();
+    expect(result.mode).toBe("write");
+    expect(result.written).toBe(true);
+    expect(result.bytes).toBeTypeOf("number");
+    expect(result.schemaVersion).toBeUndefined(); // no envelope
+    expect(result.verb).toBeUndefined();
 
-    // Progress converted to prefixed minified JSONL on stderr (not suppressed).
+    // Progress is bare JSONL — every line a whole LogEvent, no prefix.
     const lines = err.join("").trim().split("\n");
-    expect(lines.every((l) => l.startsWith("zipkit[progress]:"))).toBe(true);
-    const scan = JSON.parse(lines[0]!.slice("zipkit[progress]:".length));
-    expect(scan).toMatchObject({ schemaVersion: 1, event: "scan.done", entries: 2 });
-    // Minified: no indentation in the JSONL record.
-    expect(lines[0]).not.toContain("\n  ");
+    expect(lines.every((l) => !l.startsWith("zipkit["))).toBe(true);
+    const events = stderrObjects();
+    expect(events.every((e) => typeof e.stage === "string" && typeof e.event === "string")).toBe(true);
+    expect(events).toContainEqual(expect.objectContaining({ event: "scan.done", entries: 2 }));
   });
 
-  it("renders the dry-run plan envelope and exits 1 when not writable", async () => {
+  it("emits the dry-run plan result and exits 1 when not writable", async () => {
     const proj = await tree();
     const archive = path.join(dir, "exists.zip");
     await writeFile(archive, "preexisting");
-    const code = await runCli(argv("create", proj, "-o", archive, "--dry-run", "--json"));
+    const code = await runCli(argv("create", proj, "-o", archive, "--dry-run"));
 
     expect(code).toBe(1);
-    const report = stdoutJson();
-    expect(report.verb).toBe("create");
-    expect(report.data.mode).toBe("plan");
-    expect(report.data.writable).toBe(false);
-    expect(Array.isArray(report.data.entries)).toBe(true);
+    const result = stdoutJson();
+    expect(result.mode).toBe("plan");
+    expect(result.writable).toBe(false);
+    expect(Array.isArray(result.entries)).toBe(true);
   });
 
-});
-
-describe("create fault folding", () => {
-  it("folds an operational write fault into findings, emits a live error event, and exits 4 (write domain)", async () => {
+  it("renders an operational write fault on stderr only, leaving stdout empty (exit 4)", async () => {
     const proj = await tree();
     const archive = path.join(dir, "missing-dir", "o.zip"); // parent does not exist
-    const code = await runCli(argv("create", proj, "-o", archive, "--json"));
+    const code = await runCli(argv("create", proj, "-o", archive));
 
     expect(code).toBe(4); // write runtime fault → domain exit code 4
-    const report = stdoutJson();
-    expect(report.ok).toBe(false);
-    expect(report.data.mode).toBe("write");
-    expect(report.data.written).toBe(false);
-    expect(report.data.bytes).toBeNull();
-    expect(report.data.metadata).toBeNull();
-    const findings = report.data.findings as Array<{ severity: string }>;
-    expect(findings.some((f) => f.severity === "error")).toBe(true);
-
-    // The same fault rode out live on stderr as a [error] event.
-    const errLines = err.join("").trim().split("\n");
-    expect(errLines.some((l) => l.startsWith("zipkit[error]:"))).toBe(true);
+    expect(out.join("")).toBe(""); // nothing on stdout
+    // The fault is rendered on stderr as a structured error object (write domain).
+    const error = stderrObjects().find((o) => o.error)?.error as
+      | { type: string; code: string }
+      | undefined;
+    expect(error?.type).toBe("write");
   });
 });
 
-describe("pre-verb minimal envelope", () => {
-  it("still emits one minimal envelope on stdout under --json for a missing input", async () => {
+describe("usage faults", () => {
+  it("renders a missing input as a plain stderr line and exits 2, stdout empty", async () => {
     const archive = path.join(dir, "x.zip");
-    const code = await runCli(argv("create", path.join(dir, "nope"), "-o", archive, "--json"));
+    const code = await runCli(argv("create", path.join(dir, "nope"), "-o", archive));
 
     expect(code).toBe(2); // usage: the user named a path that isn't there
-    const report = stdoutJson();
-    expect(report.schemaVersion).toBe(1);
-    expect(report.verb).toBe("create");
-    expect(report.ok).toBe(false);
-    const findings = report.data.findings as Array<{ rule: string; severity: string }>;
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.severity).toBe("error");
+    expect(out.join("")).toBe("");
+    expect(err.join("")).toMatch(/^error: /m); // plain one-line message
   });
 
-  it("emits a minimal envelope under --json when a required argument is missing", async () => {
-    const code = await runCli(argv("create", "--json"));
+  it("exits 2 for a missing required argument", async () => {
+    const code = await runCli(argv("create"));
     expect(code).toBe(2);
-    const report = stdoutJson();
-    expect(report.verb).toBe("create");
-    expect((report.data.findings as unknown[]).length).toBe(1);
+    expect(out.join("")).toBe(""); // commander wrote its usage to stderr, not stdout
   });
 });
 
-describe("extract envelope", () => {
-  it("emits the extract envelope and exits 0 on a clean dry-run validation", async () => {
+describe("extract output", () => {
+  it("emits the extract result and exits 0 on a clean dry-run validation", async () => {
     const proj = await tree();
     const archive = path.join(dir, "v.zip");
     await runCli(argv("create", proj, "-o", archive, "--quiet"));
     out.length = 0;
     err.length = 0;
 
-    const code = await runCli(argv("extract", archive, "--dry-run", "--json"));
+    const code = await runCli(argv("extract", archive, "--dry-run"));
     expect(code).toBe(0);
-    const report = stdoutJson();
-    expect(report.verb).toBe("extract");
-    expect(report.ok).toBe(true);
-    expect(report.data.reportOk).toBe(true);
-    expect(report.data.dryRun).toBe(true);
-    expect(report.data.dest).toBeNull();
+    const result = stdoutJson();
+    expect(result.reportOk).toBe(true);
+    expect(result.dryRun).toBe(true);
+    expect(result.dest).toBeNull();
   });
 
-  it("folds a read runtime fault into findings and exits 5 (read domain)", async () => {
+  it("renders a read runtime fault on stderr only and exits 5", async () => {
     // An openable file that is not a ZIP throws read.not-zip mid-run — a runtime
     // fault (distinct from read.open-failed, which is a usage error).
     const archive = path.join(dir, "bogus.zip");
     await writeFile(archive, "this is plainly not a zip archive");
 
-    const code = await runCli(argv("extract", archive, "--dry-run", "--json"));
+    const code = await runCli(argv("extract", archive, "--dry-run"));
     expect(code).toBe(5); // read runtime fault → domain exit code 5
-    const report = stdoutJson();
-    expect(report.verb).toBe("extract");
-    expect(report.ok).toBe(false);
-    const findings = report.data.findings as Array<{ severity: string }>;
-    expect(findings.some((f) => f.severity === "error")).toBe(true);
-
-    // The same fault rode out live on stderr as a [error] event.
-    expect(err.join("").includes("zipkit[error]:")).toBe(true);
+    expect(out.join("")).toBe("");
+    const error = stderrObjects().find((o) => o.error)?.error as { type: string } | undefined;
+    expect(error?.type).toBe("read");
   });
 });
 

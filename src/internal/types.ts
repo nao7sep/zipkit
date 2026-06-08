@@ -23,8 +23,8 @@ export interface ScanEntry {
   archivePath: string;
   /**
    * A best-effort disk-trace path: the input's own name (as the user supplied
-   * it) joined with the entry's path within that input, independent of
-   * `--wrap`/flatten, so a flattened entry is not reduced to a bare filename in
+   * it) joined with the entry's path within that input, independent of the
+   * archive layout, so a flattened entry is not reduced to a bare filename in
    * the metadata. Always relative and never absolute or `..`-escaping, so the
    * clean-byte guarantee holds — but a trace hint, not a unique key: distinct
    * inputs sharing a basename can yield the same sourcePath, and a

@@ -10,10 +10,10 @@
  * - Version-made-by uses host byte 0 (FAT), so no Unix mode leaks; external
  *   attributes carry only the DOS attribute byte (`0x10` for a directory).
  * - The extra-field length is zero except the Zip64 extra (`0x0001`) when
- *   genuinely needed and, only under timestamp preservation, the Info-ZIP
- *   extended-timestamp extra (`0x5455`, UTC seconds) and the NTFS extra
- *   (`0x000a`, UTC 100-ns FILETIME). Both carry modification, access, and
- *   creation times so a reader on any platform recovers the right instant.
+ *   genuinely needed, plus the Info-ZIP extended-timestamp extra (`0x5455`,
+ *   UTC seconds) and the NTFS extra (`0x000a`, UTC 100-ns FILETIME), which are
+ *   always written. Both carry modification, access, and creation times so a
+ *   reader on any platform recovers the right instant.
  * - The DOS date/time field holds *local* wall-clock time, rendered in the
  *   configured timezone (the host zone by default), clamped to the 1980–2107
  *   window. DOS time carries no zone, so it is only a same-zone convenience —
@@ -86,9 +86,6 @@ export interface WriteEntryInput {
 }
 
 export interface ZipWriterOptions {
-  /** Force Zip64 structures (the policy's `always`, or an auto-detected need). */
-  zip64: boolean;
-  preserveTimestamps: boolean;
   /** IANA zone the DOS local-time field is rendered in (already resolved). */
   timeZone: string;
   /** highWaterMark for the temp-file writes and the deflate stream. */
@@ -110,7 +107,7 @@ interface EntryGeometry {
   time: number;
   useZip64: boolean;
   headerOffset: number;
-  times: { local: Buffer; central: Buffer } | null;
+  times: { local: Buffer; central: Buffer };
   info: { madeBy: number; extAttr: number; baseVersion: number };
   versionNeeded: number;
 }
@@ -373,7 +370,7 @@ export class ZipWriter {
     if (useZip64) this.#anyEntryZip64 = true;
     const info = hostInfo(entry);
     const versionNeeded = useZip64 ? 45 : info.baseVersion;
-    const times = this.#options.preserveTimestamps ? timestampExtras(entry) : null;
+    const times = timestampExtras(entry);
     return { nameBuf, date, time, useZip64, headerOffset, times, info, versionNeeded };
   }
 
@@ -382,12 +379,12 @@ export class ZipWriter {
     useZip64: boolean,
     uncompSize: number,
     compSize: number,
-    times: { local: Buffer } | null,
+    times: { local: Buffer },
   ): Buffer {
     const parts: Buffer[] = [];
     if (useZip64) parts.push(zip64LocalExtra(uncompSize, compSize));
-    if (times) parts.push(times.local);
-    return parts.length > 0 ? Buffer.concat(parts) : EMPTY;
+    parts.push(times.local);
+    return Buffer.concat(parts);
   }
 
   /** Record the central-directory entry once the stream's crc/sizes are known. */
@@ -402,8 +399,8 @@ export class ZipWriter {
         zip64CentralExtra(result.uncompressedSize, result.compressedSize, g.headerOffset),
       );
     }
-    if (g.times) centralExtra.push(g.times.central);
-    const centralExtraBuf = centralExtra.length > 0 ? Buffer.concat(centralExtra) : EMPTY;
+    centralExtra.push(g.times.central);
+    const centralExtraBuf = Buffer.concat(centralExtra);
 
     this.#central.push(
       centralRecord({

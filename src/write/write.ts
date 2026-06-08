@@ -143,8 +143,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   // Decide Zip64 over the final entry set up front — it includes the injected
   // metadata entry that the plan-time estimate could not see. The header format
   // depends only on the uncompressed sizes and offsets, all known here, so the
-  // decision is fixed before any byte is written. Under "never" this is a hard
-  // gate: refuse rather than silently producing a Zip64 archive.
+  // decision is fixed before any byte is written, and Zip64 is used iff needed.
   const metadataPlaceholderSize = policy.metadata !== false ? estimateMetadataSize(writeEntries) : 0;
   const sizedEntries = writeEntries.map((e) => ({
     name: e.archivePath,
@@ -155,17 +154,8 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     sizedEntries.push({ name: policy.metadata.name, size: metadataPlaceholderSize, isDir: false });
   }
   const zip64Needed = computeZip64Need(sizedEntries);
-  if (policy.zip64 === "never" && zip64Needed) {
-    throw new WriteError(
-      "write.zip64-required",
-      "the archive exceeds 32-bit ZIP limits but Zip64 is disabled",
-    );
-  }
-  const forceZip64 = policy.zip64 === "always" || zip64Needed;
 
   const writer = new ZipWriter(plan.output, {
-    zip64: forceZip64,
-    preserveTimestamps: policy.timestamps === "preserve",
     timeZone: effectiveTimeZone,
     chunkSize: deps.chunkSize,
   });
@@ -266,7 +256,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       );
     }
 
-    const final = await writer.finalize(forceZip64, comment, signal);
+    const final = await writer.finalize(zip64Needed, comment, signal);
     zip64 = final.zip64;
     bytes = final.bytes;
 

@@ -8,20 +8,16 @@
 
 import type { Command } from "commander";
 import { ZipKit } from "../zipkit.js";
-import { exitCodeFor, isUsageFault, ZipKitError } from "../errors.js";
 import { globExclude, regexExclude } from "../filter/rules.js";
-import { buildReport } from "../report.js";
 import type {
-  ExtractData,
   ExtractSpec,
   FilterRule,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "../types.js";
-import { emitFaultLive, emitReport, faultFinding, toFault } from "./json.js";
+import { emit } from "./output.js";
 import { parseByteSize, parseInteger } from "./parsers.js";
 import { buildReporter } from "./reporter.js";
-import { renderExtractData } from "./render.js";
 
 interface ExtractOpts {
   dryRun?: boolean;
@@ -34,29 +30,8 @@ interface ExtractOpts {
   symlinks?: "restore" | "skip";
   log?: string;
   quiet?: boolean;
-  verbose?: boolean;
-  concurrency?: number;
+  jobs?: number;
   chunkSize?: number;
-  json?: boolean;
-}
-
-/** A skeleton extract payload carrying only an operational fault — used when the
- *  read throws before any per-entry report exists, so the report invariant still
- *  holds (one envelope, with the fault as its SSOT finding). */
-function faultData(spec: ExtractSpec, fault: ReturnType<typeof toFault>): ExtractData {
-  return {
-    archive: spec.archive,
-    dest: spec.dryRun ? null : spec.dest ?? null,
-    dryRun: spec.dryRun === true,
-    wrote: false,
-    reportOk: false,
-    manifest: null,
-    summary: { total: 0, written: 0, skipped: 0, crcFailed: 0, shaMismatched: 0 },
-    entries: [],
-    missing: [],
-    extra: [],
-    findings: [faultFinding(fault)],
-  };
 }
 
 export function registerExtract(
@@ -92,9 +67,8 @@ export function registerExtract(
   cmd.option("--exclude-regex <pattern>", "exclude regex, not written (repeatable)", addRegex);
   cmd.option("--log <path.jsonl>", "write the event stream as JSONL");
   cmd.option("--quiet", "suppress console progress");
-  cmd.option("--verbose", "include per-entry detail in console progress");
   cmd.option(
-    "--concurrency <n>",
+    "-j, --jobs <n>",
     "maximum entries extracted in parallel",
     parseInteger,
   );
@@ -103,14 +77,13 @@ export function registerExtract(
     "streamed-I/O chunk size in bytes; accepts a k/m suffix",
     parseByteSize,
   );
-  cmd.option("--json", "emit the report envelope as pretty JSON on stdout, progress as JSONL on stderr");
 
   cmd.action(async (archive: string, dest: string | undefined, opts: ExtractOpts) => {
-    // Construct the SDK first so an out-of-range --concurrency/--chunk-size fails
+    // Construct the SDK first so an out-of-range --jobs/--chunk-size fails
     // (a usage exit) before the --log file is opened. Format coercion already
     // happened at the parse edge; the SDK owns the bounds.
     const zkOptions: ZipKitOptions = {};
-    if (opts.concurrency !== undefined) zkOptions.concurrency = opts.concurrency;
+    if (opts.jobs !== undefined) zkOptions.concurrency = opts.jobs;
     if (opts.chunkSize !== undefined) zkOptions.chunkSize = opts.chunkSize;
     const zip = new ZipKit(zkOptions);
 
@@ -130,28 +103,16 @@ export function registerExtract(
     if (excludes.length > 0) spec.exclude = excludes;
 
     try {
+      // The verb emits its typed result to stdout and exits 1 on a negative
+      // verdict (a report that is not ok — a CRC failure, an unsafe path, a SHA
+      // mismatch); the per-entry detail rides on that result. Operational read
+      // faults are not caught here — they propagate to the run layer, which
+      // renders them on stderr and maps the exit code, leaving stdout empty.
       const data = await zip.extract(spec, callOptions);
-      emit(opts, data);
+      emit(data);
       if (!data.reportOk) setExitCode(1);
-    } catch (err) {
-      if (err instanceof ZipKitError && err.errorType === "abort") throw err;
-      // A usage fault is pre-verb — no per-entry report to fold into — so
-      // re-throw it to the run layer (exit 2 + the minimal envelope under
-      // `--json`). Any other read fault is operational: fold it into the report
-      // as its SSOT finding and exit with its domain code (read → 5).
-      if (isUsageFault(err)) throw err;
-      const fault = toFault(err, spec.archive);
-      emitFaultLive(opts.json === true, fault);
-      emit(opts, faultData(spec, fault));
-      setExitCode(exitCodeFor(err));
     } finally {
       await reporter.finalize();
     }
   });
-}
-
-/** Emit the extract report: the envelope (or human render) on stdout. */
-function emit(opts: ExtractOpts, data: ExtractData): void {
-  if (opts.json) emitReport(buildReport("extract", data));
-  else process.stdout.write(renderExtractData(data));
 }

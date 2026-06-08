@@ -32,7 +32,7 @@ import { applyPathFix } from "./pathFix.js";
 import { buildSummary } from "./summary.js";
 import { applySymlinks } from "./symlinks.js";
 import { applyTimestamps } from "./timestamps.js";
-import { applyZip64 } from "./zip64.js";
+import { writeEntriesNeedZip64 } from "./zip64.js";
 import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.js";
 
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
@@ -51,13 +51,13 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   // caught here (and predicted by the dry run) rather than silently producing a
   // duplicate ZIP entry.
   const reserved = policy.metadata !== false ? [policy.metadata.name] : [];
-  applyCollision(items, policy.collisionCase, reserved);
+  applyCollision(items, reserved);
   applyCompression(items, policy);
   applyTimestamps(items);
 
   const writeEntries = buildWriteEntries(items);
   const globalFindings: Finding[] = [];
-  const zip64 = applyZip64(writeEntries, policy, scan.output, globalFindings);
+  const zip64 = writeEntriesNeedZip64(writeEntries);
   // The output pre-existing without an authorized overwrite blocks the write —
   // recorded as an error finding so it surfaces with a reason and so `writable`
   // derives from one place (the findings), never silently diverging from `ok`.

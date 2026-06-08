@@ -20,6 +20,7 @@ import type { WriteEntry } from "../internal/types.js";
 import type {
   ArchivePolicy,
   CreateData,
+  ExtremeEntry,
   Metadata,
   MetadataEntry,
   MetadataExcluded,
@@ -82,6 +83,30 @@ function metadataEntry(input: MetadataEntryInput): MetadataEntry {
   return record;
 }
 
+/**
+ * The modification-time span of the archived file set: the oldest and newest
+ * entries by `mtime`. Synthetic directories carry a stat time too but are not
+ * "files", so only file and symlink entries count. Ties go to the first entry in
+ * plan order, keeping the result deterministic. `null` when the set holds no such
+ * entry, so a caller can read the span without re-deriving it from `entries`.
+ */
+function computeTimeRange(entries: MetadataEntryInput[]): Metadata["timeRange"] {
+  let oldest: { entry: ExtremeEntry; ns: bigint } | null = null;
+  let newest: { entry: ExtremeEntry; ns: bigint } | null = null;
+  for (const { writeEntry } of entries) {
+    if (writeEntry.type === "dir") continue;
+    const ns = writeEntry.mtimeNs;
+    if (oldest === null || ns < oldest.ns) {
+      oldest = { entry: { archivePath: writeEntry.archivePath, mtime: utcTime(ns) }, ns };
+    }
+    if (newest === null || ns > newest.ns) {
+      newest = { entry: { archivePath: writeEntry.archivePath, mtime: utcTime(ns) }, ns };
+    }
+  }
+  if (oldest === null || newest === null) return null;
+  return { oldest: oldest.entry, newest: newest.entry };
+}
+
 export function buildMetadata(
   plan: PlanData,
   policy: ArchivePolicy,
@@ -119,6 +144,7 @@ export function buildMetadata(
       uncompressedBytes: entries.reduce((sum, e) => sum + e.writeEntry.size, 0),
       compressedBytes: entries.reduce((sum, e) => sum + e.compressedSize, 0),
     },
+    timeRange: computeTimeRange(entries),
     entries: entries.map(metadataEntry),
     // Dropped entries (junk, ignored symlinks, pruned directories, traversal) are
     // not in the archive, so they are recorded separately with the reason — the

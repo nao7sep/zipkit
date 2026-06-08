@@ -27,7 +27,7 @@ The runtime is Node 22.12 or later, ESM.
 
 ## Standard workflows
 
-Copy-paste recipes for the common tasks. Every command exits `0` on success and non-zero on failure, so each line is also a gate; add `--json` for a machine-readable result.
+Copy-paste recipes for the common tasks. Every command exits `0` on success and non-zero on failure, so each line is also a gate; the result is a JSON document on stdout, ready to pipe.
 
 **Create a clean archive.**
 ```sh
@@ -84,20 +84,17 @@ The CLI has two subcommands: `create` builds archives (documented here) and `ext
 
 ### Source
 
-By default a single directory input is **flattened**: its *contents* land at the archive root, so `zipkit create ./project` stores `project/file.txt` as `file.txt`, not `project/file.txt`. This is by design — the output filename already carries the directory's name, so wrapping it in a same-named folder would only repeat it. Pass `--wrap` to keep the directory name as a top-level folder inside the archive instead.
+Inputs are the positional arguments; the archive layout is fixed, not configured:
 
-| Flag | Description |
-|---|---|
-| `--root <dir>` | Root every input's archive path relative to this directory. Cannot be combined with `--wrap` (CLI) or the SDK's per-input `as`/`flatten`. |
-| `--wrap` | For a single directory input, keep its name as the top folder instead of flattening its contents to the root — `project/file.txt` stays `project/file.txt`. |
-
-The CLI applies one rooting/flattening choice to all inputs (`--root` or `--wrap`). The SDK is finer-grained: each `ArchiveInput` can be `{ path, as, flatten }`, so a library caller can rename a single input's root (`as`) or flatten one input but not another. This per-input control is intentionally **SDK-only** — per-input attributes don't map cleanly onto flat command-line flags, and `--root`/`--wrap` cover the common cases. A caller who needs the finer control uses the library.
+- **A single directory is flattened** — its *contents* land at the archive root, so `zipkit create ./project` stores `project/file.txt` as `file.txt`, not `project/file.txt`. The output filename already carries the directory's name, so wrapping it in a same-named folder would only repeat it.
+- **A single file** lands at its basename.
+- **Multiple inputs** each keep their basename: a directory becomes a top-level folder and a file lands bare. Dropping `somewhere/dir1`, `elsewhere/dir2`, and `onemore/file3` in together yields `dir1/…`, `dir2/…`, and `file3` — two folders and one file, never a silent merge. Two inputs that would resolve to the same top-level name are an error, not a merge.
 
 ### Destination
 
 | Flag | Description |
 |---|---|
-| `-o, --output <path>` | Output archive path. When omitted, the archive is written beside what is archived (`<dirname>.zip`, `<stem>.zip`, or `<parent>.zip`). |
+| `-o, --out <path>` | Output archive path. When omitted, the archive is written beside what is archived (`<dirname>.zip`, `<stem>.zip`, or `<parent>.zip`). |
 | `--overwrite` | Overwrite an existing output archive. |
 | `--comment <text>` | Archive comment, written to the ZIP end-of-central-directory record (UTF-8, up to 65535 bytes) and recorded in the metadata. |
 
@@ -105,22 +102,21 @@ The CLI applies one rooting/flattening choice to all inputs (`--root` or `--wrap
 
 | Flag | Default | Description |
 |---|---|---|
-| `--junk <builtin\|none>` | `builtin` | Built-in bidirectional junk preset. |
+| `--no-junk` | (junk on) | Disable the built-in bidirectional junk preset. |
 | `--exclude <pattern>` | | Exclude glob (repeatable). A trailing slash targets directories. |
 | `--exclude-regex <pattern>` | | Exclude regex (repeatable). |
 | `--skip-empty-files` | off | Drop zero-byte files. |
-| `--empty-dirs <keep\|prune>` | `keep` | Empty-directory handling. |
-| `--empty-dir-def <strict\|recursive>` | `recursive` | What counts as empty. |
+| `--empty-dirs <keep\|prune>` | `keep` | Empty-directory handling. An empty directory is one with no non-empty file anywhere beneath it. |
 
 Both exclude flags append to one list; any matching rule drops the entry (the system is inclusive by default, so order doesn't change the outcome — there is no include to override an exclude). A trailing slash on a glob targets directories. Globs follow gitignore conventions: unanchored patterns float at any depth, a leading or interior slash anchors to the root, and `**` spans segments. The same engine and flags are available on `extract` to choose which entries are written.
 
 #### Built-in junk preset
 
-`--junk builtin` (the default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk` / `linux.junk`) and never block. `--junk none` disables the preset for the whole run. Junk matching is **case-insensitive** (these names vary in case across filesystems, and none is ever a real file); user `--exclude` rules stay case-sensitive.
+The built-in preset (on by default) drops these OS-generated files bidirectionally. They report as info findings (`macos.junk` / `windows.junk` / `linux.junk`) and never block. `--no-junk` disables the preset for the whole run. Junk matching is **case-insensitive** (these names vary in case across filesystems, and none is ever a real file); user `--exclude` rules stay case-sensitive.
 
 **What earns a place in the preset:** only files an **operating system generates on its own** — thumbnail caches, trash/index folders, resource-fork sidecars, volume metadata — names that are never a real user file, so dropping them is always safe. Project artifacts (`.git/`, `node_modules/`, build output) and editor backups (`*~`, `.swp`) are deliberately *not* junk: they are real files you might want, so excluding them is your explicit `--exclude` decision, not a silent default.
 
-- **macOS:** `.DS_Store`, `__MACOSX/`, `._*` (AppleDouble files), `Icon\r` (custom folder icon), `.Spotlight-V100`, `.DocumentRevisions-V100`, `.TemporaryItems`, `.Trashes`, `.fseventsd`, `.apdisk`, `.com.apple.timemachine.donotpresent`, `.VolumeIcon.icns`
+- **macOS:** `.DS_Store`, `__MACOSX/`, `._*` (AppleDouble file sidecars), `.AppleDouble/` (AppleDouble store on non-HFS volumes), `Icon\r` (custom folder icon), `.Spotlight-V100`, `.DocumentRevisions-V100`, `.TemporaryItems`, `.Trashes`, `.fseventsd`, `.apdisk`, `.com.apple.timemachine.donotpresent`, `.VolumeIcon.icns`
 - **Windows:** `Thumbs.db`, `ehthumbs.db`, `desktop.ini`, `$RECYCLE.BIN/`, `System Volume Information/`
 - **Linux / freedesktop:** `.Trash-*/`, `.directory` (KDE), `.nfs*` (NFS silly-rename temporaries)
 
@@ -143,10 +139,9 @@ Each non-portable name class is governed by its own action, so a Linux-only run 
 | `--name-trailing <fix\|warn\|error\|none>` | `fix` | Trailing dots or spaces (which Windows silently strips). |
 | `--name-reserved <fix\|warn\|error\|none>` | `fix` | Reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`9`, `LPT1`–`9`). |
 | `--name-suspicious <warn\|error\|none>` | `warn` | Zero-width / bidi-override characters. Kept by design, so there is no `fix`. |
-| `--invalid-char <char>` | `_` | Replacement used when `--name-invalid` repairs a name. A single path component (no slashes, not `.` or `..`), so substitution can never introduce a separator or escape the archive root. |
-| `--collision-case <insensitive\|sensitive>` | `insensitive` | Whether two archive paths that differ only by case collide. `insensitive` catches clashes that would break on macOS/Windows; `sensitive` allows them, for archives targeting only case-sensitive filesystems. |
+| `--replacement <char>` | `_` | Substitute used when `--name-invalid` repairs a name. A single path component (no slashes, not `.` or `..`), so substitution can never introduce a separator or escape the archive root. |
 
-A collision is always an `error` (there is no auto-rename — choosing which file to rename is the ambiguous resolution that defines the tier), but `--collision-case sensitive` narrows what counts as a collision to exact post-fix matches.
+A collision is always an `error`: there is no auto-rename, because choosing which file to rename is the ambiguous resolution that defines the tier. Collision detection is case-insensitive — two archive paths that differ only by case clash, exactly as they would on macOS or Windows.
 
 ### Entry data
 
@@ -154,23 +149,25 @@ A collision is always an `error` (there is no auto-rename — choosing which fil
 |---|---|---|
 | `--symlinks <ignore\|preserve\|follow>` | `ignore` | Symlink handling. `ignore` drops the link (a warning, visible in the plan); `preserve` keeps it as a Unix link entry — it is *not* replaced by its target, but Windows extracts such entries as text files, breaking the clean-byte guarantee; `follow` replaces each link with the real file or directory it points to. Windows `.lnk` shortcut files are ordinary files, not symlinks, and are archived as-is regardless of this flag. |
 | `--follow-external` | off | Under `follow`, allow links that escape the input tree. |
-| `--timestamps <preserve\|clamp>` | `preserve` | Timestamp policy. `preserve` (default) writes the DOS local-time field *and* two absolute-UTC extras: the NTFS extra (`0x000a`) carries modification, access, and creation times at 100-ns precision across the full date range (what Windows restores), and the Info-ZIP extended-timestamp (`0x5455`) carries the same three times as 1-second UTC values *where each fits its signed 32-bit range* (~1901–2038) — times outside that range are kept only in the NTFS extra and the metadata. A creation time the OS doesn't actually track is omitted rather than fabricated. Unknown extras are skipped by every conforming reader, so this is safe for old tools. `clamp` writes only the DOS local-time field (2-second resolution, clamped to 1980–2107) for a minimal, zero-extra archive. |
 | `--timezone <iana>` | host zone | IANA zone (e.g. `Asia/Tokyo`, `UTC`) the DOS local-time field is rendered in. The DOS field stores local wall-clock with no zone attached, so a same-zone reader sees the file's real modification time. Affects only the DOS field — the UTC extras and the metadata record are always UTC. |
-| `--stored <builtin\|none>` | `builtin` | Baseline of extensions kept uncompressed. `builtin` seeds the store set with the curated already-compressed formats; `none` seeds it empty, so everything is deflated unless named by `--store`. |
-| `--store <ext>` | (none) | Keep this extension uncompressed, **added** to the `--stored` baseline. Written with or without a leading dot and in any case (`bin`, `.bin`, `.BIN` are equivalent). Repeatable, and a single flag may carry a comma list (`--store bin,iso`). |
+| `--no-stored` | (built-in on) | Disable the built-in already-compressed list, so everything is deflated unless named by `--store`. |
+| `--store <ext>` | (none) | Keep this extension uncompressed, **added** to the built-in list. Written with or without a leading dot and in any case (`bin`, `.bin`, `.BIN` are equivalent). Repeatable, and a single flag may carry a comma list (`--store bin,iso`). |
 | `--level <1-9>` | `6` | Deflate level, 1 (fastest) to 9 (smallest). Affects only deflated entries. |
 
-The store set is the `--stored` baseline plus any extensions you add with `--store`; a file whose extension is in the set is stored, otherwise deflated. The method is decided up front from the extension and is final, so a deflated entry can rarely end up a few bytes larger than its stored form (the writer streams once and does not reconsider). Under the default `--stored builtin` the baseline is the curated list below, and `--store` extends it. Use `--stored none` to drop the built-ins entirely: on its own it deflates everything (`--stored none` with no `--store`), or with `--store` it stores *only* the extensions you name.
+Modification, access, and creation times are always preserved at full precision — the DOS local-time field plus two absolute-UTC extras (NTFS `0x000a` and Info-ZIP `0x5455`) that conforming readers understand or skip. See [The clean-byte guarantee](#the-clean-byte-guarantee) for the byte detail.
+
+The store set is the built-in baseline plus any extensions you add with `--store`; a file whose extension is in the set is stored, otherwise deflated. The method is decided up front from the extension and is final, so a deflated entry can rarely end up a few bytes larger than its stored form (the writer streams once and does not reconsider). By default the baseline is the curated list below, and `--store` extends it. Pass `--no-stored` to drop the built-ins entirely: on its own it deflates everything, or with `--store` it stores *only* the extensions you name.
 
 **What earns a place in the built-in set:** an extension is included only when it is **both used often and almost always already compressed**, so deflating it spends CPU for no realistic gain. A large list does no harm as long as both hold. Because the method is final, a wrong "store" guess is a permanent miss, so formats that are common but *not* reliably compressed are deliberately left off — PDF (sometimes compresses), `.iso` (raw image), `.wav`/`.aiff` (PCM audio), `.bmp`/`.tiff` (often uncompressed), `.ttf`/`.otf` (raw font tables — only `.woff`/`.woff2` are pre-compressed), and `.ts` (almost always TypeScript source, not an MPEG transport stream). If a listed extension turns out not to be reliably compressed, it should be removed.
 
 Built-in list:
-- **Images:** `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.heif`, `.avif`
+- **Images:** `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.heic`, `.heif`, `.avif`, `.jxl`
 - **Video:** `.mp4`, `.mov`, `.mkv`, `.webm`, `.m4v`, `.wmv`, `.avi`, `.mpg`, `.mpeg`, `.flv`
 - **Audio:** `.mp3`, `.aac`, `.m4a`, `.flac`, `.ogg`, `.oga`, `.opus`, `.wma`
 - **Archives (already compressed):** `.zip`, `.gz`, `.7z`, `.rar`, `.bz2`, `.xz`, `.zst`, `.tgz`, `.lz4`, `.lzma`, `.br`
 - **Documents (zip-based):** `.docx`, `.xlsx`, `.pptx`, `.docm`, `.xlsm`, `.pptm`, `.odt`, `.ods`, `.odp`, `.epub`, `.pages`, `.numbers`, `.key`
-- **Packages (zip-based):** `.jar`, `.war`, `.apk`, `.ipa`, `.whl`, `.nupkg`, `.vsix`, `.crx`, `.xpi`, `.aar`, `.egg`
+- **Packages (zip-based):** `.jar`, `.war`, `.apk`, `.ipa`, `.whl`, `.nupkg`, `.vsix`, `.crx`, `.xpi`, `.aar`, `.egg`, `.appx`, `.msix`
+- **Comics (zip/rar-based):** `.cbz`, `.cbr`
 - **Disk images & OS packages (compressed payloads):** `.dmg`, `.deb`, `.rpm`
 - **Fonts:** `.woff2`, `.woff`
 
@@ -181,13 +178,13 @@ The zip-based and natively-compressed entries (the bulk of the list) are stored 
 | Flag | Default | Description |
 |---|---|---|
 | `--no-metadata` | (metadata on) | Do not embed the metadata file — produce a plain archive. Metadata is embedded by default (it's why zipkit exists: faithful, high-precision persistence), with a SHA-256 per file. |
-| `--metadata-no-hash` | off | Omit the per-file SHA-256, recording CRC-32 only. |
+| `--no-hash` | off | Omit the per-file SHA-256, recording CRC-32 only. |
 | `--metadata-name <name>` | `_metadata.json` | Metadata entry name. Must be a single path component (no slashes). |
 
 The metadata file is a JSON record of the run, in four parts:
 
-- **Header** — `tool`, `version`, `createdUtc`, `timeZone` (the IANA zone the DOS fields were rendered in), `comment` (present only when one was set), the resolved `policy`, the plan `summary`, and aggregate `totals` (uncompressed and compressed bytes).
-- **`entries`** — one record per written entry: `archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size`, `compressedSize`, `crc32`, `sha256` (unless `--metadata-no-hash`), `mode`, the four stat times `mtime`/`atime`/`ctime`/`btime` (each `{ ns, iso }`, UTC; `btime` is `null` when the platform doesn't track it), `linkTarget` for preserved symlinks, and the `transformations` applied.
+- **Header** — `tool`, `version`, `createdUtc`, `timeZone` (the IANA zone the DOS fields were rendered in), `comment` (present only when one was set), the resolved `policy`, the plan `summary`, aggregate `totals` (uncompressed and compressed bytes), and `timeRange` — the oldest and newest file by modification time (each `{ archivePath, mtime }` in UTC, or `null` when the archive holds no file entry).
+- **`entries`** — one record per written entry: `archivePath`, `originalPath`, `sourcePath`, `type`, `method`, `size`, `compressedSize`, `crc32`, `sha256` (unless `--no-hash`), `mode`, the four stat times `mtime`/`atime`/`ctime`/`btime` (each `{ ns, iso }`, UTC; `btime` is `null` when the platform doesn't track it), `linkTarget` for preserved symlinks, and the `transformations` applied.
 - **`excluded`** — dropped entries, each with its `reason`.
 - **`findings`** — every finding from the run.
 
@@ -195,29 +192,23 @@ It never stores absolute source paths. The same document is returned from every 
 
 The metadata file is **always embedded** as an entry at the archive root — a ZIP is a container, so the manifest rides inside it rather than as a loose file that could be separated from the archive or drift out of sync with it. It is therefore covered by the archive's own CRC, and `extract --check-metadata` reads it straight from the zip.
 
-### Container format
-
-| Flag | Default | Description |
-|---|---|---|
-| `--zip64 <auto\|never\|always>` | `auto` | Zip64 policy. |
-
 ### Diagnostics and control
 
 | Flag | Description |
 |---|---|
 | `--dry-run` | Compute and render the plan; write nothing. The CLI form of `plan()`. |
 | `--log <path.jsonl>` | Write the event stream as JSONL. |
-| `--quiet` | Suppress console progress. |
-| `--verbose` | Include per-entry detail in console progress. |
-| `--concurrency <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. Peak memory is roughly `chunkSize × concurrency` (see [Performance](#performance)). |
+| `--quiet` | Suppress progress on stderr (stdout still carries the JSON result). |
+| `-j, --jobs <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. Peak memory is roughly `chunkSize × concurrency` (see [Performance](#performance)). |
 | `--chunk-size <size>` | Chunk size for all streamed I/O, in bytes; accepts a `k`/`m` suffix (e.g. `64k`, `1m`). Defaults to 64 KB. |
-| `--json` | Emit the report envelope as pretty JSON on stdout; convert progress to JSONL on stderr. |
 
-stdout always carries **exactly one report**, emitted once at the end — on success *and* failure. Without `--json` it is the human render; with `--json` it is the report envelope `{ schemaVersion, tool, toolVersion, verb, ok, data }`, where `data` is the `CreateData` payload (a discriminated union on `mode: "plan" | "write"`). `--json` stdout is always pretty (indent 2). stdout is the result channel and is cleanly redirectable to a file (`zipkit create … --json > report.json`).
+**stdout is the result channel.** On a clean run it carries **exactly one JSON document** — the verb's typed result (`CreateData` for `create`, a discriminated union on `mode: "plan" | "write"`) — emitted once at the end, and nothing else, so it is cleanly redirectable to a file (`zipkit create … > result.json`). It is pretty (indent 2) when stdout is a terminal and compact when piped. There is no separate `--json` flag: JSON is the only output.
 
-Under `--json`, stderr is line-framed JSONL: progress as `zipkit[progress]:{…}` and faults as `zipkit[error]:{…}`, each a single minified record with no space after the colon. Drain stdout and stderr concurrently.
+**A negative verdict is a clean run, not a failure** (a non-writable plan, an extract that is not ok): the result still rides on stdout and the exit code is `1`. Only a *thrown* fault leaves stdout empty — it is rendered on stderr (a usage fault as a plain `error: …` line, any other fault as a `{ "error": { type, code, message } }` object) and the exit code is the fault's domain code.
 
-A malformed numeric flag — `--chunk-size`, `--concurrency`, or `--level` given a non-number, or a value the SDK rejects as out of range (a non-positive size, a level outside 1–9) — is a usage error (exit `2`), never silently ignored. The command line only coerces the string to a number; the SDK owns the bounds, so a library caller and the CLI reject the same values.
+**stderr is the live progress channel** — each event as one bare JSONL line (the whole typed `LogEvent`, no prefix), suppressed by `--quiet`. Drain stdout and stderr concurrently.
+
+A malformed numeric flag — `--chunk-size`, `--jobs`, or `--level` given a non-number, or a value the SDK rejects as out of range (a non-positive size, a level outside 1–9) — is a usage error (exit `2`), never silently ignored. The command line only coerces the string to a number; the SDK owns the bounds, so a library caller and the CLI reject the same values.
 
 ## Extract and validate
 
@@ -250,8 +241,7 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. |
 | `--exclude <pattern>` | | Exclude glob — matching entries are verified but not written (repeatable). Trailing slash targets directories. |
 | `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
-| `--log <path.jsonl>` | | Write the event stream as JSONL (the same stream the console renderer and SDK `onProgress` hook see). Written regardless of `--quiet`. |
-| `--json` | | Emit the report envelope (with the `ExtractData` payload) as pretty JSON on stdout; convert progress to JSONL on stderr. |
+| `--log <path.jsonl>` | | Write the event stream as JSONL (the same stream the stderr progress and SDK `onProgress` hook see). Written regardless of `--quiet`. |
 
 - **Creation/birth time is not restored** — no portable cross-platform API sets it.
 - **Exit code** is `0` when the report's domain verdict `reportOk` holds, `1` when it does not (a clean run that simply failed validation), and `5` when reading the archive itself threw mid-run — so validation scripts cleanly.
@@ -289,13 +279,9 @@ Most rules have a fixed tier, stamped by a single registry (the `RULE_REGISTRY` 
 | `collision.post-fix` | error | abort |
 | `time.pre-1980` | warning | clamp |
 | `time.post-2107` | warning | clamp |
-| `compat.zip64` | warning | use Zip64 |
-| `compat.zip64-required` | error | abort |
 | `output.exists` | error | overwrite |
 
-The name rules show **per action** because their tier follows the `--name-*` setting (default `fix`, reported as `info`). Junk removal and same-source deduplication are deliberately `info`: dropping a `.DS_Store` or collapsing a file two overlapping inputs both supplied is not something to fail a build over. A collision is always an `error` — there is no auto-rename option, because choosing which file to rename is the ambiguous resolution that defines the tier — and Zip64 distinguishes `compat.zip64` (used, a warning) from `compat.zip64-required` (needed but disabled by `zip64: never`, an error).
-
-Where a policy could otherwise flip a tier, the two outcomes are modeled as separate rules. A collision is always an error — there is no auto-rename option, because choosing which file to rename is the ambiguous resolution that defines the error tier. Zip64 distinguishes `compat.zip64` (used, a warning) from `compat.zip64-required` (needed but disabled by `zip64: never`, an error).
+The name rules show **per action** because their tier follows the `--name-*` setting (default `fix`, reported as `info`). Junk removal and same-source deduplication are deliberately `info`: dropping a `.DS_Store` or collapsing a file two overlapping inputs both supplied is not something to fail a build over. A collision is always an `error` — there is no auto-rename option, because choosing which file to rename is the ambiguous resolution that defines the tier. Zip64 is not a rule: the container uses it automatically whenever the data requires it (an entry ≥ 4 GiB, a 4 GiB offset, or ≥ 65,535 entries) and omits it otherwise; `summary.zip64` reports whether it was used.
 
 ### Exit codes
 
@@ -311,7 +297,7 @@ The CLI exit codes make this a dependable automation contract:
 | `5` | a **read** runtime fault — reading or extracting the archive failed mid-run |
 | `130` | interrupted (SIGINT) |
 
-Two questions, two answers. Code `1` is a clean run with a negative verdict (a "no"), distinct from the envelope's derived `ok` (which only says no error-tier finding fired). Codes `3`/`4`/`5` are a *thrown* runtime fault, coded by which side of the pipeline failed — so a caller can tell a bad source tree from a bad output path from a bad archive. A single classifier owns the thrown-fault half, so the exit code and the rendered report can never disagree. An operational fault is still folded into the report as an error-tier `Finding` (its fault code in `rule`, `severity: "error"`, the OS cause folded into `message`), so even on failure stdout carries the one report. Without `--json`, a human fault line `zipkit [<code>]: <message>` is also written to stderr; under `--json`, the live fault rides out as a `zipkit[error]:{…}` JSONL record on stderr while the same fault lands as a finding in the final stdout report. Even a pre-verb usage error under `--json` emits a minimal envelope on stdout, so a `--json` caller always parses one report.
+Two questions, two answers. Code `1` is a **clean run with a negative verdict** (a "no") — the verb ran fine and its typed result, with the blocking findings, is on stdout. Codes `2`/`3`/`4`/`5` are a *thrown* fault: usage (`2`) or a runtime fault coded by which side of the pipeline failed (`3`/`4`/`5`) — so a caller can tell a bad invocation from a bad source tree from a bad output path from a bad archive. On a thrown fault stdout is empty and the fault is rendered on stderr; a single classifier (`exitCodeFor`) owns the thrown-fault mapping, so the exit code and the stderr rendering can never disagree. The same fault is also emitted on the progress stream as a terminal `fault` event, so a `--log` JSONL trail records why the run stopped.
 
 ## SDK
 
@@ -350,11 +336,11 @@ if (!report.reportOk) console.error(report.findings);
 await zip.extract({ archive: "out.zip", dest: "./restored", overwrite: true });
 ```
 
-The SDK is idiomatic: its methods return the per-verb `data` payloads — `CreateData` from `plan()`/`write()`/`create()`, `ExtractData` from `extract()` — and **throw** `ZipKitError` on an operational fault. The CLI is the layer that wraps a payload in the report envelope and folds a thrown fault into `findings`; the `buildReport` helper is exported for callers who want to produce the same envelope.
+The SDK is idiomatic: its methods return the per-verb result objects — `CreateData` from `plan()`/`write()`/`create()`, `ExtractData` from `extract()` — and **throw** `ZipKitError` on an operational fault. The CLI is a thin bridge: it emits the returned object as JSON on stdout and renders a thrown fault on stderr.
 
-The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ZipKitCallOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent` (with `LogStage`/`LogLevel`); the report envelope `Report` with the stderr records `ProgressEvent`/`ErrorEvent`, the `buildReport`/`isOk` helpers, and the `SCHEMA_VERSION` constant; and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
+The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ZipKitCallOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `ExtremeEntry`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent` (with `LogStage`/`LogLevel`); and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
 
-Progress is observed in real time through an optional `onProgress` hook passed to each verb call (`ZipKitCallOptions`), which receives a `LogEvent` stream as the pipeline works. Each `LogEvent` is a discriminated union on its `event` field (`scan.done`, `entry.written`, `fault`, …) carrying typed fields per variant, plus a common `stage`/`level`/`ts`; narrow on `event.event` to read a variant's fields. The hook lives on the per-call options rather than the instance, so each call decides where its events go; with no hook the SDK is silent and writes to no stream. The same stream feeds this hook, the CLI console renderer, and the `--log` JSONL sink — one producer, many sinks.
+Progress is observed in real time through an optional `onProgress` hook passed to each verb call (`ZipKitCallOptions`), which receives a `LogEvent` stream as the pipeline works. Each `LogEvent` is a discriminated union on its `event` field (`scan.done`, `entry.written`, `fault`, …) carrying typed fields per variant, plus a common `stage`/`level`/`ts`; narrow on `event.event` to read a variant's fields. The hook lives on the per-call options rather than the instance, so each call decides where its events go; with no hook the SDK is silent and writes to no stream. The same stream feeds this hook, the CLI's bare-JSONL stderr progress, and the `--log` JSONL sink — one producer, many sinks.
 
 ```ts
 const zip = new ZipKit();
@@ -378,7 +364,7 @@ await zip.write(plan, { signal: controller.signal });
 Every archive holds to a fixed byte contract, so it reads cleanly across platforms and old tools:
 
 - **Names.** The UTF-8 flag (general-purpose bit 11) is always set, so non-ASCII names survive across locales; the host byte is FAT, so no Unix mode leaks.
-- **Minimal extra fields.** Only the Zip64 extra when genuinely needed, plus — under timestamp preservation (the default) — the Info-ZIP extended-timestamp (`0x5455`) and NTFS (`0x000a`) extras. Both are standard extras any conforming reader understands or skips, so they are safe for old tools; `--timestamps clamp` drops them for a zero-extra archive.
+- **Minimal extra fields.** Only the Zip64 extra when genuinely needed, plus the Info-ZIP extended-timestamp (`0x5455`) and NTFS (`0x000a`) extras, always written to preserve full-precision UTC times. Both are standard extras any conforming reader understands or skips, so they are safe for old tools.
 - **Timestamps.** The DOS date/time field holds *local* wall-clock time in the configured zone (the host zone by default). That field carries no zone, so the absolute UTC truth lives in the two extras above and in the metadata record.
 - **Compression.** Deflate via the platform `zlib`, and Store for already-compressed extensions. The method is chosen up front from the extension and is final — entries stream through it once, with no second pass — so a deflated entry can rarely end up a few bytes larger than its stored form. That is an accepted trade for streaming arbitrarily large files in bounded memory (see [Performance](#performance)).
 - **Atomic output.** A temporary file is written in the same directory, then renamed — a reader never sees a half-written archive.

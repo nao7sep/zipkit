@@ -33,6 +33,9 @@ export const JUNK_RULES: readonly JunkRule[] = [
   junk("macos.junk", ".DS_Store"),
   junk("macos.junk", "__MACOSX/"),
   junk("macos.junk", "._*"),
+  // AppleDouble metadata store on non-HFS volumes (AFP/Netatalk and copies to
+  // FAT/network shares), the directory companion to the `._*` sidecars above.
+  junk("macos.junk", ".AppleDouble/"),
   // The custom-folder-icon file: literally "Icon" followed by a carriage
   // return. It rides along in any folder given a custom icon in Finder.
   junk("macos.junk", "Icon\r"),

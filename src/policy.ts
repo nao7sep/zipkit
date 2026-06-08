@@ -35,6 +35,7 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".heic",
   ".heif",
   ".avif",
+  ".jxl",
   // Video
   ".mp4",
   ".mov",
@@ -93,6 +94,11 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".xpi",
   ".aar",
   ".egg",
+  ".appx",
+  ".msix",
+  // Comics (zip/rar-based)
+  ".cbz",
+  ".cbr",
   // Disk images & OS packages (compressed payloads)
   ".dmg",
   ".deb",
@@ -130,9 +136,6 @@ export const NAME_DEFAULTS: NameRules = {
 
 /**
  * The built-in defaults. Enumerated-value defaults come first in each union.
- * `emptyDirDefinition` defaults to `"recursive"`, matching the CLI's
- * documented default and the intuitive reading — a directory
- * holding only empty files and empty subdirectories counts as empty.
  */
 export const DEFAULT_POLICY: ArchivePolicy = {
   // Selection
@@ -140,25 +143,19 @@ export const DEFAULT_POLICY: ArchivePolicy = {
   filters: [],
   emptyFiles: "keep",
   emptyDirs: "keep",
-  emptyDirDefinition: "recursive",
 
   // Naming
   names: { ...NAME_DEFAULTS },
-  collisionCase: "insensitive",
 
   // Entry data
   symlinks: "ignore",
   followExternal: false,
-  timestamps: "preserve",
   compression: { stored: "builtin", store: [], level: DEFAULT_DEFLATE_LEVEL },
 
   // Companion output — the embedded metadata record is zipkit's reason to
   // exist (faithful, high-precision persistence), so it is on by default;
   // `metadata: false` (CLI `--no-metadata`) opts into a plain archive.
   metadata: { ...METADATA_DEFAULTS },
-
-  // Container format
-  zip64: "auto",
 };
 
 function firstDefined<T>(...values: (T | undefined)[]): T | undefined {

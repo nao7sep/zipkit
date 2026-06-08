@@ -11,8 +11,7 @@
  * entry is then only a default; the call site is authoritative.
  *
  * The table is in pipeline order: path rooting, content selection, name
- * fixing, deduplication, collision detection, timestamp resolution, and
- * container feasibility.
+ * fixing, deduplication, collision detection, and timestamp resolution.
  */
 
 import type { Finding, Severity } from "./types.js";
@@ -36,8 +35,6 @@ export type RuleId =
   | "collision.post-fix"
   | "time.pre-1980"
   | "time.post-2107"
-  | "compat.zip64"
-  | "compat.zip64-required"
   | "output.exists";
 
 export interface RuleSpec {
@@ -70,8 +67,6 @@ export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
   "collision.post-fix": { severity: "error", disposition: "abort" },
   "time.pre-1980": { severity: "warning", disposition: "clamp" },
   "time.post-2107": { severity: "warning", disposition: "clamp" },
-  "compat.zip64": { severity: "warning", disposition: "use Zip64" },
-  "compat.zip64-required": { severity: "error", disposition: "abort" },
   "output.exists": { severity: "error", disposition: "overwrite" },
 };
 

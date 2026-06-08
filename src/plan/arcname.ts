@@ -11,80 +11,27 @@
 
 import path from "node:path";
 import { PolicyError } from "../errors.js";
-import { resolveSegments, toForwardSlash, trimSlashes } from "../internal/path.js";
+import { toForwardSlash, trimSlashes } from "../internal/path.js";
 import type { ArchiveInput } from "../types.js";
 
 export interface ResolvedInput {
   path: string; // absolute
-  as?: string;
-  flatten?: boolean;
 }
 
 export function normalizeInputs(inputs: ArchiveInput[], cwd: string): ResolvedInput[] {
-  return inputs.map((input) => {
-    if (typeof input === "string") {
-      return { path: path.resolve(cwd, input) };
-    }
-    const resolved: ResolvedInput = { path: path.resolve(cwd, input.path) };
-    if (input.as !== undefined) resolved.as = input.as;
-    if (input.flatten !== undefined) resolved.flatten = input.flatten;
-    return resolved;
-  });
+  return inputs.map((input) => ({ path: path.resolve(cwd, input) }));
 }
 
 /**
- * The anchor prefix for one input. With `root`, every input is anchored at its
- * path relative to `root` (and `as`/`flatten` are forbidden). Otherwise a
- * single directory flattens to the root by default — `flatten: false` keeps its
- * name — while multiple inputs are basename-prefixed so they cannot collide
- * silently. A per-input `as` overrides the prefix; a file always lands at its
- * basename.
+ * The anchor prefix for one input. A single directory flattens to the archive
+ * root — its contents land bare, since the output filename already carries the
+ * directory's name. With multiple inputs each directory keeps its basename as a
+ * top-level folder so distinct inputs cannot silently merge; a file always lands
+ * at its basename.
  */
-export function computeAnchor(
-  input: ResolvedInput,
-  isDir: boolean,
-  inputCount: number,
-  root: string | undefined,
-): string {
-  if (root !== undefined) {
-    if (input.as !== undefined || input.flatten !== undefined) {
-      throw new PolicyError(
-        "input.root-conflict",
-        `root is mutually exclusive with as/flatten (input: ${input.path})`,
-      );
-    }
-    const rel = path.relative(root, input.path);
-    if (rel === "") {
-      if (!isDir) {
-        throw new PolicyError(
-          "input.file-is-root",
-          `a file input cannot be the root itself: ${input.path}`,
-        );
-      }
-      return "";
-    }
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new PolicyError("input.outside-root", `input is not under root: ${input.path}`);
-    }
-    return trimSlashes(toForwardSlash(rel));
-  }
-
-  if (input.as !== undefined) {
-    const { segments, escaped } = resolveSegments(toForwardSlash(input.as));
-    if (escaped || segments.length === 0) {
-      throw new PolicyError(
-        "input.invalid-as",
-        `the "as" value does not name a valid archive path: "${input.as}"`,
-      );
-    }
-    return segments.join("/");
-  }
-
+export function computeAnchor(input: ResolvedInput, isDir: boolean, inputCount: number): string {
   const base = path.basename(input.path);
-  if (isDir) {
-    if (inputCount === 1) return input.flatten === false ? base : "";
-    return input.flatten === true ? "" : base;
-  }
+  if (isDir && inputCount === 1) return "";
   return base;
 }
 

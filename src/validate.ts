@@ -64,7 +64,6 @@ const partialPolicySchema = z.strictObject({
   filters: z.array(filterRuleSchema).optional(),
   emptyFiles: z.enum(["keep", "skip"]).optional(),
   emptyDirs: z.enum(["keep", "prune"]).optional(),
-  emptyDirDefinition: z.enum(["strict", "recursive"]).optional(),
   names: z
     .strictObject({
       nfc: nameActionSchema.optional(),
@@ -86,10 +85,8 @@ const partialPolicySchema = z.strictObject({
       suspicious: z.enum(["warn", "error", "none"]).optional(),
     })
     .optional(),
-  collisionCase: z.enum(["insensitive", "sensitive"]).optional(),
   symlinks: z.enum(["ignore", "preserve", "follow"]).optional(),
   followExternal: z.boolean().optional(),
-  timestamps: z.enum(["preserve", "clamp"]).optional(),
   // An IANA Time Zone Database name the runtime accepts (offsets and POSIX TZ
   // strings are rejected, so DST is always handled correctly).
   timezone: z
@@ -121,21 +118,10 @@ const partialPolicySchema = z.strictObject({
         }),
     ])
     .optional(),
-  zip64: z.enum(["auto", "never", "always"]).optional(),
 });
 
-const archiveInputSchema = z.union([
-  z.string(),
-  z.strictObject({
-    path: z.string(),
-    as: z.string().optional(),
-    flatten: z.boolean().optional(),
-  }),
-]);
-
 const specSchema = z.strictObject({
-  inputs: z.array(archiveInputSchema).min(1),
-  root: z.string().optional(),
+  inputs: z.array(z.string()).min(1),
   output: z.string().optional(),
   overwrite: z.boolean().optional(),
   // The ZIP EOCD comment-length field is 16-bit, so the UTF-8 encoding must fit

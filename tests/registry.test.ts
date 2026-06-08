@@ -20,7 +20,7 @@ describe("RULE_REGISTRY", () => {
   });
 
   it("keeps the structural rules at the error tier", () => {
-    for (const rule of ["path.traversal", "collision.case", "collision.post-fix", "compat.zip64-required"] as const) {
+    for (const rule of ["path.traversal", "collision.case", "collision.post-fix"] as const) {
       expect(RULE_REGISTRY[rule].severity, rule).toBe("error");
     }
   });
@@ -45,8 +45,6 @@ describe("RULE_REGISTRY", () => {
       "collision.post-fix",
       "time.pre-1980",
       "time.post-2107",
-      "compat.zip64",
-      "compat.zip64-required",
       "output.exists",
     ]);
   });

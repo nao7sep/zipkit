@@ -2,10 +2,9 @@
  * The pure planning pipeline, table-driven over synthetic scan entries
  * with no filesystem access. These tests lock the load-bearing
  * behaviours: junk exclusion, name fixing and renames, collision and traversal
- * errors that block, dedup, empty-file and empty-directory handling, the two
- * empty-dir definitions, compression selection, the Zip64 verdict, timestamp
- * flagging, symlink modes, the per-rule name actions, and the output-existence
- * gate.
+ * errors that block, dedup, empty-file and empty-directory handling,
+ * compression selection, the Zip64 verdict, timestamp flagging, symlink modes,
+ * the per-rule name actions, and the output-existence gate.
  *
  * `writable` doubles as the severity enforcement: error findings always block,
  * warnings and info never do. A name rule blocks only when its action is set to
@@ -154,24 +153,6 @@ describe("collisions", () => {
     expect(rules(p.findings)).toContain("collision.post-fix");
   });
 
-  it("allows a case-only difference under collisionCase sensitive", () => {
-    const entries = [
-      scanEntry({ archivePath: "Foo/x.txt", absolutePath: "/abs/1" }),
-      scanEntry({ archivePath: "foo/x.txt", absolutePath: "/abs/2" }),
-    ];
-    expect(plan(entries, { collisionCase: "sensitive" }).writable).toBe(true);
-    // An exact post-fix collision is still an error even under sensitive.
-    const exact = plan(
-      [
-        scanEntry({ archivePath: "a_b.txt", absolutePath: "/abs/1" }),
-        scanEntry({ archivePath: "a_b.txt", absolutePath: "/abs/2" }),
-      ],
-      { collisionCase: "sensitive" },
-    );
-    expect(exact.writable).toBe(false);
-    expect(rules(exact.findings)).toContain("collision.post-fix");
-  });
-
   it("errors when a real entry collides with the reserved metadata name", () => {
     const p = plan([
       scanEntry({ archivePath: "_metadata.json", absolutePath: "/abs/1" }),
@@ -216,14 +197,9 @@ describe("empty directories", () => {
     expect(written(p)).toEqual([]);
   });
 
-  it("keeps only leaf empties under the recursive definition", () => {
-    const p = plan(tree(), { emptyDirs: "keep", emptyDirDefinition: "recursive" });
+  it("keeps only leaf empties", () => {
+    const p = plan(tree(), { emptyDirs: "keep" });
     expect(written(p)).toEqual(["A/B/C"]);
-  });
-
-  it("keeps every empty directory under the strict definition", () => {
-    const p = plan(tree(), { emptyDirs: "keep", emptyDirDefinition: "strict" });
-    expect(written(p)).toEqual(["A", "A/B", "A/B/C"]);
   });
 
   it("implies a directory occupied by a file rather than writing it", () => {
@@ -303,24 +279,15 @@ describe("compression", () => {
 describe("zip64 verdict", () => {
   const huge = (): ScanEntry[] => [scanEntry({ archivePath: "big.bin", size: 5_000_000_000 })];
 
-  it("uses and warns under auto when triggered", () => {
-    const p = plan(huge(), { zip64: "auto" });
+  it("uses zip64 transparently when an entry exceeds 32-bit limits", () => {
+    const p = plan(huge());
     expect(p.summary.zip64).toBe(true);
-    expect(rules(p.findings)).toContain("compat.zip64");
     expect(p.writable).toBe(true);
   });
 
-  it("errors under never when triggered", () => {
-    const p = plan(huge(), { zip64: "never" });
+  it("does not use zip64 for a small archive", () => {
+    const p = plan([scanEntry({ archivePath: "small.txt" })]);
     expect(p.summary.zip64).toBe(false);
-    expect(rules(p.findings)).toContain("compat.zip64-required");
-    expect(p.writable).toBe(false);
-  });
-
-  it("uses and warns under always even for a small archive", () => {
-    const p = plan([scanEntry({ archivePath: "small.txt" })], { zip64: "always" });
-    expect(p.summary.zip64).toBe(true);
-    expect(rules(p.findings)).toContain("compat.zip64");
   });
 });
 

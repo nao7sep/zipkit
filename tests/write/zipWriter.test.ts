@@ -1,19 +1,18 @@
 /**
  * Writer byte-contract tests. The writer streams to a file now, so each test
  * builds a real archive, reads it back, and asserts the cleanliness guarantees:
- * the UTF-8 flag is set, the host byte is 0 (FAT), no unexpected extra field is
- * present, directories end in a slash, and stored/deflated content round-trips
- * with a matching CRC. The deliberate exceptions — the extended-timestamp extra
- * under preservation, Zip64 structures, and a preserved symlink's Unix host byte
- * and mode — are asserted where they apply. Because the writer computes the CRC
- * and compressed size from the streamed bytes (no precomputed data buffer), the
+ * the UTF-8 flag is set, the host byte is 0 (FAT), the always-on timestamp
+ * extras (UT + NTFS) are the only extras present, directories end in a slash, and
+ * stored/deflated content round-trips with a matching CRC. The deliberate
+ * exceptions — Zip64 structures and a preserved symlink's Unix host byte and
+ * mode — are asserted where they apply. Because the writer computes the CRC and
+ * compressed size from the streamed bytes (no precomputed data buffer), the
  * tests also implicitly cover the seek-back header patching.
  */
 
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
-import type { ZipWriterOptions } from "../../src/write/zipWriter.js";
-import { buildZipFile, type EntryWithData } from "../helpers/writeZip.js";
+import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.js";
 import { findExtra, readZipFile } from "../helpers/readZip.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
@@ -34,28 +33,28 @@ function fileEntry(name: string, content: Buffer, deflate: boolean): EntryWithDa
   };
 }
 
-const baseOptions: ZipWriterOptions = {
-  zip64: false,
-  preserveTimestamps: false,
+const baseOptions: BuildOptions = {
   timeZone: "UTC",
   chunkSize: 65536,
 };
 
-async function build(entries: EntryWithData[], opts?: Partial<ZipWriterOptions>) {
+async function build(entries: EntryWithData[], opts?: Partial<BuildOptions>) {
   const built = await buildZipFile(entries, { ...baseOptions, ...opts });
   return { ...readZipFile(built.path), zip64: built.zip64 };
 }
 
 describe("buildZip byte contract", () => {
-  it("sets the UTF-8 flag, FAT host byte, and zero extra fields", async () => {
+  it("sets the UTF-8 flag and FAT host byte, with only the timestamp extras", async () => {
     const content = Buffer.from("hello hello hello hello", "utf8");
     const { entries } = await build([fileEntry("dir/a.txt", content, true)]);
     const entry = entries[0];
     expect(entry?.gpFlag).toBe(0x0800);
     expect(entry?.hostByte).toBe(0);
     expect(entry?.externalAttr).toBe(0);
-    expect(entry?.centralExtraLength).toBe(0);
-    expect(entry?.localExtraLength).toBe(0);
+    // The always-on UT + NTFS extras are the only extras; no Zip64 for a tiny entry.
+    expect(findExtra(entry!.localExtra, 0x0001)).toBeNull();
+    expect(findExtra(entry!.localExtra, 0x5455)).not.toBeNull();
+    expect(findExtra(entry!.localExtra, 0x000a)).not.toBeNull();
   });
 
   it("round-trips stored and deflated content with matching CRC", async () => {
@@ -94,13 +93,12 @@ const dosDay = (d: number): number => d & 0x1f;
 const dosMonth = (d: number): number => (d >> 5) & 0xf;
 
 describe("timestamps", () => {
-  it("floors the DOS time and writes no extra field under clamp", async () => {
+  it("floors a pre-1980 DOS time to the minimum", async () => {
     const old = fileEntry("old.txt", Buffer.from("x"), false);
     old.mtimeNs = 0n; // 1970
     const { entries } = await build([old]);
     expect(entries[0]?.dosDate).toBe((1 << 5) | 1); // 1980-01-01
     expect(entries[0]?.dosTime).toBe(0);
-    expect(entries[0]?.localExtraLength).toBe(0);
   });
 
   it("renders the DOS field in the configured local zone, not UTC", async () => {
@@ -126,9 +124,9 @@ describe("timestamps", () => {
     expect(dosMonth(pdt!.dosDate)).toBe(5);
   });
 
-  it("writes the UT and NTFS extras with all three times under preservation", async () => {
+  it("writes the UT and NTFS extras with all three times", async () => {
     const entry = fileEntry("a.txt", Buffer.from("data"), false);
-    const { entries } = await build([entry], { preserveTimestamps: true });
+    const { entries } = await build([entry]);
     const e = entries[0]!;
     // UT local: flags + 3×4-byte times = 13 data bytes; NTFS: 32 data bytes.
     expect(e.localExtraLength).toBe(4 + 13 + (4 + 32));
@@ -167,7 +165,7 @@ describe("timestamps", () => {
   it("does not assert a creation time when birthtime is unavailable (0)", async () => {
     const entry = fileEntry("a.txt", Buffer.from("data"), false);
     entry.birthtimeNs = 0n; // platform reports no creation time
-    const { entries } = await build([entry], { preserveTimestamps: true });
+    const { entries } = await build([entry]);
     const e = entries[0]!;
     // UT drops the creation bit: only modification | access remain.
     expect(findExtra(e.localExtra, 0x5455)![0]).toBe(0x03);
@@ -185,7 +183,7 @@ describe("timestamps", () => {
   it("drops only the out-of-range time from the UT extra, keeping NTFS full-range", async () => {
     const entry = fileEntry("future.txt", Buffer.from("x"), false);
     entry.mtimeNs = BigInt(Date.UTC(2050, 0, 1)) * 1_000_000n; // past the UT 2038 ceiling
-    const { entries } = await build([entry], { preserveTimestamps: true });
+    const { entries } = await build([entry]);
     const e = entries[0]!;
     const utLocal = findExtra(e.localExtra, 0x5455)!;
     expect(utLocal[0]).toBe(0x06); // mod bit clear; access | create remain
@@ -200,7 +198,7 @@ describe("timestamps", () => {
     entry.mtimeNs = far;
     entry.atimeNs = far;
     entry.birthtimeNs = far;
-    const { entries } = await build([entry], { preserveTimestamps: true });
+    const { entries } = await build([entry]);
     const e = entries[0]!;
     expect(findExtra(e.localExtra, 0x5455)).toBeNull();
     expect(findExtra(e.localExtra, 0x000a)).not.toBeNull();

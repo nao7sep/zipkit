@@ -5,7 +5,7 @@
  * overwrite gate, deterministic output, and content round-trip.
  */
 
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -103,23 +103,28 @@ describe("metadata", () => {
     expect(meta!.content.toString("utf8")).not.toContain(dir);
   });
 
-  it("keeps the container-level Zip64 finding free of absolute paths", async () => {
-    const proj = await makeTree();
-    const output = path.join(dir, "z64.zip");
-    await new ZipKit().create({
+  it("reports the oldest and newest file mtimes as UTC in timeRange", async () => {
+    const proj = path.join(dir, "times");
+    await mkdir(proj, { recursive: true });
+    await writeFile(path.join(proj, "old.txt"), "older");
+    await writeFile(path.join(proj, "new.txt"), "newer");
+    // Distinct, known modification times (whole seconds since the epoch).
+    const oldSec = Date.parse("2001-02-03T04:05:06Z") / 1000;
+    const newSec = Date.parse("2021-12-31T23:59:58Z") / 1000;
+    await utimes(path.join(proj, "old.txt"), oldSec, oldSec);
+    await utimes(path.join(proj, "new.txt"), newSec, newSec);
+
+    const result = await new ZipKit().create({
       inputs: [proj],
-      output,
-      policy: { zip64: "always", metadata: { name: "_metadata.json", hash: false } },
+      output: path.join(dir, "times.zip"),
+      policy: { metadata: false },
     });
 
-    const { entries } = readZip(await readFile(output));
-    const meta = entries.find((e) => e.name === "_metadata.json")!;
-    const text = meta.content.toString("utf8");
-    expect(text).not.toContain(dir);
-
-    const doc = JSON.parse(text);
-    const zfinding = doc.findings.find((f: { rule: string }) => f.rule === "compat.zip64");
-    expect(zfinding.path).toBe("z64.zip");
+    const range = result.metadata!.timeRange!;
+    expect(range.oldest.archivePath).toBe("old.txt");
+    expect(range.newest.archivePath).toBe("new.txt");
+    expect(range.oldest.mtime.iso).toBe("2001-02-03T04:05:06.000Z");
+    expect(range.newest.mtime.iso).toBe("2021-12-31T23:59:58.000Z");
   });
 
   it("embeds metadata by default and returns the complete record", async () => {

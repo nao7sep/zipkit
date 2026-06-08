@@ -14,6 +14,7 @@ export type {
   ExtractData,
   ExtractEntryResult,
   ExtractSpec,
+  ExtremeEntry,
   Finding,
   FilterRule,
   LogEvent,
@@ -31,9 +32,6 @@ export type {
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.js";
-
-export { buildReport, isOk, SCHEMA_VERSION } from "./report.js";
-export type { ErrorEvent, ProgressEvent, Report } from "./report.js";
 
 export {
   AbortError,

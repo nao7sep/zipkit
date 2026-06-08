@@ -93,21 +93,13 @@ export interface ArchivePolicy {
   filters: FilterRule[];
   emptyFiles: "keep" | "skip";
   emptyDirs: "keep" | "prune";
-  emptyDirDefinition: "strict" | "recursive";
 
   // Naming
   names: NameRules;
-  /**
-   * Whether two archive paths that differ only by case collide. `insensitive`
-   * (default) catches clashes that would break on macOS/Windows; `sensitive`
-   * allows them, for archives targeting only case-sensitive filesystems.
-   */
-  collisionCase: "insensitive" | "sensitive";
 
   // Entry data
   symlinks: "ignore" | "preserve" | "follow";
   followExternal: boolean;
-  timestamps: "preserve" | "clamp";
   /**
    * IANA timezone name (e.g. `"Asia/Tokyo"`, `"UTC"`) the ZIP DOS local-time
    * field is rendered in. The DOS field stores local wall-clock with no zone, so
@@ -120,17 +112,19 @@ export interface ArchivePolicy {
 
   // Companion output
   metadata: false | MetadataPolicy;
-
-  // Container format
-  zip64: "auto" | "never" | "always";
 }
 
-export type ArchiveInput = string | { path: string; as?: string; flatten?: boolean };
+/**
+ * One archive source: a file or directory path. A single directory input has its
+ * contents flattened to the archive root (the output filename already carries
+ * the directory's name); multiple inputs each keep their basename as a top-level
+ * folder, with files landing bare, so distinct inputs cannot silently merge.
+ */
+export type ArchiveInput = string;
 
 export interface ArchiveSpec {
   // Source
   inputs: ArchiveInput[];
-  root?: string;
 
   // Destination
   output?: string;
@@ -290,6 +284,13 @@ export interface MetadataExcluded {
   reason?: string;
 }
 
+/** A file entry singled out for its modification time — the oldest or newest in
+ *  the set. Carries the entry's archive path and its UTC modification time. */
+export interface ExtremeEntry {
+  archivePath: string;
+  mtime: UtcTime;
+}
+
 /**
  * The lossless structured record of an archive run: header, per-entry records,
  * dropped entries, and findings. Returned from every `create` and embedded as
@@ -306,6 +307,14 @@ export interface Metadata {
   policy: ArchivePolicy; // configuration
   summary: PlanSummary; // quantities (aggregate)
   totals: { uncompressedBytes: number; compressedBytes: number };
+  /**
+   * The modification-time span of the archived file set: the oldest and newest
+   * file entries by `mtime` (UTC). Computed over file and symlink entries, never
+   * synthetic directories. `null` when the set has no such entry (e.g. an archive
+   * of only empty directories), so a caller reads the range without scanning
+   * {@link Metadata.entries} or parsing nanosecond strings.
+   */
+  timeRange: { oldest: ExtremeEntry; newest: ExtremeEntry } | null;
   entries: MetadataEntry[]; // nested detail
   excluded: MetadataExcluded[];
   findings: Finding[];

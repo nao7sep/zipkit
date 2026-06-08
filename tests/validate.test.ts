@@ -120,9 +120,15 @@ describe("new configuration surface", () => {
     expect(() => validatePolicy({ names: { suspicious: "fix" } } as never)).toThrow(PolicyError);
   });
 
-  it("accepts a valid collisionCase and rejects an unknown one", () => {
-    expect(() => validatePolicy({ collisionCase: "sensitive" })).not.toThrow();
-    expect(() => validatePolicy({ collisionCase: "fuzzy" } as never)).toThrow(PolicyError);
+  it("rejects policy keys removed from the surface", () => {
+    for (const key of ["collisionCase", "timestamps", "emptyDirDefinition", "zip64"]) {
+      expect(() => validatePolicy({ [key]: "anything" } as never), key).toThrow(PolicyError);
+    }
+  });
+
+  it("rejects a spec root and object-form inputs", () => {
+    expect(() => validateSpec({ inputs: ["a"], root: "base" } as never)).toThrow(PolicyError);
+    expect(() => validateSpec({ inputs: [{ path: "a" }] } as never)).toThrow(PolicyError);
   });
 
   it("bounds the deflate level to 1–9 integers", () => {

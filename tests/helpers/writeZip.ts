@@ -26,17 +26,28 @@ export interface BuiltZip {
 }
 
 /**
+ * Writer options plus a test-only `zip64` force flag. The production writer
+ * derives the Zip64 need from the final entry set (a real over-4GB entry can't
+ * be faked in a unit test), so tests pass the force flag explicitly to exercise
+ * the Zip64 container structures.
+ */
+export interface BuildOptions extends ZipWriterOptions {
+  zip64?: boolean;
+}
+
+/**
  * Build an archive file from the given entries with the streaming writer. The
  * method on each entry decides store vs deflate; the writer computes the CRC and
  * sizes from the streamed bytes, exactly as the production path does.
  */
 export async function buildZipFile(
   entries: EntryWithData[],
-  options: ZipWriterOptions,
+  options: BuildOptions,
 ): Promise<BuiltZip> {
+  const { zip64: forceZip64 = false, ...writerOptions } = options;
   const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-"));
   const output = path.join(dir, "a.zip");
-  const writer = new ZipWriter(output, options);
+  const writer = new ZipWriter(output, writerOptions);
   await writer.open();
   try {
     for (const entry of entries) {
@@ -50,7 +61,7 @@ export async function buildZipFile(
         return compressor.finish();
       });
     }
-    const { zip64, bytes } = await writer.finalize(options.zip64);
+    const { zip64, bytes } = await writer.finalize(forceZip64);
     return { path: output, zip64, bytes };
   } catch (err) {
     await writer.abort();

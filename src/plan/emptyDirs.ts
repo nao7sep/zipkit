@@ -3,13 +3,11 @@
  * is entry-based: a non-empty directory is implied by its files and needs no
  * entry, so only directories with no content survive the question.
  *
- * A directory is *occupied* when it has a content file descendant; under
- * `recursive` (default) a zero-byte file is not content, under `strict` it is.
- * An unoccupied directory is empty. `prune` drops empty directories entirely;
- * `keep` preserves them with explicit entries — `strict` writes one entry per
- * empty directory, while `recursive` writes only the leaf empties (those with
- * no included child), letting extraction recreate the ancestors. A directory
- * already implied by an included child never gets a redundant entry.
+ * A directory is *occupied* when it has a content (non-empty) file descendant;
+ * a zero-byte file is not content. An unoccupied directory is empty. `prune`
+ * drops empty directories entirely; `keep` preserves them, writing only the leaf
+ * empties (those with no included child) so extraction recreates the ancestors.
+ * A directory already implied by an included child never gets a redundant entry.
  */
 
 import { ancestorDirs, parentDir } from "../internal/path.js";
@@ -27,7 +25,7 @@ export function applyEmptyDirs(items: WorkItem[], policy: ArchivePolicy): void {
 
     let isContent = false;
     if (item.type === "file") {
-      isContent = policy.emptyDirDefinition === "strict" ? true : item.scan.size > 0;
+      isContent = item.scan.size > 0;
     } else if (item.type === "symlink" && item.emitExplicit) {
       isContent = true;
     }
@@ -47,8 +45,6 @@ export function applyEmptyDirs(items: WorkItem[], policy: ArchivePolicy): void {
       item.excluded = true;
       item.excludeReason = "empty directory pruned";
       item.emitExplicit = false;
-    } else if (policy.emptyDirDefinition === "strict") {
-      item.emitExplicit = true;
     } else {
       item.emitExplicit = !hasIncludedChild.has(item.archivePath);
     }

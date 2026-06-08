@@ -17,17 +17,13 @@ describe("DEFAULT_POLICY", () => {
     expect(DEFAULT_POLICY.junk).toBe("builtin");
     expect(DEFAULT_POLICY.emptyFiles).toBe("keep");
     expect(DEFAULT_POLICY.emptyDirs).toBe("keep");
-    expect(DEFAULT_POLICY.emptyDirDefinition).toBe("recursive");
     expect(DEFAULT_POLICY.names).toEqual(NAME_DEFAULTS);
     expect(DEFAULT_POLICY.names.invalidCharReplacement).toBe("_");
-    expect(DEFAULT_POLICY.collisionCase).toBe("insensitive");
     expect(DEFAULT_POLICY.symlinks).toBe("ignore");
-    expect(DEFAULT_POLICY.timestamps).toBe("preserve");
     expect(DEFAULT_POLICY.compression.stored).toBe("builtin");
     expect(DEFAULT_POLICY.compression.store).toEqual([]);
     expect(DEFAULT_POLICY.compression.level).toBe(6);
     expect(DEFAULT_POLICY.metadata).toEqual({ name: "_metadata.json", hash: true });
-    expect(DEFAULT_POLICY.zip64).toBe("auto");
   });
 
   it("defaults every name guardrail to fix (suspicious to warn)", () => {
@@ -47,11 +43,11 @@ describe("resolvePolicy", () => {
 
   it("merges per-call over instance over defaults", () => {
     const resolved = resolvePolicy(
-      { junk: "none", collisionCase: "insensitive" },
-      { collisionCase: "sensitive" },
+      { junk: "none", symlinks: "preserve" },
+      { symlinks: "follow" },
     );
     expect(resolved.junk).toBe("none");
-    expect(resolved.collisionCase).toBe("sensitive");
+    expect(resolved.symlinks).toBe("follow");
   });
 
   it("deep-merges a partial names object over the defaults", () => {

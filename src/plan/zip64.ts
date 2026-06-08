@@ -3,18 +3,11 @@
  * offset reaches `0xFFFFFFFF`, or the entry count reaches `0xFFFF`. The need is
  * computed from uncompressed sizes — an upper bound, since compression only
  * shrinks data and the count is fixed — so the dry run's verdict is never an
- * underestimate of the actual write.
- *
- * `auto` (default) and `always` use Zip64 and warn (`compat.zip64`), because
- * the pre-Windows-10 built-in reader cannot open it. `never` turns a triggering
- * archive into an error (`compat.zip64-required`), since it cannot be
- * represented in 32-bit fields.
+ * underestimate of the actual write. Zip64 structures are emitted transparently
+ * whenever this holds and omitted otherwise; there is no policy knob.
  */
 
-import path from "node:path";
-import { finding } from "../registry.js";
 import type { WriteEntry } from "../internal/types.js";
-import type { ArchivePolicy, Finding } from "../types.js";
 
 const U32_MAX = 0xffffffff;
 const U16_MAX = 0xffff;
@@ -52,58 +45,13 @@ export function computeZip64Need(entries: SizedEntry[]): boolean {
   return localBytes + centralBytes + EOCD_FIXED >= U32_MAX;
 }
 
-function toSizedEntries(entries: WriteEntry[]): SizedEntry[] {
-  return entries.map((entry) => ({
-    name: entry.archivePath,
-    size: entry.size,
-    isDir: entry.type === "dir",
-  }));
-}
-
-export function applyZip64(
-  entries: WriteEntry[],
-  policy: ArchivePolicy,
-  output: string,
-  globalFindings: Finding[],
-): boolean {
-  // The locator is the archive's basename, not the absolute output path, so a
-  // container-level finding never carries an absolute path into the metadata.
-  const locator = path.basename(output);
-
-  if (policy.zip64 === "always") {
-    globalFindings.push(
-      finding(
-        "compat.zip64",
-        locator,
-        "Zip64 is always enabled; the pre-Windows-10 built-in reader cannot open it",
-      ),
-    );
-    return true;
-  }
-
-  const needed = computeZip64Need(toSizedEntries(entries));
-
-  if (policy.zip64 === "never") {
-    if (needed) {
-      globalFindings.push(
-        finding(
-          "compat.zip64-required",
-          locator,
-          "the archive exceeds 32-bit ZIP limits but Zip64 is disabled",
-        ),
-      );
-    }
-    return false;
-  }
-
-  if (needed) {
-    globalFindings.push(
-      finding(
-        "compat.zip64",
-        locator,
-        "Zip64 is required and enabled; the pre-Windows-10 built-in reader cannot open it",
-      ),
-    );
-  }
-  return needed;
+/** Whether the final write-entry set needs Zip64, from uncompressed sizes. */
+export function writeEntriesNeedZip64(entries: WriteEntry[]): boolean {
+  return computeZip64Need(
+    entries.map((entry) => ({
+      name: entry.archivePath,
+      size: entry.size,
+      isDir: entry.type === "dir",
+    })),
+  );
 }

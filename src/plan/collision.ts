@@ -1,17 +1,14 @@
 /**
- * Collision detection (pass 7). Post-fix names are folded and grouped: distinct
- * sources that fold together collide. Under `insensitive` (the default) the fold
- * is case-insensitive, so two names differing only by case clash as they would
- * on macOS/Windows — reported as `collision.case`; an exact post-fix match (often
- * substitution-induced) is `collision.post-fix`. Under `sensitive` only exact
- * matches collide (`collision.post-fix`), for archives targeting only
- * case-sensitive filesystems. Both are errors: ZipKit does not auto-rename,
+ * Collision detection (pass 7). Post-fix names are folded case-insensitively
+ * and grouped: distinct sources that fold together collide, exactly as they
+ * would on macOS/Windows. Two names differing only by case are reported as
+ * `collision.case`; an exact post-fix match (often substitution-induced) is
+ * `collision.post-fix`. Both are always errors: ZipKit does not auto-rename,
  * because choosing which file to rename is the ambiguous resolution that defines
  * the error tier. The finding is attached to every entry in the colliding group.
  */
 
 import { finding } from "../registry.js";
-import type { ArchivePolicy } from "../types.js";
 import type { WorkItem } from "./workItem.js";
 
 /**
@@ -21,13 +18,8 @@ import type { WorkItem } from "./workItem.js";
  *   source-side collision — so it is reported here as an error, which also lets
  *   the dry run predict it.
  */
-export function applyCollision(
-  items: WorkItem[],
-  collisionCase: ArchivePolicy["collisionCase"],
-  reserved: readonly string[] = [],
-): void {
-  const fold = (path: string): string =>
-    collisionCase === "sensitive" ? path : path.toLowerCase();
+export function applyCollision(items: WorkItem[], reserved: readonly string[] = []): void {
+  const fold = (path: string): string => path.toLowerCase();
 
   const groups = new Map<string, WorkItem[]>();
   for (const item of items) {

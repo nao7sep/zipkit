@@ -1,9 +1,9 @@
 /**
  * The one progress/log seam, shared by every verb. It composes the verb's
  * single `LogEvent` stream into the destinations a run wants — the optional
- * `--log` JSONL file, and (unless `--quiet`) live progress on stderr as human
- * phase lines or, under `--json`, prefixed JSONL. The composed `sink` is handed
- * to the SDK as the call's `onProgress` hook; `finalize` flushes the file.
+ * `--log` JSONL file, and (unless `--quiet`) live progress on stderr as bare
+ * JSONL, one whole event object per line. The composed `sink` is handed to the
+ * SDK as the call's `onProgress` hook; `finalize` flushes the file.
  *
  * One seam for both `create` and `extract`: the same flags wire the same way, so
  * a caller sees identical progress and logging behavior across verbs.
@@ -11,14 +11,11 @@
 
 import type { LogSink } from "../log/logger.js";
 import { createJsonlSink } from "./logSink.js";
-import { createConsoleProgress, createJsonlProgress } from "./render.js";
 
 /** The reporter-relevant slice of a verb's parsed options. */
 export interface ReporterOptions {
   log?: string;
   quiet?: boolean;
-  json?: boolean;
-  verbose?: boolean;
 }
 
 export interface Reporter {
@@ -26,6 +23,17 @@ export interface Reporter {
   sink: LogSink;
   /** Flush and close the `--log` file, if one was opened. */
   finalize: () => Promise<void>;
+}
+
+/**
+ * Live progress on stderr: each `LogEvent` as one bare JSONL line — the whole
+ * typed event, no prefix. Not gated on whether stderr is a TTY, because scripts
+ * and agents watch stderr and want every line; `--quiet` is the only suppressor.
+ */
+function stderrProgress(): LogSink {
+  return (event) => {
+    process.stderr.write(`${JSON.stringify(event)}\n`);
+  };
 }
 
 export function buildReporter(opts: ReporterOptions): Reporter {
@@ -39,13 +47,7 @@ export function buildReporter(opts: ReporterOptions): Reporter {
     sinks.push(jsonl.sink);
   }
 
-  // `--json` converts progress to prefixed JSONL on stderr; without it, human
-  // phase lines. `--quiet` silences either.
-  if (!opts.quiet) {
-    sinks.push(
-      opts.json ? createJsonlProgress(opts.verbose === true) : createConsoleProgress(opts.verbose === true),
-    );
-  }
+  if (!opts.quiet) sinks.push(stderrProgress());
 
   return {
     sink: (event) => {

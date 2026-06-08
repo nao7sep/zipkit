@@ -47,7 +47,7 @@ describe("exit codes", () => {
     const proj = await tree();
     const out = path.join(dir, "exists.zip");
     await writeFile(out, "preexisting");
-    const code = await runCli(argv("create", proj, "-o", out, "--dry-run", "--json", "--quiet"));
+    const code = await runCli(argv("create", proj, "-o", out, "--dry-run", "--quiet"));
     expect(code).toBe(1);
   });
 
@@ -72,10 +72,10 @@ describe("exit codes", () => {
     expect(existsSync(out)).toBe(false);
   });
 
-  it("returns 2 for a non-coercible --concurrency", async () => {
+  it("returns 2 for a non-coercible --jobs", async () => {
     const proj = await tree();
     const out = path.join(dir, "n.zip");
-    const code = await runCli(argv("create", proj, "-o", out, "--quiet", "--concurrency", "lots"));
+    const code = await runCli(argv("create", proj, "-o", out, "--quiet", "--jobs", "lots"));
     expect(code).toBe(2);
     expect(existsSync(out)).toBe(false);
   });
@@ -101,7 +101,6 @@ describe("exclusion", () => {
         "-o",
         out,
         "--dry-run",
-        "--json",
         "--quiet",
         "--exclude",
         "drop.txt",
@@ -112,12 +111,10 @@ describe("exclusion", () => {
     spy.mockRestore();
 
     expect(code).toBe(0);
-    const report = JSON.parse(chunks.join(""));
-    expect(report.schemaVersion).toBe(1);
-    expect(report.verb).toBe("create");
-    expect(report.data.mode).toBe("plan");
+    const result = JSON.parse(chunks.join(""));
+    expect(result.mode).toBe("plan");
     const byName = Object.fromEntries(
-      report.data.entries.map((e: { archivePath: string; excluded: boolean }) => [
+      result.entries.map((e: { archivePath: string; excluded: boolean }) => [
         e.archivePath,
         e.excluded,
       ]),
