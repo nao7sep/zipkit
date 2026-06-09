@@ -180,7 +180,7 @@ export function registerCreate(
   // warn (report, do not block) | error (report and fail) | none (silent).
   const nameAction = " <fix|warn|error|none>";
   cmd.option(`--name-nfc${nameAction}`, "non-NFC names (e.g. macOS NFD) → NFC");
-  cmd.option(`--name-invalid${nameAction}`, "Windows-illegal characters < > : \" | ? *");
+  cmd.option(`--name-invalid${nameAction}`, "Windows-illegal characters < > : \" | ? * \\");
   cmd.option(`--name-control${nameAction}`, "control characters below 0x20");
   cmd.option(`--name-trailing${nameAction}`, "trailing dots or spaces");
   cmd.option(`--name-reserved${nameAction}`, "reserved device names (CON, PRN, …)");

@@ -5,7 +5,7 @@
  * file only assembles a complete {@link ArchivePolicy} from partial layers.
  */
 
-import { defu } from "defu";
+import { createDefu } from "defu";
 import { normalizeExtension } from "./internal/path.js";
 import type { ArchivePolicy, MetadataPolicy, NameRules } from "./types.js";
 
@@ -158,44 +158,47 @@ export const DEFAULT_POLICY: ArchivePolicy = {
   metadata: { ...METADATA_DEFAULTS },
 };
 
-function firstDefined<T>(...values: (T | undefined)[]): T | undefined {
-  for (const value of values) {
-    if (value !== undefined) return value;
+/**
+ * The policy merger. It is `defu` with one rule changed: a list-valued field
+ * *replaces* rather than concatenates, so a more specific layer's array wins
+ * outright instead of being appended to the broader layer's. The rule is keyed
+ * on the value being an array, not on a field name, so every list — `filters`,
+ * `compression.store`, and any future one — obeys it with no per-field
+ * bookkeeping. Scalars and nested objects keep `defu`'s deep-merge, which fills
+ * a partial `names` or `metadata` object from the layer below and completes it
+ * from the defaults. In `defu`'s merger the accumulator holds the lower-priority
+ * value (`object[key]`) and `value` is the higher-priority one, so assigning
+ * `value` is "the more specific array wins."
+ */
+const mergePolicy = createDefu((object, key, value) => {
+  if (Array.isArray(value)) {
+    object[key] = value;
+    return true;
   }
-  return undefined;
-}
+});
 
 /**
- * Merge the per-call policy over the instance policy over the defaults.
- * `defu` deep-merges scalars and nested objects, but concatenates arrays; for
- * the two list-valued fields a more specific layer must replace the broader
- * one, so they are resolved explicitly afterward.
+ * Merge the per-call policy over the instance policy over the defaults into a
+ * complete {@link ArchivePolicy}. Lists replace (see {@link mergePolicy}); the
+ * resolved `compression.store` is then normalized to the canonical
+ * lowercase-dotted extension form, so this is the single place the dialect is
+ * fixed — a caller passing `txt`, `.txt`, or `.TXT` reaches `applyCompression`
+ * identically, whether from the SDK or the CLI.
  */
 export function resolvePolicy(
   instance?: Partial<ArchivePolicy>,
   call?: Partial<ArchivePolicy>,
 ): ArchivePolicy {
-  // Clone the defaults so a resolved policy never shares nested objects (e.g.
-  // `compression`) with the module-global default; `defu` does not deep-clone
-  // its last source.
-  const merged = defu(call ?? {}, instance ?? {}, structuredClone(DEFAULT_POLICY)) as ArchivePolicy;
+  // Clone the defaults so a resolved policy never shares a nested object or
+  // array with the module-global default; `defu` only shallow-copies its
+  // last source.
+  const merged = mergePolicy(
+    call ?? {},
+    instance ?? {},
+    structuredClone(DEFAULT_POLICY),
+  ) as ArchivePolicy;
 
-  const filters = firstDefined(call?.filters, instance?.filters);
-  merged.filters = filters !== undefined ? filters : [];
-
-  // Normalize store extensions to the canonical lowercase-dotted form here, so
-  // the resolved policy is the single place that fixes the dialect — a caller
-  // passing `txt`, `.txt`, or `.TXT` reaches `applyCompression` identically,
-  // whether the values came from the SDK or the CLI.
-  const store = firstDefined(
-    call?.compression?.store,
-    instance?.compression?.store,
-  );
-  merged.compression.store = store !== undefined ? store.map(normalizeExtension) : [];
-
-  if (merged.metadata !== false) {
-    merged.metadata = defu(merged.metadata, METADATA_DEFAULTS) as MetadataPolicy;
-  }
+  merged.compression.store = merged.compression.store.map(normalizeExtension);
 
   return merged;
 }

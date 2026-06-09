@@ -63,6 +63,28 @@ describe("resolvePolicy", () => {
     expect(resolved.filters).toEqual([ruleB]);
   });
 
+  it("replaces the nested compression.store list rather than concatenating", () => {
+    // The replace-not-concat rule reaches nested list fields too: the per-call
+    // store wins outright, never appended to the instance store. (Guards against
+    // a regression to plain defu, which would yield ['b', 'a'] here.)
+    const resolved = resolvePolicy(
+      { compression: { store: ["a"] } },
+      { compression: { store: ["b"] } },
+    );
+    expect(resolved.compression.store).toEqual([".b"]);
+  });
+
+  it("carries an instance list down when the call omits it", () => {
+    // A list set only on the instance layer survives — replacement means "the
+    // most specific layer that set it wins," not "drop unless the call sets it."
+    const resolved = resolvePolicy(
+      { filters: [ruleA], compression: { store: ["a"] } },
+      undefined,
+    );
+    expect(resolved.filters).toEqual([ruleA]);
+    expect(resolved.compression.store).toEqual([".a"]);
+  });
+
   it("keeps store empty when only the baseline is overridden", () => {
     const resolved = resolvePolicy(undefined, { compression: { stored: "none" } });
     expect(resolved.compression.stored).toBe("none");
