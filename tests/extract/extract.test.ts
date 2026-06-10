@@ -329,3 +329,101 @@ describe("large-file streaming round-trip", () => {
     expect((await readFile(path.join(dest, "c.txt"))).equals(content)).toBe(true);
   });
 });
+
+describe("per-failure logging", () => {
+  /** Parse the lone session log under `logDir` into its JSONL event objects. */
+  async function sessionEvents(logDir: string): Promise<Array<Record<string, unknown>>> {
+    const files = (await readdir(logDir)).filter((f) => f.endsWith(".log"));
+    expect(files).toHaveLength(1);
+    return (await readFile(path.join(logDir, files[0]!), "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  it("emits an error line per CRC failure and unsafe path, naming each failed entry", async () => {
+    // One archive, three fates: a clean entry, a CRC-corrupted entry, and a
+    // zip-slip entry. The clean one stays silent (its only line is the
+    // debug-gated entry.verified); the two failures must each surface a line.
+    const archive = await writeArchive([
+      fileEntry("good.txt", "intact"),
+      fileEntry("bad.txt", "CORRUPTME"),
+      fileEntry("../evil.txt", "pwned"),
+    ]);
+    const buf = await readFile(archive);
+    const idx = buf.indexOf(Buffer.from("CORRUPTME"));
+    buf[idx] = buf[idx]! ^ 0xff;
+    await writeFile(archive, buf);
+
+    const logDir = path.join(dir, "logs-crc");
+    const report = await new ZipKit({ logDir }).extract({ archive, dest: path.join(dir, "out") });
+    expect(report.reportOk).toBe(false);
+
+    const events = await sessionEvents(logDir);
+    const flagged = events.filter((e) => e.event === "entry.flagged");
+
+    expect(flagged.find((e) => e.rule === "extract.crc-fail")).toMatchObject({
+      stage: "extract",
+      level: "error",
+      severity: "error",
+      path: "bad.txt",
+    });
+    expect(flagged.find((e) => e.rule === "extract.unsafe-path")).toMatchObject({
+      stage: "extract",
+      level: "error",
+      severity: "error",
+      path: "../evil.txt",
+    });
+    // The intact entry produced no warn/error line...
+    expect(flagged.some((e) => e.path === "good.txt")).toBe(false);
+    // ...and the per-failure lines precede the surviving aggregate.
+    const doneIndex = events.findIndex((e) => e.event === "extract.done");
+    const lastFlagged = events.map((e) => e.event).lastIndexOf("entry.flagged");
+    expect(doneIndex).toBeGreaterThan(lastFlagged);
+  });
+
+  it("emits error lines for SHA mismatch and missing entries and a warn line for an extra entry", async () => {
+    // The embedded manifest claims a.txt with a WRONG sha (→ mismatch) and a
+    // phantom c.txt (→ missing), and omits the real b.txt (→ extra).
+    const manifest = {
+      entries: [
+        { archivePath: "a.txt", sha256: createHash("sha256").update("not-alpha").digest("hex") },
+        { archivePath: "c.txt", sha256: "deadbeef" },
+      ],
+    };
+    const archive = await writeArchive([
+      fileEntry("a.txt", "alpha"),
+      fileEntry("b.txt", "beta"),
+      fileEntry("_metadata.json", JSON.stringify(manifest)),
+    ]);
+
+    const logDir = path.join(dir, "logs-meta");
+    const report = await new ZipKit({ logDir }).extract({
+      archive,
+      dryRun: true,
+      checkMetadata: true,
+    });
+    expect(report.reportOk).toBe(false);
+
+    const flagged = (await sessionEvents(logDir)).filter((e) => e.event === "entry.flagged");
+    expect(flagged.find((e) => e.rule === "extract.sha-mismatch")).toMatchObject({
+      stage: "extract",
+      level: "error",
+      severity: "error",
+      path: "a.txt",
+    });
+    expect(flagged.find((e) => e.rule === "extract.missing")).toMatchObject({
+      stage: "extract",
+      level: "error",
+      severity: "error",
+      path: "c.txt",
+    });
+    expect(flagged.find((e) => e.rule === "extract.extra")).toMatchObject({
+      stage: "extract",
+      level: "warn",
+      severity: "warning",
+      path: "b.txt",
+    });
+  });
+});

@@ -26,6 +26,7 @@ import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
 import type { Unlogged } from "../internal/types.js";
+import { reportFindings } from "../log/findings.js";
 import type { Logger } from "../log/logger.js";
 import { finding } from "../registry.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
@@ -451,6 +452,12 @@ export async function extractArchive(
       crcFailed === 0 &&
       unsafe === 0 &&
       (!spec.checkMetadata || (missing.length === 0 && extra.length === 0 && shaMismatched === 0));
+
+    // Enumerate the failures before the aggregate: one warn/error line per
+    // finding (CRC failure, SHA mismatch, unsafe path, missing/extra entry), so a
+    // corrupt or tampered archive logs *which* entries failed, not just a count.
+    // The per-success "entry.verified" lines stay at debug.
+    reportFindings(deps.logger, "extract", findings);
 
     deps.logger.emit({
       stage: "extract",

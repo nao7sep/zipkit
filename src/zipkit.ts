@@ -27,6 +27,7 @@ import path from "node:path";
 import pLimit from "p-limit";
 import { ZipKitError, type ZipKitErrorType } from "./errors.js";
 import { matcherFor } from "./filter/match.js";
+import { reportFindings } from "./log/findings.js";
 import { createLogger, type LogSink } from "./log/logger.js";
 import type { Logger } from "./log/logger.js";
 import {
@@ -267,17 +268,7 @@ export class ZipKit {
         });
       }
     }
-    for (const f of plan.findings) {
-      const level = f.severity === "error" ? "error" : f.severity === "warning" ? "warn" : "info";
-      logger.emit({
-        stage: "plan",
-        level,
-        event: "entry.flagged",
-        rule: f.rule,
-        path: f.path,
-        severity: f.severity,
-      });
-    }
+    reportFindings(logger, "plan", plan.findings);
     logger.emit({
       stage: "plan",
       level: "info",
