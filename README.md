@@ -405,8 +405,7 @@ npm run build       # tsup → dist/
 npm test            # vitest
 ```
 
-`npm run typecheck` covers both the shipped `src/` and the test files (`tsconfig.test.json`);
-Vitest runs the tests without type-checking them, so the test config is what keeps them covered.
+`npm run typecheck` covers both the shipped `src/` and the test files (`tsconfig.test.json`); Vitest runs the tests without type-checking them, so the test config is what keeps them covered.
 
 ## License
 
