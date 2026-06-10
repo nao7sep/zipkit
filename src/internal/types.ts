@@ -10,6 +10,15 @@
 
 import type { RuleId } from "../registry.js";
 
+/**
+ * A verb result before the SDK boundary stamps the session-log path onto it. The
+ * pure builders (`planArchive`, `writeArchive`, `extractArchive`) produce
+ * everything a result holds *except* `log`; {@link import("../zipkit.js").ZipKit}
+ * adds it where it owns the per-session log, so the builders stay
+ * logging-agnostic.
+ */
+export type Unlogged<T> = Omit<T, "log">;
+
 /** Raw metadata for one filesystem object, produced by the scan layer. */
 export interface ScanEntry {
   /** Absolute source path on disk. Internal only; never serialized. */

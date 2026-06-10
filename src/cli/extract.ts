@@ -28,7 +28,6 @@ interface ExtractOpts {
   timezone?: string;
   onUnsafe?: "skip" | "abort";
   symlinks?: "restore" | "skip";
-  log?: string;
   quiet?: boolean;
   jobs?: number;
   chunkSize?: number;
@@ -65,7 +64,6 @@ export function registerExtract(
   cmd.option("--symlinks <restore|skip>", "symlink handling");
   cmd.option("--exclude <pattern>", "exclude glob, not written (repeatable); trailing slash = directory", addGlob);
   cmd.option("--exclude-regex <pattern>", "exclude regex, not written (repeatable)", addRegex);
-  cmd.option("--log <path.jsonl>", "write the event stream as JSONL");
   cmd.option("--quiet", "suppress console progress");
   cmd.option(
     "-j, --jobs <n>",
@@ -80,15 +78,15 @@ export function registerExtract(
 
   cmd.action(async (archive: string, dest: string | undefined, opts: ExtractOpts) => {
     // Construct the SDK first so an out-of-range --jobs/--chunk-size fails
-    // (a usage exit) before the --log file is opened. Format coercion already
-    // happened at the parse edge; the SDK owns the bounds.
+    // (a usage exit) in the constructor, before any verb runs or its session log
+    // opens. Format coercion already happened at the parse edge; the SDK owns the
+    // bounds.
     const zkOptions: ZipKitOptions = {};
     if (opts.jobs !== undefined) zkOptions.concurrency = opts.jobs;
     if (opts.chunkSize !== undefined) zkOptions.chunkSize = opts.chunkSize;
     const zip = new ZipKit(zkOptions);
 
-    const reporter = buildReporter(opts);
-    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink, signal };
+    const callOptions: ZipKitCallOptions = { onProgress: buildReporter(opts), signal };
 
     const spec: ExtractSpec = { archive };
     if (dest !== undefined) spec.dest = dest;
@@ -102,17 +100,14 @@ export function registerExtract(
     if (opts.symlinks !== undefined) spec.symlinks = opts.symlinks;
     if (excludes.length > 0) spec.exclude = excludes;
 
-    try {
-      // The verb emits its typed result to stdout and exits 1 on a negative
-      // verdict (a report that is not ok — a CRC failure, an unsafe path, a SHA
-      // mismatch); the per-entry detail rides on that result. Operational read
-      // faults are not caught here — they propagate to the run layer, which
-      // renders them on stderr and maps the exit code, leaving stdout empty.
-      const data = await zip.extract(spec, callOptions);
-      emit(data);
-      if (!data.reportOk) setExitCode(1);
-    } finally {
-      await reporter.finalize();
-    }
+    // The verb emits its typed result to stdout and exits 1 on a negative verdict
+    // (a report that is not ok — a CRC failure, an unsafe path, a SHA mismatch);
+    // the per-entry detail rides on that result. Operational read faults are not
+    // caught here — they propagate to the run layer, which renders them on stderr
+    // and maps the exit code, leaving stdout empty. The SDK owns and appends to
+    // the session log.
+    const data = await zip.extract(spec, callOptions);
+    emit(data);
+    if (!data.reportOk) setExitCode(1);
   });
 }

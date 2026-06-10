@@ -7,7 +7,7 @@
 
 import { createDefu } from "defu";
 import { normalizeExtension } from "./internal/path.js";
-import type { ArchivePolicy, MetadataPolicy, NameRules } from "./types.js";
+import type { ArchivePolicy, DeepPartial, MetadataPolicy, NameRules } from "./types.js";
 
 /**
  * The built-in set stored verbatim under `compression.stored: "builtin"`. An
@@ -186,8 +186,8 @@ const mergePolicy = createDefu((object, key, value) => {
  * identically, whether from the SDK or the CLI.
  */
 export function resolvePolicy(
-  instance?: Partial<ArchivePolicy>,
-  call?: Partial<ArchivePolicy>,
+  instance?: DeepPartial<ArchivePolicy>,
+  call?: DeepPartial<ArchivePolicy>,
 ): ArchivePolicy {
   // Clone the defaults so a resolved policy never shares a nested object or
   // array with the module-global default; `defu` only shallow-copies its

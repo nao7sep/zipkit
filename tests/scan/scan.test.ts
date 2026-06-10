@@ -31,6 +31,7 @@ function deps(policy: ArchivePolicy) {
     matcher: matcherFor(policy),
     limit: <T>(fn: () => Promise<T>): Promise<T> => fn(),
     logger: createLogger(),
+    signal: undefined,
   };
 }
 

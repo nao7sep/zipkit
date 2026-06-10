@@ -14,13 +14,14 @@
 
 import { matcherFor } from "../filter/match.js";
 import { attachInternals } from "../internal/carrier.js";
-import type { ScanResult } from "../internal/types.js";
+import type { ScanResult, Unlogged } from "../internal/types.js";
 import { finding } from "../registry.js";
 import type { ArchivePolicy, CreateData, Finding } from "../types.js";
 
 /** The `mode:"plan"` member of {@link CreateData} — the dry-run payload and the
- *  writer's input. The carrier (writer instructions) rides on it out of band. */
-type PlanData = Extract<CreateData, { mode: "plan" }>;
+ *  writer's input. The carrier (writer instructions) rides on it out of band.
+ *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
+type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 import { applyCollision } from "./collision.js";
 import { applyCompression } from "./compression.js";
 import { applyDedup } from "./dedup.js";

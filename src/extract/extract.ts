@@ -25,6 +25,7 @@ import { ReadError, throwIfAborted, toAbortError } from "../errors.js";
 import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
+import type { Unlogged } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import { finding } from "../registry.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
@@ -173,7 +174,10 @@ async function commitFile(
   return true;
 }
 
-export async function extractArchive(spec: ExtractSpec, deps: ExtractDeps): Promise<ExtractData> {
+export async function extractArchive(
+  spec: ExtractSpec,
+  deps: ExtractDeps,
+): Promise<Unlogged<ExtractData>> {
   const signal = deps.signal;
   throwIfAborted(signal);
 

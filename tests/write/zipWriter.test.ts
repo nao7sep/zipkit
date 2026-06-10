@@ -226,7 +226,7 @@ describe("symlink exception", () => {
     };
     const { entries } = await build([link]);
     expect(entries[0]?.hostByte).toBe(3); // Unix
-    expect(entries[0]?.externalAttr >>> 16).toBe(0o120777);
+    expect((entries[0]!.externalAttr >>> 16)).toBe(0o120777);
     expect(entries[0]?.content.toString("utf8")).toBe("target");
   });
 });

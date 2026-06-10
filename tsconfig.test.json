@@ -1,0 +1,16 @@
+{
+  // Tests live outside the shipped `src` rootDir and must not emit declarations,
+  // so override those; everything else (lib, types, strictness) is inherited.
+  // The base excludes tests/** (they stay out of the shipped build); this config
+  // IS the test typecheck, so it overrides that exclusion. It also covers
+  // `vitest.config.ts` (the base scopes `tsc` to `src/**`, so the config would
+  // otherwise go unchecked) and `tests/setup.ts`, which wire the log-dir redirect.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false
+  },
+  "exclude": ["node_modules", "dist"],
+  "include": ["tests/**/*.ts", "vitest.config.ts"]
+}

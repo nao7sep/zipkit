@@ -18,17 +18,18 @@ import { createReadStream } from "node:fs";
 import { throwIfAborted, toAbortError, WriteError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
 import { machineTimeZone } from "../internal/timeZone.js";
-import type { WriteEntry } from "../internal/types.js";
+import type { Unlogged, WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import type { CreateData } from "../types.js";
 
 /** The `mode:"plan"` member of {@link CreateData} — the writer's input, carrying
  *  the resolved output, the writable gate, summary, findings, and (out of band,
- *  via `carrier.ts`) the writer's instructions. */
-type PlanData = Extract<CreateData, { mode: "plan" }>;
+ *  via `carrier.ts`) the writer's instructions. The writer never reads `log`. */
+type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 
-/** The `mode:"write"` member of {@link CreateData}; the writer's success shape. */
-type WriteData = Extract<CreateData, { mode: "write" }>;
+/** The `mode:"write"` member of {@link CreateData}; the writer's success shape.
+ *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
+type WriteData = Unlogged<Extract<CreateData, { mode: "write" }>>;
 import { buildMetadata } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
 import { EntryCompressor, ZipWriter } from "./zipWriter.js";

@@ -16,7 +16,7 @@
  * finally the nested transformation list.
  */
 
-import type { WriteEntry } from "../internal/types.js";
+import type { Unlogged, WriteEntry } from "../internal/types.js";
 import type {
   ArchivePolicy,
   CreateData,
@@ -29,8 +29,9 @@ import type {
 import { VERSION } from "../version.js";
 
 /** The `mode:"plan"` member of {@link CreateData} — the planning view the
- *  metadata document is built from (entries, summary, findings). */
-type PlanData = Extract<CreateData, { mode: "plan" }>;
+ *  metadata document is built from (entries, summary, findings). The metadata
+ *  builder never reads `log`, so it takes the logging-agnostic shape. */
+type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 
 export interface MetadataEntryInput {
   writeEntry: WriteEntry;

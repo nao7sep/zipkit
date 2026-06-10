@@ -9,10 +9,11 @@ import { buildMetadata } from "../../src/write/metadata.js";
 import type { MetadataEntryInput } from "../../src/write/metadata.js";
 import { estimateMetadataSize } from "../../src/plan/zip64.js";
 import type { MetadataContent } from "../../src/plan/zip64.js";
-import type { WriteEntry } from "../../src/internal/types.js";
+import type { Unlogged, WriteEntry } from "../../src/internal/types.js";
 import type { CreateData, Finding, PlannedEntry } from "../../src/types.js";
 
-const plan: Extract<CreateData, { mode: "plan" }> = {
+// The metadata builder is logging-agnostic, so the plan it takes carries no `log`.
+const plan: Unlogged<Extract<CreateData, { mode: "plan" }>> = {
   mode: "plan",
   output: "out.zip",
   writable: true,
@@ -72,7 +73,7 @@ function fileAt(archivePath: string, mtimeNs: bigint): WriteEntry {
   };
 }
 
-function metaEntries(doc: Record<string, unknown>): Array<Record<string, unknown>> {
+function metaEntries(doc: { entries: unknown }): Array<Record<string, unknown>> {
   return doc.entries as Array<Record<string, unknown>>;
 }
 
@@ -240,7 +241,7 @@ describe("estimateMetadataSize (Zip64 manifest bound)", () => {
       timezone: "Asia/Tokyo",
     });
 
-    const planDoc: Extract<CreateData, { mode: "plan" }> = {
+    const planDoc: Unlogged<Extract<CreateData, { mode: "plan" }>> = {
       mode: "plan",
       output: "out.zip",
       writable: true,

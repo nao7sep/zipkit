@@ -11,15 +11,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../src/index.js";
-import type { ZipWriterOptions } from "../../src/write/zipWriter.js";
-import { buildZipFile, type EntryWithData } from "../helpers/writeZip.js";
+import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 const Y2020_MS = 1_577_836_800_000;
 
-const writerOptions: ZipWriterOptions = {
+const writerOptions: BuildOptions = {
   zip64: false,
-  preserveTimestamps: true,
   timeZone: "UTC",
   chunkSize: 65536,
 };
@@ -49,7 +47,7 @@ afterEach(async () => {
 
 async function writeArchive(
   entries: EntryWithData[],
-  opts?: Partial<ZipWriterOptions>,
+  opts?: Partial<BuildOptions>,
 ): Promise<string> {
   const built = await buildZipFile(entries, { ...writerOptions, ...opts });
   const archive = path.join(dir, "a.zip");
@@ -104,7 +102,7 @@ describe("dry-run validation", () => {
     const archive = await writeArchive([fileEntry("bad.txt", "payload")]);
     const buf = await readFile(archive);
     const idx = buf.indexOf(Buffer.from("payload"));
-    buf[idx] ^= 0xff;
+    buf[idx] = buf[idx]! ^ 0xff;
     await writeFile(archive, buf);
 
     const dest = path.join(dir, "out");

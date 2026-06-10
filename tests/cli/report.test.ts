@@ -7,7 +7,7 @@
  * process write streams; the SDK paths are covered elsewhere.
  */
 
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +19,9 @@ let err: string[];
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "zipkit-report-"));
+  // The always-on session log is owned by the SDK; redirect it into the test's
+  // own temp dir (each runCli builds one instance → one session file here).
+  process.env.ZIPKIT_LOG_DIR = dir;
   out = [];
   err = [];
   vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown): boolean => {
@@ -33,6 +36,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  delete process.env.ZIPKIT_LOG_DIR;
+  delete process.env.ZIPKIT_DEBUG;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -169,60 +174,71 @@ describe("extract output", () => {
   });
 });
 
-describe("--log JSONL sink (both verbs)", () => {
-  it("writes the event stream as JSONL on extract, independent of --quiet", async () => {
-    const proj = await tree();
-    const archive = path.join(dir, "logged.zip");
-    await runCli(argv("create", proj, "-o", archive, "--quiet"));
-
-    const logPath = path.join(dir, "extract.jsonl");
-    const code = await runCli(argv("extract", archive, "--dry-run", "--quiet", "--log", logPath));
-    expect(code).toBe(0);
-
-    const lines = (await readFile(logPath)).toString().trim().split("\n").filter(Boolean);
-    expect(lines.length).toBeGreaterThan(0);
-    const events = lines.map((l) => JSON.parse(l) as { stage: string; event: string });
-    // Every line is a well-formed LogEvent, and the run's terminal event is present.
-    expect(events.every((e) => typeof e.stage === "string" && typeof e.event === "string")).toBe(true);
-    expect(events.some((e) => e.event === "extract.done")).toBe(true);
-    // Extraction emits per-entry progress (one entry.verified per archive entry).
-    expect(events.some((e) => e.event === "entry.verified")).toBe(true);
-  });
-
-  it("writes scan.dir and per-entry entry.written as JSONL on create", async () => {
-    const proj = await tree();
-    const archive = path.join(dir, "logged-create.zip");
-    const logPath = path.join(dir, "create.jsonl");
-    const code = await runCli(argv("create", proj, "-o", archive, "--quiet", "--log", logPath));
-    expect(code).toBe(0);
-
-    const events = (await readFile(logPath))
-      .toString()
+describe("always-on session log", () => {
+  /** The lone `*-utc.log` the run wrote into the redirected log dir, parsed. Each
+   *  test below runs exactly one CLI invocation, so there is one session file. */
+  async function sessionEvents(): Promise<Record<string, unknown>[]> {
+    const files = (await readdir(dir)).filter((f) => f.endsWith("-utc.log"));
+    expect(files).toHaveLength(1);
+    return (await readFile(path.join(dir, files[0]!), "utf8"))
       .trim()
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as { event: string; stage: string });
-    expect(events.some((e) => e.event === "scan.dir")).toBe(true);
-    expect(events.some((e) => e.event === "entry.written")).toBe(true);
-    expect(events.some((e) => e.event === "write.done")).toBe(true);
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  it("writes a -fff session log with the time/message envelope; info present, debug gated off", async () => {
+    const proj = await tree();
+    const code = await runCli(argv("create", proj, "-o", path.join(dir, "o.zip"), "--quiet"));
+    expect(code).toBe(0);
+
+    const files = (await readdir(dir)).filter((f) => f.endsWith("-utc.log"));
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/^\d{8}-\d{6}-\d{3}-utc\.log$/); // the millisecond -fff stamp
+
+    const events = await sessionEvents();
+    expect(events.every((e) => typeof e.time === "string" && typeof e.message === "string")).toBe(true);
+    const names = events.map((e) => e.event);
+    expect(names).toContain("scan.done");
+    expect(names).toContain("write.done");
+    expect(names).not.toContain("scan.dir"); // debug, gated off by default
+    expect(names).not.toContain("entry.written");
+
+    // The result on stdout identifies the session log it created (sdk-cli §7).
+    expect(stdoutJson().log).toBe(path.join(dir, files[0]!));
   });
 
-  it("records a fault event whose stage comes from the fault's domain, not its code string", async () => {
+  it("includes per-item debug events when ZIPKIT_DEBUG=1", async () => {
+    process.env.ZIPKIT_DEBUG = "1";
+    const proj = await tree();
+    const code = await runCli(argv("create", proj, "-o", path.join(dir, "o.zip"), "--quiet"));
+    expect(code).toBe(0);
+
+    const names = (await sessionEvents()).map((e) => e.event);
+    expect(names).toContain("scan.dir");
+    expect(names).toContain("entry.written");
+  });
+
+  it("records a fault whose stage comes from the fault's domain, not its code string", async () => {
     const archive = path.join(dir, "bogus.zip");
     await writeFile(archive, "plainly not a zip archive");
-    const logPath = path.join(dir, "fault.jsonl");
 
-    const code = await runCli(argv("extract", archive, "--dry-run", "--quiet", "--log", logPath));
+    const code = await runCli(argv("extract", archive, "--dry-run", "--quiet"));
     expect(code).toBe(5); // a read runtime fault
 
-    const events = (await readFile(logPath))
-      .toString()
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as { event: string; stage: string; code?: string });
-    const fault = events.find((e) => e.event === "fault");
+    const fault = (await sessionEvents()).find((e) => e.event === "fault");
     expect(fault?.stage).toBe("extract"); // read errorType → extract stage, not a "read." prefix
     expect(fault?.code).toBe("read.not-zip");
+  });
+
+  it("writes the session log under --quiet, but emits no live progress on stderr", async () => {
+    const proj = await tree();
+    const code = await runCli(argv("create", proj, "-o", path.join(dir, "o.zip"), "--quiet"));
+    expect(code).toBe(0);
+
+    // The durable log still recorded the run...
+    expect((await sessionEvents()).some((e) => e.event === "write.done")).toBe(true);
+    // ...but --quiet kept the live event stream off stderr.
+    expect(stderrObjects().some((o) => typeof o.event === "string")).toBe(false);
   });
 });

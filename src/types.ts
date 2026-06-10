@@ -10,6 +10,19 @@
 
 export type Severity = "error" | "warning" | "info";
 
+/**
+ * Recursively optional, but treating arrays as atomic — a provided list replaces
+ * the default wholesale (see `mergePolicy`), so its elements stay complete. This
+ * is the accurate type for policy input: callers may give a nested object with
+ * only the fields they care about, and `resolvePolicy` completes the rest from
+ * the defaults.
+ */
+export type DeepPartial<T> = T extends ReadonlyArray<unknown>
+  ? T
+  : T extends object
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -135,12 +148,22 @@ export interface ArchiveSpec {
   comment?: string;
 
   // Configuration
-  policy?: Partial<ArchivePolicy>;
+  policy?: DeepPartial<ArchivePolicy>;
 }
 
 export interface ZipKitOptions {
-  policy?: Partial<ArchivePolicy>;
+  policy?: DeepPartial<ArchivePolicy>;
   concurrency?: number;
+  /**
+   * Directory for this instance's per-session log. One `ZipKit` instance is one
+   * logging session: a single `yyyymmdd-hhmmss-fff-utc.log` (JSON Lines) is
+   * opened lazily on the first verb call, every verb on the instance writes to
+   * it, and the path is returned on each result's `log`. Defaults to
+   * `process.env.ZIPKIT_LOG_DIR` when set, else `~/.zipkit/logs`. The `-fff`
+   * millisecond stamp keeps the logs of runs that start in the same second —
+   * zipkit is built to fan out — distinct.
+   */
+  logDir?: string;
   /**
    * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
    * read/inflate/deflate/write streams. A runtime/performance concern, not a
@@ -155,10 +178,12 @@ export interface ZipKitOptions {
  * per-instance, so each verb call decides where its progress goes and which
  * cancellation it answers to.
  *
- * `onProgress` is the progress hook: with no hook the SDK is silent and pure (it
- * writes to no stream), and the caller decides per call where the event stream
- * goes. The same structured `LogEvent` stream feeds this hook, the CLI's console
- * renderer, and the `--log` JSONL sink — one producer, many sinks.
+ * `onProgress` is the progress hook: a per-call destination for the live event
+ * stream, so each call decides where its progress goes. With no hook the SDK
+ * writes nothing to stdout or stderr; the durable record still goes to the
+ * instance's per-session log file (see {@link ZipKitOptions.logDir}). The same
+ * structured `LogEvent` stream feeds this hook, the CLI's stderr renderer, and
+ * that session log — one producer, many sinks.
  *
  * `signal` is the cancellation signal. Every verb — `plan`, `write`, `create`,
  * `extract` — honors it, stopping cleanly at the next boundary (a phase edge, a
@@ -216,6 +241,7 @@ export type CreateData =
   | {
       mode: "plan"; // --dry-run: planned, nothing written
       output: string; // resolved output path (the intended target)
+      log: string; // session log this run was recorded to (provenance)
       writable: boolean; // the gate
       summary: PlanSummary;
       findings: Finding[]; // SSOT
@@ -224,6 +250,7 @@ export type CreateData =
   | {
       mode: "write"; // actual create
       output: string;
+      log: string; // session log this run was recorded to (provenance)
       writable: boolean;
       written: boolean; // archive fully streamed, fsync'd, renamed?
       bytes: number | null; // final on-disk size; null if not written
@@ -387,6 +414,7 @@ export interface ExtractEntryResult {
  */
 export interface ExtractData {
   archive: string; // identity
+  log: string; // session log this run was recorded to (provenance)
   dest: string | null; // null on --dry-run
   dryRun: boolean;
   wrote: boolean; // state: whether any file was written
@@ -421,8 +449,8 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 /**
  * The typed body of a {@link LogEvent}, a discriminated union on `event`. Each
  * variant carries exactly the fields it means — there is no untyped `data` bag,
- * so a producer and every consumer (the SDK `onProgress` hook, the console and
- * JSONL renderers, the `--log` sink) agree on each event's shape by the type
+ * so a producer and every consumer (the SDK `onProgress` hook, the CLI's stderr
+ * renderer, the per-session log) agree on each event's shape by the type
  * system, not by string convention.
  */
 export type LogEventBody =
@@ -456,13 +484,24 @@ export type LogEventBody =
       skipped: number;
       reportOk: boolean;
     }
-  | { event: "fault"; code: string; message: string; cause?: string };
+  | { event: "fault"; code: string; detail: string; cause?: string };
 
-/** The common metadata every event carries; `ts` is stamped by the logger. */
+/**
+ * The common classification every event carries. `stage` is an additional field
+ * beyond the convention's fixed envelope; `level` is part of it. `time` and
+ * `message` — the rest of the envelope — are stamped by the logger, not the
+ * producer, so they are not on this body.
+ */
 export interface LogMeta {
   stage: LogStage;
   level: LogLevel;
 }
 
-/** A single structured event in the one log/progress stream. */
-export type LogEvent = { ts: string } & LogMeta & LogEventBody;
+/**
+ * A single structured event in the one log/progress stream. The logger stamps
+ * the convention envelope onto each emitted body: `time` (UTC ISO-8601 with
+ * milliseconds and `Z`) and a short, stable, human-readable `message` derived
+ * from the typed `event`. `stage` and the discriminated `event` fields ride
+ * alongside as additional fields.
+ */
+export type LogEvent = { time: string; message: string } & LogMeta & LogEventBody;

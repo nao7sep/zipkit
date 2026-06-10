@@ -11,6 +11,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EntryCompressor, ZipWriter } from "../../src/write/zipWriter.js";
+import { DEFAULT_DEFLATE_LEVEL } from "../../src/policy.js";
 import type { WriteEntryInput, ZipWriterOptions } from "../../src/write/zipWriter.js";
 
 /** One entry plus the raw (uncompressed) bytes the writer should stream. */
@@ -56,7 +57,7 @@ export async function buildZipFile(
         continue;
       }
       await writer.streamEntry(entry, async (sink) => {
-        const compressor = new EntryCompressor(entry.method, sink, options.chunkSize);
+        const compressor = new EntryCompressor(entry.method, sink, options.chunkSize, DEFAULT_DEFLATE_LEVEL);
         if (entry.raw.length > 0) await compressor.update(entry.raw);
         return compressor.finish();
       });

@@ -136,10 +136,10 @@ describe("metadata", () => {
     expect(names).toContain("_metadata.json");
 
     // The full structured record is returned regardless.
-    expect(result.metadata.tool).toBe("zipkit");
-    expect(result.metadata.timeZone).toBeTypeOf("string");
-    expect(Array.isArray(result.metadata.findings)).toBe(true);
-    const a = result.metadata.entries.find((e) => e.archivePath === "a.txt");
+    expect(result.metadata!.tool).toBe("zipkit");
+    expect(result.metadata!.timeZone).toBeTypeOf("string");
+    expect(Array.isArray(result.metadata!.findings)).toBe(true);
+    const a = result.metadata!.entries.find((e) => e.archivePath === "a.txt");
     expect(a?.sha256).toBeTypeOf("string"); // hashing on by default
     expect(a?.mtime.ns).toBeTypeOf("string"); // times always present in the return
   });
@@ -171,10 +171,10 @@ describe("metadata", () => {
 
     // The record is still returned (the run's state), with times but no SHA
     // (hashing wasn't requested), so a caller can still inspect the run.
-    expect(result.metadata.entries.find((e) => e.archivePath === "a.txt")?.mtime.ns).toBeTypeOf(
+    expect(result.metadata!.entries.find((e) => e.archivePath === "a.txt")?.mtime.ns).toBeTypeOf(
       "string",
     );
-    expect(result.metadata.entries.find((e) => e.archivePath === "a.txt")?.sha256).toBeUndefined();
+    expect(result.metadata!.entries.find((e) => e.archivePath === "a.txt")?.sha256).toBeUndefined();
   });
 
   it("records a SHA-256 that matches the file content", async () => {

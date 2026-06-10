@@ -197,8 +197,7 @@ The metadata file is **always embedded** as an entry at the archive root — a Z
 | Flag | Description |
 |---|---|
 | `--dry-run` | Compute and render the plan; write nothing. The CLI form of `plan()`. |
-| `--log <path.jsonl>` | Write the event stream as JSONL. |
-| `--quiet` | Suppress progress on stderr (stdout still carries the JSON result). |
+| `--quiet` | Suppress progress on stderr (stdout still carries the JSON result; the session log is still written). |
 | `-j, --jobs <n>` | Maximum concurrent file operations. Defaults to the available CPU count, bounded to 4–16. Peak memory is roughly `chunkSize × concurrency` (see [Performance](#performance)). |
 | `--chunk-size <size>` | Chunk size for all streamed I/O, in bytes; accepts a `k`/`m` suffix (e.g. `64k`, `1m`). Defaults to 64 KB. |
 
@@ -206,7 +205,7 @@ The metadata file is **always embedded** as an entry at the archive root — a Z
 
 **A negative verdict is a clean run, not a failure** (a non-writable plan, an extract that is not ok): the result still rides on stdout and the exit code is `1`. Only a *thrown* fault leaves stdout empty — it is rendered on stderr (a usage fault as a plain `error: …` line, any other fault as a `{ "error": { type, code, message } }` object) and the exit code is the fault's domain code.
 
-**stderr is the live progress channel** — each event as one bare JSONL line (the whole typed `LogEvent`, no prefix), suppressed by `--quiet`. Drain stdout and stderr concurrently.
+**stderr is the live progress channel** — each event as one bare JSONL line (the whole typed `LogEvent`, no prefix), suppressed by `--quiet`. Drain stdout and stderr concurrently. The same events are recorded durably to the per-session log (see [Logging](#logging)).
 
 A malformed numeric flag — `--chunk-size`, `--jobs`, or `--level` given a non-number, or a value the SDK rejects as out of range (a non-positive size, a level outside 1–9) — is a usage error (exit `2`), never silently ignored. The command line only coerces the string to a number; the SDK owns the bounds, so a library caller and the CLI reject the same values.
 
@@ -241,7 +240,6 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. |
 | `--exclude <pattern>` | | Exclude glob — matching entries are verified but not written (repeatable). Trailing slash targets directories. |
 | `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
-| `--log <path.jsonl>` | | Write the event stream as JSONL (the same stream the stderr progress and SDK `onProgress` hook see). Written regardless of `--quiet`. |
 
 - **Creation/birth time is not restored** — no portable cross-platform API sets it.
 - **Exit code** is `0` when the report's domain verdict `reportOk` holds, `1` when it does not (a clean run that simply failed validation), and `5` when reading the archive itself threw mid-run — so validation scripts cleanly.
@@ -297,7 +295,16 @@ The CLI exit codes make this a dependable automation contract:
 | `5` | a **read** runtime fault — reading or extracting the archive failed mid-run |
 | `130` | interrupted (SIGINT) |
 
-Two questions, two answers. Code `1` is a **clean run with a negative verdict** (a "no") — the verb ran fine and its typed result, with the blocking findings, is on stdout. Codes `2`/`3`/`4`/`5` are a *thrown* fault: usage (`2`) or a runtime fault coded by which side of the pipeline failed (`3`/`4`/`5`) — so a caller can tell a bad invocation from a bad source tree from a bad output path from a bad archive. On a thrown fault stdout is empty and the fault is rendered on stderr; a single classifier (`exitCodeFor`) owns the thrown-fault mapping, so the exit code and the stderr rendering can never disagree. The same fault is also emitted on the progress stream as a terminal `fault` event, so a `--log` JSONL trail records why the run stopped.
+Two questions, two answers. Code `1` is a **clean run with a negative verdict** (a "no") — the verb ran fine and its typed result, with the blocking findings, is on stdout. Codes `2`/`3`/`4`/`5` are a *thrown* fault: usage (`2`) or a runtime fault coded by which side of the pipeline failed (`3`/`4`/`5`) — so a caller can tell a bad invocation from a bad source tree from a bad output path from a bad archive. On a thrown fault stdout is empty and the fault is rendered on stderr; a single classifier (`exitCodeFor`) owns the thrown-fault mapping, so the exit code and the stderr rendering can never disagree. The same fault is also emitted on the event stream as a terminal `fault` event, so the [session log](#logging) records why the run stopped.
+
+## Logging
+
+Every run keeps a durable, machine-readable record of what it did, separate from the result on stdout and the live progress on stderr.
+
+- **One log file per session.** Each `ZipKit` instance — one per CLI invocation — opens a single JSON-Lines log at `~/.zipkit/logs/yyyymmdd-hhmmss-fff-utc.log`, created on first use, appended to for the life of the instance, and never rotated or pruned. The millisecond `-fff` stamp keeps the logs of parallel runs that start in the same second distinct, since zipkit is built to fan out. Set `ZIPKIT_LOG_DIR` to relocate the directory (the SDK also takes a `logDir` option). Each result names its own log in `result.log` (`CreateData.log`, `ExtractData.log`), so a caller never has to reconstruct the default path. A session spans the instance's lifetime, so an SDK caller that wants one self-contained log per run constructs a fresh `ZipKit` per run (as the CLI does); a long-lived or shared instance keeps appending to its single file, and verbs run concurrently on one instance interleave their lines.
+- **One object per line.** Every line is a `LogEvent`: the envelope `time` (UTC ISO-8601 with milliseconds), `level`, and a short human-readable `message`, plus the typed `stage` and discriminated `event` fields the same stream carries to the `onProgress` hook and the stderr progress. `info`/`warn`/`error` are always recorded; the per-item `debug` firehose (each scanned directory, each written or verified entry) is **off unless `ZIPKIT_DEBUG=1`**, so a user's log stays an intent-and-outcome summary — one line per command, per external boundary, and per failure — rather than a per-file dump.
+- **Secrets are redacted** before any event leaves the SDK: a value under a denied key name (`apiKey`, `authorization`, `token`, `password`, `secret`, matched case-insensitively and by exact name) is replaced with `"[redacted]"`. It is a narrow, non-destructive backstop — it never rewrites a `message` or scans free text.
+- **Logging never breaks a run.** If the log file cannot be written (a full or read-only disk), the line falls back to stderr with a one-line notice and the run continues. A logging failure is surfaced, never silently swallowed, and never fatal.
 
 ## SDK
 
@@ -340,7 +347,7 @@ The SDK is idiomatic: its methods return the per-verb result objects — `Create
 
 The committed export surface is the `ZipKit` class; the data types `ZipKitOptions`, `ZipKitCallOptions`, `ArchiveSpec`, `ArchiveInput`, `ArchivePolicy`, `CompressionPolicy`, `MetadataPolicy`, `FilterRule`, `CreateData`, `PlanSummary`, `PlannedEntry`, `Finding`, `Severity`, `Metadata`, `MetadataEntry`, `MetadataExcluded`, `ExtremeEntry`, `Transformation`, `UtcTime`, `ExtractSpec`, `ExtractData`, `ExtractEntryResult`, `LogEvent` (with `LogStage`/`LogLevel`); and the errors `ZipKitError`, `ScanError`, `PolicyError`, `WriteError`, `ReadError`, `AbortError` with the type `ZipKitErrorType`.
 
-Progress is observed in real time through an optional `onProgress` hook passed to each verb call (`ZipKitCallOptions`), which receives a `LogEvent` stream as the pipeline works. Each `LogEvent` is a discriminated union on its `event` field (`scan.done`, `entry.written`, `fault`, …) carrying typed fields per variant, plus a common `stage`/`level`/`ts`; narrow on `event.event` to read a variant's fields. The hook lives on the per-call options rather than the instance, so each call decides where its events go; with no hook the SDK is silent and writes to no stream. The same stream feeds this hook, the CLI's bare-JSONL stderr progress, and the `--log` JSONL sink — one producer, many sinks.
+Progress is observed in real time through an optional `onProgress` hook passed to each verb call (`ZipKitCallOptions`), which receives a `LogEvent` stream as the pipeline works. Each `LogEvent` carries the envelope `time`/`level`/`message` plus a discriminated `event` field (`scan.done`, `entry.written`, `fault`, …) with typed fields per variant and the `stage`; narrow on `event.event` to read a variant's fields. The hook lives on the per-call options rather than the instance, so each call decides where its events go; with no hook the SDK writes nothing to stdout or stderr (its durable [session log](#logging) is still written). The same stream feeds this hook, the CLI's bare-JSONL stderr progress, and the instance's per-session log — one producer, many sinks.
 
 ```ts
 const zip = new ZipKit();
@@ -393,10 +400,13 @@ Out of scope: repairing or re-writing existing archives; encryption; compression
 ## Development
 
 ```sh
-npm run typecheck   # tsc --noEmit
+npm run typecheck   # tsc --noEmit over src and the test files
 npm run build       # tsup → dist/
 npm test            # vitest
 ```
+
+`npm run typecheck` covers both the shipped `src/` and the test files (`tsconfig.test.json`);
+Vitest runs the tests without type-checking them, so the test config is what keeps them covered.
 
 ## License
 

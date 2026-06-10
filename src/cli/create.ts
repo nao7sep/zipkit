@@ -4,8 +4,9 @@
  * shared ordered list (any match drops the entry — the system is inclusive by
  * default, so there is no include); a trailing slash on a glob targets
  * directories; and `--dry-run` is the CLI form of calling `plan()`. The action
- * maps flags to an `ArchiveSpec` plus per-call policy, wires the log stream to
- * the console and the optional JSONL sink, and chooses `plan()` or `create()`.
+ * maps flags to an `ArchiveSpec` plus per-call policy, renders live progress to
+ * stderr (unless `--quiet`), and chooses `plan()` or `create()`. The durable
+ * per-session log is owned by the SDK.
  */
 
 import type { Command } from "commander";
@@ -49,7 +50,6 @@ interface CreateOpts {
   hash?: boolean; // commander's --no-hash sets this false (default true)
   metadataName?: string;
   dryRun?: boolean;
-  log?: string;
   quiet?: boolean;
   jobs?: number;
   chunkSize?: number;
@@ -221,7 +221,6 @@ export function registerCreate(
 
   // Diagnostics and control
   cmd.option("--dry-run", "compute and render the plan; write nothing");
-  cmd.option("--log <path.jsonl>", "write the event stream as JSONL");
   cmd.option("--quiet", "suppress console progress");
   cmd.option(
     "-j, --jobs <n>",
@@ -236,35 +235,32 @@ export function registerCreate(
 
   cmd.action(async (rawInputs: string[], opts: CreateOpts) => {
     // Construct the SDK first so an out-of-range --jobs/--chunk-size fails
-    // (a usage exit) before the --log file is opened. Format coercion already
-    // happened at the parse edge; the SDK owns the bounds.
+    // (a usage exit) in the constructor, before any verb runs or its session log
+    // opens. Format coercion already happened at the parse edge; the SDK owns the
+    // bounds.
     const zkOptions: ZipKitOptions = {};
     if (opts.jobs !== undefined) zkOptions.concurrency = opts.jobs;
     if (opts.chunkSize !== undefined) zkOptions.chunkSize = opts.chunkSize;
     const zip = new ZipKit(zkOptions);
 
-    const reporter = buildReporter(opts);
-    const callOptions: ZipKitCallOptions = { onProgress: reporter.sink, signal };
+    const callOptions: ZipKitCallOptions = { onProgress: buildReporter(opts), signal };
     const spec = buildSpec(rawInputs, opts, filters, storeAdds);
 
-    try {
-      // The SDK's plan() → write() split surfaces the validator verdict: a
-      // dry run or a non-writable plan emits the plan result to stdout (with its
-      // blocking findings) and exits 1 — a clean run whose answer is "no", not a
-      // fault. Operational faults from plan() or write() are not caught here;
-      // they propagate to the run layer, which renders them on stderr and maps
-      // the exit code, leaving stdout empty.
-      const plan = await zip.plan(spec, callOptions);
+    // The SDK's plan() → write() split surfaces the validator verdict: a dry run
+    // or a non-writable plan emits the plan result to stdout (with its blocking
+    // findings) and exits 1 — a clean run whose answer is "no", not a fault.
+    // Operational faults from plan() or write() are not caught here; they
+    // propagate to the run layer, which renders them on stderr and maps the exit
+    // code, leaving stdout empty. Both calls run on the one instance, so they
+    // share its single session log (which the SDK appends to and owns).
+    const plan = await zip.plan(spec, callOptions);
 
-      if (opts.dryRun || !plan.writable) {
-        emit(plan);
-        if (!plan.writable) setExitCode(1);
-        return;
-      }
-
-      emit(await zip.write(plan, callOptions));
-    } finally {
-      await reporter.finalize();
+    if (opts.dryRun || !plan.writable) {
+      emit(plan);
+      if (!plan.writable) setExitCode(1);
+      return;
     }
+
+    emit(await zip.write(plan, callOptions));
   });
 }

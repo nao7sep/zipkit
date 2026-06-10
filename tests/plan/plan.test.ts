@@ -15,11 +15,11 @@ import { describe, expect, it } from "vitest";
 import { readInternals } from "../../src/internal/carrier.js";
 import { planArchive } from "../../src/plan/plan.js";
 import { resolvePolicy } from "../../src/policy.js";
-import type { ArchivePolicy, Finding } from "../../src/types.js";
+import type { ArchivePolicy, DeepPartial, Finding } from "../../src/types.js";
 import { scanEntry, scanResult } from "../helpers/synthetic.js";
 import type { ScanEntry } from "../../src/internal/types.js";
 
-function plan(entries: ScanEntry[], policy: Partial<ArchivePolicy> = {}, over = {}) {
+function plan(entries: ScanEntry[], policy: DeepPartial<ArchivePolicy> = {}, over = {}) {
   return planArchive(scanResult(entries, over), resolvePolicy(undefined, policy));
 }
 

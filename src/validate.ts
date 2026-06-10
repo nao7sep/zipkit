@@ -13,7 +13,7 @@ import { resolveSegments, toForwardSlash } from "./internal/path.js";
 import { formatZodError } from "./internal/zodError.js";
 import { fullFixSegment } from "./plan/nameFix.js";
 import { isValidTimeZone } from "./internal/timeZone.js";
-import type { ArchivePolicy, ArchiveSpec, ExtractSpec } from "./types.js";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExtractSpec } from "./types.js";
 
 /**
  * A single archive-path segment that the name fixer would leave untouched — the
@@ -218,10 +218,10 @@ export function validateConcurrency(concurrency: number): number {
 }
 
 /** Validate an instance-level policy, applying filter-rule defaults. */
-export function validatePolicy(policy: Partial<ArchivePolicy>): Partial<ArchivePolicy> {
+export function validatePolicy(policy: DeepPartial<ArchivePolicy>): DeepPartial<ArchivePolicy> {
   const result = partialPolicySchema.safeParse(policy);
   if (!result.success) {
     throw new PolicyError("policy.invalid", `invalid policy: ${formatZodError(result.error)}`);
   }
-  return result.data as Partial<ArchivePolicy>;
+  return result.data as DeepPartial<ArchivePolicy>;
 }

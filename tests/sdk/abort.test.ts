@@ -22,6 +22,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  delete process.env.ZIPKIT_DEBUG;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -87,6 +88,10 @@ describe("abort propagation", () => {
     // event, so the loop has no further entry boundary to trip. This exercises
     // the streaming→finalize phase edge — past it the archive would otherwise be
     // finalized and renamed into place despite the cancellation.
+    //
+    // entry.written is a debug event; enable the developer debug channel so it
+    // reaches the onProgress hook the abort trigger watches.
+    process.env.ZIPKIT_DEBUG = "1";
     const file = path.join(dir, "only.txt");
     await writeFile(file, "just one file");
     const output = path.join(dir, "last-entry.zip");
@@ -154,8 +159,6 @@ describe("abort boundaries (unit)", () => {
     // pinned at the writer seam with an already-aborted signal.
     const output = path.join(dir, "finalize-abort.zip");
     const writer = new ZipWriter(output, {
-      zip64: false,
-      preserveTimestamps: false,
       timeZone: "UTC",
       chunkSize: 65536,
     });
