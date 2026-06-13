@@ -141,7 +141,9 @@ async function handleSymlink(
   try {
     target = await readlink(abs);
   } catch {
-    // Unreadable link target; record the entry with an empty target.
+    // Unreadable link target; record the entry with an empty target. Trace it at
+    // debug — a recovered-from anomaly during the walk, not a fault worth a sink.
+    ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.symlink-unreadable", path: abs });
   }
 
   if (ctx.symlinks !== "follow") {

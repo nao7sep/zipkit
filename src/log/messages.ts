@@ -25,6 +25,8 @@ export function messageFor(body: LogEventBody): string {
       return `scanning ${body.inputs} input${s(body.inputs)}`;
     case "scan.dir":
       return `scanning ${body.path}`;
+    case "scan.symlink-unreadable":
+      return `unreadable symlink target: ${body.path}`;
     case "scan.done":
       return `scan complete: ${entries(body.entries)}, ${body.prunedDirs} pruned dir${s(body.prunedDirs)}`;
     case "plan.done":

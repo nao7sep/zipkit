@@ -456,6 +456,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogEventBody =
   | { event: "scan.start"; inputs: number }
   | { event: "scan.dir"; path: string }
+  | { event: "scan.symlink-unreadable"; path: string }
   | { event: "scan.done"; entries: number; prunedDirs: number }
   | {
       event: "plan.done";
