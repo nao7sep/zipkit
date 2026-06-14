@@ -9,6 +9,7 @@ import { messageFor } from "../../src/log/messages.js";
 import type { LogEventBody } from "../../src/types.js";
 
 const samples: LogEventBody[] = [
+  { event: "session.start", version: "0.1.0", concurrency: 8, chunkSize: 65536 },
   { event: "scan.start", inputs: 2 },
   { event: "scan.dir", path: "a/b" },
   { event: "scan.done", entries: 3, prunedDirs: 1 },
@@ -56,5 +57,12 @@ describe("messageFor", () => {
   it("distinguishes extract from verify by the write flag", () => {
     expect(messageFor({ event: "extract.start", entries: 1, write: true })).toContain("extracting");
     expect(messageFor({ event: "extract.start", entries: 1, write: false })).toContain("verifying");
+  });
+
+  it("renders the startup line with the version and runtime config", () => {
+    const m = messageFor({ event: "session.start", version: "0.1.0", concurrency: 8, chunkSize: 65536 });
+    expect(m).toContain("0.1.0");
+    expect(m).toContain("8");
+    expect(m).toContain("65536");
   });
 });

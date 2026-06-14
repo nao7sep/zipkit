@@ -51,14 +51,61 @@ interface WriteOptions {
   symlinks: "restore" | "skip";
 }
 
-/** Join an entry path under `dest`, or null when it would escape the directory. */
-function safeJoin(dest: string, archivePath: string): string | null {
+/**
+ * Resolve an entry path under `dest`, or null when it would escape. Returns the
+ * cleaned path segments alongside the joined target so the caller can materialize
+ * the parent chain as real directories, never following a symlink.
+ */
+function safeJoin(dest: string, archivePath: string): { target: string; segments: string[] } | null {
   const { segments, escaped } = resolveSegments(toForwardSlash(archivePath));
   if (escaped || segments.length === 0) return null;
   const target = path.join(dest, ...segments);
-  const rel = path.relative(dest, target);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  return target;
+  if (escapesDest(dest, target)) return null;
+  return { target, segments };
+}
+
+/** Whether `candidate` falls outside `dest` — a sibling, an ancestor, or an
+ *  absolute path elsewhere. Used for entry paths and for a restored symlink's
+ *  resolved target. The component check (`..` then a separator) avoids flagging a
+ *  legitimate name that merely starts with two dots (`..config`). */
+function escapesDest(dest: string, candidate: string): boolean {
+  const rel = path.relative(dest, candidate);
+  return rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
+}
+
+/** The outcome of materializing one verified entry on disk. `unsafe` means a
+ *  symlink in the entry's path — or an escaping link target — would let it land
+ *  outside `dest`; the entry is then written nowhere. */
+type CommitOutcome = "written" | "exists" | "unsafe";
+
+/**
+ * Create `dest/<segments>` as real directories, one component at a time, never
+ * following or creating *through* a symlink. Returns false when an existing
+ * component is a symlink — the symlink-indirected zip-slip case — so the caller
+ * writes nothing through it. The component-wise (non-recursive) `mkdir` is what
+ * makes this safe: a recursive `mkdir` resolves a planted symlink in the chain
+ * and would write outside `dest`. A real file occupying a directory slot is a
+ * genuine conflict and is thrown, surfacing as a write fault as before.
+ */
+async function ensureRealDirs(dest: string, segments: string[]): Promise<boolean> {
+  let current = dest;
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    try {
+      await mkdir(current);
+      continue; // freshly created as a real directory
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    // It already existed (or a sibling entry just created it): it must be a real
+    // directory, not a symlink an earlier entry or the pre-existing tree planted.
+    const st = await lstat(current);
+    if (st.isSymbolicLink()) return false;
+    if (!st.isDirectory()) {
+      throw new Error(`cannot create directory ${current}: a non-directory already exists`);
+    }
+  }
+  return true;
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -150,17 +197,28 @@ async function verifyEntry(
   return result;
 }
 
-/** Move a verified temp file into its final place, restoring times. */
+/** Create a directory entry: its whole chain, as real directories. */
+async function commitDir(dest: string, segments: string[]): Promise<CommitOutcome> {
+  return (await ensureRealDirs(dest, segments)) ? "written" : "unsafe";
+}
+
+/** Move a verified temp file into its final place, restoring times. The parent
+ *  chain is created as real directories first; a symlinked ancestor is `unsafe`. */
 async function commitFile(
+  dest: string,
+  parentSegments: string[],
   entry: ReadEntry,
   tempPath: string,
   target: string,
   options: WriteOptions,
-): Promise<boolean> {
-  await mkdir(path.dirname(target), { recursive: true });
+): Promise<CommitOutcome> {
+  if (!(await ensureRealDirs(dest, parentSegments))) {
+    await rm(tempPath, { force: true });
+    return "unsafe";
+  }
   if (!options.overwrite && (await pathExists(target))) {
     await rm(tempPath, { force: true });
-    return false;
+    return "exists";
   }
   await rename(tempPath, target);
   if (options.restore) {
@@ -172,7 +230,7 @@ async function commitFile(
       /* times are advisory; the content is what matters */
     }
   }
-  return true;
+  return "written";
 }
 
 export async function extractArchive(
@@ -295,6 +353,7 @@ export async function extractArchive(
       // streams (CRC and SHA are verified) but to a null sink.
       let skip: ExtractEntryResult["skipped"];
       let target: string | null = null;
+      let segments: string[] = [];
       if (!write) {
         skip = "dry-run";
       } else if (matcher.match(entry.archivePath, entry.type === "dir")) {
@@ -307,7 +366,8 @@ export async function extractArchive(
         } else if (entry.type === "symlink" && writeOptions.symlinks === "skip") {
           skip = "symlink-skip";
         } else {
-          target = joined;
+          target = joined.target;
+          segments = joined.segments;
         }
       }
 
@@ -337,6 +397,7 @@ export async function extractArchive(
         if (skip !== "dry-run") skip = "crc-fail";
         if (verified.tempPath) await rm(verified.tempPath, { force: true });
       } else if (target !== null) {
+        let outcome: CommitOutcome;
         try {
           // The entry is verified but not yet published. Honor a cancellation
           // that arrived since its last streamed chunk so no file lands after
@@ -344,14 +405,24 @@ export async function extractArchive(
           // entry may still be streaming.
           throwIfAborted(signal);
           if (entry.type === "dir") {
-            await mkdir(target, { recursive: true });
-            didWrite = true;
+            outcome = await commitDir(dest as string, segments);
           } else if (entry.type === "symlink") {
-            didWrite = await commitSymlink(target, verified.linkTarget ?? "", writeOptions);
-            if (!didWrite) skip = "exists";
+            outcome = await commitSymlink(
+              dest as string,
+              segments.slice(0, -1),
+              target,
+              verified.linkTarget ?? "",
+              writeOptions,
+            );
           } else {
-            didWrite = await commitFile(entry, verified.tempPath as string, target, writeOptions);
-            if (!didWrite) skip = "exists";
+            outcome = await commitFile(
+              dest as string,
+              segments.slice(0, -1),
+              entry,
+              verified.tempPath as string,
+              target,
+              writeOptions,
+            );
           }
         } catch (err) {
           if (verified.tempPath) await rm(verified.tempPath, { force: true });
@@ -362,7 +433,18 @@ export async function extractArchive(
             cause: err,
           });
         }
-        if (didWrite) outputPath = target;
+        if (outcome === "written") {
+          didWrite = true;
+          outputPath = target;
+        } else if (outcome === "exists") {
+          skip = "exists";
+        } else {
+          // A symlink in the path, or a symlink whose target escapes dest, would
+          // land the entry outside the destination: treated exactly like a
+          // lexical path escape (an unsafe skip, honoring onUnsafe: abort).
+          skip = "unsafe";
+          if (onUnsafe === "abort") abort.entry ??= entry;
+        }
       }
 
       const result: ExtractEntryResult = {
@@ -418,7 +500,7 @@ export async function extractArchive(
           finding(
             "extract.unsafe-path",
             r.archivePath,
-            "entry path escapes the destination directory",
+            "entry would resolve outside the destination directory (path traversal or unsafe symlink)",
             { severity: "error" },
           ),
         );
@@ -489,17 +571,24 @@ export async function extractArchive(
   }
 }
 
-/** Restore a symlink, returning false when an existing target was preserved. */
+/** Restore a symlink. A link whose target resolves outside `dest`, or one whose
+ *  parent chain crosses a symlink, is `unsafe` and never created — restoring it
+ *  would leave an escape hatch a later entry (or the user) could write through.
+ *  `exists` means an existing target was preserved. */
 async function commitSymlink(
+  dest: string,
+  parentSegments: string[],
   target: string,
   linkTarget: string,
   options: WriteOptions,
-): Promise<boolean> {
-  await mkdir(path.dirname(target), { recursive: true });
-  if (!options.overwrite && (await pathExists(target))) return false;
+): Promise<CommitOutcome> {
+  const resolved = path.resolve(path.dirname(target), linkTarget);
+  if (escapesDest(dest, resolved)) return "unsafe";
+  if (!(await ensureRealDirs(dest, parentSegments))) return "unsafe";
+  if (!options.overwrite && (await pathExists(target))) return "exists";
   if (options.overwrite) await rm(target, { force: true });
   await symlink(linkTarget, target);
-  return true; // link times are not restored: no portable lutimes guarantee
+  return "written"; // link times are not restored: no portable lutimes guarantee
 }
 
 let tagCounter = 0;

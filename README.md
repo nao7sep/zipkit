@@ -62,7 +62,7 @@ The embedded metadata (on by default) records a SHA-256 per file. The dry-run `-
 zipkit extract out.zip ./restored              # verifies CRC as it writes; restores times
 zipkit extract out.zip ./restored --overwrite  # replace existing files
 ```
-Entries that fail CRC are reported and never written; paths that escape the destination (zip-slip) are skipped.
+Entries that fail CRC are reported and never written; anything that would land outside the destination is skipped (zip-slip safe) — whether it escapes by `..`/an absolute path, by a restored symlink whose target points outside the destination, or by an entry written *through* a symlinked directory. Extraction never follows a symlink it restored.
 
 **Validate a third-party archive.**
 ```sh
@@ -236,11 +236,12 @@ zipkit extract archive.zip ./out --exclude _metadata.json
 | `--metadata-name <name>` | `_metadata.json` | Manifest entry name to look for inside the archive. |
 | `--no-timestamps` | (restore on) | Do not restore modification/access times. By default times are restored from the absolute UTC extras when present, falling back to the DOS field interpreted in `--timezone`. |
 | `--timezone <iana>` | host zone | Zone used to read the DOS field when an entry carries no UTC time extra. |
-| `--on-unsafe <skip\|abort>` | `skip` | Handling of an entry whose path escapes the destination (zip-slip): skip it with a finding, or abort the run. |
-| `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. |
+| `--on-unsafe <skip\|abort>` | `skip` | Handling of an entry that would resolve outside the destination — a `..`/absolute path, a symlink whose target escapes, or a write through a symlinked directory: skip it with a finding, or abort the run. |
+| `--symlinks <restore\|skip>` | `restore` | Whether to recreate symlink entries. A restored link whose target points outside the destination is refused as unsafe (see exit code `1` / the `extract.unsafe-path` finding), so restoring links never opens an escape. |
 | `--exclude <pattern>` | | Exclude glob — matching entries are verified but not written (repeatable). Trailing slash targets directories. |
 | `--exclude-regex <pattern>` | | Exclude regex — matching entries are verified but not written (repeatable). |
 
+- **Nothing is written outside the destination.** Entry paths are contained, a restored symlink may not point outside the destination, and extraction never writes *through* a symlinked directory (it materializes parents as real directories, never following a planted link). An entry that would escape by any of these routes is skipped as `unsafe` with an `extract.unsafe-path` finding, or aborts the run under `--on-unsafe abort`.
 - **Creation/birth time is not restored** — no portable cross-platform API sets it.
 - **Exit code** is `0` when the report's domain verdict `reportOk` holds, `1` when it does not (a clean run that simply failed validation), and `5` when reading the archive itself threw mid-run — so validation scripts cleanly.
 - **No automatic self-validation** — zipkit does not validate its own output after `create` (a tested compressor is trusted); `extract --dry-run` is there for when you have a reason to check an archive.
@@ -303,6 +304,7 @@ Every run keeps a durable, machine-readable record of what it did, separate from
 
 - **One log file per session.** Each `ZipKit` instance — one per CLI invocation — opens a single JSON-Lines log at `~/.zipkit/logs/yyyymmdd-hhmmss-fff-utc.log`, created on first use, appended to for the life of the instance, and never rotated or pruned. The millisecond `-fff` stamp keeps the logs of parallel runs that start in the same second distinct, since zipkit is built to fan out. Set `ZIPKIT_LOG_DIR` to relocate the directory (the SDK also takes a `logDir` option). Each result names its own log in `result.log` (`CreateData.log`, `ExtractData.log`), so a caller never has to reconstruct the default path. A session spans the instance's lifetime, so an SDK caller that wants one self-contained log per run constructs a fresh `ZipKit` per run (as the CLI does); a long-lived or shared instance keeps appending to its single file, and verbs run concurrently on one instance interleave their lines.
 - **One object per line.** Every line is a `LogEvent`: the envelope `time` (UTC ISO-8601 with milliseconds), `level`, and a short human-readable `message`, plus the typed `stage` and discriminated `event` fields the same stream carries to the `onProgress` hook and the stderr progress. `info`/`warn`/`error` are always recorded; the per-item `debug` firehose (each scanned directory, each written or verified entry) is **off unless `ZIPKIT_DEBUG=1`**, so a user's log stays an intent-and-outcome summary — one line per command, per external boundary, and per failure — rather than a per-file dump.
+- **Each session opens with a startup line.** The first event of every session is `session.start`, recording the tool version and the effective runtime configuration (concurrency and chunk size), so a log file is always tied to a version and the knobs it ran with. It is written once per `ZipKit` instance, ahead of the first verb's events.
 - **Secrets are redacted** before any event leaves the SDK: a value under a denied key name (`apiKey`, `authorization`, `token`, `password`, `secret`, matched case-insensitively and by exact name) is replaced with `"[redacted]"`. It is a narrow, non-destructive backstop — it never rewrites a `message` or scans free text.
 - **Logging never breaks a run.** If the log file cannot be written (a full or read-only disk), the line falls back to stderr with a one-line notice and the run continues. A logging failure is surfaced, never silently swallowed, and never fatal.
 

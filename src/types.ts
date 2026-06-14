@@ -440,8 +440,9 @@ export interface ExtractData {
 // Events
 // ---------------------------------------------------------------------------
 
-/** The phase a {@link LogEvent} belongs to. */
-export type LogStage = "scan" | "plan" | "write" | "extract";
+/** The phase a {@link LogEvent} belongs to. `session` carries the once-per-session
+ *  startup line; the rest are the verb pipeline phases. */
+export type LogStage = "session" | "scan" | "plan" | "write" | "extract";
 
 /** The severity of a {@link LogEvent}. */
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -454,6 +455,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
  * system, not by string convention.
  */
 export type LogEventBody =
+  | { event: "session.start"; version: string; concurrency: number; chunkSize: number }
   | { event: "scan.start"; inputs: number }
   | { event: "scan.dir"; path: string }
   | { event: "scan.symlink-unreadable"; path: string }

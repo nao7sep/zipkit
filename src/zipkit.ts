@@ -48,6 +48,7 @@ import {
   validateSpec,
 } from "./validate.js";
 import { writeArchive } from "./write/write.js";
+import { VERSION } from "./version.js";
 import type { Unlogged } from "./internal/types.js";
 import type {
   ArchivePolicy,
@@ -100,6 +101,8 @@ export class ZipKit {
   /** The session log, opened lazily on the first verb call and reused so its
    *  directory is created once and its degrade state is shared across verbs. */
   #session: SessionLog | undefined;
+  /** Whether the once-per-session startup line has been emitted yet. */
+  #startupLogged = false;
 
   constructor(options: ZipKitOptions = {}) {
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
@@ -189,6 +192,20 @@ export class ZipKit {
     const sinks: LogSink[] = [this.#sessionLog().sink];
     if (options.onProgress) sinks.push(options.onProgress);
     const logger = createLogger(sinks);
+    // Startup line, once per session: the tool version and the effective runtime
+    // configuration, so a session log is always tied to a version and the knobs
+    // it ran with (the logging convention's startup-coverage rule).
+    if (!this.#startupLogged) {
+      this.#startupLogged = true;
+      logger.emit({
+        stage: "session",
+        level: "info",
+        event: "session.start",
+        version: VERSION,
+        concurrency: this.#concurrency,
+        chunkSize: this.#chunkSize,
+      });
+    }
     const result = (await fn(logger)) as U & { log: string };
     result.log = this.#sessionPath;
     return result;

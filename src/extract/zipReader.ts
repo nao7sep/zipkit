@@ -83,10 +83,19 @@ export function findExtra(extra: Buffer, id: number): Buffer | null {
   return null;
 }
 
-/** Find the EOCD offset within a buffer that holds the archive's tail. */
+/**
+ * Find the EOCD offset within a buffer that holds the archive's tail. A match
+ * must also have a comment-length field that accounts for exactly the bytes after
+ * the 22-byte record — the tail ends at EOF, so that count is `tail.length - i -
+ * EOCD_MIN`. Without this check a comment that happens to contain the 4-byte EOCD
+ * signature would be picked as a false EOCD (the scan runs end-to-start), and an
+ * otherwise-valid archive would be misread as malformed.
+ */
 function findEocdInTail(tail: Buffer): number {
   for (let i = tail.length - EOCD_MIN; i >= 0; i--) {
-    if (tail.readUInt32LE(i) === EOCD_SIG) return i;
+    if (tail.readUInt32LE(i) === EOCD_SIG && tail.readUInt16LE(i + 20) === tail.length - i - EOCD_MIN) {
+      return i;
+    }
   }
   throw new ReadError("read.not-zip", "end-of-central-directory record not found");
 }

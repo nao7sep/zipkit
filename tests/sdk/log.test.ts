@@ -53,6 +53,24 @@ describe("SDK session log", () => {
     expect(plan.log).toBe(result.log); // one instance, one session
   });
 
+  it("opens the session with one startup line carrying the version and runtime config", async () => {
+    const zip = new ZipKit({ logDir, concurrency: 8, chunkSize: 65536 });
+    await zip.create({ inputs: [proj], output: path.join(root, "o1.zip") });
+    await zip.create({ inputs: [proj], output: path.join(root, "o2.zip"), overwrite: true });
+
+    const lines = await sessionLines();
+    const startups = lines.filter((l) => l.event === "session.start");
+    expect(startups).toHaveLength(1); // once per session, not once per verb
+    expect(lines[0]?.event).toBe("session.start"); // and it leads the log
+    expect(startups[0]).toMatchObject({
+      stage: "session",
+      level: "info",
+      version: "0.1.0",
+      concurrency: 8,
+      chunkSize: 65536,
+    });
+  });
+
   it("logs info events with the time/message envelope and gates debug off by default", async () => {
     const zip = new ZipKit({ logDir });
     await zip.create({ inputs: [proj], output: path.join(root, "o.zip") });

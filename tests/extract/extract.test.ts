@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -34,6 +34,22 @@ function fileEntry(name: string, content: string): EntryWithData {
     atimeNs: Y2020_NS,
     birthtimeNs: Y2020_NS,
     mode: 0o644,
+  };
+}
+
+/** A symlink entry whose stored data is the (attacker-chosen) link target. */
+function symlinkEntry(name: string, linkTarget: string): EntryWithData {
+  const data = Buffer.from(linkTarget, "utf8");
+  return {
+    name,
+    type: "symlink",
+    method: "store",
+    raw: data,
+    uncompressedSize: data.length,
+    mtimeNs: Y2020_NS,
+    atimeNs: Y2020_NS,
+    birthtimeNs: Y2020_NS,
+    mode: 0o120777,
   };
 }
 
@@ -185,6 +201,67 @@ describe("path safety and exclusion", () => {
     ).rejects.toThrow(/escapes/i);
   });
 
+  it("never writes through a symlink whose target escapes the destination (symlink zip-slip)", async () => {
+    // The classic symlink-indirected zip-slip: a symlink entry pointing OUTSIDE
+    // the destination, then a file written "through" it. concurrency:1 forces the
+    // worst case — the symlink entry is committed first, before the file.
+    const outside = path.join(dir, "outside");
+    await mkdir(outside, { recursive: true });
+    const archive = await writeArchive([
+      symlinkEntry("link", outside), // absolute target outside dest
+      fileEntry("link/pwned.txt", "PWNED"),
+    ]);
+    const dest = path.join(dir, "out");
+
+    const report = await new ZipKit({ concurrency: 1 }).extract({ archive, dest });
+
+    // Nothing landed outside the destination.
+    await expect(stat(path.join(outside, "pwned.txt"))).rejects.toThrow();
+    // The escaping symlink was refused, not materialized: `link` is a real
+    // directory (created by the file's parent chain), never the escaping symlink.
+    expect(report.entries.find((e) => e.archivePath === "link")?.skipped).toBe("unsafe");
+    const linkStat = await lstat(path.join(dest, "link"));
+    expect(linkStat.isSymbolicLink()).toBe(false);
+    expect(linkStat.isDirectory()).toBe(true);
+    // ...and the file was contained inside the destination instead of escaping.
+    expect((await readFile(path.join(dest, "link", "pwned.txt"))).toString()).toBe("PWNED");
+    expect(report.reportOk).toBe(false);
+  });
+
+  it("refuses to write through a symlinked directory even when the link stays inside dest", async () => {
+    // The link target is in-tree (no escape by itself), but writing an entry
+    // *through* a symlinked directory is still refused — extraction never follows
+    // a symlink it restored. concurrency:1 puts the symlink first.
+    const archive = await writeArchive([
+      symlinkEntry("ln", "real"), // relative, resolves inside dest
+      fileEntry("ln/secret.txt", "x"),
+    ]);
+    const dest = path.join(dir, "out");
+
+    const report = await new ZipKit({ concurrency: 1 }).extract({ archive, dest });
+
+    expect((await lstat(path.join(dest, "ln"))).isSymbolicLink()).toBe(true); // the link was restored
+    expect(report.entries.find((e) => e.archivePath === "ln/secret.txt")?.skipped).toBe("unsafe");
+    await expect(stat(path.join(dest, "real", "secret.txt"))).rejects.toThrow(); // not written through it
+    expect(report.reportOk).toBe(false);
+  });
+
+  it("aborts on a symlink-traversal entry when onUnsafe is abort", async () => {
+    const outside = path.join(dir, "outside2");
+    await mkdir(outside, { recursive: true });
+    const archive = await writeArchive([
+      symlinkEntry("link", outside),
+      fileEntry("link/pwned.txt", "x"),
+    ]);
+    await expect(
+      new ZipKit({ concurrency: 1 }).extract({
+        archive,
+        dest: path.join(dir, "out"),
+        onUnsafe: "abort",
+      }),
+    ).rejects.toThrow(/escapes/i);
+  });
+
   it("leaves no temp stragglers when a write error aborts the pool mid-stream", async () => {
     // A plain file at dest/blocked makes the directory mkdir for "blocked/x.txt"
     // fail, throwing mid-pool while the large entries are still streaming. The
@@ -286,6 +363,29 @@ describe("symlinks and zip64", () => {
     const report = await new ZipKit().extract({ archive, dest });
     expect(report.reportOk).toBe(true);
     expect((await readFile(path.join(dest, "z.txt"))).toString()).toBe("zip64 content");
+  });
+});
+
+describe("EOCD-locator robustness", () => {
+  it("reads an archive whose comment embeds the EOCD signature", async () => {
+    // The EOCD is found by scanning the archive tail for its 4-byte signature; a
+    // comment that embeds those same bytes must not be mistaken for the real
+    // record. The comment-length validation in the locator is what prevents it.
+    const src = path.join(dir, "csrc");
+    await mkdir(src, { recursive: true });
+    await writeFile(path.join(src, "a.txt"), "hello");
+    const archive = path.join(dir, "commented.zip");
+    // The 4-byte EOCD signature (PK\x05\x06), built from char codes so the
+    // control bytes are explicit in the source rather than invisible, then
+    // padded so the embedded copy sits far enough from EOF to be scanned as a
+    // candidate ahead of the real record.
+    const eocdSig = String.fromCharCode(0x50, 0x4b, 0x05, 0x06);
+    const comment = `${eocdSig}${"X".repeat(40)}`;
+    await new ZipKit().create({ inputs: [src], output: archive, overwrite: true, comment });
+
+    const report = await new ZipKit().extract({ archive, dryRun: true });
+    expect(report.reportOk).toBe(true);
+    expect(report.entries.find((e) => e.archivePath === "a.txt")?.crc).toBe("ok");
   });
 });
 
