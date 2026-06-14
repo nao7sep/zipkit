@@ -7,12 +7,23 @@
  */
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { ArchiveSpec, LogEvent, PlanResult, WriteResult, ZipKitGuiApi } from "../shared/api.js";
+import type {
+  ArchiveAndTrashResult,
+  ArchiveSpec,
+  LogEvent,
+  PlanResult,
+  VerifyResult,
+  WriteResult,
+  ZipKitGuiApi,
+} from "../shared/api.js";
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
   plan: (spec: ArchiveSpec): Promise<PlanResult> => ipcRenderer.invoke("zipkit:plan", spec),
   write: (): Promise<WriteResult> => ipcRenderer.invoke("zipkit:write"),
+  verify: (archive: string, checkMetadata: boolean): Promise<VerifyResult> =>
+    ipcRenderer.invoke("zipkit:verify", archive, checkMetadata),
+  archiveAndTrash: (): Promise<ArchiveAndTrashResult> => ipcRenderer.invoke("zipkit:archiveAndTrash"),
   cancel: (): Promise<void> => ipcRenderer.invoke("zipkit:cancel"),
   onEvent: (callback: (event: LogEvent) => void): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, event: LogEvent): void => callback(event);

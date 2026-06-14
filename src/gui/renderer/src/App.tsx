@@ -1,29 +1,40 @@
 /**
- * Phase 2 renderer: the single-job "Save archive" core. Pick inputs, adjust
- * options (the view re-plans live), inspect the verdict + findings + what's
- * dropped, then Save. Everything shown is a field the SDK returned — the verdict
- * is `plan.writable`, the counts are `plan.summary`, the dropped list is the
- * excluded `plan.entries`, the live log is the SDK's event stream. The view
- * computes nothing about archiving; it sequences `plan`/`write` and renders.
+ * The single-job screen. Pick inputs, adjust options (re-plans live), inspect the
+ * verdict + findings + what's dropped, then either Save, or "Archive & move
+ * originals to Trash" (a gated, all-or-nothing write -> verify -> trash, behind a
+ * confirm dialog), or Verify a written archive on demand. Everything shown is a
+ * field the SDK returned; the view sequences verbs and renders, it computes no
+ * archive logic.
  */
 
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Finding, GuiError, LogEvent, PlanData, WriteData } from "../../shared/api";
+import type {
+  ArchiveAndTrashResult,
+  ExtractData,
+  Finding,
+  GuiError,
+  LogEvent,
+  PlanData,
+  WriteData,
+} from "../../shared/api";
 import { buildSpec, DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
+import { useConfirm } from "./components/DialogHost";
 
 type Status = "idle" | "planning" | "writing";
 
 export function App() {
+  const confirm = useConfirm();
   const [inputs, setInputs] = useState<string[]>([]);
   const [options, setOptions] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [error, setError] = useState<GuiError | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<WriteData | null>(null);
+  const [verify, setVerify] = useState<ExtractData | null>(null);
+  const [trash, setTrash] = useState<ArchiveAndTrashResult | null>(null);
   const [events, setEvents] = useState<LogEvent[]>([]);
 
-  // One subscription to the live SDK event stream for the app's lifetime.
   useEffect(() => window.zipkit.onEvent((e) => setEvents((prev) => [...prev, e])), []);
 
   // Live, debounced re-plan whenever the inputs or options change.
@@ -36,8 +47,7 @@ export function App() {
     const handle = setTimeout(() => {
       void (async () => {
         setStatus("planning");
-        setEvents([]);
-        setResult(null);
+        resetOutputs();
         const res = await window.zipkit.plan(buildSpec(inputs, options));
         setStatus("idle");
         if (res.ok) {
@@ -52,6 +62,13 @@ export function App() {
     return () => clearTimeout(handle);
   }, [inputs, options]);
 
+  function resetOutputs() {
+    setEvents([]);
+    setResult(null);
+    setVerify(null);
+    setTrash(null);
+  }
+
   async function pickInputs() {
     const chosen = await window.zipkit.chooseInputs();
     if (chosen.length > 0) setInputs(chosen);
@@ -59,12 +76,33 @@ export function App() {
 
   async function save() {
     setStatus("writing");
-    setEvents([]);
-    setResult(null);
+    resetOutputs();
     const res = await window.zipkit.write();
     setStatus("idle");
     if (res.ok) setResult(res.data);
     else setError(res.error);
+  }
+
+  async function runVerify(archive: string, checkMetadata: boolean) {
+    const res = await window.zipkit.verify(archive, checkMetadata);
+    if (res.ok) setVerify(res.data);
+    else setError(res.error);
+  }
+
+  async function archiveAndTrash() {
+    const ok = await confirm({
+      title: "Move originals to Trash?",
+      message: `After the archive is written and verified, the ${inputs.length} selected item(s) will be moved to the Trash. They are kept if writing or verification fails.`,
+      confirmLabel: "Move to Trash",
+      danger: true,
+    });
+    if (!ok) return;
+    setStatus("writing");
+    resetOutputs();
+    const res = await window.zipkit.archiveAndTrash();
+    setStatus("idle");
+    setTrash(res);
+    if (res.ok) setInputs([]); // originals are gone; reset for the next job
   }
 
   const busy = status !== "idle";
@@ -78,7 +116,9 @@ export function App() {
           Choose folders or files…
         </button>
         {busy && <button onClick={() => void window.zipkit.cancel()}>Cancel</button>}
-        <span style={{ opacity: 0.7 }}>{status === "planning" ? "Planning…" : status === "writing" ? "Writing…" : ""}</span>
+        <span style={{ opacity: 0.7 }}>
+          {status === "planning" ? "Planning…" : status === "writing" ? "Working…" : ""}
+        </span>
       </header>
 
       {inputs.length > 0 && <p style={{ opacity: 0.7 }}>{inputs.join("  ·  ")}</p>}
@@ -93,9 +133,13 @@ export function App() {
 
       {result && (
         <p style={{ color: "#4caf50" }}>
-          Saved {result.output} ({result.bytes ?? 0} bytes{result.zip64 ? ", zip64" : ""}).
+          Saved {result.output} ({result.bytes ?? 0} bytes{result.zip64 ? ", zip64" : ""}).{" "}
+          <button onClick={() => void runVerify(result.output, options.metadata)}>Verify</button>
         </p>
       )}
+
+      {verify && <VerifyView data={verify} />}
+      {trash && <TrashView result={trash} />}
 
       {plan && (
         <section>
@@ -105,6 +149,14 @@ export function App() {
             </h2>
             <button onClick={() => void save()} disabled={!canSave}>
               Save archive
+            </button>
+            <button
+              onClick={() => void archiveAndTrash()}
+              disabled={!canSave || !options.metadata}
+              title={!options.metadata ? "Embed the manifest to enable verify-before-delete" : undefined}
+              style={canSave && options.metadata ? S.danger : undefined}
+            >
+              Archive & move originals to Trash
             </button>
           </div>
           <p style={{ opacity: 0.8 }}>
@@ -230,6 +282,39 @@ function Dropped({ plan }: { plan: PlanData }) {
   );
 }
 
+function VerifyView({ data }: { data: ExtractData }) {
+  return (
+    <section style={{ borderLeft: `3px solid ${data.reportOk ? "#4caf50" : "#ff6b6b"}`, paddingLeft: "0.75rem" }}>
+      <strong style={{ color: data.reportOk ? "#4caf50" : "#ff6b6b" }}>
+        {data.reportOk ? "Verified ✓" : "Verification failed"}
+      </strong>{" "}
+      — {data.summary.total} entries, {data.summary.crcFailed} CRC failure(s),{" "}
+      {data.summary.shaMismatched} SHA mismatch(es)
+      {data.missing.length > 0 && <div>Missing: {data.missing.join(", ")}</div>}
+      {data.extra.length > 0 && <div>Extra: {data.extra.join(", ")}</div>}
+    </section>
+  );
+}
+
+function TrashView({ result }: { result: ArchiveAndTrashResult }) {
+  if (result.ok) {
+    return (
+      <p style={{ color: "#4caf50" }}>
+        Saved & verified {result.output} ({result.bytes ?? 0} bytes); moved {result.trashed.length} original(s) to Trash.
+      </p>
+    );
+  }
+  const messages: Record<typeof result.reason, string> = {
+    "no-plan": "Nothing to archive.",
+    "not-writable": "Resolve the blocking issues before archiving.",
+    "unsafe-output": "The archive would be inside the source — choose an output outside it; originals untouched.",
+    "write-failed": `Write failed (${result.error?.message ?? "unknown"}). Originals kept.`,
+    "verify-failed": "Verification failed — originals kept.",
+    "trash-failed": `Archive saved & verified${result.output ? ` at ${result.output}` : ""}, but moving some originals to Trash failed (${result.error?.message ?? "unknown"}).`,
+  };
+  return <p style={{ color: "#ff6b6b" }}>{messages[result.reason]}</p>;
+}
+
 function EventLog({ events }: { events: LogEvent[] }) {
   if (events.length === 0) return null;
   return (
@@ -246,4 +331,5 @@ const S: Record<string, CSSProperties> = {
   fieldset: { display: "flex", gap: "1rem", flexWrap: "wrap", border: "1px solid #444", borderRadius: 6, margin: "0.75rem 0" },
   list: { margin: "0.25rem 0", paddingLeft: "1.25rem" },
   log: { background: "#111", padding: "0.5rem", borderRadius: 4, maxHeight: "12rem", overflow: "auto", fontSize: "0.8rem" },
+  danger: { background: "#c0392b", color: "#fff", border: "none", padding: "0.4rem 0.9rem", borderRadius: 4 },
 };
