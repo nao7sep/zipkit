@@ -1,39 +1,47 @@
 /**
  * The contextBridge surface the GUI exposes to the renderer as `window.zipkit`.
  *
- * It is an explicit interface defined here in `shared` — not `typeof api` lifted
- * from preload — so the renderer can reference the type without importing the
- * preload module, whose `electron` import would otherwise drag Node types into
- * the renderer program and defeat its Node isolation. Preload implements this
- * interface via `satisfies ZipKitGuiApi`, so the two can never drift.
+ * An explicit interface defined here in `shared` — not `typeof api` from preload —
+ * so the renderer references the type without importing preload (whose `electron`
+ * import would drag Node types into the renderer program). Preload implements it
+ * via `satisfies ZipKitGuiApi`. SDK types come from `src/sdk/types` (pure data,
+ * no runtime, no Node) via `import type`.
  *
- * SDK types are pulled from `src/sdk/types` (pure data, no runtime, no Node) with
- * `import type`, so nothing in the SDK's Node-using implementation reaches the
- * renderer's web typecheck.
+ * The plan/write split mirrors the SDK: the renderer asks for a `plan` (the
+ * inspect step), then `write` executes the plan the main process is holding —
+ * the live plan never round-trips, so its out-of-band writer instructions stay in
+ * the main process where the write happens.
  */
 
-import type { ArchiveSpec, CreateData, Finding, Severity } from "../../sdk/types.js";
+import type { ArchiveSpec, CreateData, Finding, LogEvent, Severity } from "../../sdk/types.js";
 
-/** The `mode:"plan"` payload — the dry run the GUI inspects before any write. */
+/** The `mode:"plan"` payload — the dry run the GUI inspects. */
 export type PlanData = Extract<CreateData, { mode: "plan" }>;
+/** The `mode:"write"` payload — the post-write result (metadata, bytes, zip64). */
+export type WriteData = Extract<CreateData, { mode: "write" }>;
 
-export type { ArchiveSpec, Finding, Severity };
+export type { ArchiveSpec, Finding, LogEvent, Severity };
 
-/** A structured SDK fault surfaced to the renderer (mirrors `ZipKitError`'s shape)
- *  so a failed verb is a typed value, never an opaque IPC rejection. */
+/** A structured SDK fault surfaced to the renderer (mirrors `ZipKitError`'s shape). */
 export interface GuiError {
   type: string;
   code: string;
   message: string;
 }
 
-/** A plan request resolves to the plan or a structured fault — the renderer
- *  always gets a value it can render, never a thrown channel error. */
 export type PlanResult = { ok: true; plan: PlanData } | { ok: false; error: GuiError };
+export type WriteResult = { ok: true; data: WriteData } | { ok: false; error: GuiError };
 
 export interface ZipKitGuiApi {
-  /** Open a native directory picker; returns chosen absolute paths (empty if cancelled). */
+  /** Open a native picker; returns chosen absolute paths (empty if cancelled). */
   chooseInputs(): Promise<string[]>;
-  /** Dry-run plan for a spec — the inspect step the screen rests on. */
+  /** Dry-run plan for a spec — the inspect step. The main process holds the
+   *  resulting live plan for a subsequent `write`. */
   plan(spec: ArchiveSpec): Promise<PlanResult>;
+  /** Write the live plan the main process is currently holding. */
+  write(): Promise<WriteResult>;
+  /** Cancel the in-flight plan or write at its next boundary. */
+  cancel(): Promise<void>;
+  /** Subscribe to the live SDK event stream; returns an unsubscribe function. */
+  onEvent(callback: (event: LogEvent) => void): () => void;
 }

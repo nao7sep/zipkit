@@ -7,7 +7,7 @@
 
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
-import { registerIpc } from "./ipc.js";
+import { registerIpc, setMainWindow } from "./ipc.js";
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -26,6 +26,8 @@ function createWindow(): void {
       sandbox: false,
     },
   });
+
+  setMainWindow(win);
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) {

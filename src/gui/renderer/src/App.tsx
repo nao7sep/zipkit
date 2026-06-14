@@ -1,72 +1,249 @@
 /**
- * Phase 1 renderer: prove the end-to-end seam. Pick folders/files via the native
- * dialog, ask the SDK for a plan, and render its verdict and findings. The view
- * computes nothing — it renders the typed `PlanData` the SDK returned (verdict
- * from `writable`, counts from `summary`, the `findings` list). Later phases add
- * options, the write/verify/delete actions, and the queue.
+ * Phase 2 renderer: the single-job "Save archive" core. Pick inputs, adjust
+ * options (the view re-plans live), inspect the verdict + findings + what's
+ * dropped, then Save. Everything shown is a field the SDK returned — the verdict
+ * is `plan.writable`, the counts are `plan.summary`, the dropped list is the
+ * excluded `plan.entries`, the live log is the SDK's event stream. The view
+ * computes nothing about archiving; it sequences `plan`/`write` and renders.
  */
 
-import { useState } from "react";
-import type { PlanData } from "../../shared/api";
+import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
+import type { Finding, GuiError, LogEvent, PlanData, WriteData } from "../../shared/api";
+import { buildSpec, DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
+
+type Status = "idle" | "planning" | "writing";
 
 export function App() {
+  const [inputs, setInputs] = useState<string[]>([]);
+  const [options, setOptions] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [plan, setPlan] = useState<PlanData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<GuiError | null>(null);
+  const [status, setStatus] = useState<Status>("idle");
+  const [result, setResult] = useState<WriteData | null>(null);
+  const [events, setEvents] = useState<LogEvent[]>([]);
 
-  async function pickAndPlan() {
-    const inputs = await window.zipkit.chooseInputs();
-    if (inputs.length === 0) return;
-    setBusy(true);
-    setError(null);
-    const result = await window.zipkit.plan({ inputs });
-    setBusy(false);
-    if (result.ok) {
-      setPlan(result.plan);
-    } else {
+  // One subscription to the live SDK event stream for the app's lifetime.
+  useEffect(() => window.zipkit.onEvent((e) => setEvents((prev) => [...prev, e])), []);
+
+  // Live, debounced re-plan whenever the inputs or options change.
+  useEffect(() => {
+    if (inputs.length === 0) {
       setPlan(null);
-      setError(`${result.error.code}: ${result.error.message}`);
+      setError(null);
+      return;
     }
+    const handle = setTimeout(() => {
+      void (async () => {
+        setStatus("planning");
+        setEvents([]);
+        setResult(null);
+        const res = await window.zipkit.plan(buildSpec(inputs, options));
+        setStatus("idle");
+        if (res.ok) {
+          setPlan(res.plan);
+          setError(null);
+        } else {
+          setPlan(null);
+          setError(res.error);
+        }
+      })();
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [inputs, options]);
+
+  async function pickInputs() {
+    const chosen = await window.zipkit.chooseInputs();
+    if (chosen.length > 0) setInputs(chosen);
   }
 
+  async function save() {
+    setStatus("writing");
+    setEvents([]);
+    setResult(null);
+    const res = await window.zipkit.write();
+    setStatus("idle");
+    if (res.ok) setResult(res.data);
+    else setError(res.error);
+  }
+
+  const busy = status !== "idle";
+  const canSave = plan?.writable === true && !busy;
+
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "1.5rem", color: "#eee" }}>
-      <h1>ZipKit</h1>
-      <button onClick={() => void pickAndPlan()} disabled={busy}>
-        {busy ? "Planning…" : "Choose folders or files…"}
-      </button>
+    <main style={S.main}>
+      <header style={S.row}>
+        <h1 style={{ margin: 0 }}>ZipKit</h1>
+        <button onClick={() => void pickInputs()} disabled={busy}>
+          Choose folders or files…
+        </button>
+        {busy && <button onClick={() => void window.zipkit.cancel()}>Cancel</button>}
+        <span style={{ opacity: 0.7 }}>{status === "planning" ? "Planning…" : status === "writing" ? "Writing…" : ""}</span>
+      </header>
+
+      {inputs.length > 0 && <p style={{ opacity: 0.7 }}>{inputs.join("  ·  ")}</p>}
+
+      <OptionsPanel options={options} onChange={setOptions} disabled={status === "writing"} />
+
       {error && (
         <p role="alert" style={{ color: "#ff6b6b" }}>
-          {error}
+          {error.code}: {error.message}
         </p>
       )}
-      {plan && <PlanView plan={plan} />}
+
+      {result && (
+        <p style={{ color: "#4caf50" }}>
+          Saved {result.output} ({result.bytes ?? 0} bytes{result.zip64 ? ", zip64" : ""}).
+        </p>
+      )}
+
+      {plan && (
+        <section>
+          <div style={S.row}>
+            <h2 style={{ color: plan.writable ? "#4caf50" : "#ff6b6b", margin: "0.5rem 0" }}>
+              {plan.writable ? "Windows-safe ✓" : "Blocking issues — resolve before saving"}
+            </h2>
+            <button onClick={() => void save()} disabled={!canSave}>
+              Save archive
+            </button>
+          </div>
+          <p style={{ opacity: 0.8 }}>
+            → <code>{plan.output}</code> — {plan.summary.included} included, {plan.summary.excluded}{" "}
+            dropped, {plan.summary.warnings} warning(s), {plan.summary.errors} blocking
+          </p>
+          <FindingsList findings={plan.findings} />
+          <Dropped plan={plan} />
+        </section>
+      )}
+
+      <EventLog events={events} />
     </main>
   );
 }
 
-function PlanView({ plan }: { plan: PlanData }) {
+function OptionsPanel({
+  options,
+  onChange,
+  disabled,
+}: {
+  options: GuiOptions;
+  onChange: (o: GuiOptions) => void;
+  disabled: boolean;
+}) {
+  const set = <K extends keyof GuiOptions>(key: K, value: GuiOptions[K]) =>
+    onChange({ ...options, [key]: value });
   return (
-    <section>
-      <h2 style={{ color: plan.writable ? "#4caf50" : "#ff6b6b" }}>
-        {plan.writable ? "Windows-safe ✓" : "Blocking issues"}
-      </h2>
-      <p>
-        <code>{plan.output}</code>
-      </p>
-      <p>
-        {plan.summary.included} included, {plan.summary.excluded} excluded,{" "}
-        {plan.summary.warnings} warning(s), {plan.summary.errors} error(s)
-      </p>
-      {plan.findings.length > 0 && (
-        <ul>
-          {plan.findings.map((f, i) => (
-            <li key={i}>
-              <code>{f.severity}</code> {f.rule} — {f.message} <small>({f.path})</small>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <fieldset disabled={disabled} style={S.fieldset}>
+      <legend>Options</legend>
+      <label>
+        <input type="checkbox" checked={options.junk} onChange={(e) => set("junk", e.target.checked)} /> Drop OS junk
+      </label>
+      <label>
+        <input type="checkbox" checked={options.strict} onChange={(e) => set("strict", e.target.checked)} /> Strict (block instead of fix)
+      </label>
+      <label>
+        <input type="checkbox" checked={options.metadata} onChange={(e) => set("metadata", e.target.checked)} /> Embed manifest
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={options.hash}
+          disabled={!options.metadata}
+          onChange={(e) => set("hash", e.target.checked)}
+        /> Per-file SHA-256
+      </label>
+      <label>
+        Compression{" "}
+        <input
+          type="number"
+          min={1}
+          max={9}
+          value={options.level}
+          onChange={(e) => set("level", Number(e.target.value))}
+          style={{ width: "3rem" }}
+        />
+      </label>
+      <label>
+        Symlinks{" "}
+        <select value={options.symlinks} onChange={(e) => set("symlinks", e.target.value as GuiOptions["symlinks"])}>
+          <option value="ignore">ignore</option>
+          <option value="preserve">preserve</option>
+          <option value="follow">follow</option>
+        </select>
+      </label>
+      <label>
+        Empty dirs{" "}
+        <select value={options.emptyDirs} onChange={(e) => set("emptyDirs", e.target.value as GuiOptions["emptyDirs"])}>
+          <option value="keep">keep</option>
+          <option value="prune">prune</option>
+        </select>
+      </label>
+      <label>
+        Output{" "}
+        <input
+          type="text"
+          placeholder="(beside the input)"
+          value={options.output}
+          onChange={(e) => set("output", e.target.value)}
+        />
+      </label>
+      <label>
+        <input type="checkbox" checked={options.overwrite} onChange={(e) => set("overwrite", e.target.checked)} /> Overwrite existing
+      </label>
+      <label>
+        Comment{" "}
+        <input type="text" value={options.comment} onChange={(e) => set("comment", e.target.value)} />
+      </label>
+    </fieldset>
   );
 }
+
+function FindingsList({ findings }: { findings: Finding[] }) {
+  if (findings.length === 0) return <p style={{ opacity: 0.6 }}>No portability issues.</p>;
+  const tier = (s: Finding["severity"]) => (s === "error" ? "#ff6b6b" : s === "warning" ? "#ffb74d" : "#9ccc65");
+  return (
+    <ul style={S.list}>
+      {findings.map((f, i) => (
+        <li key={i}>
+          <code style={{ color: tier(f.severity) }}>{f.severity}</code> {f.rule} — {f.message}{" "}
+          <small style={{ opacity: 0.6 }}>({f.path})</small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Dropped({ plan }: { plan: PlanData }) {
+  const dropped = plan.entries.filter((e) => e.excluded);
+  if (dropped.length === 0) return null;
+  return (
+    <details>
+      <summary>{dropped.length} dropped</summary>
+      <ul style={S.list}>
+        {dropped.map((e, i) => (
+          <li key={i}>
+            <code>{e.archivePath}</code> <small style={{ opacity: 0.6 }}>— {e.excludeReason ?? "excluded"}</small>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function EventLog({ events }: { events: LogEvent[] }) {
+  if (events.length === 0) return null;
+  return (
+    <details>
+      <summary>Activity log ({events.length})</summary>
+      <pre style={S.log}>{events.map((e) => `${e.time}  ${e.level}  ${e.message}`).join("\n")}</pre>
+    </details>
+  );
+}
+
+const S: Record<string, CSSProperties> = {
+  main: { fontFamily: "system-ui, sans-serif", padding: "1.25rem", color: "#eee", lineHeight: 1.5 },
+  row: { display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" },
+  fieldset: { display: "flex", gap: "1rem", flexWrap: "wrap", border: "1px solid #444", borderRadius: 6, margin: "0.75rem 0" },
+  list: { margin: "0.25rem 0", paddingLeft: "1.25rem" },
+  log: { background: "#111", padding: "0.5rem", borderRadius: 4, maxHeight: "12rem", overflow: "auto", fontSize: "0.8rem" },
+};
