@@ -5,7 +5,7 @@
  * overwrite gate, deterministic output, and content round-trip.
  */
 
-import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -241,6 +241,35 @@ describe("overwrite gate", () => {
     await expect(
       new ZipKit().create({ inputs: [proj], output, overwrite: true }),
     ).resolves.toMatchObject({ output });
+  });
+});
+
+describe("symlink preservation and empty directories", () => {
+  it("writes a preserved symlink entry and a kept empty directory through create", async () => {
+    const proj = path.join(dir, "tree");
+    await mkdir(path.join(proj, "emptydir"), { recursive: true });
+    await writeFile(path.join(proj, "real.txt"), "content");
+    await symlink("real.txt", path.join(proj, "link.txt"));
+
+    const output = path.join(dir, "tree.zip");
+    const result = await new ZipKit().create({
+      inputs: [proj],
+      output,
+      policy: { symlinks: "preserve", emptyDirs: "keep" },
+    });
+
+    const entries = result.metadata!.entries;
+    const link = entries.find((e) => e.archivePath === "link.txt");
+    expect(link?.type).toBe("symlink"); // the writer emitted a Unix link entry
+    expect(link?.linkTarget).toBe("real.txt");
+    expect(link?.sha256).toBeTypeOf("string"); // hashed over the link-target bytes
+
+    const empty = entries.find((e) => e.archivePath === "emptydir");
+    expect(empty?.type).toBe("dir"); // a leaf empty dir gets an explicit entry under keep
+
+    // The produced archive is well-formed and round-trips on read.
+    const report = await new ZipKit().extract({ archive: output, dryRun: true });
+    expect(report.reportOk).toBe(true);
   });
 });
 
