@@ -1,13 +1,15 @@
 /**
- * The Electron main process: create the window, register the IPC seam, and load
- * the renderer (the electron-vite dev server in development, the built file in
- * production). The app is the primary face of ZipKit; the SDK is driven from
- * here through `ipc.ts`.
+ * The Electron main process: create the window, register the IPC seam (plain
+ * handlers + the queue engine), and load the renderer (the electron-vite dev
+ * server in development, the built file in production). The app is the primary
+ * face of ZipKit; the SDK is driven from here.
  */
 
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
-import { registerIpc, setMainWindow } from "./ipc.js";
+import { registerIpc } from "./ipc.js";
+import { registerQueueIpc } from "./queue.js";
+import { setMainWindow } from "./runtime.js";
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -39,6 +41,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerIpc();
+  registerQueueIpc();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
