@@ -19,6 +19,7 @@ const api = {
   startQueue: (): Promise<void> => ipcRenderer.invoke("zipkit:startQueue"),
   cancelJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:cancelJob", id),
   getPlan: (id: string): Promise<PlanData | null> => ipcRenderer.invoke("zipkit:getPlan", id),
+  getQueue: (): Promise<Job[]> => ipcRenderer.invoke("zipkit:getQueue"),
   onQueue: (callback: (jobs: Job[]) => void): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, jobs: Job[]): void => callback(jobs);
     ipcRenderer.on("zipkit:queue", handler);

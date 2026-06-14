@@ -49,6 +49,8 @@ export interface ZipKitGuiApi {
   cancelJob(id: string): Promise<void>;
   /** The full plan for a job's detail view, or null if it has none right now. */
   getPlan(id: string): Promise<PlanData | null>;
+  /** The current job list — the initial fetch on mount; `onQueue` pushes updates. */
+  getQueue(): Promise<Job[]>;
   /** Subscribe to the job list; returns an unsubscribe function. */
   onQueue(callback: (jobs: Job[]) => void): () => void;
 

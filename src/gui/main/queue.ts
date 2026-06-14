@@ -16,6 +16,7 @@ import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, PlanData } from "../shared/api.js";
 import { forwardEvent, sendQueue, toGuiError, zip } from "./runtime.js";
 import { outputInsideInputs } from "./safety.js";
+import { loadQueue, saveQueue, type SavedJob } from "./persist.js";
 
 interface Rec {
   job: Job;
@@ -27,12 +28,21 @@ interface Rec {
 const recs = new Map<string, Rec>();
 const order: string[] = [];
 let draining = false;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 function snapshot(): Job[] {
   return order.map((id) => recs.get(id)?.job).filter((j): j is Job => j !== undefined);
 }
+/** The resumable view (specs only; terminal jobs excluded) for persistence. */
+function resumable(): SavedJob[] {
+  return snapshot()
+    .filter((j) => j.state !== "done" && j.state !== "failed")
+    .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options, intent: j.intent }));
+}
 function emit(): void {
   sendQueue(snapshot());
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => void saveQueue(resumable()), 500);
 }
 function set(rec: Rec, patch: Partial<Job>): void {
   rec.job = { ...rec.job, ...patch };
@@ -147,7 +157,20 @@ async function drain(): Promise<void> {
   }
 }
 
+/** Reload the persisted jobs at launch and re-plan each one fresh. */
+export async function restoreQueue(): Promise<void> {
+  const saved = await loadQueue();
+  for (const s of saved) {
+    recs.set(s.id, { job: { ...s, state: "planning" }, plan: null, aborter: null });
+    order.push(s.id);
+  }
+  if (saved.length > 0) emit();
+  for (const s of saved) void planJob(s.id);
+}
+
 export function registerQueueIpc(): void {
+  ipcMain.handle("zipkit:getQueue", async (): Promise<Job[]> => snapshot());
+
   ipcMain.handle(
     "zipkit:addJob",
     async (_e, inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string> => {

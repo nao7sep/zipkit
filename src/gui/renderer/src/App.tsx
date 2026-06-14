@@ -25,7 +25,11 @@ export function App() {
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [events, setEvents] = useState<LogEvent[]>([]);
 
-  useEffect(() => window.zipkit.onQueue(setJobs), []);
+  useEffect(() => {
+    const unsubscribe = window.zipkit.onQueue(setJobs);
+    void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
+    return unsubscribe;
+  }, []);
   useEffect(
     () => window.zipkit.onEvent((e) => setEvents((prev) => [...prev.slice(-299), e])),
     [],

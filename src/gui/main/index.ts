@@ -8,7 +8,7 @@
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import { registerIpc } from "./ipc.js";
-import { registerQueueIpc } from "./queue.js";
+import { registerQueueIpc, restoreQueue } from "./queue.js";
 import { setMainWindow } from "./runtime.js";
 
 function createWindow(): void {
@@ -43,6 +43,7 @@ app.whenReady().then(() => {
   registerIpc();
   registerQueueIpc();
   createWindow();
+  void restoreQueue();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
