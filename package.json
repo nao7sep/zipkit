@@ -1,6 +1,7 @@
 {
   "name": "zipkit",
   "version": "0.1.0",
+  "private": true,
   "description": "Cross-platform ZIP archiver and portability linter/fixer, usable as both a TypeScript SDK and a CLI.",
   "license": "MIT",
   "author": {
@@ -12,16 +13,6 @@
     "type": "git",
     "url": "git+https://github.com/nao7sep/zipkit.git"
   },
-  "keywords": [
-    "zip",
-    "archive",
-    "archiver",
-    "cross-platform",
-    "portability",
-    "linter",
-    "cli",
-    "sdk"
-  ],
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
