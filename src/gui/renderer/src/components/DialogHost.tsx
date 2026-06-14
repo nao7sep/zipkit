@@ -24,35 +24,44 @@ const DialogContext = createContext<Confirm>(() => Promise.resolve(false));
 export const useConfirm = (): Confirm => useContext(DialogContext);
 
 interface Pending extends ConfirmOptions {
+  id: number;
   resolve: (value: boolean) => void;
 }
 
 export function DialogHost({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState<Pending | null>(null);
-  const ref = useRef<Pending | null>(null);
+  const [queue, setQueue] = useState<Pending[]>([]);
+  const ref = useRef<Pending[]>([]);
+  const nextId = useRef(0);
   useEffect(() => {
-    ref.current = pending;
-  }, [pending]);
+    ref.current = queue;
+  }, [queue]);
 
+  // Queued: concurrent requests line up and each resolves in turn, so no pending
+  // promise is ever dropped (modal-dialog conventions: promise-based and queued).
   const confirm = useCallback<Confirm>(
-    (opts) => new Promise<boolean>((resolve) => setPending({ ...opts, resolve })),
+    (opts) =>
+      new Promise<boolean>((resolve) => {
+        setQueue((q) => [...q, { ...opts, resolve, id: nextId.current++ }]);
+      }),
     [],
   );
 
   const settle = useCallback((value: boolean) => {
-    const p = ref.current;
-    ref.current = null;
-    setPending(null);
-    p?.resolve(value);
+    const head = ref.current[0];
+    if (!head) return;
+    head.resolve(value);
+    setQueue((q) => q.slice(1));
   }, []);
 
-  // Any pending dialog settles (cancel) if the host unmounts — e.g. app quit.
-  useEffect(() => () => ref.current?.resolve(false), []);
+  // Any still-pending dialogs settle (cancel) if the host unmounts — e.g. app quit.
+  useEffect(() => () => ref.current.forEach((p) => p.resolve(false)), []);
 
+  const current = queue[0] ?? null;
   return (
     <DialogContext.Provider value={confirm}>
       {children}
-      {pending && <ConfirmDialog options={pending} onResult={settle} />}
+      {/* Keyed by id so each queued dialog mounts fresh (focus + scroll-lock re-run). */}
+      {current && <ConfirmDialog key={current.id} options={current} onResult={settle} />}
     </DialogContext.Provider>
   );
 }

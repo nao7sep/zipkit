@@ -207,7 +207,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     update(id, patch) {
       const rec = recs.get(id);
       if (!rec || rec.job.state === "running") return;
-      if (patch.intent !== undefined) set(rec, { intent: patch.intent });
+      if (patch.intent !== undefined) {
+        set(rec, { intent: patch.intent });
+        deps.log.info("job intent set", { jobId: id, intent: patch.intent });
+      }
       if (patch.options !== undefined) {
         set(rec, { options: patch.options });
         void planJob(id);
