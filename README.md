@@ -1,6 +1,6 @@
 # ZipKit
 
-A cross-platform ZIP archiver and portability linter/fixer, usable as both a TypeScript SDK and a CLI. It produces archives that are clean across platforms: an archive made on macOS contains nothing a Windows user will trip over, and the reverse. It also reads back: `extract` validates an archive's integrity (and, against the manifest, its completeness and content identity) and unpacks it.
+A cross-platform ZIP archiver and portability linter/fixer, usable as a TypeScript SDK, a CLI, and a desktop app. It produces archives that are clean across platforms: an archive made on macOS contains nothing a Windows user will trip over, and the reverse. It also reads back: `extract` validates an archive's integrity (and, against the manifest, its completeness and content identity) and unpacks it.
 
 ZipKit is fundamentally a portability linter with a fixer attached. The compression and container work is the small part; the value is the set of checks and the policy that decides what to do about each one — NFD-decomposed names, Windows-invalid characters, reserved device names, OS junk files, Unix-only attributes, and unknown extra fields.
 
@@ -15,6 +15,35 @@ Three layers, with all side effects at the edges:
 A dry run is `scan + plan`; an actual run is `scan + plan + write`. Both share the one pure planning function, so the dry run is faithful to the actual run by construction.
 
 Reading an archive back is the mirror of this — a separate **read** path (`extract`) that parses the container, decompresses and CRC-checks every entry, and either writes the files out or, on a dry run, only reports. The same dry/wet symmetry holds: a dry-run extract does everything an extraction does except touch the output, so validation is faithful to extraction.
+
+## Desktop app
+
+A no-config desktop app (Electron) for making clean archives without the command line — and, for large folders, a persisted queue so you can line several up and walk away.
+
+The app is a thin wrapper over the SDK; it computes no archive logic of its own. Every verdict it shows is a field the SDK returned — the writability gate, the portability findings, the dropped entries, the verification result — and every action is an SDK verb. Anything it cannot do is a missing SDK capability, never something patched into the UI.
+
+**The queue.** Add a folder and it is planned in the background (a dry run) without blocking anything already running; its row shows whether it is Windows-safe and what was dropped or fixed. Tune that job's options, then **Start** to drain the ready jobs one write at a time. Each job is re-planned fresh the moment it runs, so a job that became unwritable since you queued it stops instead of writing, and one job failing never halts the rest. The queue is persisted: quit mid-run and the pending jobs return (re-planned) on next launch.
+
+**Two intents per job.**
+
+- **Save archive** — write the `.zip` and stop.
+- **Archive & move originals to Trash** — write, then verify (CRC plus, against the manifest, completeness and per-file SHA-256), and only on success move the originals to the OS Trash. Any failure keeps them untouched. The destructive choice is confirmed when you set it on the job, not mid-run, so Start never interrupts you.
+
+### Running it
+
+```sh
+npm install
+npm run dev          # or: scripts/run.command (macOS) · scripts/run.ps1 (Windows)
+```
+
+Package a distributable (output lands in `release/`):
+
+```sh
+npm run build:mac    # .dmg + .zip
+npm run build:win    # NSIS installer
+```
+
+Put `icon.icns` / `icon.ico` in `build/` first (see `build/README.md`); without them the build falls back to the default Electron icon.
 
 ## Install
 
@@ -402,12 +431,13 @@ Out of scope: repairing or re-writing existing archives; encryption; compression
 ## Development
 
 ```sh
-npm run typecheck   # tsc --noEmit over src and the test files
-npm run build       # tsup → dist/
+npm run typecheck   # node + web (renderer) + test projects
+npm run build       # tsup → dist/ (the CLI)
+npm run build:gui   # electron-vite → out/ (the app)
 npm test            # vitest
 ```
 
-`npm run typecheck` covers both the shipped `src/` and the test files (`tsconfig.test.json`); Vitest runs the tests without type-checking them, so the test config is what keeps them covered.
+`npm run typecheck` runs three project configs: `tsconfig.node.json` (the SDK, the CLI, and the app's main/preload — no DOM), `tsconfig.web.json` (the renderer, DOM-typed, no Node), and `tsconfig.test.json` (the test files). Vitest runs the tests without type-checking them, so the test config is what keeps them covered.
 
 ## License
 

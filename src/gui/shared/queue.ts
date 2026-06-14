@@ -33,3 +33,11 @@ export interface Job {
   /** A short status line for needs-attention / failed / done. */
   message?: string;
 }
+
+/** The resumable part of a job that survives a restart (no transient run state). */
+export interface SavedJob {
+  id: string;
+  inputs: string[];
+  options: GuiOptions;
+  intent: JobIntent;
+}

@@ -12,16 +12,16 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../shared/spec.js";
-import type { JobIntent } from "../shared/api.js";
-
-export interface SavedJob {
-  id: string;
-  inputs: string[];
-  options: GuiOptions;
-  intent: JobIntent;
-}
+import type { Job, SavedJob } from "../shared/queue.js";
 
 const FILE = path.join(homedir(), ".zipkit", "queue.json");
+
+/** The resumable view of a job list: specs only, terminal jobs excluded. Pure. */
+export function toResumable(jobs: Job[]): SavedJob[] {
+  return jobs
+    .filter((j) => j.state !== "done" && j.state !== "failed")
+    .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options, intent: j.intent }));
+}
 
 /** Parse queue-file text into resumable jobs: default missing option fields, drop
  *  malformed entries, normalize the intent. Pure; never throws. */

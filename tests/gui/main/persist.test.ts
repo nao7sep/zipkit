@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { parseQueue, serializeQueue } from "../../../src/gui/main/persist.js";
+import { parseQueue, serializeQueue, toResumable } from "../../../src/gui/main/persist.js";
+import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 
 describe("parseQueue", () => {
@@ -41,5 +42,30 @@ describe("parseQueue", () => {
     expect(parseQueue("not json")).toEqual([]);
     expect(parseQueue(JSON.stringify({ jobs: "x" }))).toEqual([]);
     expect(parseQueue(JSON.stringify({}))).toEqual([]);
+  });
+});
+
+describe("toResumable", () => {
+  const job = (id: string, state: Job["state"]): Job => ({
+    id,
+    inputs: [`/${id}`],
+    options: DEFAULT_OPTIONS,
+    intent: "save",
+    state,
+  });
+
+  it("keeps pending jobs and drops terminal ones, as specs only", () => {
+    const jobs: Job[] = [
+      job("a", "ready"),
+      job("b", "done"),
+      job("c", "planning"),
+      job("d", "failed"),
+      job("e", "running"),
+    ];
+    expect(toResumable(jobs)).toEqual([
+      { id: "a", inputs: ["/a"], options: DEFAULT_OPTIONS, intent: "save" },
+      { id: "c", inputs: ["/c"], options: DEFAULT_OPTIONS, intent: "save" },
+      { id: "e", inputs: ["/e"], options: DEFAULT_OPTIONS, intent: "save" },
+    ]);
   });
 });
