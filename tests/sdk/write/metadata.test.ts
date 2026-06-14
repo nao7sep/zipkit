@@ -4,13 +4,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_POLICY, resolvePolicy } from "../../src/policy.js";
-import { buildMetadata } from "../../src/write/metadata.js";
-import type { MetadataEntryInput } from "../../src/write/metadata.js";
-import { estimateMetadataSize } from "../../src/plan/zip64.js";
-import type { MetadataContent } from "../../src/plan/zip64.js";
-import type { Unlogged, WriteEntry } from "../../src/internal/types.js";
-import type { CreateData, Finding, PlannedEntry } from "../../src/types.js";
+import { DEFAULT_POLICY, resolvePolicy } from "../../../src/sdk/policy.js";
+import { buildMetadata } from "../../../src/sdk/write/metadata.js";
+import type { MetadataEntryInput } from "../../../src/sdk/write/metadata.js";
+import { estimateMetadataSize } from "../../../src/sdk/plan/zip64.js";
+import type { MetadataContent } from "../../../src/sdk/plan/zip64.js";
+import type { Unlogged, WriteEntry } from "../../../src/sdk/internal/types.js";
+import type { CreateData, Finding, PlannedEntry } from "../../../src/sdk/types.js";
 
 // The metadata builder is logging-agnostic, so the plan it takes carries no `log`.
 const plan: Unlogged<Extract<CreateData, { mode: "plan" }>> = {

@@ -3,7 +3,7 @@
  * table-driven entry arrays with no filesystem access.
  */
 
-import type { ScanEntry, ScanResult } from "../../src/internal/types.js";
+import type { ScanEntry, ScanResult } from "../../src/sdk/internal/types.js";
 
 /** 2020-01-01T00:00:00Z in nanoseconds — well after the 1980 DOS floor. */
 export const Y2020_NS = 1_577_836_800_000_000_000n;

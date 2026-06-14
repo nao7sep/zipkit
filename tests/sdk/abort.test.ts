@@ -11,9 +11,9 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AbortError, ZipKit } from "../../src/index.js";
-import { ZipWriter } from "../../src/write/zipWriter.js";
-import { parseZip, readEntryData } from "../../src/extract/zipReader.js";
+import { AbortError, ZipKit } from "../../src/sdk/index.js";
+import { ZipWriter } from "../../src/sdk/write/zipWriter.js";
+import { parseZip, readEntryData } from "../../src/sdk/extract/zipReader.js";
 
 let dir: string;
 

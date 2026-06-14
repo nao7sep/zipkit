@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { PolicyError } from "../src/errors.js";
-import { validatePolicy, validateSpec } from "../src/validate.js";
+import { PolicyError } from "../../src/sdk/errors.js";
+import { validatePolicy, validateSpec } from "../../src/sdk/validate.js";
 
 describe("validateSpec", () => {
   it("accepts a minimal spec", () => {

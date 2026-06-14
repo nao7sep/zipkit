@@ -14,8 +14,8 @@
  */
 
 import { Command } from "commander";
-import { exitCodeFor } from "../errors.js";
-import { VERSION } from "../version.js";
+import { exitCodeFor } from "../sdk/errors.js";
+import { VERSION } from "../sdk/version.js";
 import { installSigintHandler } from "./abort.js";
 import { registerCreate } from "./create.js";
 import { registerExtract } from "./extract.js";

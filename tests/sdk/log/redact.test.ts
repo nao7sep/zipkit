@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { redact } from "../../src/log/redact.js";
+import { redact } from "../../../src/sdk/log/redact.js";
 
 describe("redact", () => {
   it("redacts every seeded denied key, case-insensitively", () => {

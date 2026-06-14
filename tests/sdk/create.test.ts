@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PolicyError, WriteError, ZipKit } from "../../src/index.js";
+import { PolicyError, WriteError, ZipKit } from "../../src/sdk/index.js";
 import { readZip } from "../helpers/readZip.js";
 
 let dir: string;

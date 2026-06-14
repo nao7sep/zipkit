@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { fixPath } from "../../src/plan/pathFix.js";
+import { fixPath } from "../../../src/sdk/plan/pathFix.js";
 
 describe("fixPath", () => {
   it("leaves a clean relative path untouched", () => {

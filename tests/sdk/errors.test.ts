@@ -14,7 +14,7 @@ import {
   ReadError,
   ScanError,
   WriteError,
-} from "../src/errors.js";
+} from "../../src/sdk/errors.js";
 
 describe("usage classification", () => {
   it("treats every PolicyError as a usage fault (exit 2)", () => {

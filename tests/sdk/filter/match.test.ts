@@ -7,9 +7,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildMatcher } from "../../src/filter/match.js";
-import { globExclude, regexExclude } from "../../src/filter/rules.js";
-import type { FilterRule } from "../../src/types.js";
+import { buildMatcher } from "../../../src/sdk/filter/match.js";
+import { globExclude, regexExclude } from "../../../src/sdk/filter/rules.js";
+import type { FilterRule } from "../../../src/sdk/types.js";
 
 function matcher(rules: FilterRule[], junk = false) {
   return buildMatcher(rules, junk);

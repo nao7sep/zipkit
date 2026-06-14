@@ -5,8 +5,8 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { createLogger, type EmittedEvent, type LogSink } from "../../src/log/logger.js";
-import type { LogEvent } from "../../src/types.js";
+import { createLogger, type EmittedEvent, type LogSink } from "../../../src/sdk/log/logger.js";
+import type { LogEvent } from "../../../src/sdk/types.js";
 
 function collect(): { sink: LogSink; events: LogEvent[] } {
   const events: LogEvent[] = [];

@@ -8,7 +8,7 @@
  * errors.
  */
 
-import type { LogSink } from "../log/logger.js";
+import type { LogSink } from "../sdk/log/logger.js";
 
 /** The reporter-relevant slice of a verb's parsed options. */
 export interface ReporterOptions {

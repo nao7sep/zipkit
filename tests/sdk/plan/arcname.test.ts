@@ -5,13 +5,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { PolicyError } from "../../src/errors.js";
+import { PolicyError } from "../../../src/sdk/errors.js";
 import {
   checkAnchorCollisions,
   computeAnchor,
   joinArchivePath,
   normalizeInputs,
-} from "../../src/plan/arcname.js";
+} from "../../../src/sdk/plan/arcname.js";
 
 describe("normalizeInputs", () => {
   it("resolves string inputs against the cwd", () => {

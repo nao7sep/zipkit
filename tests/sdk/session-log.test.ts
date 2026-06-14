@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit } from "../../src/index.js";
+import { ZipKit } from "../../src/sdk/index.js";
 
 let root: string;
 let logDir: string;

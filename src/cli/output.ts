@@ -8,7 +8,7 @@
  * the machine signal; this is the readable rendering of the same fault.
  */
 
-import { isUsageFault, ZipKitError } from "../errors.js";
+import { isUsageFault, ZipKitError } from "../sdk/errors.js";
 
 /** Emit the one success document: the verb's typed result as JSON on stdout. */
 export function emit(result: unknown): void {

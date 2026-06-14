@@ -10,8 +10,8 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit } from "../../src/index.js";
-import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.js";
+import { ZipKit } from "../../../src/sdk/index.js";
+import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 const Y2020_MS = 1_577_836_800_000;

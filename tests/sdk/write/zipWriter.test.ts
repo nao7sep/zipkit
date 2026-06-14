@@ -12,9 +12,9 @@
 
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.js";
-import { findExtra, readZipFile } from "../helpers/readZip.js";
-import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../src/plan/zip64.js";
+import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
+import { findExtra, readZipFile } from "../../helpers/readZip.js";
+import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../../src/sdk/plan/zip64.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 // 100-ns ticks between 1601 (FILETIME epoch) and 1970, for decoding NTFS times.

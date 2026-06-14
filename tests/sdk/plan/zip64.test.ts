@@ -5,10 +5,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { computeZip64Need, deflateBound, planNeedsZip64 } from "../../src/plan/zip64.js";
-import type { MetadataContent, SizedEntry } from "../../src/plan/zip64.js";
-import { resolvePolicy } from "../../src/policy.js";
-import type { WriteEntry } from "../../src/internal/types.js";
+import { computeZip64Need, deflateBound, planNeedsZip64 } from "../../../src/sdk/plan/zip64.js";
+import type { MetadataContent, SizedEntry } from "../../../src/sdk/plan/zip64.js";
+import { resolvePolicy } from "../../../src/sdk/policy.js";
+import type { WriteEntry } from "../../../src/sdk/internal/types.js";
 
 function entries(count: number, size = 0): SizedEntry[] {
   return Array.from({ length: count }, (_, i) => ({ name: `f${i}`, size, isDir: false }));

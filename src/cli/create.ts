@@ -10,9 +10,9 @@
  */
 
 import type { Command } from "commander";
-import { ZipKit } from "../zipkit.js";
-import { globExclude, regexExclude } from "../filter/rules.js";
-import { METADATA_DEFAULTS } from "../policy.js";
+import { ZipKit } from "../sdk/zipkit.js";
+import { globExclude, regexExclude } from "../sdk/filter/rules.js";
+import { METADATA_DEFAULTS } from "../sdk/policy.js";
 import type {
   ArchivePolicy,
   ArchiveSpec,
@@ -22,7 +22,7 @@ import type {
   NameRules,
   ZipKitCallOptions,
   ZipKitOptions,
-} from "../types.js";
+} from "../sdk/types.js";
 import { emit } from "./output.js";
 import { parseByteSize, parseInteger } from "./parsers.js";
 import { buildReporter } from "./reporter.js";

@@ -10,11 +10,11 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { matcherFor } from "../../src/filter/match.js";
-import { createLogger } from "../../src/log/logger.js";
-import { resolvePolicy } from "../../src/policy.js";
-import { scan } from "../../src/scan/scan.js";
-import type { ArchivePolicy, ArchiveSpec } from "../../src/types.js";
+import { matcherFor } from "../../../src/sdk/filter/match.js";
+import { createLogger } from "../../../src/sdk/log/logger.js";
+import { resolvePolicy } from "../../../src/sdk/policy.js";
+import { scan } from "../../../src/sdk/scan/scan.js";
+import type { ArchivePolicy, ArchiveSpec } from "../../../src/sdk/types.js";
 
 let dir: string;
 
