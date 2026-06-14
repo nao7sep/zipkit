@@ -7,28 +7,21 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent } from "react";
-import type {
-  ExtractData,
-  Finding,
-  Job,
-  JobIntent,
-  LogEvent,
-  PlanData,
-} from "../../shared/api";
+import type { CSSProperties } from "react";
+import type { ExtractData, Finding, Job, JobIntent, LogEvent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
 import { useConfirm } from "./components/DialogHost";
+import { JobListbox } from "./components/JobListbox";
+import { StateBadge } from "./components/StateBadge";
 import {
   COLOR,
   droppedEntries,
   formatEventLine,
-  intentLabel,
   isEditable,
   isTerminal,
   label,
   manifestRequiredButMissing,
   severityColor,
-  stateColor,
   verdictHeadline,
   verifySummary,
 } from "./view";
@@ -75,7 +68,13 @@ export function App() {
       </details>
 
       <div style={S.columns}>
-        <JobList jobs={jobs} selectedId={selectedId} onSelect={setSelectedId} />
+        <JobListbox
+          jobs={jobs}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onRemove={(id) => void window.zipkit.removeJob(id)}
+          onCancel={(id) => void window.zipkit.cancelJob(id)}
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
           {selected ? <JobDetail job={selected} /> : <p style={{ opacity: 0.6 }}>Add a job to begin.</p>}
         </div>
@@ -83,44 +82,6 @@ export function App() {
 
       <EventLog events={events} />
     </main>
-  );
-}
-
-function JobList({
-  jobs,
-  selectedId,
-  onSelect,
-}: {
-  jobs: Job[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  if (jobs.length === 0) return <div style={S.listCol} />;
-  return (
-    <ul style={S.listCol}>
-      {jobs.map((job) => (
-        <li
-          key={job.id}
-          onClick={() => onSelect(job.id)}
-          style={{ ...S.jobRow, ...(job.id === selectedId ? S.jobRowSel : null) }}
-        >
-          <StateBadge state={job.state} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={S.ellipsis}>{label(job)}</div>
-            <small style={{ opacity: 0.6 }}>
-              {intentLabel(job.intent)}
-              {job.message ? ` · ${job.message}` : ""}
-            </small>
-          </div>
-          {(job.state === "planning" || job.state === "running") && (
-            <button onClick={(e) => stop(e, () => window.zipkit.cancelJob(job.id))}>Cancel</button>
-          )}
-          {job.state !== "running" && (
-            <button onClick={(e) => stop(e, () => window.zipkit.removeJob(job.id))}>✕</button>
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -315,26 +276,10 @@ function EventLog({ events }: { events: LogEvent[] }) {
   );
 }
 
-function StateBadge({ state }: { state: Job["state"] }) {
-  return (
-    <span style={{ color: stateColor(state), fontWeight: 600, fontSize: "0.8rem", whiteSpace: "nowrap" }}>
-      ● {state}
-    </span>
-  );
-}
-
-function stop(e: MouseEvent, fn: () => void): void {
-  e.stopPropagation();
-  fn();
-}
-
 const S: Record<string, CSSProperties> = {
   main: { fontFamily: "system-ui, sans-serif", padding: "1.25rem", color: "#eee", lineHeight: 1.5 },
   row: { display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" },
   columns: { display: "flex", gap: "1rem", marginTop: "0.75rem", alignItems: "flex-start" },
-  listCol: { width: "18rem", flexShrink: 0, margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.25rem" },
-  jobRow: { display: "flex", gap: "0.5rem", alignItems: "center", padding: "0.5rem", border: "1px solid #333", borderRadius: 6, cursor: "pointer" },
-  jobRowSel: { borderColor: "#42a5f5", background: "#1e2a35" },
   ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   fieldset: { display: "flex", gap: "1rem", flexWrap: "wrap", border: "1px solid #444", borderRadius: 6, margin: "0.75rem 0" },
   list: { margin: "0.25rem 0", paddingLeft: "1.25rem" },
