@@ -1,0 +1,33 @@
+{
+  // Renderer-side program: the GUI renderer plus the shared bridge type. DOM libs,
+  // and `types: ["vite/client"]` deliberately WITHOUT @types/node — so a renderer
+  // file reaching for a Node global (process, Buffer) or a `node:*` import fails to
+  // compile, since it would be broken in the sandboxed renderer at runtime. The
+  // shared bridge type is checked here too, so it must stay Node-free.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "composite": true,
+    "outDir": "./out/.tsbuild",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"]
+  },
+  // The renderer uses the SDK's pure data contract (types only, no Node) through
+  // the shared bridge; that single node-free file is listed so the composite web
+  // project owns every file it references.
+  "include": ["src/gui/renderer/**/*", "src/gui/shared/**/*", "src/sdk/types.ts"]
+}

@@ -2,7 +2,7 @@
   "name": "zipkit",
   "version": "0.1.0",
   "private": true,
-  "description": "Cross-platform ZIP archiver and portability linter/fixer, usable as both a TypeScript SDK and a CLI.",
+  "description": "Cross-platform ZIP archiver and portability linter/fixer: a desktop app, a CLI, and the SDK engine they share.",
   "license": "MIT",
   "author": {
     "name": "Yoshinao Inoguchi",
@@ -17,25 +17,22 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
+  "main": "./out/main/index.js",
   "bin": {
     "zipkit": "./bin/zipkit.js"
   },
-  "files": [
-    "dist",
-    "bin"
-  ],
   "scripts": {
-    "prepare": "npm run build",
+    "dev": "electron-vite dev",
     "build": "tsup",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "build:gui": "electron-vite build",
+    "preview": "electron-vite preview",
+    "build:mac": "npm run build && npm run build:gui && electron-builder --mac",
+    "build:win": "npm run build && npm run build:gui && electron-builder --win",
+    "prepare": "npm run build",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:test",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -45,15 +42,23 @@
     "fdir": "^6.4.0",
     "p-limit": "^7.3.0",
     "picomatch": "^4.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@microsoft/api-extractor": "^7.58.7",
     "@types/node": "^25.9.1",
     "@types/picomatch": "^4.0.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.8",
+    "electron": "^41.2.1",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
+    "vite": "^7.3.2",
     "vitest": "^4.1.7"
   }
 }
