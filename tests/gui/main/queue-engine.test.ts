@@ -9,6 +9,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-engine.js";
+import { nullLog } from "../../../src/gui/main/log.js";
 import type { PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 
@@ -53,6 +54,7 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
     },
     emit: () => {},
     newId: () => `job-${++idN}`,
+    log: nullLog,
     ...overrides,
   };
   return { deps, calls };

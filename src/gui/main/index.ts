@@ -9,7 +9,17 @@ import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
-import { setMainWindow } from "./runtime.js";
+import { errorInfo } from "./log.js";
+import { log, setMainWindow } from "./runtime.js";
+
+// Last-resort hooks: record the failure before the process can die. The session
+// log appends synchronously, so the line is on disk by the time these return.
+process.on("uncaughtException", (err) => {
+  log.error("uncaught exception", { error: errorInfo(err) });
+});
+process.on("unhandledRejection", (reason) => {
+  log.error("unhandled rejection", { error: errorInfo(reason) });
+});
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -30,6 +40,7 @@ function createWindow(): void {
   });
 
   setMainWindow(win);
+  log.info("main window created");
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) {
@@ -40,6 +51,14 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  log.info("app started", {
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    node: process.versions.node,
+    logPath: log.path,
+  });
   registerIpc();
   registerQueueIpc();
   createWindow();
@@ -50,5 +69,11 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  const quitting = process.platform !== "darwin";
+  log.info("all windows closed", { quitting });
+  if (quitting) app.quit();
+});
+
+app.on("before-quit", () => {
+  log.info("app quitting");
 });

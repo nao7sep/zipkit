@@ -336,6 +336,7 @@ Every run keeps a durable, machine-readable record of what it did, separate from
 - **Each session opens with a startup line.** The first event of every session is `session.start`, recording the tool version and the effective runtime configuration (concurrency and chunk size), so a log file is always tied to a version and the knobs it ran with. It is written once per `ZipKit` instance, ahead of the first verb's events.
 - **Secrets are redacted** before any event leaves the SDK: a value under a denied key name (`apiKey`, `authorization`, `token`, `password`, `secret`, matched case-insensitively and by exact name) is replaced with `"[redacted]"`. It is a narrow, non-destructive backstop — it never rewrites a `message` or scans free text.
 - **Logging never breaks a run.** If the log file cannot be written (a full or read-only disk), the line falls back to stderr with a one-line notice and the run continues. A logging failure is surfaced, never silently swallowed, and never fatal.
+- **The desktop app keeps its own session log** alongside the SDK's, in the same `~/.zipkit/logs/` directory and the same JSON-Lines format. It records what the *app* does — startup/shutdown, the input picker and verify commands, and one line per queue intent/outcome (job added, planned, run started, saved, archived-and-trashed, and every failure) — while the SDK's per-verb log captures the scan/plan/write/extract internals. `debug` is gated on `ZIPKIT_DEBUG=1` there too.
 
 ## SDK
 

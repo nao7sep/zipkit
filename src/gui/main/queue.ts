@@ -11,7 +11,7 @@ import { ipcMain, shell } from "electron";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
-import { forwardEvent, sendQueue, zip } from "./runtime.js";
+import { forwardEvent, log, sendQueue, zip } from "./runtime.js";
 import { loadQueue, saveQueue, toResumable } from "./persist.js";
 import { createQueueEngine } from "./queue-engine.js";
 
@@ -36,11 +36,14 @@ const engine = createQueueEngine({
     saveTimer = setTimeout(() => void saveQueue(toResumable(jobs)), 500);
   },
   newId: () => randomUUID(),
+  log,
 });
 
 /** Reload the persisted jobs at launch and re-plan each one fresh. */
 export async function restoreQueue(): Promise<void> {
-  engine.restore(await loadQueue());
+  const saved = await loadQueue();
+  log.info("queue restored", { jobs: saved.length });
+  engine.restore(saved);
 }
 
 export function registerQueueIpc(): void {

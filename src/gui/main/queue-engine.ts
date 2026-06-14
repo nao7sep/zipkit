@@ -17,6 +17,7 @@ import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
 import type { GuiOptions } from "../shared/spec.js";
 import { outputInsideInputs } from "./safety.js";
+import { errorInfo, type AppLog } from "./log.js";
 
 export interface EngineDeps {
   /** Dry-run plan for the given inputs/options. */
@@ -31,6 +32,8 @@ export interface EngineDeps {
   emit(jobs: Job[]): void;
   /** Mint a job id. */
   newId(): string;
+  /** The app session log — one line per orchestration intent/outcome. */
+  log: AppLog;
 }
 
 export interface QueueEngine {
@@ -86,9 +89,17 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         state: plan.writable ? "ready" : "needs-attention",
         message: plan.writable ? undefined : `${plan.summary.errors} blocking finding(s)`,
       });
+      deps.log.info("job planned", {
+        jobId: id,
+        writable: plan.writable,
+        included: plan.summary.included,
+        excluded: plan.summary.excluded,
+        errors: plan.summary.errors,
+      });
     } catch (err) {
       rec.plan = null;
       set(rec, { state: "needs-attention", writable: false, message: errMsg(err) });
+      deps.log.error("job plan failed", { jobId: id, error: errorInfo(err) });
     } finally {
       rec.aborter = null;
       emit();
@@ -102,6 +113,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     const signal = rec.aborter.signal;
     set(rec, { state: "running", message: undefined });
     emit();
+    deps.log.info("job run started", { jobId: id, intent: rec.job.intent });
     try {
       // Re-plan fresh: the world may have changed since this job was enqueued.
       let plan: PlanData;
@@ -111,10 +123,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
       } catch (err) {
         set(rec, { state: "needs-attention", writable: false, message: errMsg(err) });
+        deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
         return;
       }
       if (!plan.writable) {
         set(rec, { state: "needs-attention", message: "no longer writable (re-checked at run)" });
+        deps.log.warn("job run skipped: no longer writable", { jobId: id, errors: plan.summary.errors });
         return;
       }
 
@@ -123,35 +137,42 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         bytes = await deps.write(plan, signal);
       } catch (err) {
         set(rec, { state: "failed", message: `write failed: ${errMsg(err)}` });
+        deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
         return;
       }
 
       if (rec.job.intent === "save") {
         set(rec, { state: "done", message: `saved (${bytes ?? 0} bytes)` });
+        deps.log.info("job saved", { jobId: id, output: plan.output, bytes });
         return;
       }
 
       // archive-and-trash: guard, verify, then Trash — originals kept on any failure.
       if (outputInsideInputs(plan.output, rec.job.inputs)) {
         set(rec, { state: "failed", message: "archive is inside the source; originals untouched" });
+        deps.log.error("job trash blocked: archive inside source", { jobId: id, output: plan.output });
         return;
       }
       try {
         if (!(await deps.verify(plan.output, signal))) {
           set(rec, { state: "failed", message: "verification failed; originals kept" });
+          deps.log.error("job verification failed; originals kept", { jobId: id, output: plan.output });
           return;
         }
       } catch (err) {
         set(rec, { state: "failed", message: `verification failed; originals kept: ${errMsg(err)}` });
+        deps.log.error("job verification errored; originals kept", { jobId: id, error: errorInfo(err) });
         return;
       }
       try {
         await deps.trash(rec.job.inputs);
       } catch (err) {
         set(rec, { state: "failed", message: `saved & verified, but Trash failed: ${errMsg(err)}` });
+        deps.log.error("job Trash failed after verify", { jobId: id, error: errorInfo(err) });
         return;
       }
       set(rec, { state: "done", message: `saved, verified, ${rec.job.inputs.length} moved to Trash` });
+      deps.log.info("job archived and trashed", { jobId: id, output: plan.output, trashed: rec.job.inputs.length });
     } finally {
       rec.aborter = null;
       emit();
@@ -178,6 +199,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const id = deps.newId();
       recs.set(id, { job: { id, inputs, options, intent, state: "planning" }, plan: null, aborter: null });
       order.push(id);
+      deps.log.info("job added", { jobId: id, inputs: inputs.length, intent });
       emit();
       void planJob(id);
       return id;
@@ -199,12 +221,17 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       recs.delete(id);
       const i = order.indexOf(id);
       if (i >= 0) order.splice(i, 1);
+      deps.log.info("job removed", { jobId: id });
       emit();
     },
     cancel(id) {
-      recs.get(id)?.aborter?.abort();
+      const rec = recs.get(id);
+      if (!rec?.aborter) return;
+      deps.log.info("job cancel requested", { jobId: id, state: rec.job.state });
+      rec.aborter.abort();
     },
     start() {
+      deps.log.info("queue start requested", { ready: snapshot().filter((j) => j.state === "ready").length });
       void drain();
     },
     getPlan(id) {

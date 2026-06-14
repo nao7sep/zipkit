@@ -18,6 +18,20 @@ import type {
 } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
 import { useConfirm } from "./components/DialogHost";
+import {
+  COLOR,
+  droppedEntries,
+  formatEventLine,
+  intentLabel,
+  isEditable,
+  isTerminal,
+  label,
+  manifestRequiredButMissing,
+  severityColor,
+  stateColor,
+  verdictHeadline,
+  verifySummary,
+} from "./view";
 
 export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -94,7 +108,7 @@ function JobList({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={S.ellipsis}>{label(job)}</div>
             <small style={{ opacity: 0.6 }}>
-              {job.intent === "archive-and-trash" ? "→ Trash" : "save"}
+              {intentLabel(job.intent)}
               {job.message ? ` · ${job.message}` : ""}
             </small>
           </div>
@@ -158,8 +172,8 @@ function JobDetail({ job }: { job: Job }) {
     await window.zipkit.updateJob(job.id, { intent });
   }
 
-  const editable = job.state !== "running" && job.state !== "done";
-  const terminal = job.state === "done" || job.state === "failed";
+  const editable = isEditable(job.state);
+  const terminal = isTerminal(job.state);
 
   return (
     <section>
@@ -180,16 +194,16 @@ function JobDetail({ job }: { job: Job }) {
           <option value="archive-and-trash">Archive &amp; move originals to Trash</option>
         </select>
       </label>
-      {job.intent === "archive-and-trash" && !opts.metadata && (
-        <p style={{ color: "#ffb74d" }}>Enable “Embed manifest” — verify-before-Trash needs it.</p>
+      {manifestRequiredButMissing(job.intent, opts.metadata) && (
+        <p style={{ color: COLOR.warn }}>Enable “Embed manifest” — verify-before-Trash needs it.</p>
       )}
 
       {!terminal && <OptionsPanel options={opts} onChange={changeOptions} disabled={!editable} />}
 
       {plan && !terminal && (
         <>
-          <h3 style={{ color: plan.writable ? "#4caf50" : "#ff6b6b", margin: "0.5rem 0" }}>
-            {plan.writable ? "Windows-safe ✓" : "Blocking issues"}
+          <h3 style={{ color: plan.writable ? COLOR.ok : COLOR.bad, margin: "0.5rem 0" }}>
+            {verdictHeadline(plan)}
           </h3>
           <p style={{ opacity: 0.8 }}>
             → <code>{plan.output}</code> — {plan.summary.included} included, {plan.summary.excluded}{" "}
@@ -250,12 +264,11 @@ function OptionsPanel({
 
 function FindingsList({ findings }: { findings: Finding[] }) {
   if (findings.length === 0) return <p style={{ opacity: 0.6 }}>No portability issues.</p>;
-  const tier = (s: Finding["severity"]) => (s === "error" ? "#ff6b6b" : s === "warning" ? "#ffb74d" : "#9ccc65");
   return (
     <ul style={S.list}>
       {findings.map((f, i) => (
         <li key={i}>
-          <code style={{ color: tier(f.severity) }}>{f.severity}</code> {f.rule} — {f.message}{" "}
+          <code style={{ color: severityColor(f.severity) }}>{f.severity}</code> {f.rule} — {f.message}{" "}
           <small style={{ opacity: 0.6 }}>({f.path})</small>
         </li>
       ))}
@@ -264,7 +277,7 @@ function FindingsList({ findings }: { findings: Finding[] }) {
 }
 
 function Dropped({ plan }: { plan: PlanData }) {
-  const dropped = plan.entries.filter((e) => e.excluded);
+  const dropped = droppedEntries(plan);
   if (dropped.length === 0) return null;
   return (
     <details>
@@ -281,12 +294,11 @@ function Dropped({ plan }: { plan: PlanData }) {
 }
 
 function VerifyView({ data }: { data: ExtractData }) {
+  const color = data.reportOk ? COLOR.ok : COLOR.bad;
   return (
-    <section style={{ borderLeft: `3px solid ${data.reportOk ? "#4caf50" : "#ff6b6b"}`, paddingLeft: "0.75rem" }}>
-      <strong style={{ color: data.reportOk ? "#4caf50" : "#ff6b6b" }}>
-        {data.reportOk ? "Verified ✓" : "Verification failed"}
-      </strong>{" "}
-      — {data.summary.total} entries, {data.summary.crcFailed} CRC failure(s), {data.summary.shaMismatched} SHA mismatch(es)
+    <section style={{ borderLeft: `3px solid ${color}`, paddingLeft: "0.75rem" }}>
+      <strong style={{ color }}>{data.reportOk ? "Verified ✓" : "Verification failed"}</strong>{" "}
+      — {verifySummary(data)}
       {data.missing.length > 0 && <div>Missing: {data.missing.join(", ")}</div>}
       {data.extra.length > 0 && <div>Extra: {data.extra.join(", ")}</div>}
     </section>
@@ -298,31 +310,17 @@ function EventLog({ events }: { events: LogEvent[] }) {
   return (
     <details>
       <summary>Activity log ({events.length})</summary>
-      <pre style={S.log}>{events.map((e) => `${e.time}  ${e.level}  ${e.message}`).join("\n")}</pre>
+      <pre style={S.log}>{events.map(formatEventLine).join("\n")}</pre>
     </details>
   );
 }
 
 function StateBadge({ state }: { state: Job["state"] }) {
-  const color: Record<Job["state"], string> = {
-    planning: "#888",
-    "needs-attention": "#ffb74d",
-    ready: "#42a5f5",
-    running: "#ffee58",
-    done: "#4caf50",
-    failed: "#ff6b6b",
-  };
   return (
-    <span style={{ color: color[state], fontWeight: 600, fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+    <span style={{ color: stateColor(state), fontWeight: 600, fontSize: "0.8rem", whiteSpace: "nowrap" }}>
       ● {state}
     </span>
   );
-}
-
-function label(job: Job): string {
-  const first = job.inputs[0] ?? "(no input)";
-  const base = first.split("/").pop() || first;
-  return job.inputs.length > 1 ? `${base} +${job.inputs.length - 1}` : base;
 }
 
 function stop(e: MouseEvent, fn: () => void): void {
