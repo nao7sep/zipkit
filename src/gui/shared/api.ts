@@ -32,6 +32,12 @@ export interface GuiError {
 
 export type VerifyResult = { ok: true; data: ExtractData } | { ok: false; error: GuiError };
 
+/** App identity for the About dialog (the renderer can't read package.json). */
+export interface AppInfo {
+  name: string;
+  version: string;
+}
+
 export interface ZipKitGuiApi {
   /** Open a native picker; returns chosen absolute paths (empty if cancelled). */
   chooseInputs(): Promise<string[]>;
@@ -58,4 +64,9 @@ export interface ZipKitGuiApi {
   verify(archive: string, checkMetadata: boolean): Promise<VerifyResult>;
   /** Subscribe to the live SDK event stream; returns an unsubscribe function. */
   onEvent(callback: (event: LogEvent) => void): () => void;
+
+  /** App name + version for the About dialog. */
+  appInfo(): Promise<AppInfo>;
+  /** Open an http(s) URL in the OS browser (never navigates the renderer window). */
+  openExternal(url: string): void;
 }

@@ -3,10 +3,11 @@
  * verification. The queue's plan/write/verify/trash live in queue.ts.
  */
 
-import { dialog, ipcMain } from "electron";
-import type { VerifyResult } from "../shared/api.js";
+import { app, dialog, ipcMain, shell } from "electron";
+import type { AppInfo, VerifyResult } from "../shared/api.js";
 import { errorInfo } from "./log.js";
 import { forwardEvent, log, toGuiError, zip } from "./runtime.js";
+import { isHttpUrl } from "./url.js";
 
 export function registerIpc(): void {
   ipcMain.handle("zipkit:chooseInputs", async (): Promise<string[]> => {
@@ -33,4 +34,18 @@ export function registerIpc(): void {
       }
     },
   );
+
+  ipcMain.handle("zipkit:appInfo", async (): Promise<AppInfo> => ({
+    name: app.getName(),
+    version: app.getVersion(),
+  }));
+
+  ipcMain.handle("zipkit:openExternal", async (_event, url: string): Promise<void> => {
+    // Only ever hand the OS browser an http(s) URL — never a file:// or app-scheme link.
+    if (isHttpUrl(url)) {
+      await shell.openExternal(url);
+    } else {
+      log.warn("openExternal refused non-http url", { url });
+    }
+  });
 }

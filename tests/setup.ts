@@ -19,3 +19,10 @@ process.env.ZIPKIT_LOG_DIR = logDir;
 afterAll(async () => {
   await rm(logDir, { recursive: true, force: true });
 });
+
+// In the jsdom environment (the renderer-component tests), stub scrollIntoView —
+// jsdom does not implement it, and the listbox calls it when the active option
+// changes. Guarded so node-environment test files (no `Element`) are unaffected.
+if (typeof Element !== "undefined") {
+  Element.prototype.scrollIntoView = function scrollIntoView() {};
+}

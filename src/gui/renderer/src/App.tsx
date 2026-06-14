@@ -10,7 +10,9 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { ExtractData, Finding, Job, JobIntent, LogEvent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
+import { AboutDialog } from "./components/AboutDialog";
 import { useConfirm } from "./components/DialogHost";
+import { HelpDialog } from "./components/HelpDialog";
 import { JobListbox } from "./components/JobListbox";
 import { StateBadge } from "./components/StateBadge";
 import {
@@ -31,6 +33,8 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [events, setEvents] = useState<LogEvent[]>([]);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
@@ -41,6 +45,20 @@ export function App() {
     () => window.zipkit.onEvent((e) => setEvents((prev) => [...prev.slice(-299), e])),
     [],
   );
+
+  // Cmd/Ctrl+/ opens Help (modal-dialog conventions). Suppressed while any modal
+  // is open — the open dialog owns the keys — and inert during IME composition.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.isComposing) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === "/" && !document.querySelector('[role="dialog"]')) {
+        e.preventDefault();
+        setShowHelp(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const selected = jobs.find((j) => j.id === selectedId) ?? null;
   const anyReady = jobs.some((j) => j.state === "ready");
@@ -60,6 +78,9 @@ export function App() {
         <button onClick={() => void window.zipkit.startQueue()} disabled={!anyReady}>
           Start
         </button>
+        <span style={{ flex: 1 }} />
+        <button onClick={() => setShowHelp(true)}>Help</button>
+        <button onClick={() => setShowAbout(true)}>About</button>
       </header>
 
       <details>
@@ -76,32 +97,30 @@ export function App() {
           onCancel={(id) => void window.zipkit.cancelJob(id)}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
-          {selected ? <JobDetail job={selected} /> : <p style={{ opacity: 0.6 }}>Add a job to begin.</p>}
+          {selected ? (
+            <JobDetail key={selected.id} job={selected} />
+          ) : (
+            <p style={{ opacity: 0.6 }}>Add a job to begin.</p>
+          )}
         </div>
       </div>
 
       <EventLog events={events} />
+
+      {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
+      {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}
     </main>
   );
 }
 
 function JobDetail({ job }: { job: Job }) {
   const confirm = useConfirm();
+  // Keyed by job id in the parent, so this remounts per job — local option draft
+  // and verify state start fresh, no manual re-sync needed.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [verify, setVerify] = useState<ExtractData | null>(null);
-  const jobIdRef = useRef(job.id);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  // Re-sync local options only when a different job is selected (not when this
-  // job's own options round-trip back through the queue update).
-  useEffect(() => {
-    if (jobIdRef.current !== job.id) {
-      jobIdRef.current = job.id;
-      setOpts(job.options);
-      setVerify(null);
-    }
-  }, [job.id, job.options]);
 
   // Fetch the full plan for the detail whenever this job is (re)planned.
   useEffect(() => {

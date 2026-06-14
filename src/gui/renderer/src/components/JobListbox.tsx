@@ -66,17 +66,33 @@ export function JobListbox({
   }
 
   function remove(job: Job) {
-    // Recover deterministically and move focus to the neighbor before the row
-    // unmounts (roving tabindex: removing the focused element drops focus to body).
+    // Move focus before the row unmounts (roving tabindex: removing the focused
+    // element drops focus to the page body). When the removed row is the active
+    // one, recover deterministically to a neighbor; otherwise just keep focus in
+    // the list when the removed row's own button held it.
+    const list = listRef.current;
+    const hadFocus = !!list && !!optionEl(list, job.id)?.contains(document.activeElement);
     if (job.id === selectedId) {
-      const rec = recoverIndex(jobs.findIndex((j) => j.id === job.id), jobs.length);
+      const rec = recoverIndex(
+        jobs.findIndex((j) => j.id === job.id),
+        jobs.length,
+      );
       const neighbor = rec === null ? null : jobs.filter((j) => j.id !== job.id)[rec];
       onSelect(neighbor?.id ?? null);
-      if (neighbor && listRef.current?.contains(document.activeElement)) {
-        optionEl(listRef.current, neighbor.id)?.focus();
-      }
+      if (hadFocus) (neighbor ? optionEl(list, neighbor.id) : list)?.focus();
+    } else if (hadFocus) {
+      (optionEl(list, selectedId) ?? list)?.focus();
     }
     onRemove(job.id);
+  }
+
+  // Page size from the actual layout — how many rows fit the scroll viewport —
+  // rather than a fixed guess.
+  function pageSize(): number {
+    const list = listRef.current;
+    const row = list?.querySelector<HTMLElement>('[role="option"]');
+    if (!list || !row || row.offsetHeight === 0) return 10;
+    return Math.max(1, Math.floor(list.clientHeight / row.offsetHeight));
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLUListElement>) {
@@ -98,7 +114,7 @@ export function JobListbox({
       return;
     }
 
-    const next = navIndex(activeIndex, jobs.length, e.key);
+    const next = navIndex(activeIndex, jobs.length, e.key, pageSize());
     if (next !== null) {
       e.preventDefault();
       taBuffer.current = "";
@@ -196,6 +212,8 @@ const S: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: "0.25rem",
+    maxHeight: "65vh",
+    overflowY: "auto",
   },
   jobRow: {
     display: "flex",

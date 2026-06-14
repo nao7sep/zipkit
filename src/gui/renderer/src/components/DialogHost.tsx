@@ -1,15 +1,15 @@
 /**
- * The app's single, promise-based confirm-dialog host (the shared modal
- * foundation per the modal-dialog conventions). `useConfirm()` returns a
- * `confirm(opts) => Promise<boolean>` that settles on confirm, cancel, Escape,
- * backdrop click, or host unmount. The ConfirmDialog owns the mechanics: focus
- * the safe default (Cancel) on open and restore it on close, trap Tab, lock
- * background scroll, route every close path to cancel, and style the destructive
- * action as danger with a specific label.
+ * The app's single, promise-based confirm-dialog host (modal-dialog conventions).
+ * `useConfirm()` returns `confirm(opts) => Promise<boolean>` that settles on
+ * confirm, cancel, Escape, backdrop click, or host unmount. Requests are queued,
+ * so a second confirm raised while one is open lines up and still settles. The
+ * dialog chrome (focus, trap, scroll-lock, close routing) is the shared
+ * ModalShell; this file owns only the queue and the confirm-specific footer.
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { ModalShell } from "./ModalShell";
 
 export interface ConfirmOptions {
   title: string;
@@ -37,7 +37,7 @@ export function DialogHost({ children }: { children: ReactNode }) {
   }, [queue]);
 
   // Queued: concurrent requests line up and each resolves in turn, so no pending
-  // promise is ever dropped (modal-dialog conventions: promise-based and queued).
+  // promise is ever dropped.
   const confirm = useCallback<Confirm>(
     (opts) =>
       new Promise<boolean>((resolve) => {
@@ -67,94 +67,29 @@ export function DialogHost({ children }: { children: ReactNode }) {
 }
 
 function ConfirmDialog({ options, onResult }: { options: ConfirmOptions; onResult: (value: boolean) => void }) {
-  const surfaceRef = useRef<HTMLDivElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    cancelRef.current?.focus();
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      previouslyFocused?.focus?.();
-    };
-  }, []);
-
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      onResult(false);
-      return;
-    }
-    if (e.key !== "Tab") return;
-    const focusables = surfaceRef.current?.querySelectorAll<HTMLElement>(
-      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
-    );
-    if (!focusables || focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last?.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first?.focus();
-    }
-  }
-
   return (
-    <div
-      style={ST.backdrop}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onResult(false);
-      }}
-    >
-      <div
-        ref={surfaceRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirm-title"
-        aria-describedby="confirm-message"
-        style={ST.surface}
-        onKeyDown={onKeyDown}
-      >
-        <h2 id="confirm-title" style={{ marginTop: 0 }}>
-          {options.title}
-        </h2>
-        <p id="confirm-message">{options.message}</p>
-        <div style={ST.footer}>
-          <button ref={cancelRef} onClick={() => onResult(false)}>
-            Cancel
-          </button>
-          <button onClick={() => onResult(true)} style={options.danger ? ST.danger : undefined}>
+    <ModalShell
+      title={options.title}
+      onClose={() => onResult(false)}
+      describedById="confirm-message"
+      footer={
+        <>
+          <button onClick={() => onResult(false)}>Cancel</button>
+          <button onClick={() => onResult(true)} style={options.danger ? DANGER : undefined}>
             {options.confirmLabel}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p id="confirm-message">{options.message}</p>
+    </ModalShell>
   );
 }
 
-const ST: Record<string, CSSProperties> = {
-  backdrop: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-  },
-  surface: {
-    background: "#222",
-    color: "#eee",
-    padding: "1.25rem",
-    borderRadius: 8,
-    minWidth: "20rem",
-    maxWidth: "32rem",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-  },
-  footer: { display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1rem" },
-  danger: { background: "#c0392b", color: "#fff", border: "none", padding: "0.4rem 0.9rem", borderRadius: 4 },
+const DANGER: CSSProperties = {
+  background: "#c0392b",
+  color: "#fff",
+  border: "none",
+  padding: "0.4rem 0.9rem",
+  borderRadius: 4,
 };
