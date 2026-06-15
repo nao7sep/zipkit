@@ -10,6 +10,8 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 
+import { isComposing } from "../composition";
+
 const FOCUSABLE = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
 export function ModalShell({
@@ -47,6 +49,10 @@ export function ModalShell({
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
+      // Mid-composition, Escape belongs to the IME (dismiss the candidate), not
+      // the dialog — closing here would violate the text-input/IME convention,
+      // unlike every other app's ModalShell.
+      if (isComposing(e)) return;
       e.stopPropagation();
       onClose();
       return;
