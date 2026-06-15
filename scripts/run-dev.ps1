@@ -2,6 +2,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $scriptExitCode = 0
 
+# run-dev: run the app from source with live reload, in its loosest configuration.
+# For active coding and debugging. The strict, production-faithful launchers are
+# run-built (launch the existing production build without rebuilding) and rebuild
+# (build from clean in release config, then launch).
+
 function Set-Utf8Console {
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [Console]::InputEncoding = $utf8NoBom
@@ -65,7 +70,7 @@ try {
 }
 catch {
     Write-Host ""
-    Write-Host "zipkit run failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "zipkit run-dev failed: $($_.Exception.Message)" -ForegroundColor Red
     $scriptExitCode = 1
 }
 finally {

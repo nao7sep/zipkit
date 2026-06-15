@@ -33,7 +33,8 @@ The app is a thin wrapper over the SDK; it computes no archive logic of its own.
 
 ```sh
 npm install
-npm run dev          # or: scripts/run.command (macOS) · scripts/run.ps1 (Windows)
+npm run dev          # or: scripts/run-dev.command (macOS) · scripts/run-dev.ps1 (Windows)
+                     # run-built launches the existing build; rebuild builds fresh, then launches
 ```
 
 Package a distributable (output lands in `release/`):

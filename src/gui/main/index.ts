@@ -7,6 +7,7 @@
 
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
+import { installContentSecurityPolicy } from "./csp.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
 import { errorInfo } from "./log.js";
@@ -46,6 +47,10 @@ function createWindow(): void {
   if (devUrl) {
     void win.loadURL(devUrl);
   } else {
+    // Production path only (run-built / rebuild): enforce the strict CSP via a
+    // response header before loading the file. Dev leaves the policy unset so
+    // electron-vite's HMR keeps working.
+    installContentSecurityPolicy();
     void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
   }
 }
