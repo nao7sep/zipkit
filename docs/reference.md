@@ -285,6 +285,8 @@ The one structured stream fed to `onProgress`, the CLI's stderr renderer, and th
 
 `LogEventBody` is a discriminated union on `event` (no untyped data bag). The variants: `session.start` (`version, concurrency, chunkSize`), `scan.start` (`inputs`), `scan.dir` (`path`), `scan.symlink-unreadable` (`path`), `scan.done` (`entries, prunedDirs`), `plan.done` (`total, included, excluded, renamed, warnings, errors, writable`), `entry.excluded` (`path, reason?`), `entry.renamed` (`path, from`), `entry.flagged` (`rule, path, severity`), `write.start` (`entries`), `entry.written` (`path`), `write.done` (`bytes, zip64`), `extract.start` (`entries, write`), `entry.verified` (`path`), `extract.done` (`total, crcFailed, shaMismatched, written, skipped, reportOk`), and `fault` (`code, detail, cause?`). Each verb emits one `session.start` line once per session (the first call), the relevant phase events, and — on failure — a terminal `fault` event recorded under the stage matching the fault's domain.
 
+Level gating: `info`/`warn`/`error` are always recorded; the per-item `debug` stream (each scanned directory, each written or verified entry) is gated off unless `ZIPKIT_DEBUG=1`, so a normal session log stays an intent-and-outcome summary rather than a per-file dump.
+
 ---
 
 ## Error types and exit codes
