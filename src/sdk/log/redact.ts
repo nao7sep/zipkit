@@ -3,8 +3,7 @@
  * whole object that happens to carry a secret is logged. It is the single place
  * secret field names are defined, and it runs inside the logger before any event
  * reaches a sink — so a secret is redacted before it leaves the SDK, on every
- * destination at once (the per-session log, the `onProgress` hook, the CLI's
- * stderr progress).
+ * destination at once (the per-session log and the `onProgress` hook).
  *
  * Contract (the logging convention's redaction rules):
  * - match a fixed set of field *names* by exact, case-insensitive name — never

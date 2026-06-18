@@ -154,7 +154,7 @@ export const DEFAULT_POLICY: ArchivePolicy = {
 
   // Companion output — the embedded metadata record is zipkit's reason to
   // exist (faithful, high-precision persistence), so it is on by default;
-  // `metadata: false` (CLI `--no-metadata`) opts into a plain archive.
+  // `metadata: false` opts into a plain archive.
   metadata: { ...METADATA_DEFAULTS },
 };
 
@@ -183,7 +183,7 @@ const mergePolicy = createDefu((object, key, value) => {
  * resolved `compression.store` is then normalized to the canonical
  * lowercase-dotted extension form, so this is the single place the dialect is
  * fixed — a caller passing `txt`, `.txt`, or `.TXT` reaches `applyCompression`
- * identically, whether from the SDK or the CLI.
+ * identically.
  */
 export function resolvePolicy(
   instance?: DeepPartial<ArchivePolicy>,

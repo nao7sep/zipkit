@@ -1,8 +1,8 @@
 {
   // Test program: tests/ mirrors src/ and stays out of the shipped build. It runs
-  // under BOTH environments — the SDK/CLI tests in Node, future renderer-logic
-  // tests against DOM types — so it carries node + vite/client types and DOM libs.
-  // noEmit; never shipped. Wired into `typecheck` so test code is type-checked too.
+  // under BOTH environments — the SDK tests in Node, the renderer-logic and
+  // component tests against DOM types — so it carries node + vite/client types and
+  // DOM libs. noEmit; never shipped. Wired into `typecheck` so test code is too.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

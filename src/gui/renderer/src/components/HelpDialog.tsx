@@ -28,7 +28,10 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
         ↑/↓ and Home/End move, typing a name jumps to it, Delete removes a job, and Esc cancels a
         running one.
       </p>
-      <p style={{ opacity: 0.7 }}>Each session’s logs are written under ~/.zipkit/logs/.</p>
+      <p style={{ opacity: 0.7 }}>
+        Each session’s logs are written under the app’s data folder (~/.zipkit/logs by default;
+        ZIPKIT_HOME/ZIPKIT_LOG_DIR relocate it).
+      </p>
     </ModalShell>
   );
 }

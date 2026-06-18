@@ -1,15 +1,14 @@
 appId: io.github.nao7sep.zipkit
 productName: ZipKit
 
-# Packaged installers land in release/ — kept clear of tsup's dist/ (the CLI build)
-# and electron-vite's out/ (the app bundle this packages). Icons and other build
-# resources are read from build/.
+# Packaged installers land in release/ — kept clear of electron-vite's out/ (the
+# app bundle this packages). Icons and other build resources are read from build/.
 directories:
   output: release
   buildResources: build
 
 # Ship only the built app bundle (electron-vite's out/). Prod dependencies and
-# package.json are included automatically; source, tests, and tsup's dist/ are not.
+# package.json are included automatically; source and tests are not.
 files:
   - out/**
   - "!**/*.map"

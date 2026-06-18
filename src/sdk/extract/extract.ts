@@ -245,7 +245,6 @@ export async function extractArchive(
     throw new ReadError(
       "read.no-dest",
       "extract requires a destination directory unless dryRun is set",
-      { usage: true },
     );
   }
   const timeZone = spec.timezone ?? machineTimeZone();
@@ -268,7 +267,6 @@ export async function extractArchive(
   } catch (err) {
     throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, {
       cause: err,
-      usage: true,
     });
   }
 

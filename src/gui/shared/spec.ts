@@ -1,7 +1,7 @@
 /**
- * The options → ArchiveSpec mapping: the GUI's format-coercion edge, mirroring
- * what the CLI's flag layer does. It turns the visible option state into a typed
- * spec; the SDK still owns all validation and every default not set here. Pure
+ * The options → ArchiveSpec mapping: the GUI's format-coercion edge. It turns
+ * the visible option state into a typed spec; the SDK still owns all validation
+ * and every default not set here. Pure
  * (no Electron, no Node, no SDK runtime), so it is unit-tested directly.
  */
 

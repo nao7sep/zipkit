@@ -3,8 +3,8 @@
  * never carry absolute source paths. But `write(plan)` is self-contained:
  * given only a plan, it must read the right bytes from disk. We reconcile the
  * two by attaching the writer's instructions to the plan through a
- * symbol-keyed, non-enumerable property. `JSON.stringify` — used by both the
- * CLI's stdout result emission and the metadata serializer — never sees it, so
+ * symbol-keyed, non-enumerable property. `JSON.stringify` — used by the metadata
+ * serializer and any caller that serializes a plan — never sees it, so
  * the absolute paths are stripped by construction, while the data travels with the plan
  * object across the handoff with no instance coupling.
  */
@@ -29,9 +29,9 @@ interface Carried {
 
 /**
  * Attach the writer's instructions to a plan object without making them
- * enumerable, so `JSON.stringify` — used by the CLI's stdout result emission and
- * the metadata serializer — never sees them and the absolute source paths they
- * hold are stripped by construction. They travel with the object across the
+ * enumerable, so `JSON.stringify` — used by the metadata serializer and any
+ * caller that serializes a plan — never sees them and the absolute source paths
+ * they hold are stripped by construction. They travel with the object across the
  * plan → write handoff.
  */
 export function attachInternals(target: object, internals: PlanInternals): void {

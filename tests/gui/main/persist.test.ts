@@ -4,8 +4,12 @@
  * must default — so the defensive-loading boundaries are pinned here.
  */
 
-import { describe, expect, it } from "vitest";
-import { parseQueue, serializeQueue, toResumable } from "../../../src/gui/main/persist.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { loadQueue, parseQueue, saveQueue, serializeQueue, toResumable } from "../../../src/gui/main/persist.js";
 import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 
@@ -42,6 +46,40 @@ describe("parseQueue", () => {
     expect(parseQueue("not json")).toEqual([]);
     expect(parseQueue(JSON.stringify({ jobs: "x" }))).toEqual([]);
     expect(parseQueue(JSON.stringify({}))).toEqual([]);
+  });
+});
+
+describe("queue file location and persistence", () => {
+  // The queue lives under the resolved storage root. Relocating that root via
+  // ZIPKIT_HOME to a throwaway directory keeps the suite out of the real home dir
+  // and pins the relocation + atomic round-trip in one place.
+  let root: string;
+  const prev = process.env.ZIPKIT_HOME;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
+    process.env.ZIPKIT_HOME = root;
+  });
+  afterEach(async () => {
+    if (prev === undefined) delete process.env.ZIPKIT_HOME;
+    else process.env.ZIPKIT_HOME = prev;
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("round-trips saved jobs through the relocated root, leaving no temp file", async () => {
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    await saveQueue(jobs);
+
+    const file = path.join(root, "queue.json");
+    // The atomic write renames the temp over the target, so only the final file
+    // remains (no orphaned `.tmp`).
+    expect(() => readFileSync(`${file}.tmp`, "utf8")).toThrow();
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(await loadQueue()).toEqual(jobs);
+  });
+
+  it("loads an empty queue when no file exists under the root", async () => {
+    expect(await loadQueue()).toEqual([]);
   });
 });
 

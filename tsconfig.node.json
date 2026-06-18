@@ -1,9 +1,9 @@
 {
-  // Node-side program: the SDK engine, the CLI, and the GUI's main + preload +
-  // shared. `lib: ["ES2022"]` (no DOM) statically catches a node-side file
-  // reaching for a browser global; `types: ["node"]` keeps it to Node. Preload
-  // sits here because its `electron` import pulls in @types/node, which would
-  // otherwise leak Node globals into the renderer. tsup builds against this config.
+  // Node-side program: the SDK engine and the GUI's main + preload + shared.
+  // `lib: ["ES2022"]` (no DOM) statically catches a node-side file reaching for a
+  // browser global; `types: ["node"]` keeps it to Node. Preload sits here because
+  // its `electron` import pulls in @types/node, which would otherwise leak Node
+  // globals into the renderer.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -27,11 +27,9 @@
   },
   "include": [
     "src/sdk/**/*",
-    "src/cli/**/*",
     "src/gui/main/**/*",
     "src/gui/preload/**/*",
     "src/gui/shared/**/*",
-    "electron.vite.config.ts",
-    "tsup.config.ts"
+    "electron.vite.config.ts"
   ]
 }

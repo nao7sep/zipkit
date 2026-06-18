@@ -1,7 +1,7 @@
 /**
- * Building exclude rules from CLI pattern strings — the one place both `create`
- * and `extract` turn `--exclude`/`--exclude-regex` flags into {@link FilterRule}s,
- * so the two verbs agree on dialect and the trailing-slash directory convention.
+ * Building exclude rules from the spec's `exclude` patterns — the one place both
+ * `create` and `extract` turn them into {@link FilterRule}s, so the two verbs
+ * agree on dialect and the trailing-slash directory convention.
  */
 
 import type { FilterRule } from "../types.js";

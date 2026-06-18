@@ -22,7 +22,7 @@ export function extnameLower(archivePath: string): string {
  * Normalize a user-supplied extension to the form {@link extnameLower}
  * produces: lowercase with a single leading dot. Accepts `.txt`, `txt`, and
  * `.TXT` alike, so a store extension specified either way matches an entry. The
- * one place both the SDK (`resolvePolicy`) and the CLI agree on the dialect.
+ * one place the SDK (`resolvePolicy`) fixes the extension dialect.
  */
 export function normalizeExtension(ext: string): string {
   const e = ext.trim().toLowerCase();

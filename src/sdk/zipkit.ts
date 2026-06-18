@@ -1,8 +1,8 @@
 /**
  * The ZipKit SDK class. `plan()` scans and runs the pure planning pass,
  * writing nothing; `write()` executes a plan; `create()` does both. The
- * `plan → inspect → write` flow is the reason ZipKit is an SDK and not only a
- * CLI: a caller computes the plan, reads `findings`, decides, then writes. The
+ * `plan → inspect → write` flow is the heart of the SDK: a caller computes the
+ * plan, reads `findings`, decides, then writes. The
  * plan carries the resolved output and the overwrite intent, so `write(plan)`
  * is self-contained. The per-call policy is merged over the instance policy.
  *
@@ -10,13 +10,13 @@
  * per-session log — `<logDir>/yyyymmdd-hhmmss-fff-utc.log`, JSON Lines — lazily
  * on its first verb call, and every verb on the instance appends its events
  * there; each result's `log` field names the file. `logDir` defaults to
- * `ZIPKIT_LOG_DIR`, else `~/.zipkit/logs`. Lines are appended synchronously, so
+ * `ZIPKIT_LOG_DIR`, else `<ZIPKIT_HOME or ~/.zipkit>/logs`. Lines are appended synchronously, so
  * there is no descriptor to close and nothing to flush. The SDK writes nothing
  * to stdout or stderr — progress goes only to a per-call `onProgress` hook —
  * except the console fallback the log uses if its file becomes unwritable.
  *
- * The session spans the instance's lifetime: the CLI builds one `ZipKit` per
- * invocation, so its log is exactly that run. A long-lived or shared instance
+ * The session spans the instance's lifetime: a caller that builds one `ZipKit`
+ * per run gets a log that is exactly that run. A long-lived or shared instance
  * keeps appending to the one file (logs are never rotated), and verbs invoked
  * concurrently on the same instance interleave their lines. Construct a fresh
  * `ZipKit` per logical run when you want one self-contained session log.

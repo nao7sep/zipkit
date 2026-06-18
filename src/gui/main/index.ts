@@ -1,84 +1,36 @@
 /**
- * The Electron main process: create the window, register the IPC seam (plain
- * handlers + the queue engine), and load the renderer (the electron-vite dev
- * server in development, the built file in production). The app is the primary
- * face of ZipKit; the SDK is driven from here.
+ * The Electron main process entry. It resolves zipkit's storage root *first* —
+ * stopping with a clear error if `ZIPKIT_HOME` is set but unusable, the startup
+ * error the storage convention requires rather than a silent fallback — and only
+ * then loads the rest of the main process, which derives its log and queue paths
+ * from that root. The bootstrap is split out (`./bootstrap`) and pulled in by a
+ * dynamic import so the root is validated before any module that reads it runs.
  */
 
-import { app, BrowserWindow } from "electron";
-import path from "node:path";
-import { installContentSecurityPolicy } from "./csp.js";
-import { registerIpc } from "./ipc.js";
-import { registerQueueIpc, restoreQueue } from "./queue.js";
-import { errorInfo } from "./log.js";
-import { log, setMainWindow } from "./runtime.js";
+import { app, dialog } from "electron";
+import { storageRoot, StorageRootError } from "../../sdk/storage.js";
 
-// Last-resort hooks: record the failure before the process can die. The session
-// log appends synchronously, so the line is on disk by the time these return.
-process.on("uncaughtException", (err) => {
-  log.error("uncaught exception", { error: errorInfo(err) });
-});
-process.on("unhandledRejection", (reason) => {
-  log.error("unhandled rejection", { error: errorInfo(reason) });
-});
-
-function createWindow(): void {
-  const win = new BrowserWindow({
-    width: 1100,
-    height: 720,
-    minWidth: 900,
-    minHeight: 560,
-    backgroundColor: "#1a1a1a",
-    webPreferences: {
-      preload: path.join(import.meta.dirname, "../preload/index.mjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // The package is ESM, so electron-vite emits an ESM (.mjs) preload, which
-      // Electron only loads with the sandbox off. contextIsolation still keeps the
-      // renderer walled off from Node; the bridge is the sole crossing.
-      sandbox: false,
-    },
+try {
+  // Resolve once at this defined startup point, after the environment is known
+  // (not frozen into a module constant at import time). A bad ZIPKIT_HOME throws
+  // here, where we can report it and quit cleanly.
+  storageRoot();
+} catch (err) {
+  const message =
+    err instanceof StorageRootError
+      ? err.message
+      : `failed to resolve the storage root: ${err instanceof Error ? err.message : String(err)}`;
+  // Surface to both the terminal (dev/launcher) and a dialog (double-clicked app),
+  // then stop — the app cannot decide where to keep its files.
+  process.stderr.write(`zipkit: ${message}\n`);
+  app.whenReady().then(() => {
+    dialog.showErrorBox("ZipKit cannot start", message);
+    app.exit(1);
   });
-
-  setMainWindow(win);
-  log.info("main window created");
-
-  const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) {
-    void win.loadURL(devUrl);
-  } else {
-    // Production path only (run-built / rebuild): enforce the strict CSP via a
-    // response header before loading the file. Dev leaves the policy unset so
-    // electron-vite's HMR keeps working.
-    installContentSecurityPolicy();
-    void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
-  }
+  // Prevent the heavy bootstrap (which would re-resolve the root) from loading.
+  throw new StorageRootError(message);
 }
 
-app.whenReady().then(() => {
-  log.info("app started", {
-    version: app.getVersion(),
-    platform: process.platform,
-    arch: process.arch,
-    electron: process.versions.electron,
-    node: process.versions.node,
-    logPath: log.path,
-  });
-  registerIpc();
-  registerQueueIpc();
-  createWindow();
-  void restoreQueue();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-app.on("window-all-closed", () => {
-  const quitting = process.platform !== "darwin";
-  log.info("all windows closed", { quitting });
-  if (quitting) app.quit();
-});
-
-app.on("before-quit", () => {
-  log.info("app quitting");
-});
+// Dynamically imported so its transitive imports — which resolve the storage
+// root eagerly — run only after the validation above has passed.
+await import("./bootstrap.js");

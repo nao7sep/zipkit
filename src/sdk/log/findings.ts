@@ -4,7 +4,7 @@
  * through the single event producer. Each finding becomes one `entry.flagged`
  * event at the level its severity maps to (`error → error`, `warning → warn`,
  * `info → info`), so the per-failure detail rides the same seam that already
- * feeds the per-session log, the `onProgress` hook, and the CLI's stderr.
+ * feeds the per-session log and the `onProgress` hook.
  *
  * Both stages that produce findings route through here — the plan stage
  * (`src/zipkit.ts`) and the extract/validate stage (`src/extract/extract.ts`) —

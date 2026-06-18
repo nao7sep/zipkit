@@ -4,22 +4,24 @@
  * under the app's own data dir (`~/.zipkit/logs/`), named by a UTC start
  * timestamp and nothing else — no app name, no word "log", no level.
  *
- * zipkit is built to fan out (an SDK/CLI invoked many times in parallel), so the
+ * zipkit is built to fan out (an SDK invoked many times in parallel), so the
  * filename takes the millisecond `-fff` exception — `yyyymmdd-hhmmss-fff-utc.log`
  * — to keep the logs of independent runs that start in the same second distinct.
  * The `.log` extension holds JSON Lines (the convention's shape), not `.jsonl`.
  */
 
 import { appendFileSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
+import { storageRoot } from "../storage.js";
 import type { LogSink } from "./logger.js";
 
-/** `~/.zipkit/logs` — the app's own data dir, `logs/` subfolder. Created on the
- *  first write if missing. Overridable per instance via `logDir`, or for a whole
- *  process via the `ZIPKIT_LOG_DIR` environment variable. */
+/** `<root>/logs` — the `logs/` subfolder under zipkit's storage root, where the
+ *  root is `ZIPKIT_HOME` or `~/.zipkit` (resolved in one place by
+ *  {@link storageRoot}). Created on the first write if missing. Overridable per
+ *  instance via `logDir`, or for a whole process via the narrower
+ *  `ZIPKIT_LOG_DIR` environment variable, which wins over this default. */
 export function defaultLogDir(): string {
-  return path.join(homedir(), ".zipkit", "logs");
+  return path.join(storageRoot(), "logs");
 }
 
 /**

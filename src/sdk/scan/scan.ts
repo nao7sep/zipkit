@@ -276,7 +276,6 @@ export async function scan(
     } catch (err) {
       throw new ScanError("scan.input-missing", `cannot stat input: ${input.path}`, {
         cause: err,
-        usage: true,
       });
     }
     if (link.isSymbolicLink()) {
@@ -286,7 +285,6 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot resolve symlink input: ${input.path}`, {
           cause: err,
-          usage: true,
         });
       }
       let resolved: BigIntStats;
@@ -295,7 +293,6 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot stat symlink target: ${input.path}`, {
           cause: err,
-          usage: true,
         });
       }
       isDir.push(resolved.isDirectory());
@@ -381,7 +378,6 @@ export async function scan(
       } catch (err) {
         throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, {
           cause: err,
-          usage: true,
         });
       }
       // A file named directly as input that is itself the output archive.

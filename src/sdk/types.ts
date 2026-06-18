@@ -159,7 +159,7 @@ export interface ZipKitOptions {
    * logging session: a single `yyyymmdd-hhmmss-fff-utc.log` (JSON Lines) is
    * opened lazily on the first verb call, every verb on the instance writes to
    * it, and the path is returned on each result's `log`. Defaults to
-   * `process.env.ZIPKIT_LOG_DIR` when set, else `~/.zipkit/logs`. The `-fff`
+   * `process.env.ZIPKIT_LOG_DIR` when set, else `<ZIPKIT_HOME or ~/.zipkit>/logs`. The `-fff`
    * millisecond stamp keeps the logs of runs that start in the same second —
    * zipkit is built to fan out — distinct.
    */
@@ -182,8 +182,8 @@ export interface ZipKitOptions {
  * stream, so each call decides where its progress goes. With no hook the SDK
  * writes nothing to stdout or stderr; the durable record still goes to the
  * instance's per-session log file (see {@link ZipKitOptions.logDir}). The same
- * structured `LogEvent` stream feeds this hook, the CLI's stderr renderer, and
- * that session log — one producer, many sinks.
+ * structured `LogEvent` stream feeds this hook and that session log — one
+ * producer, many sinks.
  *
  * `signal` is the cancellation signal. Every verb — `plan`, `write`, `create`,
  * `extract` — honors it, stopping cleanly at the next boundary (a phase edge, a
@@ -409,8 +409,8 @@ export interface ExtractEntryResult {
  * The `extract` verb's payload. `findings` is the SSOT fault carrier. The domain
  * verdict is `reportOk` — no CRC failure, no unsafe path, and (under
  * `checkMetadata`) no missing/extra entry and no SHA mismatch — distinct from
- * the envelope's derived `ok`; a clean run that is simply "not ok" exits 1, and
- * the CLI keys that gate off `reportOk`.
+ * the envelope's derived `ok`; a run can complete cleanly yet be "not ok," and a
+ * caller gates off `reportOk` (the delete-gate reads it).
  */
 export interface ExtractData {
   archive: string; // identity
@@ -450,9 +450,8 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 /**
  * The typed body of a {@link LogEvent}, a discriminated union on `event`. Each
  * variant carries exactly the fields it means — there is no untyped `data` bag,
- * so a producer and every consumer (the SDK `onProgress` hook, the CLI's stderr
- * renderer, the per-session log) agree on each event's shape by the type
- * system, not by string convention.
+ * so a producer and every consumer (the SDK `onProgress` hook and the per-session
+ * log) agree on each event's shape by the type system, not by string convention.
  */
 export type LogEventBody =
   | { event: "session.start"; version: string; concurrency: number; chunkSize: number }

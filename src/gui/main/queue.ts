@@ -13,12 +13,20 @@ import type { Job, JobIntent } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
 import { forwardEvent, log, sendQueue, zip } from "./runtime.js";
 import { loadQueue, saveQueue, toResumable } from "./persist.js";
+import { resolveGuiOutput } from "./output.js";
 import { createQueueEngine } from "./queue-engine.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 const engine = createQueueEngine({
-  plan: (inputs, options, signal) => zip.plan(buildSpec(inputs, options), { signal, onProgress: forwardEvent }),
+  // Absolutize (or reject) the typed output at the GUI boundary before it reaches
+  // the SDK, so a relative output never resolves against the unpredictable
+  // working directory. The SDK still infers an empty output beside the input.
+  plan: (inputs, options, signal) =>
+    zip.plan(buildSpec(inputs, { ...options, output: resolveGuiOutput(options.output) }), {
+      signal,
+      onProgress: forwardEvent,
+    }),
   write: async (plan, signal) => (await zip.write(plan, { signal, onProgress: forwardEvent })).bytes,
   verify: async (output, signal) =>
     (
