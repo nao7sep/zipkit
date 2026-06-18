@@ -1,7 +1,7 @@
 /**
  * The per-session log file: the `-fff` millisecond filename stamp (the timestamp
  * convention's exception for concurrent tools), synchronous JSON-Lines writes,
- * and the non-fatal stderr fallback when the file cannot be opened.
+ * and the non-fatal silent degrade when the file cannot be opened.
  */
 
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -50,7 +50,7 @@ describe("openSessionLog", () => {
     expect(JSON.parse(lines[1]!)).toMatchObject({ message: "second" });
   });
 
-  it("degrades to stderr without throwing when the file cannot be opened", async () => {
+  it("degrades silently — no stderr, no throw — when the file cannot be opened", async () => {
     // Make the log's parent a regular file so mkdir/open fails (ENOTDIR).
     const blocker = path.join(dir, "blocker");
     await writeFile(blocker, "x");
@@ -59,8 +59,8 @@ describe("openSessionLog", () => {
     const log = openSessionLog(path.join(blocker, "nested", "s.log"));
     expect(() => log.sink(event("error", "after open failed"))).not.toThrow();
 
-    const written = stderr.mock.calls.map((c) => String(c[0])).join("");
-    expect(written).toContain("session log unavailable"); // surfaced, not swallowed
-    expect(written).toContain("after open failed"); // the line fell back to stderr
+    // An SDK never falls back to a standard stream (§4): the dead file sink is a
+    // silent no-op, and the live progress seam (a separate sink) carries events.
+    expect(stderr).not.toHaveBeenCalled();
   });
 });

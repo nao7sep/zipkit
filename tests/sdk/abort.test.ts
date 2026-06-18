@@ -1,8 +1,8 @@
 /**
- * Abort propagation through the SDK. The CLI-level test covers SIGINT signal
- * isolation; this covers the signal actually flowing through the scan → write
- * pipeline: an already-aborted signal stops plan() at the scan edge, and an
- * abort raised mid-write rejects with AbortError and leaves no output behind.
+ * Abort propagation through the SDK: the signal actually flowing through the
+ * scan → write pipeline — an already-aborted signal stops plan() at the scan
+ * edge, and an abort raised mid-write rejects with AbortError and leaves no
+ * output behind.
  */
 
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";

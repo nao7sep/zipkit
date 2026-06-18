@@ -252,9 +252,9 @@ export class ZipKit {
   /** Emit a terminal error event so the session log (and any `onProgress` hook)
    *  records the failure instead of going silent mid-stream. Best-effort: the
    *  logger swallows its own faults, and the original error is always rethrown
-   *  by the caller. The stage comes from the fault's `errorType` — the same axis
-   *  the exit-code classifier reads — so the log stage and the exit code can
-   *  never disagree. */
+   *  by the caller. The stage comes from the fault's `errorType` — the typed
+   *  error's own domain, never a code-string prefix — so the log stage and the
+   *  error a caller branches on can never disagree. */
   #reportError(logger: Logger, err: unknown): void {
     const stage: LogStage = err instanceof ZipKitError ? STAGE_FOR_ERROR_TYPE[err.errorType] : "plan";
     const code = err instanceof ZipKitError ? err.code : "unknown";
@@ -302,8 +302,8 @@ export class ZipKit {
 }
 
 /** Map a fault's domain (`errorType`) to the log stage its terminal event is
- *  recorded under. Keyed off the same axis as the exit-code classifier — never a
- *  code-string prefix — so the two views of a fault stay in agreement. */
+ *  recorded under. Keyed off the typed error's domain — never a code-string
+ *  prefix — so the two views of a fault stay in agreement. */
 const STAGE_FOR_ERROR_TYPE: Record<ZipKitErrorType, LogStage> = {
   scan: "scan",
   policy: "plan",

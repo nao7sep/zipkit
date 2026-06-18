@@ -1,7 +1,7 @@
 /**
  * The GUI's output-path boundary. The shared core (the SDK) interprets a
- * relative output against the *working directory* — correct for the CLI's
- * operands, but wrong for a desktop app, whose working directory is unpredictable
+ * relative output against the *working directory* — correct for a shell or script
+ * caller, but wrong for a desktop app, whose working directory is unpredictable
  * (a double-clicked macOS `.app` runs with cwd `/`). Per the storage-path
  * convention, the GUI must hand the core absolute paths only: a user-typed
  * relative string in the Output field is rejected here, before it reaches the

@@ -59,55 +59,33 @@ export interface SessionLog {
 /**
  * Open the session log at `filePath`, creating its directory. Best-effort and
  * non-fatal: if the directory cannot be created, or a later append fails (disk
- * full, permissions), the sink degrades to `process.stderr` and the run
- * continues — the app never crashes because logging failed, and the failure is
- * surfaced as a one-line notice, never silently swallowed. The fallback uses
- * only what is already available (no new dependency).
- *
- * Writing to `process.stderr` is, strictly, the one place the SDK touches a
- * standard stream: it is the console fallback the logging convention mandates for
- * exactly this failure, and it fires only when the session file is unusable.
+ * full, permissions), the sink degrades to a silent no-op and the run continues —
+ * the SDK never crashes because logging failed, and it never falls back to a
+ * standard stream (sdk-toolkit-conventions §4: an SDK prints nothing). The live
+ * progress/event seam is a separate sink, independent of this file, so it keeps
+ * carrying every event; the on-disk log is the one sink that goes quiet.
  */
 export function openSessionLog(filePath: string): SessionLog {
   let degraded = false;
 
-  const degrade = (reason: string): void => {
-    if (degraded) return;
-    degraded = true;
-    try {
-      process.stderr.write(`zipkit: session log unavailable (${reason}); logging to stderr\n`);
-    } catch {
-      /* even surfacing the failure is best-effort */
-    }
-  };
-
   try {
     mkdirSync(path.dirname(filePath), { recursive: true });
-  } catch (err) {
-    degrade(`${filePath}: ${messageOf(err)}`);
+  } catch {
+    degraded = true;
   }
 
   return {
     path: filePath,
     sink: (event) => {
-      const line = `${JSON.stringify(event)}\n`;
-      if (!degraded) {
-        try {
-          appendFileSync(filePath, line);
-          return;
-        } catch (err) {
-          degrade(`write failed: ${messageOf(err)}`);
-        }
-      }
+      if (degraded) return;
       try {
-        process.stderr.write(line);
+        appendFileSync(filePath, `${JSON.stringify(event)}\n`);
       } catch {
-        /* the last-resort fallback is itself best-effort */
+        // The file became unusable mid-session. Degrade this sink to a no-op
+        // rather than print: an SDK never writes to a standard stream. The live
+        // event seam (a separate sink) still carries every event.
+        degraded = true;
       }
     },
   };
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
