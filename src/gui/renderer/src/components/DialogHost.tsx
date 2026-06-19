@@ -8,7 +8,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ModalShell } from "./ModalShell";
 
 export interface ConfirmOptions {
@@ -75,7 +75,7 @@ function ConfirmDialog({ options, onResult }: { options: ConfirmOptions; onResul
       footer={
         <>
           <button onClick={() => onResult(false)}>Cancel</button>
-          <button onClick={() => onResult(true)} style={options.danger ? DANGER : undefined}>
+          <button onClick={() => onResult(true)} className={options.danger ? "danger" : undefined}>
             {options.confirmLabel}
           </button>
         </>
@@ -85,11 +85,3 @@ function ConfirmDialog({ options, onResult }: { options: ConfirmOptions; onResul
     </ModalShell>
   );
 }
-
-const DANGER: CSSProperties = {
-  background: "#c0392b",
-  color: "#fff",
-  border: "none",
-  padding: "0.4rem 0.9rem",
-  borderRadius: 4,
-};

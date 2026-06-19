@@ -1,25 +1,27 @@
 /*
- * Base theme for the renderer. Palette and chrome match the fleet's dark design
- * (DayNote): an app-background behind surface panes, one accent, danger, and a
- * neutral "utility" tone. Tokens live here as CSS custom properties so inline
+ * Base theme for the renderer. The golden-workbench palette uses olive-black
+ * surfaces, a marigold accent, danger, and a neutral utility tone. Tokens live
+ * here as CSS custom properties so inline
  * styles in components reference them via var(); interactive states (hover,
  * focus, menu highlight, disabled) live here too, since inline styles can't
  * express them. Layout stays in the components.
  */
 
 :root {
-  --bg: #14161a;
-  --surface: #1b1e24;
-  --surface-2: #20242b;
-  --border: #2c313a;
-  --text: #e6e9ef;
-  --text-2: #9098a6;
-  --accent: #3b82f6;
-  --accent-hover: #2f6fe0;
-  --danger: #ef4444;
-  --danger-hover: #dc2626;
-  --utility: #2a2f38;
-  --utility-hover: #353b45;
+  color-scheme: dark;
+  --bg: #16170f;
+  --surface: #202218;
+  --surface-2: #292c20;
+  --border: #3a3f2e;
+  --text: #f0f2e6;
+  --text-2: #a5ad94;
+  --accent: #f0b429;
+  --accent-hover: #f8c94e;
+  --accent-ink: #211a03;
+  --danger: #b93650;
+  --danger-hover: #c24152;
+  --utility: #2d3124;
+  --utility-hover: #383d2c;
   --radius: 8px;
 }
 
@@ -64,7 +66,7 @@ button:disabled {
 }
 button.accent {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
 }
 button.accent:hover:not(:disabled) {
   background: var(--accent-hover);

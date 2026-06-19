@@ -10,13 +10,13 @@ import type { ExtractData, Finding, Job, JobIntent, LogEvent, PlanData } from ".
 
 /** The dark-theme status palette, in one place so every status reads one map. */
 export const COLOR = {
-  ok: "#4caf50",
-  bad: "#ff6b6b",
-  warn: "#ffb74d",
-  info: "#9ccc65",
-  busy: "#ffee58",
-  ready: "#42a5f5",
-  idle: "#888",
+  ok: "#6fd08c",
+  bad: "#ff6b7a",
+  warn: "#ffb454",
+  info: "#a3d977",
+  busy: "#60a5fa",
+  ready: "#f0b429",
+  idle: "#8c9381",
 } as const;
 
 /** A short label for a job row: the first input's basename, "+N" for the rest. */
@@ -143,15 +143,15 @@ export function stateTint(state: Job["state"]): string {
     case "planning":
       return "transparent";
     case "needs-attention":
-      return "rgba(255, 183, 77, 0.12)";
+      return "rgba(255, 180, 84, 0.12)";
     case "ready":
-      return "rgba(59, 130, 246, 0.16)";
+      return "rgba(240, 180, 41, 0.14)";
     case "running":
-      return "rgba(255, 238, 88, 0.12)";
+      return "rgba(96, 165, 250, 0.12)";
     case "done":
-      return "rgba(76, 175, 80, 0.14)";
+      return "rgba(111, 208, 140, 0.14)";
     case "failed":
-      return "rgba(239, 68, 68, 0.14)";
+      return "rgba(255, 107, 122, 0.14)";
   }
 }
 
