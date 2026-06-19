@@ -11,7 +11,7 @@ import { ipcMain, shell } from "electron";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
-import { forwardEvent, log, sendQueue, zip } from "./runtime.js";
+import { log, sendEvent, sendQueue, zip } from "./runtime.js";
 import { loadQueue, saveQueue, toResumable } from "./persist.js";
 import { resolveGuiOutput } from "./output.js";
 import { createQueueEngine } from "./queue-engine.js";
@@ -22,17 +22,19 @@ const engine = createQueueEngine({
   // Absolutize (or reject) the typed output at the GUI boundary before it reaches
   // the SDK, so a relative output never resolves against the unpredictable
   // working directory. The SDK still infers an empty output beside the input.
-  plan: (inputs, options, signal) =>
+  // The engine supplies a job-tagging `onProgress`, so progress reaches the right
+  // job's activity stream.
+  plan: (inputs, options, signal, onProgress) =>
     zip.plan(buildSpec(inputs, { ...options, output: resolveGuiOutput(options.output) }), {
       signal,
-      onProgress: forwardEvent,
+      onProgress,
     }),
-  write: async (plan, signal) => (await zip.write(plan, { signal, onProgress: forwardEvent })).bytes,
-  verify: async (output, signal) =>
+  write: async (plan, signal, onProgress) => (await zip.write(plan, { signal, onProgress })).bytes,
+  verify: async (output, signal, onProgress) =>
     (
       await zip.extract(
         { archive: output, dryRun: true, checkMetadata: true },
-        { signal, onProgress: forwardEvent },
+        { signal, onProgress },
       )
     ).reportOk,
   trash: async (paths) => {
@@ -43,6 +45,7 @@ const engine = createQueueEngine({
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => void saveQueue(toResumable(jobs)), 500);
   },
+  sendEvent,
   newId: () => randomUUID(),
   log,
 });
@@ -71,7 +74,11 @@ export function registerQueueIpc(): void {
 
   ipcMain.handle("zipkit:removeJob", async (_e, id: string): Promise<void> => engine.remove(id));
 
-  ipcMain.handle("zipkit:startQueue", async (): Promise<void> => engine.start());
+  ipcMain.handle("zipkit:runJob", async (_e, id: string): Promise<void> => engine.run(id));
+
+  ipcMain.handle("zipkit:removeArchive", async (_e, id: string): Promise<void> =>
+    engine.removeArchive(id),
+  );
 
   ipcMain.handle("zipkit:cancelJob", async (_e, id: string): Promise<void> => engine.cancel(id));
 

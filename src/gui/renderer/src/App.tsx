@@ -1,22 +1,23 @@
 /**
  * The queue screen. A bottom-bordered header (title + hamburger menu), a body of
- * rounded panes — the job list on the left, and on the right the selected job's
- * parameters over its output over the always-visible activity log — and a status
- * bar. Add jobs (planned in the background), tune each job's parameters and
- * intent, then Start to drain the ready jobs one write at a time. Everything shown
- * is a field the SDK returned, surfaced through the main-process queue; the view
- * sequences queue commands and renders, it computes no archive logic. Defaults for
- * new jobs live in Settings (saved across launches).
+ * rounded panes, and a status bar. On the left, the job list (Add). On the right,
+ * the selected job's lifecycle: its Archive (target name, state, parameters), a
+ * command bar (create / cancel / verify / reveal / remove), its Progress (this
+ * job's activity), and its Output (the final report). Jobs are planned in the
+ * background; each is created on demand and the engine runs them one at a time.
+ * Everything shown is a field the SDK returned, surfaced through the main-process
+ * queue; the view sequences queue commands and renders, it computes no archive
+ * logic. Defaults for new jobs live in Settings (saved across launches).
  */
 
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { ExtractData, Finding, Job, JobIntent, PlanData } from "../../shared/api";
-import type { LogEvent } from "../../shared/api";
+import type { ExtractData, Finding, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
 import { AboutDialog } from "./components/AboutDialog";
 import { ActivityLog } from "./components/ActivityLog";
 import { AppHeader } from "./components/AppHeader";
+import { CommandBar } from "./components/CommandBar";
 import { useConfirm } from "./components/DialogHost";
 import { JobListbox } from "./components/JobListbox";
 import { OptionsPanel } from "./components/OptionsPanel";
@@ -31,6 +32,7 @@ import {
   droppedEntries,
   isEditable,
   isTerminal,
+  type JobCommand,
   label,
   manifestRequiredButMissing,
   severityColor,
@@ -40,11 +42,13 @@ import {
 
 type DialogName = "settings" | "shortcuts" | "about";
 
+const GROW: CSSProperties = { flex: 1 };
+
 export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
-  const [events, setEvents] = useState<LogEvent[]>([]);
+  const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   const saveDefaults = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -55,13 +59,12 @@ export function App() {
     return unsubscribe;
   }, []);
   useEffect(
-    () => window.zipkit.onEvent((e) => setEvents((prev) => [...prev.slice(-299), e])),
+    () => window.zipkit.onEvent((e) => setEvents((prev) => [...prev.slice(-999), e])),
     [],
   );
 
   // Cmd/Ctrl+, opens Settings; Cmd/Ctrl+/ opens Shortcuts (modal-dialog
-  // conventions). Suppressed while any modal is open — the dialog owns the keys —
-  // and inert during IME composition.
+  // conventions). Suppressed while any modal is open and inert during IME composition.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.isComposing) return;
@@ -80,7 +83,6 @@ export function App() {
   }, []);
 
   const selected = jobs.find((j) => j.id === selectedId) ?? null;
-  const anyReady = jobs.some((j) => j.state === "ready");
 
   // Defaults live-apply and are saved (debounced) so they persist across launches.
   function changeDefaults(next: GuiOptions) {
@@ -108,14 +110,9 @@ export function App() {
         <Pane
           title="Jobs"
           actions={
-            <>
-              <button className="accent" onClick={() => void addJob()}>
-                Add
-              </button>
-              <button onClick={() => void window.zipkit.startQueue()} disabled={!anyReady}>
-                Start
-              </button>
-            </>
+            <button className="accent" onClick={() => void addJob()}>
+              Add
+            </button>
           }
           bodyStyle={S.listBody}
         >
@@ -130,20 +127,20 @@ export function App() {
 
         <div style={S.rightCol}>
           {selected ? (
-            <JobView key={selected.id} job={selected} />
+            <JobView key={selected.id} job={selected} events={events} />
           ) : (
             <>
-              <Pane title="Parameters">
+              <Pane title="Archive" rootStyle={GROW}>
                 <p style={S.muted}>Add or select a job to see its archive and parameters.</p>
               </Pane>
-              <Pane title="Output">
+              <Pane title="Progress" rootStyle={GROW}>
+                <p style={S.muted}>No job selected.</p>
+              </Pane>
+              <Pane title="Output" rootStyle={GROW}>
                 <p style={S.muted}>No job selected.</p>
               </Pane>
             </>
           )}
-          <Pane title="Activity log">
-            <ActivityLog events={events} />
-          </Pane>
         </div>
       </div>
 
@@ -162,7 +159,7 @@ export function App() {
   );
 }
 
-function JobView({ job }: { job: Job }) {
+function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
   const confirm = useConfirm();
   // Keyed by job id in the parent, so this remounts per job — local option draft,
   // the parameter lock, and verify state start fresh, no manual re-sync needed.
@@ -204,38 +201,55 @@ function JobView({ job }: { job: Job }) {
     await window.zipkit.updateJob(job.id, { intent });
   }
 
+  function onCommand(c: JobCommand) {
+    switch (c) {
+      case "create":
+      case "retry":
+        void window.zipkit.runJob(job.id);
+        break;
+      case "cancel":
+        void window.zipkit.cancelJob(job.id);
+        break;
+      case "verify":
+        if (job.output)
+          void window.zipkit
+            .verify(job.id, job.output, job.options.metadata)
+            .then((r) => r.ok && setVerify(r.data));
+        break;
+      case "reveal":
+        if (job.output) window.zipkit.reveal(job.output);
+        break;
+      case "remove-archive":
+        void window.zipkit.removeArchive(job.id);
+        break;
+    }
+  }
+
   const editable = isEditable(job.state);
   const terminal = isTerminal(job.state);
-  const canVerify = job.state === "done" && job.intent === "save" && !!job.output;
   const target = archiveName(job.output) || `${label(job)} (planning…)`;
+  const jobEvents = events.filter((e) => e.jobId === job.id);
+
+  const headline = !plan
+    ? ""
+    : job.state === "done"
+      ? "Done ✓"
+      : job.state === "failed"
+        ? "Failed"
+        : verdictHeadline(plan);
+  const headlineColor = job.state === "failed" || (plan && !plan.writable) ? COLOR.bad : COLOR.ok;
 
   return (
     <>
-      <Pane
-        title="Parameters"
-        actions={
-          canVerify ? (
-            <button
-              onClick={() =>
-                void window.zipkit
-                  .verify(job.output!, job.options.metadata)
-                  .then((r) => r.ok && setVerify(r.data))
-              }
-            >
-              Verify
-            </button>
-          ) : undefined
-        }
-      >
-        {/* The identity a user reasons about is the target .zip, not the source. */}
-        <div style={S.targetName} title={job.output}>
-          {target}
-        </div>
-        <div style={S.metaRow}>
+      <Pane title="Archive" rootStyle={GROW}>
+        {/* Compact identity row so the parameters are visible without scrolling. */}
+        <div style={S.archiveHead}>
+          <span style={S.targetName} title={job.output}>
+            {target}
+          </span>
           <StateBadge state={job.state} />
-          <span style={S.muted}>from {label(job)}</span>
         </div>
-        {job.message && <p style={S.muted}>{job.message}</p>}
+        <div style={S.fromLine}>from {label(job)}</div>
 
         <label style={S.intent}>
           <span style={{ color: "var(--text-2)" }}>Intent</span>{" "}
@@ -252,28 +266,30 @@ function JobView({ job }: { job: Job }) {
           <p style={{ color: COLOR.warn }}>Enable “Embed manifest” — verify-before-Trash needs it.</p>
         )}
 
-        {!terminal && (
+        {editable ? (
           <>
             <label style={S.lock}>
-              <input
-                type="checkbox"
-                checked={locked}
-                disabled={!editable}
-                onChange={(e) => setLocked(e.target.checked)}
-              />
+              <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} />
               <span>Lock parameters {locked && <span style={S.muted}>(using defaults)</span>}</span>
             </label>
-            <OptionsPanel options={opts} onChange={changeOptions} disabled={locked || !editable} />
+            <OptionsPanel options={opts} onChange={changeOptions} disabled={locked} />
           </>
+        ) : (
+          // Frozen while running or after it is done — visible, not editable.
+          <OptionsPanel options={opts} onChange={changeOptions} disabled />
         )}
       </Pane>
 
-      <Pane title="Output">
-        {plan && !terminal && (
+      <CommandBar job={job} onCommand={onCommand} />
+
+      <Pane title="Progress" rootStyle={GROW}>
+        <ActivityLog events={jobEvents} />
+      </Pane>
+
+      <Pane title="Output" rootStyle={GROW}>
+        {plan ? (
           <>
-            <h3 style={{ color: plan.writable ? COLOR.ok : COLOR.bad, margin: "0 0 0.5rem" }}>
-              {verdictHeadline(plan)}
-            </h3>
+            <h3 style={{ color: headlineColor, margin: "0 0 0.5rem" }}>{headline}</h3>
             <p style={S.muted}>
               → <code>{plan.output}</code> — {plan.summary.included} included,{" "}
               {plan.summary.excluded} dropped, {plan.summary.warnings} warning(s),{" "}
@@ -282,9 +298,11 @@ function JobView({ job }: { job: Job }) {
             <FindingsList findings={plan.findings} />
             <Dropped plan={plan} />
           </>
+        ) : (
+          <p style={S.muted}>No report yet.</p>
         )}
+        {terminal && job.message && <p style={S.muted}>{job.message}</p>}
         {verify && <VerifyView data={verify} />}
-        {terminal && !verify && <p style={S.muted}>{job.message ?? "Finished."}</p>}
       </Pane>
     </>
   );
@@ -344,24 +362,21 @@ const S: Record<string, CSSProperties> = {
     gap: "0.6rem",
     padding: "0.6rem",
   },
-  rightCol: {
-    display: "grid",
-    gridTemplateRows: "1fr 1fr 1fr",
-    gap: "0.6rem",
-    minHeight: 0,
-    minWidth: 0,
-  },
+  rightCol: { display: "flex", flexDirection: "column", gap: "0.6rem", minHeight: 0, minWidth: 0 },
   listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
+  archiveHead: { display: "flex", gap: "0.6rem", alignItems: "baseline" },
   targetName: {
+    flex: 1,
+    minWidth: 0,
     fontSize: "1.05rem",
     fontWeight: 700,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  metaRow: { display: "flex", gap: "0.6rem", alignItems: "baseline", margin: "0.25rem 0" },
-  intent: { display: "inline-flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" },
+  fromLine: { color: "var(--text-2)", fontSize: "0.85rem", margin: "0.15rem 0 0.5rem" },
+  intent: { display: "inline-flex", gap: "0.5rem", alignItems: "center", margin: "0.25rem 0 0.5rem" },
   lock: { display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" },
   list: { margin: "0.25rem 0", paddingLeft: "1.25rem" },
 };

@@ -13,6 +13,7 @@ import {
   intentLabel,
   isEditable,
   isTerminal,
+  jobCommands,
   label,
   manifestRequiredButMissing,
   severityColor,
@@ -115,6 +116,31 @@ describe("formatEventLine", () => {
   it("falls back to the raw value when the time cannot be parsed", () => {
     const e = { time: "not-a-time", level: "warn", message: "x" } as unknown as LogEvent;
     expect(formatEventLine(e)).toBe("not-a-time  warn  x");
+  });
+});
+
+describe("jobCommands", () => {
+  it("offers create only when ready, and nothing when blocked", () => {
+    expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);
+    expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);
+  });
+  it("offers cancel while planning or running", () => {
+    expect(jobCommands(job({ state: "planning" }))).toEqual(["cancel"]);
+    expect(jobCommands(job({ state: "running" }))).toEqual(["cancel"]);
+  });
+  it("offers retry on failure", () => {
+    expect(jobCommands(job({ state: "failed" }))).toEqual(["retry"]);
+  });
+  it("on done, offers remove-archive only for the save intent", () => {
+    expect(jobCommands(job({ state: "done", intent: "save" }))).toEqual([
+      "verify",
+      "reveal",
+      "remove-archive",
+    ]);
+    expect(jobCommands(job({ state: "done", intent: "archive-and-trash" }))).toEqual([
+      "verify",
+      "reveal",
+    ]);
   });
 });
 

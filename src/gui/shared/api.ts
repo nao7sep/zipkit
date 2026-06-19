@@ -23,6 +23,10 @@ export type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 export type { ArchiveSpec, ExtractData, Finding, Job, JobIntent, LogEvent, Severity };
 
+/** An SDK progress event tagged with the job it belongs to, so the renderer can
+ *  show each job its own activity stream. `jobId` is absent for any untagged event. */
+export type GuiLogEvent = LogEvent & { jobId?: string };
+
 /** A structured SDK fault surfaced to the renderer (mirrors `ZipKitError`'s shape). */
 export interface GuiError {
   type: string;
@@ -54,8 +58,10 @@ export interface ZipKitGuiApi {
   updateJob(id: string, patch: { options?: GuiOptions; intent?: JobIntent }): Promise<void>;
   /** Remove a queued job (no effect while it is running). */
   removeJob(id: string): Promise<void>;
-  /** Start draining the ready jobs sequentially (one write at a time). */
-  startQueue(): Promise<void>;
+  /** Create one job's archive now (or retry a failed one); the engine serializes. */
+  runJob(id: string): Promise<void>;
+  /** Trash a finished `save` job's archive and return it to an editable state. */
+  removeArchive(id: string): Promise<void>;
   /** Cancel a job's in-flight plan or write. */
   cancelJob(id: string): Promise<void>;
   /** The full plan for a job's detail view, or null if it has none right now. */
@@ -65,10 +71,13 @@ export interface ZipKitGuiApi {
   /** Subscribe to the job list; returns an unsubscribe function. */
   onQueue(callback: (jobs: Job[]) => void): () => void;
 
-  /** Verify an archive on demand: CRC always, plus manifest + SHA when set. */
-  verify(archive: string, checkMetadata: boolean): Promise<VerifyResult>;
-  /** Subscribe to the live SDK event stream; returns an unsubscribe function. */
-  onEvent(callback: (event: LogEvent) => void): () => void;
+  /** Verify a job's archive on demand: CRC always, plus manifest + SHA when set.
+   *  The job id tags the verify's progress events to that job's activity stream. */
+  verify(jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult>;
+  /** Reveal a file in the OS file manager (Finder / Explorer). */
+  reveal(path: string): void;
+  /** Subscribe to the live, job-tagged SDK event stream; returns an unsubscribe fn. */
+  onEvent(callback: (event: GuiLogEvent) => void): () => void;
 
   /** App name + version for the About dialog. */
   appInfo(): Promise<AppInfo>;

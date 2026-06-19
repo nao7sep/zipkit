@@ -1,35 +1,40 @@
 /**
  * The queue engine: the job records and the state machine that drives them.
  * Plans each job in the background on add (non-blocking — never waiting on a
- * running write) and drains the ready jobs sequentially (one write at a time).
- * Each job is re-planned fresh at run time; a job no longer writable drops to
- * needs-attention rather than writing. The destructive intent runs
- * write -> verify -> Trash, all-or-nothing, keeping the originals on any
- * failure. One job failing never stops the drain.
+ * running write). Jobs are run one at a time, but only on explicit request: the
+ * user creates a specific job's archive, the engine serializes the requests, and
+ * runs each (write -> for the destructive intent, verify -> Trash) all-or-nothing,
+ * keeping the originals on any failure. One job failing never blocks the rest.
+ * A finished `save` job's archive can be removed, returning the job to an editable
+ * state for another attempt.
  *
  * This is GUI-side orchestration — when to call which capability — not archive
  * logic: every verdict it acts on (`writable`, the verify result) comes from the
- * SDK. The SDK, OS Trash, persistence, and id minting arrive as injected deps,
- * so the engine is Electron-free and unit-testable with fakes.
+ * SDK. The SDK, OS Trash, persistence, event forwarding, and id minting arrive as
+ * injected deps, so the engine is Electron-free and unit-testable with fakes. SDK
+ * progress events are tagged with the originating job's id before they are
+ * forwarded, so the renderer can show each job its own activity.
  */
 
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
-import type { PlanData } from "../shared/api.js";
+import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
 import type { GuiOptions } from "../shared/spec.js";
 import { outputInsideInputs } from "./safety.js";
 import { errorInfo, type AppLog } from "./log.js";
 
 export interface EngineDeps {
-  /** Dry-run plan for the given inputs/options. */
-  plan(inputs: string[], options: GuiOptions, signal: AbortSignal): Promise<PlanData>;
+  /** Dry-run plan for the given inputs/options; progress events go to `onProgress`. */
+  plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count (or null if unknown). */
-  write(plan: PlanData, signal: AbortSignal): Promise<number | null>;
+  write(plan: PlanData, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<number | null>;
   /** Verify a written archive (CRC + metadata); resolves to the SDK's reportOk. */
-  verify(output: string, signal: AbortSignal): Promise<boolean>;
+  verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<boolean>;
   /** Move the given paths to the OS Trash. */
   trash(paths: string[]): Promise<void>;
   /** Push the current job list to observers (renderer + persistence). */
   emit(jobs: Job[]): void;
+  /** Forward one (job-tagged) progress event to the renderer. */
+  sendEvent(event: GuiLogEvent): void;
   /** Mint a job id. */
   newId(): string;
   /** The app session log — one line per orchestration intent/outcome. */
@@ -42,7 +47,10 @@ export interface QueueEngine {
   update(id: string, patch: { options?: GuiOptions; intent?: JobIntent }): void;
   remove(id: string): void;
   cancel(id: string): void;
-  start(): void;
+  /** Request that a specific job's archive be created (or a failed one retried). */
+  run(id: string): void;
+  /** Trash a finished `save` job's archive and return it to an editable state. */
+  removeArchive(id: string): void;
   getPlan(id: string): PlanData | null;
   restore(saved: SavedJob[]): void;
 }
@@ -61,6 +69,8 @@ function errMsg(err: unknown): string {
 export function createQueueEngine(deps: EngineDeps): QueueEngine {
   const recs = new Map<string, Rec>();
   const order: string[] = [];
+  /** Ids explicitly requested to run, in request order. */
+  const pending: string[] = [];
   let draining = false;
 
   function snapshot(): Job[] {
@@ -72,6 +82,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   function set(rec: Rec, patch: Partial<Job>): void {
     rec.job = { ...rec.job, ...patch };
   }
+  /** A progress sink that tags every SDK event with the running job's id. */
+  function progressFor(id: string): (e: LogEvent) => void {
+    return (e) => deps.sendEvent({ ...e, jobId: id });
+  }
 
   async function planJob(id: string): Promise<void> {
     const rec = recs.get(id);
@@ -80,7 +94,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     set(rec, { state: "planning", message: undefined });
     emit();
     try {
-      const plan = await deps.plan(rec.job.inputs, rec.job.options, rec.aborter.signal);
+      const plan = await deps.plan(rec.job.inputs, rec.job.options, rec.aborter.signal, progressFor(id));
       rec.plan = plan;
       set(rec, {
         output: plan.output,
@@ -111,6 +125,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (!rec) return;
     rec.aborter = new AbortController();
     const signal = rec.aborter.signal;
+    const onProgress = progressFor(id);
     set(rec, { state: "running", message: undefined });
     emit();
     deps.log.info("job run started", { jobId: id, intent: rec.job.intent });
@@ -118,7 +133,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // Re-plan fresh: the world may have changed since this job was enqueued.
       let plan: PlanData;
       try {
-        plan = await deps.plan(rec.job.inputs, rec.job.options, signal);
+        plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onProgress);
         rec.plan = plan;
         set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
       } catch (err) {
@@ -134,7 +149,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
 
       let bytes: number | null;
       try {
-        bytes = await deps.write(plan, signal);
+        bytes = await deps.write(plan, signal, onProgress);
       } catch (err) {
         set(rec, { state: "failed", message: `write failed: ${errMsg(err)}` });
         deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
@@ -154,7 +169,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         return;
       }
       try {
-        if (!(await deps.verify(plan.output, signal))) {
+        if (!(await deps.verify(plan.output, signal, onProgress))) {
           set(rec, { state: "failed", message: "verification failed; originals kept" });
           deps.log.error("job verification failed; originals kept", { jobId: id, output: plan.output });
           return;
@@ -179,14 +194,18 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     }
   }
 
+  // Drain the explicit run requests one at a time (never two writes at once).
   async function drain(): Promise<void> {
     if (draining) return;
     draining = true;
     try {
       for (;;) {
-        const next = order.map((id) => recs.get(id)).find((r) => r?.job.state === "ready");
-        if (!next) break;
-        await runJob(next.job.id);
+        const id = pending.shift();
+        if (id === undefined) break;
+        const rec = recs.get(id);
+        // Skip if removed or no longer runnable (e.g. re-planned to needs-attention).
+        if (!rec || (rec.job.state !== "ready" && rec.job.state !== "failed")) continue;
+        await runJob(id);
       }
     } finally {
       draining = false;
@@ -224,6 +243,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       recs.delete(id);
       const i = order.indexOf(id);
       if (i >= 0) order.splice(i, 1);
+      const p = pending.indexOf(id);
+      if (p >= 0) pending.splice(p, 1);
       deps.log.info("job removed", { jobId: id });
       emit();
     },
@@ -233,9 +254,34 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.info("job cancel requested", { jobId: id, state: rec.job.state });
       rec.aborter.abort();
     },
-    start() {
-      deps.log.info("queue start requested", { ready: snapshot().filter((j) => j.state === "ready").length });
+    run(id) {
+      const rec = recs.get(id);
+      if (!rec) return;
+      if (rec.job.state !== "ready" && rec.job.state !== "failed") return;
+      if (!pending.includes(id)) pending.push(id);
+      deps.log.info("job run requested", { jobId: id, state: rec.job.state });
       void drain();
+    },
+    removeArchive(id) {
+      const rec = recs.get(id);
+      if (!rec || rec.job.state !== "done" || rec.job.intent !== "save" || !rec.job.output) return;
+      const output = rec.job.output;
+      deps.log.info("remove archive requested", { jobId: id, output });
+      void (async () => {
+        try {
+          await deps.trash([output]);
+        } catch (err) {
+          set(rec, { message: `could not remove the archive: ${errMsg(err)}` });
+          deps.log.error("remove archive failed", { jobId: id, error: errorInfo(err) });
+          emit();
+          return;
+        }
+        // Back to an editable, re-planned job so options can be adjusted and the
+        // archive created again.
+        set(rec, { output: undefined, summary: undefined, writable: undefined, message: undefined });
+        emit();
+        void planJob(id);
+      })();
     },
     getPlan(id) {
       return recs.get(id)?.plan ?? null;

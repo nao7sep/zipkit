@@ -7,8 +7,7 @@
 
 import { BrowserWindow } from "electron";
 import { ZipKit, ZipKitError } from "../../sdk/index.js";
-import type { LogEvent } from "../../sdk/types.js";
-import type { GuiError, Job } from "../shared/api.js";
+import type { GuiError, GuiLogEvent, Job } from "../shared/api.js";
 import { createAppLog } from "./log.js";
 
 export const zip = new ZipKit();
@@ -22,7 +21,8 @@ export function setMainWindow(w: BrowserWindow): void {
   win = w;
 }
 
-export function forwardEvent(event: LogEvent): void {
+/** Forward one job-tagged progress event to the renderer's activity stream. */
+export function sendEvent(event: GuiLogEvent): void {
   win?.webContents.send("zipkit:event", event);
 }
 

@@ -7,7 +7,7 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 import type { GuiOptions } from "../shared/spec.js";
-import type { AppInfo, Job, JobIntent, LogEvent, PlanData, VerifyResult, ZipKitGuiApi } from "../shared/api.js";
+import type { AppInfo, GuiLogEvent, Job, JobIntent, PlanData, VerifyResult, ZipKitGuiApi } from "../shared/api.js";
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
@@ -19,7 +19,8 @@ const api = {
   updateJob: (id: string, patch: { options?: GuiOptions; intent?: JobIntent }): Promise<void> =>
     ipcRenderer.invoke("zipkit:updateJob", id, patch),
   removeJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:removeJob", id),
-  startQueue: (): Promise<void> => ipcRenderer.invoke("zipkit:startQueue"),
+  runJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:runJob", id),
+  removeArchive: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:removeArchive", id),
   cancelJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:cancelJob", id),
   getPlan: (id: string): Promise<PlanData | null> => ipcRenderer.invoke("zipkit:getPlan", id),
   getQueue: (): Promise<Job[]> => ipcRenderer.invoke("zipkit:getQueue"),
@@ -30,10 +31,13 @@ const api = {
       ipcRenderer.removeListener("zipkit:queue", handler);
     };
   },
-  verify: (archive: string, checkMetadata: boolean): Promise<VerifyResult> =>
-    ipcRenderer.invoke("zipkit:verify", archive, checkMetadata),
-  onEvent: (callback: (event: LogEvent) => void): (() => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, event: LogEvent): void => callback(event);
+  verify: (jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> =>
+    ipcRenderer.invoke("zipkit:verify", jobId, archive, checkMetadata),
+  reveal: (path: string): void => {
+    void ipcRenderer.invoke("zipkit:reveal", path);
+  },
+  onEvent: (callback: (event: GuiLogEvent) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, event: GuiLogEvent): void => callback(event);
     ipcRenderer.on("zipkit:event", handler);
     return () => {
       ipcRenderer.removeListener("zipkit:event", handler);

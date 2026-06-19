@@ -66,6 +66,31 @@ export function isTerminal(state: Job["state"]): boolean {
   return state === "done" || state === "failed";
 }
 
+/** A per-job lifecycle command for the right-pane command bar. */
+export type JobCommand = "create" | "retry" | "cancel" | "verify" | "reveal" | "remove-archive";
+
+/** The lifecycle commands available for a job in its current state. Pure, so the
+ *  command bar reads one source and is unit-tested without a DOM. `needs-attention`
+ *  intentionally offers none — the job is blocked until its options are fixed. */
+export function jobCommands(job: Job): JobCommand[] {
+  switch (job.state) {
+    case "planning":
+      return ["cancel"];
+    case "needs-attention":
+      return [];
+    case "ready":
+      return ["create"];
+    case "running":
+      return ["cancel"];
+    case "failed":
+      return ["retry"];
+    case "done":
+      return job.intent === "save"
+        ? ["verify", "reveal", "remove-archive"]
+        : ["verify", "reveal"];
+  }
+}
+
 /** archive-and-trash verifies against the manifest before deleting, so it needs
  *  the manifest embedded; warn when the intent is set without it. */
 export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean): boolean {

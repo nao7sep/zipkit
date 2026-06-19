@@ -7,7 +7,7 @@ import { app, dialog, ipcMain, shell } from "electron";
 import type { AppInfo, VerifyResult } from "../shared/api.js";
 import type { GuiOptions } from "../shared/spec.js";
 import { errorInfo } from "./log.js";
-import { forwardEvent, log, toGuiError, zip } from "./runtime.js";
+import { log, sendEvent, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { isHttpUrl } from "./url.js";
 
@@ -36,18 +36,25 @@ export function registerIpc(): void {
 
   ipcMain.handle(
     "zipkit:verify",
-    async (_event, archive: string, checkMetadata: boolean): Promise<VerifyResult> => {
-      log.info("verify requested", { archive, checkMetadata });
+    async (_event, jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> => {
+      log.info("verify requested", { jobId, archive, checkMetadata });
       try {
-        const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { onProgress: forwardEvent });
-        log.info("verify done", { archive, reportOk: data.reportOk });
+        const data = await zip.extract(
+          { archive, dryRun: true, checkMetadata },
+          { onProgress: (e) => sendEvent({ ...e, jobId }) },
+        );
+        log.info("verify done", { jobId, archive, reportOk: data.reportOk });
         return { ok: true, data };
       } catch (err) {
-        log.error("verify failed", { archive, error: errorInfo(err) });
+        log.error("verify failed", { jobId, archive, error: errorInfo(err) });
         return { ok: false, error: toGuiError(err) };
       }
     },
   );
+
+  ipcMain.handle("zipkit:reveal", async (_event, path: string): Promise<void> => {
+    shell.showItemInFolder(path);
+  });
 
   ipcMain.handle("zipkit:appInfo", async (): Promise<AppInfo> => ({
     name: app.getName(),

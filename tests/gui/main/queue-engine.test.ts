@@ -2,9 +2,9 @@
  * Tests for the queue runner. The engine is exercised through its real state
  * machine with injected fakes for the SDK verbs / Trash / id minting — no
  * Electron, no module mocking. These pin the behaviors that matter: the
- * background-plan -> ready transition, the sequential drain, fresh re-plan at
- * run, the all-or-nothing destructive sequence (originals kept on any failure),
- * failure isolation, and cancel.
+ * background-plan -> ready transition, per-job run with sequential execution,
+ * fresh re-plan at run, the all-or-nothing destructive sequence (originals kept
+ * on any failure), failure isolation, cancel, and remove-archive-then-retry.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -53,6 +53,7 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
       calls.trash.push(paths);
     },
     emit: () => {},
+    sendEvent: () => {},
     newId: () => `job-${++idN}`,
     log: nullLog,
     ...overrides,
@@ -61,22 +62,35 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
 }
 
 describe("queue engine", () => {
-  it("plans a job to ready, then writes it to done on start", async () => {
+  it("plans a job to ready, then writes it to done when run", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
-    engine.add(["/good"], DEFAULT_OPTIONS, "save");
+    const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
-    engine.start();
+    engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    expect(calls.write).toBe(1);
+  });
+
+  it("runs only the requested job, not every ready one", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    engine.add(["/b"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    engine.run(a);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await tick();
+    expect(engine.snapshot()[1]?.state).toBe("ready"); // the unrequested job stays put
     expect(calls.write).toBe(1);
   });
 
   it("leaves a not-writable job in needs-attention and never writes it", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
-    engine.add(["bad"], DEFAULT_OPTIONS, "save");
+    const id = engine.add(["bad"], DEFAULT_OPTIONS, "save");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
-    engine.start();
+    engine.run(id); // a no-op on a blocked job
     await tick();
     await tick();
     expect(engine.snapshot()[0]?.state).toBe("needs-attention");
@@ -101,25 +115,25 @@ describe("queue engine", () => {
   it("re-plans fresh at run time", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
-    engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     const atReady = calls.plan; // the add-time plan
-    engine.start();
+    engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.plan).toBe(atReady + 1); // planned again at run
   });
 
-  it("drains sequentially — never two writes at once", async () => {
+  it("runs requested jobs sequentially — never two writes at once", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
-    for (const p of ["/a", "/b", "/c"]) engine.add([p], DEFAULT_OPTIONS, "save");
+    const ids = ["/a", "/b", "/c"].map((p) => engine.add([p], DEFAULT_OPTIONS, "save"));
     await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
-    engine.start();
+    ids.forEach((id) => engine.run(id));
     await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
     expect(calls.maxWriteInFlight).toBe(1);
   });
 
-  it("isolates a failing write — the other jobs still run", async () => {
+  it("isolates a failing write — the other requested jobs still run", async () => {
     let n = 0;
     const { deps } = makeDeps({
       write: async () => {
@@ -129,9 +143,9 @@ describe("queue engine", () => {
       },
     });
     const engine = createQueueEngine(deps);
-    for (const p of ["/a", "/b", "/c"]) engine.add([p], DEFAULT_OPTIONS, "save");
+    const ids = ["/a", "/b", "/c"].map((p) => engine.add([p], DEFAULT_OPTIONS, "save"));
     await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
-    engine.start();
+    ids.forEach((id) => engine.run(id));
     await vi.waitFor(() =>
       expect(engine.snapshot().every((j) => j.state === "done" || j.state === "failed")).toBe(true),
     );
@@ -142,9 +156,9 @@ describe("queue engine", () => {
   it("archive-and-trash: writes, verifies, then trashes the originals", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
-    engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
-    engine.start();
+    engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.verify).toBe(1);
     expect(calls.trash).toEqual([["/data"]]);
@@ -153,15 +167,27 @@ describe("queue engine", () => {
   it("archive-and-trash: keeps the originals when verification fails", async () => {
     const { deps, calls } = makeDeps({ verify: async () => false });
     const engine = createQueueEngine(deps);
-    engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
-    engine.start();
+    engine.run(id);
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
       expect(j?.message).toContain("verification failed");
     });
     expect(calls.trash).toEqual([]);
+  });
+
+  it("removeArchive trashes a done save job's output and returns it to ready", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    engine.removeArchive(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    expect(calls.trash).toEqual([["/tmp/out.zip"]]); // the archive was trashed
   });
 
   it("re-plans when a job's options change", async () => {

@@ -12,14 +12,16 @@ export function Pane({
   actions,
   children,
   bodyStyle,
+  rootStyle,
 }: {
   title: string;
   actions?: ReactNode;
   children: ReactNode;
   bodyStyle?: CSSProperties;
+  rootStyle?: CSSProperties;
 }) {
   return (
-    <section style={S.pane}>
+    <section style={{ ...S.pane, ...rootStyle }}>
       <header style={S.header}>
         <h2 style={S.title}>{title}</h2>
         {actions && <div style={S.actions}>{actions}</div>}
