@@ -23,7 +23,9 @@ export function Pane({
   return (
     <section style={{ ...S.pane, ...rootStyle }}>
       <header style={S.header}>
-        <h2 style={S.title}>{title}</h2>
+        <h2 style={S.title} title={title}>
+          {title}
+        </h2>
         {actions && <div style={S.actions}>{actions}</div>}
       </header>
       <div style={{ ...S.body, ...bodyStyle }}>{children}</div>
@@ -42,14 +44,29 @@ const S: Record<string, CSSProperties> = {
     borderRadius: "var(--radius)",
     overflow: "hidden",
   },
+  // A fixed header height so every pane's header lines up regardless of whether
+  // its actions hold a button (Jobs), a badge (Archive), or nothing (Progress).
   header: {
+    flexShrink: 0,
     display: "flex",
     alignItems: "center",
     gap: "0.75rem",
-    padding: "0.6rem 0.85rem",
+    minHeight: "3rem",
+    padding: "0.4rem 0.85rem",
     borderBottom: "1px solid var(--border)",
   },
-  title: { margin: 0, fontSize: "0.9rem", fontWeight: 700 },
-  actions: { marginLeft: "auto", display: "flex", gap: "0.5rem", alignItems: "center" },
+  // Truncates so a long job-inventory title never pushes the state pill off the
+  // header; the full text is available via the hover tooltip.
+  title: {
+    margin: 0,
+    minWidth: 0,
+    fontSize: "0.9rem",
+    fontWeight: 700,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  // marginLeft:auto right-aligns it; flexShrink:0 keeps the pill at full size.
+  actions: { marginLeft: "auto", flexShrink: 0, display: "flex", gap: "0.5rem", alignItems: "center" },
   body: { flex: 1, minHeight: 0, overflow: "auto", padding: "0.85rem" },
 };

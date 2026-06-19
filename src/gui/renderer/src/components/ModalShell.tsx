@@ -35,12 +35,15 @@ export function ModalShell({
   children,
   footer,
   describedById,
+  maxWidth,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
   describedById?: string;
+  /** Override the default surface width cap (e.g. a wider settings form). */
+  maxWidth?: string;
 }) {
   return (
     <Dialog.Root
@@ -52,7 +55,7 @@ export function ModalShell({
       <Dialog.Portal>
         <Dialog.Overlay style={ST.backdrop} />
         <Dialog.Content
-          style={ST.surface}
+          style={maxWidth ? { ...ST.surface, maxWidth } : ST.surface}
           aria-describedby={describedById}
           onOpenAutoFocus={(e) => {
             const surface = e.currentTarget as HTMLElement | null;

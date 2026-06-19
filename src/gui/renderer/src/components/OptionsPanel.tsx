@@ -11,6 +11,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { GuiOptions } from "../../../shared/spec";
 import { multiline } from "../textCleanup";
+import { FolderField } from "./FolderField";
 
 export function OptionsPanel({
   options,
@@ -25,13 +26,16 @@ export function OptionsPanel({
     onChange({ ...options, [key]: value });
 
   return (
-    <fieldset disabled={disabled} style={S.fieldset}>
+    // The container establishes the query context; the fieldset is the grid that
+    // responds to the *pane's* width (not the viewport), capping at 4 columns.
+    <div className="options-grid-container">
+      <fieldset disabled={disabled} className="options-grid" style={S.fieldset}>
       <Section title="Cleaning">
         <Check checked={options.junk} onChange={(v) => set("junk", v)}>
           Drop OS junk files
         </Check>
         <Check checked={options.strict} onChange={(v) => set("strict", v)}>
-          Strict — block portability issues instead of auto-fixing
+          Strict: block portability issues instead of auto-fixing
         </Check>
       </Section>
 
@@ -45,7 +49,7 @@ export function OptionsPanel({
       </Section>
 
       <Section title="Archive">
-        <Field label="Compression level">
+        <Field label="Compression level (1–9)">
           <input
             type="number"
             min={1}
@@ -54,7 +58,6 @@ export function OptionsPanel({
             onChange={(e) => set("level", Number(e.target.value))}
             style={{ width: "3.5rem" }}
           />
-          <span style={S.hint}>1–9</span>
         </Field>
         <Field label="Symlinks">
           <select
@@ -77,14 +80,23 @@ export function OptionsPanel({
         </Field>
       </Section>
 
-      <Section title="Existing file">
+      {/* Where the archive is written. A normal column so it sits next to Archive
+          when the pane is wide. The output folder and the overwrite policy belong
+          together: both answer "where does the .zip land, and may it clobber?". */}
+      <Section title="Output">
+        <FolderField
+          label="Output folder"
+          value={options.outputDir}
+          onChange={(v) => set("outputDir", v)}
+          placeholder="(beside the input)"
+        />
         <Check checked={options.overwrite} onChange={(v) => set("overwrite", v)}>
           Overwrite an existing file
         </Check>
       </Section>
 
       {/* A ZIP comment may span lines, so this is a multiline field cleaned on blur
-          (commit-time, never mid-edit — IME-safe). Spans the full width. */}
+          (commit-time, never mid-edit, IME-safe). Always its own full-width row. */}
       <Section title="Comment" wide>
         <textarea
           value={options.comment}
@@ -94,7 +106,8 @@ export function OptionsPanel({
           style={S.textarea}
         />
       </Section>
-    </fieldset>
+      </fieldset>
+    </div>
   );
 }
 
@@ -141,16 +154,9 @@ function Check({
 }
 
 const S: Record<string, CSSProperties> = {
-  fieldset: {
-    border: "none",
-    margin: 0,
-    padding: 0,
-    minWidth: 0,
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
-    gap: "1rem 1.5rem",
-    alignItems: "start",
-  },
+  // Just the <fieldset> reset; the responsive grid lives in `.options-grid`
+  // (index.css) so it can use container queries to cap the column count.
+  fieldset: { border: "none", margin: 0, padding: 0, minWidth: 0 },
   section: { display: "grid", gap: "0.4rem", minWidth: 0 },
   sectionWide: { display: "grid", gap: "0.4rem", minWidth: 0, gridColumn: "1 / -1" },
   sectionTitle: {
@@ -167,6 +173,5 @@ const S: Record<string, CSSProperties> = {
   // on one line.
   fieldLabel: { whiteSpace: "nowrap", color: "var(--text-2)" },
   fieldControl: { display: "flex", gap: "0.5rem", alignItems: "center", flex: 1, minWidth: 0 },
-  hint: { color: "var(--text-2)", fontSize: "0.8rem" },
   textarea: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3rem" },
 };

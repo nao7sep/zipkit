@@ -147,7 +147,7 @@ export function JobListbox({
     >
       {jobs.length === 0 ? (
         <li role="presentation" style={S.empty}>
-          No jobs yet — click “Add” to choose folders or files.
+          No jobs yet. Click “Add” to choose folders or files.
         </li>
       ) : (
         jobs.map((job, i) => {
@@ -173,10 +173,7 @@ export function JobListbox({
                 <div style={S.name}>{label(job)}</div>
                 <div style={S.meta}>
                   <StateBadge state={job.state} />
-                  <span style={S.dim}>
-                    {intentLabel(job.intent)}
-                    {job.message ? ` · ${job.message}` : ""}
-                  </span>
+                  {metaText(job) && <span style={S.dim}>{metaText(job)}</span>}
                 </div>
               </div>
               {(job.state === "planning" || job.state === "running") && (
@@ -214,6 +211,12 @@ export function JobListbox({
       )}
     </ul>
   );
+}
+
+/** The dim sub-line beside the state badge: the noteworthy intent tag (nothing
+ *  for the default save) and the job message, whichever are present. */
+function metaText(job: Job): string {
+  return [intentLabel(job.intent), job.message].filter(Boolean).join(" · ");
 }
 
 function CloseIcon() {

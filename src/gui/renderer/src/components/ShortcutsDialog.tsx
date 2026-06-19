@@ -15,12 +15,8 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
     <ModalShell
       title="Keyboard shortcuts"
       onClose={onClose}
-      describedById="shortcuts-intro"
       footer={<button onClick={onClose}>Close</button>}
     >
-      <p id="shortcuts-intro" style={{ marginTop: 0, color: "var(--text-2)" }}>
-        Keys for the app and the job queue.
-      </p>
       <div style={S.groups}>
         {SHORTCUTS.map((group) => (
           <section key={group.title}>

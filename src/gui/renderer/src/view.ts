@@ -19,11 +19,20 @@ export const COLOR = {
   idle: "#8c9381",
 } as const;
 
-/** A short label for a job row: the first input's basename, "+N" for the rest. */
+/** A job's label: every input's basename, sorted alphabetically (case-insensitive)
+ *  and comma-joined, so a multi-input job shows its whole inventory rather than
+ *  "first +N". Used for the row, the type-ahead, and the Archive pane title.
+ *  (Dirs-before-files ordering needs main-side file/dir classification — tracked
+ *  separately; this sorts by name only.) */
 export function label(job: Job): string {
-  const first = job.inputs[0] ?? "(no input)";
-  const base = first.split("/").pop() || first;
-  return job.inputs.length > 1 ? `${base} +${job.inputs.length - 1}` : base;
+  if (job.inputs.length === 0) return "(no input)";
+  return job.inputs
+    .map((p) => {
+      const norm = p.replace(/\\/g, "/");
+      return norm.split("/").pop() || norm;
+    })
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+    .join(", ");
 }
 
 /** The status-badge color for each job state (exhaustive over JobState). */
@@ -53,6 +62,38 @@ export function severityColor(severity: Finding["severity"]): string {
       return COLOR.warn;
     case "info":
       return COLOR.info;
+  }
+}
+
+/** The human label for a job state — proper-cased for UI (the raw union is
+ *  lower-kebab for code). Exhaustive over JobState so a new state can't slip out
+ *  unlabelled. */
+export function stateLabel(state: Job["state"]): string {
+  switch (state) {
+    case "planning":
+      return "Planning";
+    case "needs-attention":
+      return "Needs attention";
+    case "ready":
+      return "Ready";
+    case "running":
+      return "Running";
+    case "done":
+      return "Done";
+    case "failed":
+      return "Failed";
+  }
+}
+
+/** The human label for a finding severity — proper-cased for UI. */
+export function severityLabel(severity: Finding["severity"]): string {
+  switch (severity) {
+    case "error":
+      return "Error";
+    case "warning":
+      return "Warning";
+    case "info":
+      return "Info";
   }
 }
 
@@ -97,14 +138,20 @@ export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean)
   return intent === "archive-and-trash" && !metadata;
 }
 
-/** The short intent tag shown on a job row. */
+/** The short intent tag shown on a job row — only the noteworthy intent gets a
+ *  tag; the plain "save" is the default and adds no signal, so it shows nothing. */
 export function intentLabel(intent: JobIntent): string {
-  return intent === "archive-and-trash" ? "→ Trash" : "save";
+  return intent === "archive-and-trash" ? "→ Trash" : "";
 }
 
-/** The plan verdict headline. */
+/** The plan verdict headline: a factual, context-aware status, never a vague
+ *  "safe" claim. Blocking findings stop the write; warnings are auto-fixed but
+ *  worth noting; otherwise the job is simply ready to archive. */
 export function verdictHeadline(plan: PlanData): string {
-  return plan.writable ? "Windows-safe ✓" : "Blocking issues";
+  const s = plan.summary;
+  if (!plan.writable) return s.errors === 1 ? "1 blocking issue" : `${s.errors} blocking issues`;
+  if (s.warnings > 0) return s.warnings === 1 ? "Ready · 1 warning" : `Ready · ${s.warnings} warnings`;
+  return "Ready to archive";
 }
 
 /** The entries the plan dropped (excluded), for the "N dropped" detail. */
@@ -128,12 +175,22 @@ export function formatEventLine(event: LogEvent): string {
   return `${formatLocalTime(event.time)}  ${event.level}  ${event.message}`;
 }
 
-/** The target archive's file name (basename of the planned output path) — the
+/** The target archive's file name (basename of the planned output path): the
  *  identity a user reasons about. Empty string when there is no output yet. */
 export function archiveName(output: string | undefined): string {
   if (!output) return "";
   const norm = output.replace(/\\/g, "/");
   return norm.split("/").pop() || norm;
+}
+
+/** The directory that contains a path (its parent), normalized for display.
+ *  Empty string when the path is bare or at the filesystem root. Shown above the
+ *  source → target line so the user sees where the archive lands. */
+export function containingDir(p: string | undefined): string {
+  if (!p) return "";
+  const norm = p.replace(/\\/g, "/");
+  const i = norm.lastIndexOf("/");
+  return i <= 0 ? "" : norm.slice(0, i);
 }
 
 /** A subtle row-background tint per job state, for at-a-glance distinction in the

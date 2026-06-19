@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COLOR,
+  containingDir,
   droppedEntries,
   formatEventLine,
   intentLabel,
@@ -17,7 +18,9 @@ import {
   label,
   manifestRequiredButMissing,
   severityColor,
+  severityLabel,
   stateColor,
+  stateLabel,
   verdictHeadline,
   verifySummary,
 } from "../../../src/gui/renderer/src/view";
@@ -36,11 +39,13 @@ const job = (over: Partial<Job> = {}): Job => ({
 const ALL_STATES: Job["state"][] = ["planning", "needs-attention", "ready", "running", "done", "failed"];
 
 describe("label", () => {
-  it("uses the first input's basename", () => {
+  it("uses the lone input's basename", () => {
     expect(label(job({ inputs: ["/x/y/photos"] }))).toBe("photos");
   });
-  it("appends +N for extra inputs", () => {
-    expect(label(job({ inputs: ["/x/a", "/x/b", "/x/c"] }))).toBe("a +2");
+  it("lists every input's basename, sorted alphabetically (not by path)", () => {
+    expect(label(job({ inputs: ["/z/charlie", "/a/alpha", "/m/bravo"] }))).toBe(
+      "alpha, bravo, charlie",
+    );
   });
   it("falls back when there are no inputs", () => {
     expect(label(job({ inputs: [] }))).toBe("(no input)");
@@ -81,16 +86,59 @@ describe("manifestRequiredButMissing", () => {
 });
 
 describe("intentLabel", () => {
-  it("labels the two intents", () => {
-    expect(intentLabel("save")).toBe("save");
+  it("tags only the noteworthy intent; the default save shows nothing", () => {
+    expect(intentLabel("save")).toBe("");
     expect(intentLabel("archive-and-trash")).toBe("→ Trash");
   });
 });
 
+describe("stateLabel", () => {
+  it("proper-cases every state (exhaustive, none left raw)", () => {
+    expect(ALL_STATES.map(stateLabel)).toEqual([
+      "Planning",
+      "Needs attention",
+      "Ready",
+      "Running",
+      "Done",
+      "Failed",
+    ]);
+  });
+});
+
+describe("severityLabel", () => {
+  it("proper-cases each severity", () => {
+    expect(severityLabel("error")).toBe("Error");
+    expect(severityLabel("warning")).toBe("Warning");
+    expect(severityLabel("info")).toBe("Info");
+  });
+});
+
+describe("containingDir", () => {
+  it("returns the parent directory, normalizing separators", () => {
+    expect(containingDir("/a/b/c.zip")).toBe("/a/b");
+    expect(containingDir("C:\\x\\y\\z.zip")).toBe("C:/x/y");
+  });
+  it("is empty for a bare name, a root-level path, or no path", () => {
+    expect(containingDir("c.zip")).toBe("");
+    expect(containingDir("/c.zip")).toBe("");
+    expect(containingDir(undefined)).toBe("");
+  });
+});
+
 describe("verdictHeadline", () => {
-  it("reads the writable gate", () => {
-    expect(verdictHeadline({ writable: true } as unknown as PlanData)).toContain("Windows-safe");
-    expect(verdictHeadline({ writable: false } as unknown as PlanData)).toBe("Blocking issues");
+  const plan = (over: Partial<PlanData["summary"]> & { writable: boolean }): PlanData => {
+    const { writable, ...summary } = over;
+    return {
+      writable,
+      summary: { included: 0, excluded: 0, warnings: 0, errors: 0, ...summary },
+    } as unknown as PlanData;
+  };
+  it("is factual and context-aware, never a vague 'safe' claim", () => {
+    expect(verdictHeadline(plan({ writable: true }))).toBe("Ready to archive");
+    expect(verdictHeadline(plan({ writable: true, warnings: 1 }))).toBe("Ready · 1 warning");
+    expect(verdictHeadline(plan({ writable: true, warnings: 3 }))).toBe("Ready · 3 warnings");
+    expect(verdictHeadline(plan({ writable: false, errors: 1 }))).toBe("1 blocking issue");
+    expect(verdictHeadline(plan({ writable: false, errors: 4 }))).toBe("4 blocking issues");
   });
 });
 

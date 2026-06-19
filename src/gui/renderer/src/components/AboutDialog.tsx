@@ -24,11 +24,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
       footer={<button onClick={onClose}>Close</button>}
     >
       <p>Version {info?.version ?? "…"}</p>
-      <p id="about-description">
-        A cross-platform ZIP archiver and portability linter/fixer — a no-config desktop app over the
-        ZipKit SDK. It makes archives that are clean on macOS and Windows alike, with optional safe
-        deletion of the originals after a verified write.
-      </p>
+      <p id="about-description">Clean, portable ZIP archives for macOS and Windows.</p>
       <p>
         <button onClick={() => window.zipkit.openExternal(REPO)}>Repository</button>{" "}
         <button onClick={() => window.zipkit.openExternal(`${REPO}/issues`)}>Issues</button>
