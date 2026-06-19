@@ -147,7 +147,7 @@ export function JobListbox({
     >
       {jobs.length === 0 ? (
         <li role="presentation" style={S.empty}>
-          No jobs yet. Click “Add” to choose folders or files.
+          No jobs yet. Click “Add” to choose directories or files.
         </li>
       ) : (
         jobs.map((job, i) => {

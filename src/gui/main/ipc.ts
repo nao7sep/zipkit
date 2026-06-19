@@ -39,7 +39,7 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:chooseInputs", async (): Promise<string[]> => {
     const result = await dialog.showOpenDialog({
-      title: "Choose folders or files to archive",
+      title: "Choose directories or files to archive",
       properties: ["openDirectory", "openFile", "multiSelections"],
     });
     const chosen = result.canceled ? [] : result.filePaths;
@@ -49,11 +49,11 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:chooseOutputDir", async (): Promise<string> => {
     const result = await dialog.showOpenDialog({
-      title: "Choose the output folder",
+      title: "Choose the output directory",
       properties: ["openDirectory", "createDirectory"],
     });
     const dir = result.canceled || result.filePaths.length === 0 ? "" : result.filePaths[0]!;
-    log.info("output folder chosen", { chosen: dir !== "" });
+    log.info("output directory chosen", { chosen: dir !== "" });
     return dir;
   });
 

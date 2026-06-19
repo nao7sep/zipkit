@@ -47,8 +47,10 @@ export interface AppInfo {
 export interface ZipKitGuiApi {
   /** Open a native picker; returns chosen absolute paths (empty if cancelled). */
   chooseInputs(): Promise<string[]>;
-  /** Open a native folder picker; returns the chosen absolute dir ("" if cancelled). */
+  /** Open a native directory picker; returns the chosen absolute dir ("" if cancelled). */
   chooseOutputDir(): Promise<string>;
+  /** The absolute path for a drag-dropped File (Electron's webUtils route). */
+  pathForFile(file: File): string;
 
   /** The persisted defaults for new jobs (the built-in defaults if none saved). */
   getSettings(): Promise<GuiOptions>;

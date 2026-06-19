@@ -1,17 +1,17 @@
 /**
  * The archive-parameters editor, shared by two surfaces: the Settings dialog
  * (where it edits the defaults for new jobs) and a selected job's Parameters
- * pane. It is a controlled view over the GuiOptions *knobs* — the cleaning,
- * manifest, compression, and comment choices; it does NOT own the output folder
- * or file name (those are operation-level and live with the Create action). The
- * SDK still owns all validation and every default not set here. Sections flow
+ * pane. It is a controlled view over the GuiOptions *knobs* — cleaning, manifest,
+ * compression, comment, and the output directory + overwrite group; it does NOT
+ * own the file name (that is operation-level and lives with the Create action).
+ * The SDK still owns all validation and every default not set here. Sections flow
  * into responsive columns so the whole set stays visible without a tall scroll.
  */
 
 import type { CSSProperties, ReactNode } from "react";
 import type { GuiOptions } from "../../../shared/spec";
 import { multiline } from "../textCleanup";
-import { FolderField } from "./FolderField";
+import { DirectoryField } from "./DirectoryField";
 
 export function OptionsPanel({
   options,
@@ -81,11 +81,12 @@ export function OptionsPanel({
       </Section>
 
       {/* Where the archive is written. A normal column so it sits next to Archive
-          when the pane is wide. The output folder and the overwrite policy belong
-          together: both answer "where does the .zip land, and may it clobber?". */}
+          when the pane is wide. The output directory and the overwrite policy
+          belong together: both answer "where does the .zip land, and may it
+          clobber?". */}
       <Section title="Output">
-        <FolderField
-          label="Output folder"
+        <DirectoryField
+          label="Output directory"
           value={options.outputDir}
           onChange={(v) => set("outputDir", v)}
           placeholder="(beside the input)"

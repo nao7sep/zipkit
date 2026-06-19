@@ -147,6 +147,12 @@ code {
   font-size: 0.9em;
 }
 
+/* Input-list rows: hover-highlight the whole row so on a wide window it stays
+ * clear which input the far-right remove (✕) belongs to. */
+.input-row:hover {
+  background: var(--surface-2);
+}
+
 /* OptionsPanel grid (Settings + the job Parameters section). Container queries so
  * the column count tracks the PANE width, not the viewport. Capped at 4: past the
  * 4-column point the columns just widen (1fr), never multiply into empty phantom

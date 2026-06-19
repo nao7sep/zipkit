@@ -16,7 +16,7 @@ const LABEL: Record<JobCommand, string> = {
   retry: "Try again",
   cancel: "Cancel",
   verify: "Verify",
-  reveal: "Reveal in folder",
+  reveal: "Reveal in file manager",
   "trash-originals": "Move originals to Trash",
   "remove-archive": "Remove archive",
 };
@@ -30,13 +30,22 @@ const CLASS: Partial<Record<JobCommand, string>> = {
 
 export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCommand) => void }) {
   const commands = jobCommands(job);
+  // Seat the destructive group at the far-right end (an auto left-margin on the
+  // first danger button pushes it and the rest right), away from the everyday
+  // buttons, so a Trash/Remove click is deliberate, not a slip.
+  const firstDanger = commands.findIndex((c) => CLASS[c] === "danger");
   return (
     <div style={S.bar}>
       {commands.length === 0 ? (
         <span style={S.hint}>{job.message ?? "Resolve the blocking issues to create this archive."}</span>
       ) : (
-        commands.map((c) => (
-          <button key={c} className={CLASS[c]} onClick={() => onCommand(c)}>
+        commands.map((c, i) => (
+          <button
+            key={c}
+            className={CLASS[c]}
+            style={i === firstDanger ? S.pushRight : undefined}
+            onClick={() => onCommand(c)}
+          >
             {LABEL[c]}
           </button>
         ))
@@ -54,4 +63,5 @@ const S: Record<string, CSSProperties> = {
     marginTop: "0.85rem",
   },
   hint: { color: "var(--text-2)", fontSize: "0.85rem" },
+  pushRight: { marginLeft: "auto" },
 };

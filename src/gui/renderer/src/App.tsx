@@ -4,7 +4,7 @@
  * status bar. Left, the job list (Add). Middle, the selected job's everything in
  * one scrollable pane, titled with the job's input inventory and a state pill:
  * its Inputs (add/remove without rebuilding the job), its Parameters (the archive
- * knobs + an output-folder group, gated by a "use default parameters" toggle),
+ * knobs + an output-directory group, gated by a "use default parameters" toggle),
  * its Operation (file name, intent, the full output-path checkpoint, then the
  * lifecycle buttons), and its Report. Right, this job's live Progress. Jobs are
  * planned in the background; each is created on demand and the engine runs them
@@ -96,6 +96,9 @@ export function App() {
   }, []);
 
   const selected = jobs.find((j) => j.id === selectedId) ?? null;
+  // The queue is held oldest-first; show it newest-first so a just-added job is
+  // at the top, where the user is looking.
+  const jobsNewestFirst = [...jobs].reverse();
 
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
@@ -161,7 +164,7 @@ export function App() {
           bodyStyle={S.listBody}
         >
           <JobListbox
-            jobs={jobs}
+            jobs={jobsNewestFirst}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onRemove={(id) => void window.zipkit.removeJob(id)}
@@ -236,6 +239,13 @@ function JobView({
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void window.zipkit.updateJob(job.id, { options: next }), 250);
   }
+  // Commit immediately (used by text fields on blur, so typing doesn't re-plan
+  // per keystroke — the engine only re-plans when a plan-affecting option lands).
+  function commitOptions(next: GuiOptions) {
+    setOpts(next);
+    clearTimeout(timer.current);
+    void window.zipkit.updateJob(job.id, { options: next });
+  }
 
   // No confirmation here: choosing an intent only edits a parameter — nothing is
   // moved or deleted until the job actually runs, and the move-to-Trash
@@ -244,13 +254,18 @@ function JobView({
     void window.zipkit.updateJob(job.id, { intent });
   }
 
-  // Input CRUD: add appends the chosen paths (skipping ones already in the job);
-  // remove drops one. Both re-plan + re-classify in the engine.
-  async function addInputs() {
-    const chosen = await window.zipkit.chooseInputs();
-    const next = [...job.inputs, ...chosen.filter((p) => !job.inputs.includes(p))];
+  // Input CRUD: add appends paths (from the picker or a drop), skipping ones
+  // already in the job; remove drops one. Both re-plan + re-classify in the engine.
+  function addPaths(paths: string[]) {
+    const next = [...job.inputs, ...paths.filter((p) => p && !job.inputs.includes(p))];
     if (next.length === job.inputs.length) return; // nothing new
     void window.zipkit.updateJob(job.id, { inputs: next });
+  }
+  async function addInputs() {
+    addPaths(await window.zipkit.chooseInputs());
+  }
+  function onDropFiles(files: File[]) {
+    addPaths(files.map((f) => window.zipkit.pathForFile(f)));
   }
   function removeInput(path: string) {
     if (job.inputs.length <= 1) return; // a job must archive something
@@ -281,7 +296,7 @@ function JobView({
           await confirm({
             title: "Move originals to Trash?",
             message:
-              "The original files and folders for this job will be moved to the Trash. The archive is kept.",
+              "The original files and directories for this job will be moved to the Trash. The archive is kept.",
             confirmLabel: "Move to Trash",
             danger: true,
           })
@@ -297,7 +312,7 @@ function JobView({
   const editable = isEditable(job.state);
   const terminal = isTerminal(job.state);
   const target = archiveName(job.output) || "(planning…)";
-  // Where the .zip lands: its own folder once planned, else the input's folder
+  // Where the .zip lands: its own directory once planned, else the input's parent
   // (the SDK's beside-the-input default), so the checkpoint reads immediately.
   const destDir = containingDir(job.output) || containingDir(job.inputs[0]);
   const jobEvents = events.filter((e) => e.jobId === job.id);
@@ -321,10 +336,11 @@ function JobView({
           editable={editable}
           onAdd={() => void addInputs()}
           onRemove={removeInput}
+          onDropFiles={onDropFiles}
         />
 
         {/* Parameters: the archive knobs, with the use-defaults toggle in the
-            header and the output-folder group inside. */}
+            header and the output-directory group inside. */}
         <div style={S.sectionHead}>
           <span style={S.sectionTitle}>Parameters</span>
           <label style={S.lock}>
@@ -352,7 +368,8 @@ function JobView({
               value={opts.fileName}
               placeholder={archiveName(job.output) || "(automatic)"}
               disabled={!editable}
-              onChange={(e) => changeOptions({ ...opts, fileName: e.target.value })}
+              onChange={(e) => setOpts({ ...opts, fileName: e.target.value })}
+              onBlur={(e) => commitOptions({ ...opts, fileName: e.target.value })}
             />
           </label>
           <label style={S.stack}>

@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
+import { buildSpec, DEFAULT_OPTIONS, planAffectingChanged } from "../../../src/gui/shared/spec.js";
 
 describe("buildSpec", () => {
   it("maps defaults to an inclusive policy with metadata + hashing on", () => {
@@ -55,5 +55,23 @@ describe("buildSpec", () => {
   it("omits a blank/whitespace comment rather than passing an empty", () => {
     const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, comment: "   " });
     expect(spec.comment).toBeUndefined();
+  });
+});
+
+describe("planAffectingChanged", () => {
+  it("is false for write-only edits (level, comment, hash) — no re-plan needed", () => {
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, level: 1 })).toBe(false);
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, comment: "hi" })).toBe(false);
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, hash: false })).toBe(false);
+  });
+  it("is true when an option that changes the dry run lands", () => {
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, fileName: "x.zip" })).toBe(true);
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, outputDir: "/out" })).toBe(true);
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, junk: false })).toBe(true);
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, strict: true })).toBe(true);
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, overwrite: true })).toBe(true);
+  });
+  it("is false when nothing changed", () => {
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS })).toBe(false);
   });
 });

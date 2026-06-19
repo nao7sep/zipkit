@@ -17,6 +17,7 @@ import {
   jobCommands,
   label,
   manifestRequiredButMissing,
+  orderedEntries,
   originalsPresent,
   severityColor,
   severityLabel,
@@ -66,6 +67,33 @@ describe("label", () => {
   });
   it("falls back when there are no inputs", () => {
     expect(label(job({ inputs: [] }))).toBe("(no input)");
+  });
+});
+
+describe("orderedEntries", () => {
+  it("orders directories first, then files, then missing/other; alpha within a group", () => {
+    const entries = [
+      { path: "/z/file-b.txt", kind: "file" as const },
+      { path: "/a/dir-b", kind: "directory" as const },
+      { path: "/gone", kind: "nonexistent" as const },
+      { path: "/a/dir-a", kind: "directory" as const },
+      { path: "/a/file-a.txt", kind: "file" as const },
+    ];
+    expect(orderedEntries(entries).map((e) => e.path)).toEqual([
+      "/a/dir-a",
+      "/a/dir-b",
+      "/a/file-a.txt",
+      "/z/file-b.txt",
+      "/gone",
+    ]);
+  });
+  it("does not mutate its input", () => {
+    const entries = [
+      { path: "/b", kind: "file" as const },
+      { path: "/a", kind: "directory" as const },
+    ];
+    orderedEntries(entries);
+    expect(entries.map((e) => e.path)).toEqual(["/b", "/a"]);
   });
 });
 
@@ -232,11 +260,12 @@ describe("jobCommands", () => {
   it("offers retry on failure", () => {
     expect(jobCommands(job({ state: "failed" }))).toEqual(["retry"]);
   });
-  it("on done, offers remove-archive (and trash-originals) only for the save intent", () => {
-    // With originals still present (entries with a file), a save job offers both.
+  it("on done, offers remove-archive (and trash-originals last) only for the save intent", () => {
+    // With originals still present (entries with a file), a save job offers both;
+    // trash-originals is ordered last so the bar can seat it at the far-right end.
     expect(
       jobCommands(job({ state: "done", intent: "save", entries: [{ path: "/a", kind: "file" }] })),
-    ).toEqual(["verify", "reveal", "trash-originals", "remove-archive"]);
+    ).toEqual(["verify", "reveal", "remove-archive", "trash-originals"]);
     expect(jobCommands(job({ state: "done", intent: "archive-and-trash" }))).toEqual([
       "verify",
       "reveal",

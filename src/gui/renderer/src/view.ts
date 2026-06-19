@@ -6,7 +6,7 @@
  * must stay Node-free — it carries no `node:*` import and no Node global.)
  */
 
-import type { ExtractData, Finding, Job, JobIntent, LogEvent, PlanData } from "../../shared/api";
+import type { ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, PlanData } from "../../shared/api";
 
 /** The dark-theme status palette, in one place so every status reads one map. */
 export const COLOR = {
@@ -48,6 +48,17 @@ export function label(job: Job): string {
 export function originalsPresent(job: Job): boolean {
   if (!job.entries) return true;
   return job.entries.some((e) => e.kind === "directory" || e.kind === "file");
+}
+
+/** Display order for the input list: directories first, then files, then anything
+ *  else (other / missing) last; within each group, full paths sorted alphabetically
+ *  (case-insensitive). Pure, so the order is testable without a DOM. */
+const KIND_RANK: Record<PathKind, number> = { directory: 0, file: 1, other: 2, nonexistent: 3 };
+export function orderedEntries(entries: InputEntry[]): InputEntry[] {
+  return [...entries].sort((a, b) => {
+    const byKind = KIND_RANK[a.kind] - KIND_RANK[b.kind];
+    return byKind !== 0 ? byKind : a.path.localeCompare(b.path, undefined, { sensitivity: "base" });
+  });
 }
 
 /** The status-badge color for each job state (exhaustive over JobState). */
@@ -149,10 +160,12 @@ export function jobCommands(job: Job): JobCommand[] {
       return ["retry"];
     case "done":
       if (job.intent !== "save") return ["verify", "reveal"];
-      // A saved archive: verify/reveal it, optionally trash the originals (only
-      // while they still exist), or remove the archive to edit and re-create.
+      // A saved archive: verify/reveal it, remove the archive to edit and
+      // re-create, or (only while they still exist) trash the originals. The most
+      // destructive command (trash-originals) is ordered last so the command bar
+      // can seat it at the far-right end, away from the everyday buttons.
       return originalsPresent(job)
-        ? ["verify", "reveal", "trash-originals", "remove-archive"]
+        ? ["verify", "reveal", "remove-archive", "trash-originals"]
         : ["verify", "reveal", "remove-archive"];
   }
 }

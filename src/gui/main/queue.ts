@@ -21,7 +21,7 @@ import { createQueueEngine } from "./queue-engine.js";
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 const engine = createQueueEngine({
-  // Compose the output path from the GUI's folder + file name at the boundary
+  // Compose the output path from the GUI's directory + file name at the boundary
   // (absolute, or empty so the SDK infers beside the input — never resolved
   // against the unpredictable working directory). The engine supplies a
   // job-tagging `onProgress`, so progress reaches the right job's activity stream.

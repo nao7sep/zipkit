@@ -33,14 +33,14 @@ function withZipExtension(name: string): string {
 }
 
 /**
- * Compose the SDK's output path from the GUI's output **folder** and **file
+ * Compose the SDK's output path from the GUI's output **directory** and **file
  * name**, given the job's inputs. Both empty → "" so the SDK infers the archive
  * beside the input (cwd-independent, since inputs are absolute). When only one is
- * set, the other defaults from the first input: the folder to the input's parent,
- * the name to the input's basename + `.zip` (the SDK's beside-the-input form for a
- * single input). The folder must resolve to an absolute path.
+ * set, the other defaults from the first input: the directory to the input's
+ * parent, the name to the input's basename + `.zip` (the SDK's beside-the-input
+ * form for a single input). The directory must resolve to an absolute path.
  *
- * @throws Error when a typed folder is non-empty but not absolute (after `~`
+ * @throws Error when a typed directory is non-empty but not absolute (after `~`
  *   expansion) — never resolved against `process.cwd()`, whose value a
  *   double-clicked desktop app cannot rely on. The queue engine surfaces it as
  *   the job's message.
@@ -57,7 +57,7 @@ export function resolveOutputPath(outputDir: string, fileName: string, inputs: s
 
   if (!path.isAbsolute(baseDir)) {
     throw new Error(
-      `the output folder must be an absolute path (or empty to write beside the input); got a relative path: "${dir}"`,
+      `the output directory must be an absolute path (or empty to write beside the input); got a relative path: "${dir}"`,
     );
   }
   return path.join(baseDir, baseName);

@@ -5,7 +5,7 @@
  * `satisfies`, so the bridge and its declared type cannot drift.
  */
 
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { GuiOptions } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import type { AppInfo, GuiLogEvent, Job, JobIntent, PlanData, VerifyResult, ZipKitGuiApi } from "../shared/api.js";
@@ -13,6 +13,9 @@ import type { AppInfo, GuiLogEvent, Job, JobIntent, PlanData, VerifyResult, ZipK
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
   chooseOutputDir: (): Promise<string> => ipcRenderer.invoke("zipkit:chooseOutputDir"),
+  // The absolute path for a drag-dropped File (Electron 32+ removed File.path, so
+  // this is the supported route). Synchronous, no IPC — webUtils runs in preload.
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
   getSettings: (): Promise<GuiOptions> => ipcRenderer.invoke("zipkit:getSettings"),
   setSettings: (defaults: GuiOptions): Promise<void> =>
     ipcRenderer.invoke("zipkit:setSettings", defaults),

@@ -18,7 +18,7 @@
 
 import type { InputEntry, Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
-import type { GuiOptions } from "../shared/spec.js";
+import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { outputInsideInputs } from "./safety.js";
 import { errorInfo, type AppLog } from "./log.js";
 
@@ -262,10 +262,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         replan = true;
       }
       if (patch.options !== undefined) {
+        // Only a change to a plan-affecting option warrants a fresh dry run;
+        // write-only edits (level, comment, hash) are stored without re-planning,
+        // so they never re-emit an identical report.
+        const planChanged = planAffectingChanged(rec.job.options, patch.options);
         set(rec, { options: patch.options });
-        replan = true;
+        if (planChanged) replan = true;
       }
-      // A re-plan emits on its own; a metadata-only change (intent) still must emit.
+      // A re-plan emits on its own; a store-only change (intent / write-only
+      // option) still must emit so the renderer sees the new state.
       if (replan) void planJob(id);
       else emit();
     },

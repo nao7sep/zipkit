@@ -191,15 +191,15 @@ describe("queue engine", () => {
     expect(calls.trash).toEqual([["/tmp/out.zip"]]); // the archive was trashed
   });
 
-  it("re-plans when a job's options change", async () => {
+  it("re-plans when a plan-affecting option changes", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(calls.plan).toBe(1);
-    engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1 } });
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } });
     await vi.waitFor(() => expect(calls.plan).toBe(2));
-    expect(engine.snapshot()[0]?.options.level).toBe(1);
+    expect(engine.snapshot()[0]?.options.junk).toBe(false);
   });
 
   it("classifies inputs on add, storing them as entries", async () => {
@@ -215,6 +215,19 @@ describe("queue engine", () => {
         { path: "/file.txt", kind: "file" },
       ]),
     );
+  });
+
+  it("does NOT re-plan when only a write-only option (level/comment) changes", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    expect(calls.plan).toBe(1);
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1, comment: "hi" } });
+    await tick();
+    await tick();
+    expect(calls.plan).toBe(1); // stored, but no redundant dry run
+    expect(engine.snapshot()[0]?.options.level).toBe(1); // change still applied
   });
 
   it("re-plans and re-classifies when a job's inputs change", async () => {

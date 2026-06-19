@@ -75,3 +75,28 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
   if (o.comment.trim() !== "") spec.comment = o.comment;
   return spec;
 }
+
+/**
+ * The option fields that change a *dry run's* result — which entries are scanned,
+ * the portability findings, the resolved output path, and the writable/overwrite
+ * gate. Compression `level`, the archive `comment`, and the manifest `hash` are
+ * write-time only: they never alter the plan, so editing them must NOT re-plan
+ * (re-planning just to re-emit an identical report is the redundant dry run we
+ * avoid). Keep this list in step with what {@link buildSpec} and the output
+ * composition actually feed the plan.
+ */
+const PLAN_AFFECTING: (keyof GuiOptions)[] = [
+  "junk",
+  "strict",
+  "symlinks",
+  "emptyDirs",
+  "metadata",
+  "outputDir",
+  "fileName",
+  "overwrite",
+];
+
+/** Whether two option states differ in a way that requires a fresh dry run. */
+export function planAffectingChanged(a: GuiOptions, b: GuiOptions): boolean {
+  return PLAN_AFFECTING.some((k) => a[k] !== b[k]);
+}
