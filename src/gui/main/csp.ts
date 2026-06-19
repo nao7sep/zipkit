@@ -19,9 +19,11 @@
  *   style-src 'self' 'unsafe-inline'
  *                           — REQUIRED: React components set inline `style={...}`
  *                             props throughout (App/ModalShell/JobListbox/…),
- *                             which render as inline style attributes. The bundled
- *                             stylesheet is external ('self'); 'unsafe-inline' is
- *                             only for those style attributes, not scripts.
+ *                             which render as inline style attributes, and Radix's
+ *                             dialog scroll-lock (react-remove-scroll) injects an
+ *                             inline <style> element while a modal is open. The
+ *                             bundled stylesheet is external ('self'); 'unsafe-inline'
+ *                             covers those inline styles only, never scripts.
  *   img-src 'self'          — the renderer loads no images: no <img>, no
  *                             data:/blob: image URIs, no url() in the built CSS.
  *                             Tightened past the data:/blob: baseline so any image

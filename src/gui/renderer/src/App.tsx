@@ -1,24 +1,34 @@
 /**
- * The queue screen: a list of jobs on the left, the selected job's detail on the
- * right. Add jobs (planned in the background), tune each job's options and intent,
- * then Start to drain the ready jobs one write at a time. Everything shown is a
- * field the SDK returned, surfaced through the main-process queue; the view
- * sequences queue commands and renders, it computes no archive logic.
+ * The queue screen. A bottom-bordered header (title + hamburger menu), a body of
+ * rounded panes — the job list on the left, and on the right the selected job's
+ * parameters over its output over the always-visible activity log — and a status
+ * bar. Add jobs (planned in the background), tune each job's parameters and
+ * intent, then Start to drain the ready jobs one write at a time. Everything shown
+ * is a field the SDK returned, surfaced through the main-process queue; the view
+ * sequences queue commands and renders, it computes no archive logic. Defaults for
+ * new jobs live in Settings (saved across launches).
  */
 
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { ExtractData, Finding, Job, JobIntent, LogEvent, PlanData } from "../../shared/api";
+import type { ExtractData, Finding, Job, JobIntent, PlanData } from "../../shared/api";
+import type { LogEvent } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
 import { AboutDialog } from "./components/AboutDialog";
+import { ActivityLog } from "./components/ActivityLog";
+import { AppHeader } from "./components/AppHeader";
 import { useConfirm } from "./components/DialogHost";
-import { HelpDialog } from "./components/HelpDialog";
 import { JobListbox } from "./components/JobListbox";
+import { OptionsPanel } from "./components/OptionsPanel";
+import { Pane } from "./components/Pane";
+import { SettingsDialog } from "./components/SettingsDialog";
+import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { StateBadge } from "./components/StateBadge";
+import { StatusBar } from "./components/StatusBar";
 import {
+  archiveName,
   COLOR,
   droppedEntries,
-  formatEventLine,
   isEditable,
   isTerminal,
   label,
@@ -28,17 +38,20 @@ import {
   verifySummary,
 } from "./view";
 
+type DialogName = "settings" | "shortcuts" | "about";
+
 export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [events, setEvents] = useState<LogEvent[]>([]);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showAbout, setShowAbout] = useState(false);
+  const [dialog, setDialog] = useState<DialogName | null>(null);
+  const saveDefaults = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
     void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
+    void window.zipkit.getSettings().then(setDefaults); // persisted defaults for new jobs
     return unsubscribe;
   }, []);
   useEffect(
@@ -46,14 +59,20 @@ export function App() {
     [],
   );
 
-  // Cmd/Ctrl+/ opens Help (modal-dialog conventions). Suppressed while any modal
-  // is open — the open dialog owns the keys — and inert during IME composition.
+  // Cmd/Ctrl+, opens Settings; Cmd/Ctrl+/ opens Shortcuts (modal-dialog
+  // conventions). Suppressed while any modal is open — the dialog owns the keys —
+  // and inert during IME composition.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.isComposing) return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "/" && !document.querySelector('[role="dialog"]')) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      if (e.key === ",") {
         e.preventDefault();
-        setShowHelp(true);
+        setDialog("settings");
+      } else if (e.key === "/") {
+        e.preventDefault();
+        setDialog("shortcuts");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -63,6 +82,13 @@ export function App() {
   const selected = jobs.find((j) => j.id === selectedId) ?? null;
   const anyReady = jobs.some((j) => j.state === "ready");
 
+  // Defaults live-apply and are saved (debounced) so they persist across launches.
+  function changeDefaults(next: GuiOptions) {
+    setDefaults(next);
+    clearTimeout(saveDefaults.current);
+    saveDefaults.current = setTimeout(() => void window.zipkit.setSettings(next), 300);
+  }
+
   async function addJob() {
     const inputs = await window.zipkit.chooseInputs();
     if (inputs.length === 0) return;
@@ -71,55 +97,81 @@ export function App() {
   }
 
   return (
-    <main style={S.main}>
-      <header style={S.row}>
-        <h1 style={{ margin: 0 }}>ZipKit</h1>
-        <button onClick={() => void addJob()}>Add job…</button>
-        <button onClick={() => void window.zipkit.startQueue()} disabled={!anyReady}>
-          Start
-        </button>
-        <span style={{ flex: 1 }} />
-        <button onClick={() => setShowHelp(true)}>Help</button>
-        <button onClick={() => setShowAbout(true)}>About</button>
-      </header>
+    <div style={S.shell}>
+      <AppHeader
+        onOpenSettings={() => setDialog("settings")}
+        onOpenShortcuts={() => setDialog("shortcuts")}
+        onOpenAbout={() => setDialog("about")}
+      />
 
-      <details>
-        <summary>Defaults for new jobs</summary>
-        <OptionsPanel options={defaults} onChange={setDefaults} disabled={false} />
-      </details>
+      <div style={S.body}>
+        <Pane
+          title="Jobs"
+          actions={
+            <>
+              <button className="accent" onClick={() => void addJob()}>
+                Add
+              </button>
+              <button onClick={() => void window.zipkit.startQueue()} disabled={!anyReady}>
+                Start
+              </button>
+            </>
+          }
+          bodyStyle={S.listBody}
+        >
+          <JobListbox
+            jobs={jobs}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onRemove={(id) => void window.zipkit.removeJob(id)}
+            onCancel={(id) => void window.zipkit.cancelJob(id)}
+          />
+        </Pane>
 
-      <div style={S.columns}>
-        <JobListbox
-          jobs={jobs}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onRemove={(id) => void window.zipkit.removeJob(id)}
-          onCancel={(id) => void window.zipkit.cancelJob(id)}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={S.rightCol}>
           {selected ? (
-            <JobDetail key={selected.id} job={selected} />
+            <JobView key={selected.id} job={selected} />
           ) : (
-            <p style={{ opacity: 0.6 }}>Add a job to begin.</p>
+            <>
+              <Pane title="Parameters">
+                <p style={S.muted}>Add or select a job to see its archive and parameters.</p>
+              </Pane>
+              <Pane title="Output">
+                <p style={S.muted}>No job selected.</p>
+              </Pane>
+            </>
           )}
+          <Pane title="Activity log">
+            <ActivityLog events={events} />
+          </Pane>
         </div>
       </div>
 
-      <EventLog events={events} />
+      <StatusBar />
 
-      {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
-      {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}
-    </main>
+      {dialog === "settings" && (
+        <SettingsDialog
+          defaults={defaults}
+          onChange={changeDefaults}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+      {dialog === "about" && <AboutDialog onClose={() => setDialog(null)} />}
+    </div>
   );
 }
 
-function JobDetail({ job }: { job: Job }) {
+function JobView({ job }: { job: Job }) {
   const confirm = useConfirm();
-  // Keyed by job id in the parent, so this remounts per job — local option draft
-  // and verify state start fresh, no manual re-sync needed.
+  // Keyed by job id in the parent, so this remounts per job — local option draft,
+  // the parameter lock, and verify state start fresh, no manual re-sync needed.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [verify, setVerify] = useState<ExtractData | null>(null);
+  // Parameters are locked by default: archiving is high-stakes, the shipped
+  // defaults are good, so the user opts in to overriding them per job.
+  const [locked, setLocked] = useState(true);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Fetch the full plan for the detail whenever this job is (re)planned.
@@ -154,102 +206,98 @@ function JobDetail({ job }: { job: Job }) {
 
   const editable = isEditable(job.state);
   const terminal = isTerminal(job.state);
+  const canVerify = job.state === "done" && job.intent === "save" && !!job.output;
+  const target = archiveName(job.output) || `${label(job)} (planning…)`;
 
   return (
-    <section>
-      <div style={S.row}>
-        <StateBadge state={job.state} />
-        <strong style={S.ellipsis}>{label(job)}</strong>
-      </div>
-      {job.message && <p style={{ opacity: 0.8 }}>{job.message}</p>}
+    <>
+      <Pane
+        title="Parameters"
+        actions={
+          canVerify ? (
+            <button
+              onClick={() =>
+                void window.zipkit
+                  .verify(job.output!, job.options.metadata)
+                  .then((r) => r.ok && setVerify(r.data))
+              }
+            >
+              Verify
+            </button>
+          ) : undefined
+        }
+      >
+        {/* The identity a user reasons about is the target .zip, not the source. */}
+        <div style={S.targetName} title={job.output}>
+          {target}
+        </div>
+        <div style={S.metaRow}>
+          <StateBadge state={job.state} />
+          <span style={S.muted}>from {label(job)}</span>
+        </div>
+        {job.message && <p style={S.muted}>{job.message}</p>}
 
-      <label>
-        Intent{" "}
-        <select
-          value={job.intent}
-          disabled={!editable}
-          onChange={(e) => void changeIntent(e.target.value as JobIntent)}
-        >
-          <option value="save">Save archive</option>
-          <option value="archive-and-trash">Archive &amp; move originals to Trash</option>
-        </select>
-      </label>
-      {manifestRequiredButMissing(job.intent, opts.metadata) && (
-        <p style={{ color: COLOR.warn }}>Enable “Embed manifest” — verify-before-Trash needs it.</p>
-      )}
+        <label style={S.intent}>
+          <span style={{ color: "var(--text-2)" }}>Intent</span>{" "}
+          <select
+            value={job.intent}
+            disabled={!editable}
+            onChange={(e) => void changeIntent(e.target.value as JobIntent)}
+          >
+            <option value="save">Save archive</option>
+            <option value="archive-and-trash">Archive &amp; move originals to Trash</option>
+          </select>
+        </label>
+        {manifestRequiredButMissing(job.intent, opts.metadata) && (
+          <p style={{ color: COLOR.warn }}>Enable “Embed manifest” — verify-before-Trash needs it.</p>
+        )}
 
-      {!terminal && <OptionsPanel options={opts} onChange={changeOptions} disabled={!editable} />}
+        {!terminal && (
+          <>
+            <label style={S.lock}>
+              <input
+                type="checkbox"
+                checked={locked}
+                disabled={!editable}
+                onChange={(e) => setLocked(e.target.checked)}
+              />
+              <span>Lock parameters {locked && <span style={S.muted}>(using defaults)</span>}</span>
+            </label>
+            <OptionsPanel options={opts} onChange={changeOptions} disabled={locked || !editable} />
+          </>
+        )}
+      </Pane>
 
-      {plan && !terminal && (
-        <>
-          <h3 style={{ color: plan.writable ? COLOR.ok : COLOR.bad, margin: "0.5rem 0" }}>
-            {verdictHeadline(plan)}
-          </h3>
-          <p style={{ opacity: 0.8 }}>
-            → <code>{plan.output}</code> — {plan.summary.included} included, {plan.summary.excluded}{" "}
-            dropped, {plan.summary.warnings} warning(s), {plan.summary.errors} blocking
-          </p>
-          <FindingsList findings={plan.findings} />
-          <Dropped plan={plan} />
-        </>
-      )}
-
-      {job.state === "done" && job.intent === "save" && job.output && (
-        <p>
-          <button onClick={() => void window.zipkit.verify(job.output!, job.options.metadata).then((r) => r.ok && setVerify(r.data))}>
-            Verify
-          </button>
-        </p>
-      )}
-      {verify && <VerifyView data={verify} />}
-    </section>
-  );
-}
-
-function OptionsPanel({
-  options,
-  onChange,
-  disabled,
-}: {
-  options: GuiOptions;
-  onChange: (o: GuiOptions) => void;
-  disabled: boolean;
-}) {
-  const set = <K extends keyof GuiOptions>(key: K, value: GuiOptions[K]) =>
-    onChange({ ...options, [key]: value });
-  return (
-    <fieldset disabled={disabled} style={S.fieldset}>
-      <legend>Options</legend>
-      <label><input type="checkbox" checked={options.junk} onChange={(e) => set("junk", e.target.checked)} /> Drop OS junk</label>
-      <label><input type="checkbox" checked={options.strict} onChange={(e) => set("strict", e.target.checked)} /> Strict (block instead of fix)</label>
-      <label><input type="checkbox" checked={options.metadata} onChange={(e) => set("metadata", e.target.checked)} /> Embed manifest</label>
-      <label><input type="checkbox" checked={options.hash} disabled={!options.metadata} onChange={(e) => set("hash", e.target.checked)} /> Per-file SHA-256</label>
-      <label>Compression <input type="number" min={1} max={9} value={options.level} onChange={(e) => set("level", Number(e.target.value))} style={{ width: "3rem" }} /></label>
-      <label>Symlinks{" "}
-        <select value={options.symlinks} onChange={(e) => set("symlinks", e.target.value as GuiOptions["symlinks"])}>
-          <option value="ignore">ignore</option><option value="preserve">preserve</option><option value="follow">follow</option>
-        </select>
-      </label>
-      <label>Empty dirs{" "}
-        <select value={options.emptyDirs} onChange={(e) => set("emptyDirs", e.target.value as GuiOptions["emptyDirs"])}>
-          <option value="keep">keep</option><option value="prune">prune</option>
-        </select>
-      </label>
-      <label>Output <input type="text" placeholder="(beside the input)" value={options.output} onChange={(e) => set("output", e.target.value)} /></label>
-      <label><input type="checkbox" checked={options.overwrite} onChange={(e) => set("overwrite", e.target.checked)} /> Overwrite existing</label>
-      <label>Comment <input type="text" value={options.comment} onChange={(e) => set("comment", e.target.value)} /></label>
-    </fieldset>
+      <Pane title="Output">
+        {plan && !terminal && (
+          <>
+            <h3 style={{ color: plan.writable ? COLOR.ok : COLOR.bad, margin: "0 0 0.5rem" }}>
+              {verdictHeadline(plan)}
+            </h3>
+            <p style={S.muted}>
+              → <code>{plan.output}</code> — {plan.summary.included} included,{" "}
+              {plan.summary.excluded} dropped, {plan.summary.warnings} warning(s),{" "}
+              {plan.summary.errors} blocking
+            </p>
+            <FindingsList findings={plan.findings} />
+            <Dropped plan={plan} />
+          </>
+        )}
+        {verify && <VerifyView data={verify} />}
+        {terminal && !verify && <p style={S.muted}>{job.message ?? "Finished."}</p>}
+      </Pane>
+    </>
   );
 }
 
 function FindingsList({ findings }: { findings: Finding[] }) {
-  if (findings.length === 0) return <p style={{ opacity: 0.6 }}>No portability issues.</p>;
+  if (findings.length === 0) return <p style={S.muted}>No portability issues.</p>;
   return (
     <ul style={S.list}>
       {findings.map((f, i) => (
         <li key={i}>
-          <code style={{ color: severityColor(f.severity) }}>{f.severity}</code> {f.rule} — {f.message}{" "}
-          <small style={{ opacity: 0.6 }}>({f.path})</small>
+          <code style={{ color: severityColor(f.severity) }}>{f.severity}</code> {f.rule} —{" "}
+          {f.message} <small style={S.muted}>({f.path})</small>
         </li>
       ))}
     </ul>
@@ -265,7 +313,8 @@ function Dropped({ plan }: { plan: PlanData }) {
       <ul style={S.list}>
         {dropped.map((e, i) => (
           <li key={i}>
-            <code>{e.archivePath}</code> <small style={{ opacity: 0.6 }}>— {e.excludeReason ?? "excluded"}</small>
+            <code>{e.archivePath}</code>{" "}
+            <small style={S.muted}>— {e.excludeReason ?? "excluded"}</small>
           </li>
         ))}
       </ul>
@@ -276,31 +325,43 @@ function Dropped({ plan }: { plan: PlanData }) {
 function VerifyView({ data }: { data: ExtractData }) {
   const color = data.reportOk ? COLOR.ok : COLOR.bad;
   return (
-    <section style={{ borderLeft: `3px solid ${color}`, paddingLeft: "0.75rem" }}>
-      <strong style={{ color }}>{data.reportOk ? "Verified ✓" : "Verification failed"}</strong>{" "}
-      — {verifySummary(data)}
+    <section style={{ borderLeft: `3px solid ${color}`, paddingLeft: "0.75rem", margin: "0.5rem 0" }}>
+      <strong style={{ color }}>{data.reportOk ? "Verified ✓" : "Verification failed"}</strong> —{" "}
+      {verifySummary(data)}
       {data.missing.length > 0 && <div>Missing: {data.missing.join(", ")}</div>}
       {data.extra.length > 0 && <div>Extra: {data.extra.join(", ")}</div>}
     </section>
   );
 }
 
-function EventLog({ events }: { events: LogEvent[] }) {
-  if (events.length === 0) return null;
-  return (
-    <details>
-      <summary>Activity log ({events.length})</summary>
-      <pre style={S.log}>{events.map(formatEventLine).join("\n")}</pre>
-    </details>
-  );
-}
-
 const S: Record<string, CSSProperties> = {
-  main: { fontFamily: "system-ui, sans-serif", padding: "1.25rem", color: "#eee", lineHeight: 1.5 },
-  row: { display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" },
-  columns: { display: "flex", gap: "1rem", marginTop: "0.75rem", alignItems: "flex-start" },
-  ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  fieldset: { display: "flex", gap: "1rem", flexWrap: "wrap", border: "1px solid #444", borderRadius: 6, margin: "0.75rem 0" },
+  shell: { height: "100%", display: "flex", flexDirection: "column" },
+  body: {
+    flex: 1,
+    minHeight: 0,
+    display: "grid",
+    gridTemplateColumns: "19rem 1fr",
+    gap: "0.6rem",
+    padding: "0.6rem",
+  },
+  rightCol: {
+    display: "grid",
+    gridTemplateRows: "1fr 1fr 1fr",
+    gap: "0.6rem",
+    minHeight: 0,
+    minWidth: 0,
+  },
+  listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
+  muted: { color: "var(--text-2)", margin: "0.4rem 0" },
+  targetName: {
+    fontSize: "1.05rem",
+    fontWeight: 700,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  metaRow: { display: "flex", gap: "0.6rem", alignItems: "baseline", margin: "0.25rem 0" },
+  intent: { display: "inline-flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" },
+  lock: { display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" },
   list: { margin: "0.25rem 0", paddingLeft: "1.25rem" },
-  log: { background: "#111", padding: "0.5rem", borderRadius: 4, maxHeight: "12rem", overflow: "auto", fontSize: "0.8rem" },
 };

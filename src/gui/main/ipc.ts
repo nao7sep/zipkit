@@ -5,11 +5,25 @@
 
 import { app, dialog, ipcMain, shell } from "electron";
 import type { AppInfo, VerifyResult } from "../shared/api.js";
+import type { GuiOptions } from "../shared/spec.js";
 import { errorInfo } from "./log.js";
 import { forwardEvent, log, toGuiError, zip } from "./runtime.js";
+import { loadSettings, saveSettings } from "./settings.js";
 import { isHttpUrl } from "./url.js";
 
 export function registerIpc(): void {
+  ipcMain.handle("zipkit:getSettings", async (): Promise<GuiOptions> => loadSettings());
+
+  ipcMain.handle("zipkit:setSettings", async (_event, defaults: GuiOptions): Promise<void> => {
+    try {
+      await saveSettings(defaults);
+    } catch (err) {
+      // Best-effort and non-fatal: a write failure is logged to the session log,
+      // never thrown back across the bridge.
+      log.error("failed to persist settings", { error: errorInfo(err) });
+    }
+  });
+
   ipcMain.handle("zipkit:chooseInputs", async (): Promise<string[]> => {
     const result = await dialog.showOpenDialog({
       title: "Choose folders or files to archive",

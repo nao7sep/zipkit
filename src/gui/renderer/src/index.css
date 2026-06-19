@@ -1,0 +1,146 @@
+/*
+ * Base theme for the renderer. Palette and chrome match the fleet's dark design
+ * (DayNote): an app-background behind surface panes, one accent, danger, and a
+ * neutral "utility" tone. Tokens live here as CSS custom properties so inline
+ * styles in components reference them via var(); interactive states (hover,
+ * focus, menu highlight, disabled) live here too, since inline styles can't
+ * express them. Layout stays in the components.
+ */
+
+:root {
+  --bg: #14161a;
+  --surface: #1b1e24;
+  --surface-2: #20242b;
+  --border: #2c313a;
+  --text: #e6e9ef;
+  --text-2: #9098a6;
+  --accent: #3b82f6;
+  --accent-hover: #2f6fe0;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --utility: #2a2f38;
+  --utility-hover: #353b45;
+  --radius: 8px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Buttons — utility by default, with accent / danger variants. */
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--utility);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: var(--utility-hover);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button.accent {
+  background: var(--accent);
+  color: #fff;
+}
+button.accent:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+button.danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+/* Bare icon/affordance buttons (hamburger, row actions): no filled chrome. */
+button.icon {
+  background: transparent;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+}
+button.icon:hover:not(:disabled) {
+  background: var(--utility);
+  color: var(--text);
+}
+
+/* Form controls — dark themed; checkboxes/number/select tinted to the accent. */
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+input[type="checkbox"],
+input[type="number"] {
+  accent-color: var(--accent);
+}
+input[type="checkbox"] {
+  width: auto;
+}
+
+/* Radix dropdown menu (hamburger). */
+/* Menu/popover layer sits above the app but BELOW the modal layer (backdrop 1000,
+ * surface 1001), per the modal-dialog layering order — no accidental shared z. */
+.menu-content {
+  min-width: 12rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  z-index: 900;
+}
+.menu-item {
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+.menu-item[data-highlighted] {
+  background: var(--utility-hover);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}

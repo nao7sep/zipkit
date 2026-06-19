@@ -42,6 +42,11 @@ export interface ZipKitGuiApi {
   /** Open a native picker; returns chosen absolute paths (empty if cancelled). */
   chooseInputs(): Promise<string[]>;
 
+  /** The persisted defaults for new jobs (the built-in defaults if none saved). */
+  getSettings(): Promise<GuiOptions>;
+  /** Persist the defaults for new jobs (best-effort; never rejects). */
+  setSettings(defaults: GuiOptions): Promise<void>;
+
   /** Enqueue a job (planned in the background); returns its id. Non-blocking — it
    *  never waits on a running write. */
   addJob(inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string>;

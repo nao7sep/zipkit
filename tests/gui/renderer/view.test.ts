@@ -106,9 +106,15 @@ describe("droppedEntries", () => {
 });
 
 describe("formatEventLine", () => {
-  it("renders time, level, and message", () => {
+  it("renders a local ISO-ish time, then level and message", () => {
+    // The time is rendered in the viewer's local zone, so assert the shape
+    // (yyyy-mm-dd hh:mm:ss) rather than an exact value that would vary by zone.
     const e = { time: "2026-06-14T05:00:00.000Z", level: "info", message: "hi" } as unknown as LogEvent;
-    expect(formatEventLine(e)).toBe("2026-06-14T05:00:00.000Z  info  hi");
+    expect(formatEventLine(e)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  info  hi$/);
+  });
+  it("falls back to the raw value when the time cannot be parsed", () => {
+    const e = { time: "not-a-time", level: "warn", message: "x" } as unknown as LogEvent;
+    expect(formatEventLine(e)).toBe("not-a-time  warn  x");
   });
 });
 

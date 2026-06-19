@@ -87,9 +87,47 @@ export function droppedEntries(plan: PlanData): PlanData["entries"] {
   return plan.entries.filter((e) => e.excluded);
 }
 
-/** One activity-log line. */
+/** A local, ISO-ish timestamp for user-facing lines (timestamp-conventions:
+ *  user-facing = local time, ISO-ish, English). The event's `time` is the SDK's
+ *  internal UTC ISO form; this renders it in the viewer's local zone. Falls back
+ *  to the raw value if it cannot be parsed. */
+export function formatLocalTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/** One activity-log line, with the time shown in local (not raw UTC) form. */
 export function formatEventLine(event: LogEvent): string {
-  return `${event.time}  ${event.level}  ${event.message}`;
+  return `${formatLocalTime(event.time)}  ${event.level}  ${event.message}`;
+}
+
+/** The target archive's file name (basename of the planned output path) — the
+ *  identity a user reasons about. Empty string when there is no output yet. */
+export function archiveName(output: string | undefined): string {
+  if (!output) return "";
+  const norm = output.replace(/\\/g, "/");
+  return norm.split("/").pop() || norm;
+}
+
+/** A subtle row-background tint per job state, for at-a-glance distinction in the
+ *  list. Kept low-contrast so the text stays readable over it. */
+export function stateTint(state: Job["state"]): string {
+  switch (state) {
+    case "planning":
+      return "transparent";
+    case "needs-attention":
+      return "rgba(255, 183, 77, 0.12)";
+    case "ready":
+      return "rgba(59, 130, 246, 0.16)";
+    case "running":
+      return "rgba(255, 238, 88, 0.12)";
+    case "done":
+      return "rgba(76, 175, 80, 0.14)";
+    case "failed":
+      return "rgba(239, 68, 68, 0.14)";
+  }
 }
 
 /** The verify result one-liner. */

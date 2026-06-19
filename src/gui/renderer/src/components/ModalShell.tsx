@@ -1,18 +1,33 @@
 /**
- * The app's one shared modal shell (modal-dialog conventions). It owns the
- * mechanics only — backdrop, centered surface, `role="dialog"` / `aria-modal` /
- * accessible title, initial focus, focus trap, background scroll-lock, focus
- * restore, and one close path (Escape, backdrop, or the caller's own button all
- * route to `onClose`). Feature modals (confirm, about, help) supply their title,
- * body, and footer; they never re-implement the chrome.
+ * The app's one shared modal shell (modal-dialog conventions), built on Radix's
+ * Dialog primitive. Radix owns the battle-tested mechanics — the focus trap,
+ * background scroll-lock, focus restore on close, layered Escape / outside-click
+ * dismissal (only the topmost layer reacts), and the `role="dialog"` /
+ * `aria-modal` / `aria-labelledby` wiring off the title. This shell adds only the
+ * two things the conventions require that Radix does not do on its own, plus the
+ * app's dark surface chrome:
+ *
+ * - Footer-first initial focus: land on the footer's first control (Close /
+ *   Cancel — the safe default), never a primary or danger action.
+ * - The IME-Escape guard: mid-composition, Escape dismisses the IME candidate,
+ *   not the dialog (text-input-and-IME conventions). Radix honors
+ *   `defaultPrevented`, so the guard simply prevents the default close.
+ *
+ * Feature modals (confirm, about, help) supply their title, body, and footer;
+ * they never re-implement any of the chrome. One close path: Escape, an
+ * outside click, or a caller's own button all settle through `onClose`.
  */
 
-import { useEffect, useRef } from "react";
-import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import type { CSSProperties, ReactNode } from "react";
 
 import { isComposing } from "../composition";
 
-const FOCUSABLE = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+// A focusable that can actually take focus right now — disabled and
+// explicitly-untabbable controls are excluded, so the safe-default focus never
+// lands on a dead element. (Radix's trap does its own tabbable detection.)
+const FOCUSABLE =
+  "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
 export function ModalShell({
   title,
@@ -27,78 +42,43 @@ export function ModalShell({
   footer?: ReactNode;
   describedById?: string;
 }) {
-  const surfaceRef = useRef<HTMLDivElement>(null);
-  const footerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    // Land on the footer's first control (Cancel/Close — the safe default), else
-    // the first focusable in the body, else the surface itself.
-    const target =
-      footerRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
-      surfaceRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
-      surfaceRef.current;
-    target?.focus();
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      previouslyFocused?.focus?.();
-    };
-  }, []);
-
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Escape") {
-      // Mid-composition, Escape belongs to the IME (dismiss the candidate), not
-      // the dialog — closing here would violate the text-input/IME convention,
-      // unlike every other app's ModalShell.
-      if (isComposing(e)) return;
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== "Tab") return;
-    const focusables = surfaceRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    if (!focusables || focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last?.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first?.focus();
-    }
-  }
-
   return (
-    <div
-      style={ST.backdrop}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <div
-        ref={surfaceRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-        aria-describedby={describedById}
-        tabIndex={-1}
-        style={ST.surface}
-        onKeyDown={onKeyDown}
-      >
-        <h2 id="modal-title" style={{ marginTop: 0 }}>
-          {title}
-        </h2>
-        {children}
-        {footer && (
-          <div ref={footerRef} style={ST.footer}>
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>
+      <Dialog.Portal>
+        <Dialog.Overlay style={ST.backdrop} />
+        <Dialog.Content
+          style={ST.surface}
+          aria-describedby={describedById}
+          onOpenAutoFocus={(e) => {
+            const surface = e.currentTarget as HTMLElement | null;
+            if (!surface) return;
+            const footerEl = surface.querySelector<HTMLElement>("[data-modal-footer]");
+            const target =
+              footerEl?.querySelector<HTMLElement>(FOCUSABLE) ??
+              surface.querySelector<HTMLElement>(FOCUSABLE) ??
+              surface;
+            e.preventDefault();
+            target.focus();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isComposing(e)) e.preventDefault();
+          }}
+        >
+          <Dialog.Title style={ST.title}>{title}</Dialog.Title>
+          <div style={ST.scroll}>{children}</div>
+          {footer && (
+            <div data-modal-footer style={ST.footer}>
+              {footer}
+            </div>
+          )}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -107,21 +87,43 @@ const ST: Record<string, CSSProperties> = {
     position: "fixed",
     inset: 0,
     background: "rgba(0,0,0,0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
     zIndex: 1000,
   },
+  // The surface is a fixed-height flex column: the title and footer stay put and
+  // only the middle scrolls, so the accessible title and the close/cancel path are
+  // always reachable on a long dialog.
   surface: {
-    background: "#222",
-    color: "#eee",
-    padding: "1.25rem",
+    position: "fixed",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    zIndex: 1001,
+    display: "flex",
+    flexDirection: "column",
+    background: "var(--surface)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
     borderRadius: 8,
     minWidth: "20rem",
     maxWidth: "34rem",
     maxHeight: "85vh",
-    overflowY: "auto",
+    overflow: "hidden",
     boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
   },
-  footer: { display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1rem" },
+  title: {
+    flexShrink: 0,
+    margin: 0,
+    padding: "1rem 1.25rem",
+    fontSize: "1.05rem",
+    borderBottom: "1px solid var(--border)",
+  },
+  scroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "1.25rem" },
+  footer: {
+    flexShrink: 0,
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "0.75rem",
+    padding: "0.85rem 1.25rem",
+    borderTop: "1px solid var(--border)",
+  },
 };

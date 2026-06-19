@@ -20,7 +20,7 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { Job } from "../../../shared/api";
-import { intentLabel, label } from "../view";
+import { intentLabel, label, stateTint } from "../view";
 import { navIndex, recoverIndex, typeaheadIndex } from "../listbox-nav";
 import { isComposing } from "../composition";
 import { StateBadge } from "./StateBadge";
@@ -145,55 +145,82 @@ export function JobListbox({
       onKeyDown={onKeyDown}
       style={S.listCol}
     >
-      {jobs.map((job, i) => {
-        const selected = job.id === selectedId;
-        const tabbable = activeIndex < 0 ? i === 0 : selected;
-        return (
-          <li
-            key={job.id}
-            data-job-id={job.id}
-            role="option"
-            aria-selected={selected}
-            tabIndex={tabbable ? 0 : -1}
-            onClick={() => activate(i)}
-            style={{ ...S.jobRow, ...(selected ? S.jobRowSel : null) }}
-          >
-            <StateBadge state={job.state} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={S.ellipsis}>{label(job)}</div>
-              <small style={{ opacity: 0.6 }}>
-                {intentLabel(job.intent)}
-                {job.message ? ` · ${job.message}` : ""}
-              </small>
-            </div>
-            {(job.state === "planning" || job.state === "running") && (
-              <button
-                tabIndex={-1}
-                title="Cancel (Esc)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCancel(job.id);
-                }}
-              >
-                Cancel
-              </button>
-            )}
-            {job.state !== "running" && (
-              <button
-                tabIndex={-1}
-                title="Remove (Del)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  remove(job);
-                }}
-              >
-                ✕
-              </button>
-            )}
-          </li>
-        );
-      })}
+      {jobs.length === 0 ? (
+        <li role="presentation" style={S.empty}>
+          No jobs yet — click “Add” to choose folders or files.
+        </li>
+      ) : (
+        jobs.map((job, i) => {
+          const selected = job.id === selectedId;
+          const tabbable = activeIndex < 0 ? i === 0 : selected;
+          return (
+            <li
+              key={job.id}
+              data-job-id={job.id}
+              role="option"
+              aria-selected={selected}
+              tabIndex={tabbable ? 0 : -1}
+              onClick={() => activate(i)}
+              style={{
+                ...S.jobRow,
+                background: stateTint(job.state),
+                ...(selected ? S.jobRowSel : null),
+              }}
+            >
+              {/* Filename gets the full top line; status sits under it so a long
+                  name is never squeezed by a leading badge. */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={S.name}>{label(job)}</div>
+                <div style={S.meta}>
+                  <StateBadge state={job.state} />
+                  <span style={S.dim}>
+                    {intentLabel(job.intent)}
+                    {job.message ? ` · ${job.message}` : ""}
+                  </span>
+                </div>
+              </div>
+              {(job.state === "planning" || job.state === "running") && (
+                <button
+                  className="icon"
+                  tabIndex={-1}
+                  title="Cancel (Esc)"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCancel(job.id);
+                  }}
+                  style={S.rowAction}
+                >
+                  Cancel
+                </button>
+              )}
+              {job.state !== "running" && (
+                <button
+                  className="icon"
+                  tabIndex={-1}
+                  title="Remove (Del)"
+                  aria-label="Remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(job);
+                  }}
+                  style={S.rowAction}
+                >
+                  <CloseIcon />
+                </button>
+              )}
+            </li>
+          );
+        })
+      )}
     </ul>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -203,27 +230,46 @@ function optionEl(list: HTMLUListElement | null, id: string | null): HTMLElement
 }
 
 const S: Record<string, CSSProperties> = {
+  // Fills the host pane and is its own scroll container, so PageUp/Down can size
+  // off the viewport. The pane/left column owns the width.
   listCol: {
-    width: "18rem",
-    flexShrink: 0,
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
     margin: 0,
     padding: 0,
     listStyle: "none",
     display: "flex",
     flexDirection: "column",
     gap: "0.25rem",
-    maxHeight: "65vh",
     overflowY: "auto",
   },
   jobRow: {
     display: "flex",
     gap: "0.5rem",
-    alignItems: "center",
-    padding: "0.5rem",
-    border: "1px solid #333",
+    alignItems: "flex-start",
+    padding: "0.5rem 0.6rem",
+    border: "1px solid var(--border)",
     borderRadius: 6,
     cursor: "pointer",
   },
-  jobRowSel: { borderColor: "#42a5f5", background: "#1e2a35" },
-  ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  // Selection reads as an accent ring on top of the state tint, so both the
+  // status (background) and the selection are visible at once.
+  jobRowSel: { borderColor: "var(--accent)", boxShadow: "0 0 0 1px var(--accent)" },
+  name: {
+    fontWeight: 600,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  meta: {
+    display: "flex",
+    gap: "0.4rem",
+    alignItems: "baseline",
+    flexWrap: "wrap",
+    marginTop: "0.15rem",
+  },
+  dim: { color: "var(--text-2)", fontSize: "0.8rem" },
+  rowAction: { flexShrink: 0, marginTop: "-0.1rem" },
+  empty: { padding: "0.75rem", color: "var(--text-2)", fontSize: "0.85rem", cursor: "default" },
 };

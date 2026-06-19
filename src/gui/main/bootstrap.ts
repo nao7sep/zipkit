@@ -32,7 +32,7 @@ function createWindow(): void {
     height: 720,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#14161a",
     webPreferences: {
       preload: path.join(import.meta.dirname, "../preload/index.mjs"),
       contextIsolation: true,
