@@ -29,18 +29,17 @@ export function navIndex(current: number, count: number, key: string, page = 10)
 }
 
 /** Index of the next label that starts with `query` (case-insensitive), searching
- *  forward from `current` and wrapping. null when nothing matches or the query is
- *  empty. Type-ahead for a listbox. */
+ *  forward from `current` and stopping at the end — no wrap, matching the
+ *  stop-at-ends behavior of the arrow keys (composite-control: one end-of-axis
+ *  behavior). null when nothing matches ahead or the query is empty. */
 export function typeaheadIndex(labels: string[], current: number, query: string): number | null {
   if (query === "" || labels.length === 0) return null;
   const q = query.toLowerCase();
-  const n = labels.length;
-  const from = current < 0 ? 0 : current;
-  for (let step = 1; step <= n; step++) {
-    const i = (from + step) % n;
+  const start = current < 0 ? 0 : current + 1;
+  for (let i = start; i < labels.length; i++) {
     if (labels[i]!.toLowerCase().startsWith(q)) return i;
   }
-  return labels[from]?.toLowerCase().startsWith(q) ? from : null;
+  return null;
 }
 
 /** After removing the item at `removedIndex` from a list that had `count` items,

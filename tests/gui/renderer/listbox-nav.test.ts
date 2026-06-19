@@ -1,7 +1,8 @@
 /**
  * Tests for the listbox keyboard model (pure index math). These pin the
  * composite-control behaviors: stop-at-ends arrow/Home/End/Page navigation,
- * wrapping type-ahead by label, and next->previous->empty recovery on removal.
+ * stop-at-end (non-wrapping) type-ahead by label, and next->previous->empty
+ * recovery on removal.
  */
 
 import { describe, expect, it } from "vitest";
@@ -39,17 +40,21 @@ describe("navIndex", () => {
 describe("typeaheadIndex", () => {
   const labels = ["alpha", "beta", "gamma", "beta-2"];
 
-  it("jumps to the next matching label, wrapping past the end", () => {
+  it("jumps to the next matching label ahead, stopping at the end (no wrap)", () => {
     expect(typeaheadIndex(labels, 0, "b")).toBe(1);
     expect(typeaheadIndex(labels, 1, "b")).toBe(3); // next "b" after index 1
-    expect(typeaheadIndex(labels, 3, "b")).toBe(1); // wrap around
+    expect(typeaheadIndex(labels, 3, "b")).toBeNull(); // no match ahead -> stop, no wrap
+  });
+
+  it("matches from the first item when nothing is selected", () => {
+    expect(typeaheadIndex(labels, -1, "b")).toBe(1);
   });
 
   it("is case-insensitive and matches multi-character queries", () => {
     expect(typeaheadIndex(labels, 0, "GAM")).toBe(2);
   });
 
-  it("returns null when nothing matches or the query is empty", () => {
+  it("returns null when nothing matches ahead or the query is empty", () => {
     expect(typeaheadIndex(labels, 0, "z")).toBeNull();
     expect(typeaheadIndex(labels, 0, "")).toBeNull();
   });

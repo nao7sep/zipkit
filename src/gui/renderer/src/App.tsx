@@ -1,13 +1,13 @@
 /**
- * The queue screen. A bottom-bordered header (title + hamburger menu), a body of
- * rounded panes, and a status bar. On the left, the job list (Add). On the right,
- * the selected job's lifecycle: its Archive (target name, state, parameters), a
- * command bar (create / cancel / verify / reveal / remove), its Progress (this
- * job's activity), and its Output (the final report). Jobs are planned in the
- * background; each is created on demand and the engine runs them one at a time.
- * Everything shown is a field the SDK returned, surfaced through the main-process
- * queue; the view sequences queue commands and renders, it computes no archive
- * logic. Defaults for new jobs live in Settings (saved across launches).
+ * The queue screen: a bottom-bordered header (title + hamburger menu), a body of
+ * three rounded panes, and a status bar. Left, the job list (Add). Middle, the
+ * selected job's everything — its identity and operation (intent, output folder,
+ * file name, Create/lifecycle buttons), its parameters (the archive knobs, lock
+ * toggle in the section header), and its output report, integrated as one
+ * scrollable pane rather than split apart. Right, this job's live Progress.
+ * Jobs are planned in the background; each is created on demand and the engine
+ * runs them one at a time. The view sequences queue commands and renders, it
+ * computes no archive logic. Defaults for new jobs live in Settings (saved).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +19,7 @@ import { ActivityLog } from "./components/ActivityLog";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
 import { useConfirm } from "./components/DialogHost";
+import { FolderField } from "./components/FolderField";
 import { JobListbox } from "./components/JobListbox";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { Pane } from "./components/Pane";
@@ -33,7 +34,6 @@ import {
   isEditable,
   isTerminal,
   type JobCommand,
-  label,
   manifestRequiredButMissing,
   severityColor,
   verdictHeadline,
@@ -125,23 +125,18 @@ export function App() {
           />
         </Pane>
 
-        <div style={S.rightCol}>
-          {selected ? (
-            <JobView key={selected.id} job={selected} events={events} />
-          ) : (
-            <>
-              <Pane title="Archive" rootStyle={GROW}>
-                <p style={S.muted}>Add or select a job to see its archive and parameters.</p>
-              </Pane>
-              <Pane title="Progress" rootStyle={GROW}>
-                <p style={S.muted}>No job selected.</p>
-              </Pane>
-              <Pane title="Output" rootStyle={GROW}>
-                <p style={S.muted}>No job selected.</p>
-              </Pane>
-            </>
-          )}
-        </div>
+        {selected ? (
+          <JobView key={selected.id} job={selected} events={events} />
+        ) : (
+          <>
+            <Pane title="Archive" rootStyle={GROW}>
+              <p style={S.muted}>Add or select a job.</p>
+            </Pane>
+            <Pane title="Progress" rootStyle={GROW}>
+              <p style={S.muted}>No job selected.</p>
+            </Pane>
+          </>
+        )}
       </div>
 
       <StatusBar />
@@ -171,7 +166,6 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
   const [locked, setLocked] = useState(true);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Fetch the full plan for the detail whenever this job is (re)planned.
   useEffect(() => {
     let live = true;
     void window.zipkit.getPlan(job.id).then((p) => {
@@ -227,7 +221,11 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
 
   const editable = isEditable(job.state);
   const terminal = isTerminal(job.state);
-  const target = archiveName(job.output) || `${label(job)} (planning…)`;
+  const target = archiveName(job.output) || "(planning…)";
+  const fromText =
+    job.inputs.length > 1
+      ? `${job.inputs[0]} +${job.inputs.length - 1} more`
+      : (job.inputs[0] ?? "(no input)");
   const jobEvents = events.filter((e) => e.jobId === job.id);
 
   const headline = !plan
@@ -241,55 +239,79 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
 
   return (
     <>
-      <Pane title="Archive" rootStyle={GROW}>
-        {/* Compact identity row so the parameters are visible without scrolling. */}
-        <div style={S.archiveHead}>
-          <span style={S.targetName} title={job.output}>
-            {target}
-          </span>
-          <StateBadge state={job.state} />
+      <Pane title="Archive" rootStyle={GROW} actions={<StateBadge state={job.state} />}>
+        {/* Identity */}
+        <div style={S.targetName} title={job.output}>
+          {target}
         </div>
-        <div style={S.fromLine}>from {label(job)}</div>
+        <div style={S.fromLine} title={fromText}>
+          from {fromText}
+        </div>
 
-        <label style={S.intent}>
-          <span style={{ color: "var(--text-2)" }}>Intent</span>{" "}
-          <select
-            value={job.intent}
+        {/* Operation: what runs and where, plus the lifecycle buttons. */}
+        <div style={S.opsGrid}>
+          <label style={S.stack}>
+            <span style={S.stackLabel}>Intent</span>
+            <select
+              value={job.intent}
+              disabled={!editable}
+              onChange={(e) => void changeIntent(e.target.value as JobIntent)}
+            >
+              <option value="save">Save archive</option>
+              <option value="archive-and-trash">Archive &amp; move originals to Trash</option>
+            </select>
+          </label>
+
+          <FolderField
+            label="Output folder"
+            value={opts.outputDir}
+            onChange={(v) => changeOptions({ ...opts, outputDir: v })}
             disabled={!editable}
-            onChange={(e) => void changeIntent(e.target.value as JobIntent)}
-          >
-            <option value="save">Save archive</option>
-            <option value="archive-and-trash">Archive &amp; move originals to Trash</option>
-          </select>
-        </label>
+            placeholder="(beside the input)"
+          />
+
+          <label style={S.stack}>
+            <span style={S.stackLabel}>File name</span>
+            <input
+              type="text"
+              value={opts.fileName}
+              placeholder={archiveName(job.output) || "(automatic)"}
+              disabled={!editable}
+              onChange={(e) => changeOptions({ ...opts, fileName: e.target.value })}
+            />
+          </label>
+        </div>
         {manifestRequiredButMissing(job.intent, opts.metadata) && (
-          <p style={{ color: COLOR.warn }}>Enable “Embed manifest” — verify-before-Trash needs it.</p>
+          <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>
+            Enable “Embed manifest” — verify-before-Trash needs it.
+          </p>
         )}
+        <CommandBar job={job} onCommand={onCommand} />
 
-        {editable ? (
-          <>
-            <label style={S.lock}>
-              <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} />
-              <span>Lock parameters {locked && <span style={S.muted}>(using defaults)</span>}</span>
-            </label>
-            <OptionsPanel options={opts} onChange={changeOptions} disabled={locked} />
-          </>
-        ) : (
-          // Frozen while running or after it is done — visible, not editable.
-          <OptionsPanel options={opts} onChange={changeOptions} disabled />
-        )}
-      </Pane>
+        {/* Parameters: the archive knobs; lock lives in this section's header. */}
+        <div style={S.sectionHead}>
+          <span style={S.sectionTitle}>Parameters</span>
+          <label style={S.lock}>
+            <input
+              type="checkbox"
+              checked={locked}
+              disabled={!editable}
+              onChange={(e) => setLocked(e.target.checked)}
+            />
+            <span>Lock {locked && <span style={S.muted}>(using defaults)</span>}</span>
+          </label>
+        </div>
+        <OptionsPanel options={opts} onChange={changeOptions} disabled={locked || !editable} />
 
-      <CommandBar job={job} onCommand={onCommand} />
-
-      <Pane title="Progress" rootStyle={GROW}>
-        <ActivityLog events={jobEvents} />
-      </Pane>
-
-      <Pane title="Output" rootStyle={GROW}>
+        {/* Output: the report, integrated into the same pane (no separate panel). */}
+        <div style={S.sectionHead}>
+          <span style={S.sectionTitle}>Output</span>
+          {headline && (
+            <strong style={{ color: headlineColor, fontSize: "0.9rem" }}>{headline}</strong>
+          )}
+        </div>
         {plan ? (
           <>
-            <h3 style={{ color: headlineColor, margin: "0 0 0.5rem" }}>{headline}</h3>
             <p style={S.muted}>
               → <code>{plan.output}</code> — {plan.summary.included} included,{" "}
               {plan.summary.excluded} dropped, {plan.summary.warnings} warning(s),{" "}
@@ -303,6 +325,10 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
         )}
         {terminal && job.message && <p style={S.muted}>{job.message}</p>}
         {verify && <VerifyView data={verify} />}
+      </Pane>
+
+      <Pane title="Progress" rootStyle={GROW} bodyStyle={S.progressBody}>
+        <ActivityLog events={jobEvents} />
       </Pane>
     </>
   );
@@ -358,25 +384,53 @@ const S: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    gridTemplateColumns: "19rem 1fr",
+    gridTemplateColumns: "18rem 2fr 1fr",
     gap: "0.6rem",
     padding: "0.6rem",
   },
-  rightCol: { display: "flex", flexDirection: "column", gap: "0.6rem", minHeight: 0, minWidth: 0 },
   listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
+  progressBody: { display: "flex", flexDirection: "column", padding: "0.6rem", overflow: "hidden" },
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
-  archiveHead: { display: "flex", gap: "0.6rem", alignItems: "baseline" },
   targetName: {
-    flex: 1,
-    minWidth: 0,
     fontSize: "1.05rem",
     fontWeight: 700,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  fromLine: { color: "var(--text-2)", fontSize: "0.85rem", margin: "0.15rem 0 0.5rem" },
-  intent: { display: "inline-flex", gap: "0.5rem", alignItems: "center", margin: "0.25rem 0 0.5rem" },
-  lock: { display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" },
+  fromLine: {
+    color: "var(--text-2)",
+    fontSize: "0.85rem",
+    margin: "0.15rem 0 0.75rem",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  opsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
+    gap: "0.6rem 1rem",
+    alignItems: "end",
+  },
+  stack: { display: "grid", gap: "0.25rem", minWidth: 0 },
+  stackLabel: { color: "var(--text-2)", fontSize: "0.85rem" },
+  // Section divider rows inside the single Archive pane (Parameters, Output).
+  sectionHead: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "0.75rem",
+    margin: "1.1rem 0 0.6rem",
+    paddingTop: "0.6rem",
+    borderTop: "1px solid var(--border)",
+  },
+  sectionTitle: {
+    fontSize: "0.7rem",
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--text-2)",
+  },
+  lock: { display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.85rem" },
   list: { margin: "0.25rem 0", paddingLeft: "1.25rem" },
 };

@@ -62,26 +62,26 @@ export function serializeQueue(jobs: SavedJob[]): string {
   return JSON.stringify({ version: 1, jobs }, null, 2);
 }
 
-/** Load the persisted resumable jobs; an empty list if there is no readable file. */
+/** Load the persisted resumable jobs. Returns an empty list when there is simply
+ *  no file yet (the normal first-run case); a genuine read error is thrown so the
+ *  caller can log it through the session log rather than swallowing it. (Corrupt
+ *  *content* still degrades to an empty queue via {@link parseQueue}.) */
 export async function loadQueue(): Promise<SavedJob[]> {
   try {
     return parseQueue(await readFile(queueFile(), "utf8"));
-  } catch {
-    return [];
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
   }
 }
 
 /** Persist resumable jobs atomically (temp file + rename), so a crash mid-write
- *  cannot corrupt the queue. Best-effort and non-fatal: a write failure is
- *  surfaced to the console, never thrown. */
+ *  cannot corrupt the queue. Throws on failure; the caller logs it through the
+ *  session log. */
 export async function saveQueue(jobs: SavedJob[]): Promise<void> {
   const file = queueFile();
-  try {
-    await mkdir(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp`;
-    await writeFile(tmp, serializeQueue(jobs), "utf8");
-    await rename(tmp, file);
-  } catch (err) {
-    console.error("zipkit: failed to persist the queue:", err);
-  }
+  await mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  await writeFile(tmp, serializeQueue(jobs), "utf8");
+  await rename(tmp, file);
 }

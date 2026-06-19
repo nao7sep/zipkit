@@ -23,8 +23,10 @@ export interface GuiOptions {
   hash: boolean;
   /** Archive comment (empty = none). */
   comment: string;
-  /** Explicit output path (empty = infer beside the input). */
-  output: string;
+  /** Output directory the archive is written into ("" = beside the input). */
+  outputDir: string;
+  /** Explicit zip file name ("" = automatic, from the input). */
+  fileName: string;
   /** Overwrite an existing output. */
   overwrite: boolean;
 }
@@ -38,12 +40,16 @@ export const DEFAULT_OPTIONS: GuiOptions = {
   metadata: true,
   hash: true,
   comment: "",
-  output: "",
+  outputDir: "",
+  fileName: "",
   overwrite: false,
 };
 
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields
- *  the UI controls are set; the SDK fills the rest from its defaults. */
+ *  the UI controls are set; the SDK fills the rest from its defaults. The output
+ *  path is NOT set here — it is composed from `outputDir`/`fileName` in the main
+ *  process (`resolveOutputPath`), which needs the host path/home logic the
+ *  Node-free shared layer cannot import. */
 export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
   const policy: DeepPartial<ArchivePolicy> = {
     junk: o.junk ? "builtin" : "none",
@@ -65,8 +71,6 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
   }
 
   const spec: ArchiveSpec = { inputs, policy };
-  const output = o.output.trim();
-  if (output !== "") spec.output = output;
   if (o.overwrite) spec.overwrite = true;
   if (o.comment.trim() !== "") spec.comment = o.comment;
   return spec;

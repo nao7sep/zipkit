@@ -17,7 +17,7 @@ describe("buildSpec", () => {
     expect(spec.policy?.compression?.level).toBe(6);
     expect(spec.policy?.metadata).toEqual({ hash: true });
     expect(spec.policy?.names).toBeUndefined(); // default "fix" left to the SDK
-    expect(spec.output).toBeUndefined();
+    expect(spec.output).toBeUndefined(); // composed in the main process, not here
     expect(spec.overwrite).toBeUndefined();
     expect(spec.comment).toBeUndefined();
   });
@@ -45,16 +45,15 @@ describe("buildSpec", () => {
     expect(spec.policy?.metadata).toEqual({ hash: false });
   });
 
-  it("carries a trimmed explicit output, overwrite, and comment through", () => {
-    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, output: "  out.zip  ", overwrite: true, comment: "ship it" });
-    expect(spec.output).toBe("out.zip");
+  it("carries overwrite and comment through (output is composed elsewhere)", () => {
+    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, overwrite: true, comment: "ship it" });
     expect(spec.overwrite).toBe(true);
     expect(spec.comment).toBe("ship it");
+    expect(spec.output).toBeUndefined(); // never set by buildSpec
   });
 
-  it("omits a blank/whitespace output and comment rather than passing empties", () => {
-    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, output: "   ", comment: "" });
-    expect(spec.output).toBeUndefined();
+  it("omits a blank/whitespace comment rather than passing an empty", () => {
+    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, comment: "   " });
     expect(spec.comment).toBeUndefined();
   });
 });

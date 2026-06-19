@@ -1,9 +1,10 @@
 /**
- * The selected job's lifecycle command bar — a slim, always-visible strip between
- * the Archive (parameters) pane and the job's output below. It renders the
- * commands the job's state allows (from the pure `jobCommands` map) and reports
- * the chosen one; the parent performs it. When a job is blocked
- * (`needs-attention`) there are no commands, so the bar shows why instead.
+ * The selected job's lifecycle commands — a button row inside the operation
+ * (Archive) pane, beside the intent and target, since these are all
+ * operation-related. It renders the commands the job's state allows (from the
+ * pure `jobCommands` map) and reports the chosen one; the parent performs it.
+ * When a job is blocked (`needs-attention`) there are no commands, so it shows
+ * why instead.
  */
 
 import type { CSSProperties } from "react";
@@ -44,15 +45,11 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
 
 const S: Record<string, CSSProperties> = {
   bar: {
-    flexShrink: 0,
     display: "flex",
     gap: "0.5rem",
     alignItems: "center",
     flexWrap: "wrap",
-    padding: "0.5rem 0.75rem",
-    background: "var(--surface)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
+    marginTop: "0.85rem",
   },
   hint: { color: "var(--text-2)", fontSize: "0.85rem" },
 };

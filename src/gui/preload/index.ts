@@ -11,6 +11,7 @@ import type { AppInfo, GuiLogEvent, Job, JobIntent, PlanData, VerifyResult, ZipK
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
+  chooseOutputDir: (): Promise<string> => ipcRenderer.invoke("zipkit:chooseOutputDir"),
   getSettings: (): Promise<GuiOptions> => ipcRenderer.invoke("zipkit:getSettings"),
   setSettings: (defaults: GuiOptions): Promise<void> =>
     ipcRenderer.invoke("zipkit:setSettings", defaults),

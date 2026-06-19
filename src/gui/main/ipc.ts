@@ -34,6 +34,16 @@ export function registerIpc(): void {
     return chosen;
   });
 
+  ipcMain.handle("zipkit:chooseOutputDir", async (): Promise<string> => {
+    const result = await dialog.showOpenDialog({
+      title: "Choose the output folder",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    const dir = result.canceled || result.filePaths.length === 0 ? "" : result.filePaths[0]!;
+    log.info("output folder chosen", { chosen: dir !== "" });
+    return dir;
+  });
+
   ipcMain.handle(
     "zipkit:verify",
     async (_event, jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> => {

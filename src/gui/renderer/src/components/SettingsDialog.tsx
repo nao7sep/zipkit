@@ -7,6 +7,7 @@
  */
 
 import { ModalShell } from "./ModalShell";
+import { FolderField } from "./FolderField";
 import { OptionsPanel } from "./OptionsPanel";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../../shared/spec";
 
@@ -37,6 +38,14 @@ export function SettingsDialog({
         Defaults for new jobs — saved as you change them. Each job can still override these once it is
         added. “Restore defaults” returns every option to the values shipped with the app.
       </p>
+      <div style={{ marginBottom: "1rem", maxWidth: "22rem" }}>
+        <FolderField
+          label="Default output folder"
+          value={defaults.outputDir}
+          onChange={(v) => onChange({ ...defaults, outputDir: v })}
+          placeholder="(beside the input)"
+        />
+      </div>
       <OptionsPanel options={defaults} onChange={onChange} disabled={false} />
     </ModalShell>
   );

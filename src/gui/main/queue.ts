@@ -9,26 +9,27 @@
 import { randomUUID } from "node:crypto";
 import { ipcMain, shell } from "electron";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
-import type { Job, JobIntent } from "../shared/queue.js";
+import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
 import { log, sendEvent, sendQueue, zip } from "./runtime.js";
+import { errorInfo } from "./log.js";
 import { loadQueue, saveQueue, toResumable } from "./persist.js";
-import { resolveGuiOutput } from "./output.js";
+import { resolveOutputPath } from "./output.js";
 import { createQueueEngine } from "./queue-engine.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 const engine = createQueueEngine({
-  // Absolutize (or reject) the typed output at the GUI boundary before it reaches
-  // the SDK, so a relative output never resolves against the unpredictable
-  // working directory. The SDK still infers an empty output beside the input.
-  // The engine supplies a job-tagging `onProgress`, so progress reaches the right
-  // job's activity stream.
-  plan: (inputs, options, signal, onProgress) =>
-    zip.plan(buildSpec(inputs, { ...options, output: resolveGuiOutput(options.output) }), {
-      signal,
-      onProgress,
-    }),
+  // Compose the output path from the GUI's folder + file name at the boundary
+  // (absolute, or empty so the SDK infers beside the input — never resolved
+  // against the unpredictable working directory). The engine supplies a
+  // job-tagging `onProgress`, so progress reaches the right job's activity stream.
+  plan: (inputs, options, signal, onProgress) => {
+    const spec = buildSpec(inputs, options);
+    const output = resolveOutputPath(options.outputDir, options.fileName, inputs);
+    if (output) spec.output = output;
+    return zip.plan(spec, { signal, onProgress });
+  },
   write: async (plan, signal, onProgress) => (await zip.write(plan, { signal, onProgress })).bytes,
   verify: async (output, signal, onProgress) =>
     (
@@ -43,7 +44,11 @@ const engine = createQueueEngine({
   emit: (jobs) => {
     sendQueue(jobs);
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => void saveQueue(toResumable(jobs)), 500);
+    saveTimer = setTimeout(() => {
+      void saveQueue(toResumable(jobs)).catch((err) =>
+        log.error("failed to persist the queue", { error: errorInfo(err) }),
+      );
+    }, 500);
   },
   sendEvent,
   newId: () => randomUUID(),
@@ -52,7 +57,13 @@ const engine = createQueueEngine({
 
 /** Reload the persisted jobs at launch and re-plan each one fresh. */
 export async function restoreQueue(): Promise<void> {
-  const saved = await loadQueue();
+  let saved: SavedJob[];
+  try {
+    saved = await loadQueue();
+  } catch (err) {
+    log.warn("could not load the saved queue; starting empty", { error: errorInfo(err) });
+    saved = [];
+  }
   log.info("queue restored", { jobs: saved.length });
   engine.restore(saved);
 }

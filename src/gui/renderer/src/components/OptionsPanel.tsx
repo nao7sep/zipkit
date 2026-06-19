@@ -1,10 +1,11 @@
 /**
- * The archive-options editor, shared by two surfaces: the Settings dialog (where
- * it edits the defaults for new jobs) and a selected job's overrides pane. It is
- * a controlled view over GuiOptions — it renders the visible option state and
- * reports changes; the SDK still owns all validation and every default not set
- * here. Grouped into sections so the set reads as related choices rather than a
- * flat wall of inputs.
+ * The archive-parameters editor, shared by two surfaces: the Settings dialog
+ * (where it edits the defaults for new jobs) and a selected job's Parameters
+ * pane. It is a controlled view over the GuiOptions *knobs* — the cleaning,
+ * manifest, compression, and comment choices; it does NOT own the output folder
+ * or file name (those are operation-level and live with the Create action). The
+ * SDK still owns all validation and every default not set here. Sections flow
+ * into responsive columns so the whole set stays visible without a tall scroll.
  */
 
 import type { CSSProperties, ReactNode } from "react";
@@ -38,11 +39,7 @@ export function OptionsPanel({
         <Check checked={options.metadata} onChange={(v) => set("metadata", v)}>
           Embed manifest (<code>_metadata.json</code>)
         </Check>
-        <Check
-          checked={options.hash}
-          disabled={!options.metadata}
-          onChange={(v) => set("hash", v)}
-        >
+        <Check checked={options.hash} disabled={!options.metadata} onChange={(v) => set("hash", v)}>
           Record a per-file SHA-256
         </Check>
       </Section>
@@ -80,41 +77,30 @@ export function OptionsPanel({
         </Field>
       </Section>
 
-      <Section title="Output">
-        <Field label="Path">
-          <input
-            type="text"
-            placeholder="(beside the input)"
-            value={options.output}
-            onChange={(e) => set("output", e.target.value)}
-            style={{ flex: 1, minWidth: 0 }}
-          />
-        </Field>
+      <Section title="Existing file">
         <Check checked={options.overwrite} onChange={(v) => set("overwrite", v)}>
           Overwrite an existing file
         </Check>
-        {/* A ZIP comment may span lines, so this is a multiline field; it is
-            cleaned with the multiline pattern on blur (commit-time, never mid-edit
-            — IME-safe) so stray trailing whitespace and edge blank lines are
-            dropped while deliberate interior breaks and indentation are kept. */}
-        <label style={S.stack}>
-          <span style={S.fieldLabel}>Comment</span>
-          <textarea
-            value={options.comment}
-            rows={3}
-            onChange={(e) => set("comment", e.target.value)}
-            onBlur={(e) => set("comment", multiline(e.target.value))}
-            style={S.textarea}
-          />
-        </label>
+      </Section>
+
+      {/* A ZIP comment may span lines, so this is a multiline field cleaned on blur
+          (commit-time, never mid-edit — IME-safe). Spans the full width. */}
+      <Section title="Comment" wide>
+        <textarea
+          value={options.comment}
+          rows={2}
+          onChange={(e) => set("comment", e.target.value)}
+          onBlur={(e) => set("comment", multiline(e.target.value))}
+          style={S.textarea}
+        />
       </Section>
     </fieldset>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, wide }: { title: string; children: ReactNode; wide?: boolean }) {
   return (
-    <div style={S.section}>
+    <div style={wide ? S.sectionWide : S.section}>
       <div style={S.sectionTitle}>{title}</div>
       <div style={S.sectionBody}>{children}</div>
     </div>
@@ -155,19 +141,18 @@ function Check({
 }
 
 const S: Record<string, CSSProperties> = {
-  // Sections flow into as many columns as fit (1–3 on typical widths), so the
-  // whole option set stays visible without a tall scroll on a modest monitor.
   fieldset: {
     border: "none",
     margin: 0,
     padding: 0,
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(15rem, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
     gap: "1rem 1.5rem",
     alignItems: "start",
   },
   section: { display: "grid", gap: "0.4rem", minWidth: 0 },
+  sectionWide: { display: "grid", gap: "0.4rem", minWidth: 0, gridColumn: "1 / -1" },
   sectionTitle: {
     fontSize: "0.7rem",
     fontWeight: 700,
@@ -178,9 +163,10 @@ const S: Record<string, CSSProperties> = {
   sectionBody: { display: "grid", gap: "0.4rem" },
   check: { display: "flex", gap: "0.5rem", alignItems: "baseline" },
   field: { display: "flex", gap: "0.6rem", alignItems: "center" },
-  fieldLabel: { width: "6.5rem", flexShrink: 0, color: "var(--text-2)" },
-  stack: { display: "grid", gap: "0.3rem" },
-  textarea: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3.5rem" },
+  // No fixed width and no wrap, so "Compression level" / "Empty directories" stay
+  // on one line.
+  fieldLabel: { whiteSpace: "nowrap", color: "var(--text-2)" },
   fieldControl: { display: "flex", gap: "0.5rem", alignItems: "center", flex: 1, minWidth: 0 },
   hint: { color: "var(--text-2)", fontSize: "0.8rem" },
+  textarea: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3rem" },
 };

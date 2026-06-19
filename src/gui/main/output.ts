@@ -21,29 +21,44 @@
 import { homedir } from "node:os";
 import path from "node:path";
 
+/** Expand a leading `~`/`~/` to the home directory (the convention's expansion
+ *  for a user-supplied path); leave any other string unchanged. */
+function expandHome(p: string): string {
+  return p === "~" || p.startsWith("~/") || p.startsWith("~\\") ? homedir() + p.slice(1) : p;
+}
+
+/** Ensure exactly one trailing `.zip` (case-insensitive); append it when absent. */
+function withZipExtension(name: string): string {
+  return /\.zip$/i.test(name) ? name : `${name}.zip`;
+}
+
 /**
- * Normalize the GUI's typed output to what the SDK may safely consume: an empty
- * string (the SDK infers beside the input) or an absolute path. A non-empty
- * relative value is rejected — never resolved against `process.cwd()`.
+ * Compose the SDK's output path from the GUI's output **folder** and **file
+ * name**, given the job's inputs. Both empty → "" so the SDK infers the archive
+ * beside the input (cwd-independent, since inputs are absolute). When only one is
+ * set, the other defaults from the first input: the folder to the input's parent,
+ * the name to the input's basename + `.zip` (the SDK's beside-the-input form for a
+ * single input). The folder must resolve to an absolute path.
  *
- * @throws Error when the trimmed, `~`-expanded output is non-empty but not
- *   absolute. The queue engine catches it and surfaces it as the job's message.
+ * @throws Error when a typed folder is non-empty but not absolute (after `~`
+ *   expansion) — never resolved against `process.cwd()`, whose value a
+ *   double-clicked desktop app cannot rely on. The queue engine surfaces it as
+ *   the job's message.
  */
-export function resolveGuiOutput(output: string): string {
-  const trimmed = output.trim();
-  if (trimmed === "") return "";
+export function resolveOutputPath(outputDir: string, fileName: string, inputs: string[]): string {
+  const dir = outputDir.trim();
+  const name = fileName.trim();
+  if (dir === "" && name === "") return ""; // let the SDK infer beside the input
 
-  // Expand a leading `~`/`~/` to the home directory before the absoluteness check,
-  // so a home-anchored path the user typed is accepted.
-  const expanded =
-    trimmed === "~" || trimmed.startsWith("~/") || trimmed.startsWith("~\\")
-      ? homedir() + trimmed.slice(1)
-      : trimmed;
+  const first = inputs[0];
+  const baseDir = dir === "" ? (first ? path.dirname(first) : "") : expandHome(dir);
+  const baseName = name === "" ? (first ? `${path.basename(first)}.zip` : "") : withZipExtension(name);
+  if (baseDir === "" || baseName === "") return "";
 
-  if (!path.isAbsolute(expanded)) {
+  if (!path.isAbsolute(baseDir)) {
     throw new Error(
-      `output must be an absolute path (or empty to write beside the input); got a relative path: "${trimmed}"`,
+      `the output folder must be an absolute path (or empty to write beside the input); got a relative path: "${dir}"`,
     );
   }
-  return expanded;
+  return path.join(baseDir, baseName);
 }
