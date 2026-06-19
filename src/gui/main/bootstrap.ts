@@ -32,7 +32,10 @@ function createWindow(): void {
     height: 720,
     minWidth: 900,
     minHeight: 560,
-    backgroundColor: "#14161a",
+    // Must mirror the renderer's --bg token (index.css). The main process can't
+    // read CSS vars, so this literal is the one place the theme bg is duplicated;
+    // keep them in sync so the pre-paint/resize edge doesn't flash a stale color.
+    backgroundColor: "#16170f",
     webPreferences: {
       preload: path.join(import.meta.dirname, "../preload/index.mjs"),
       contextIsolation: true,
