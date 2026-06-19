@@ -9,6 +9,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { GuiOptions } from "../../../shared/spec";
+import { multiline } from "../textCleanup";
 
 export function OptionsPanel({
   options,
@@ -92,14 +93,20 @@ export function OptionsPanel({
         <Check checked={options.overwrite} onChange={(v) => set("overwrite", v)}>
           Overwrite an existing file
         </Check>
-        <Field label="Comment">
-          <input
-            type="text"
+        {/* A ZIP comment may span lines, so this is a multiline field; it is
+            cleaned with the multiline pattern on blur (commit-time, never mid-edit
+            — IME-safe) so stray trailing whitespace and edge blank lines are
+            dropped while deliberate interior breaks and indentation are kept. */}
+        <label style={S.stack}>
+          <span style={S.fieldLabel}>Comment</span>
+          <textarea
             value={options.comment}
+            rows={3}
             onChange={(e) => set("comment", e.target.value)}
-            style={{ flex: 1, minWidth: 0 }}
+            onBlur={(e) => set("comment", multiline(e.target.value))}
+            style={S.textarea}
           />
-        </Field>
+        </label>
       </Section>
     </fieldset>
   );
@@ -172,6 +179,8 @@ const S: Record<string, CSSProperties> = {
   check: { display: "flex", gap: "0.5rem", alignItems: "baseline" },
   field: { display: "flex", gap: "0.6rem", alignItems: "center" },
   fieldLabel: { width: "6.5rem", flexShrink: 0, color: "var(--text-2)" },
+  stack: { display: "grid", gap: "0.3rem" },
+  textarea: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3.5rem" },
   fieldControl: { display: "flex", gap: "0.5rem", alignItems: "center", flex: 1, minWidth: 0 },
   hint: { color: "var(--text-2)", fontSize: "0.8rem" },
 };
