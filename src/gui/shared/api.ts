@@ -16,12 +16,14 @@
 
 import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity } from "../../sdk/types.js";
 import type { GuiOptions } from "./spec.js";
-import type { Job, JobIntent } from "./queue.js";
+import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
+import type { PaneLayout } from "./layout.js";
 
 /** The `mode:"plan"` payload — the dry run shown in a job's detail. */
 export type PlanData = Extract<CreateData, { mode: "plan" }>;
 
-export type { ArchiveSpec, ExtractData, Finding, Job, JobIntent, LogEvent, Severity };
+export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity };
+export type { PaneLayout };
 
 /** An SDK progress event tagged with the job it belongs to, so the renderer can
  *  show each job its own activity stream. `jobId` is absent for any untagged event. */
@@ -53,17 +55,28 @@ export interface ZipKitGuiApi {
   /** Persist the defaults for new jobs (best-effort; never rejects). */
   setSettings(defaults: GuiOptions): Promise<void>;
 
+  /** The persisted pane layout (the default layout if none saved). */
+  getLayout(): Promise<PaneLayout>;
+  /** Persist the pane layout (best-effort; never rejects). */
+  setLayout(layout: PaneLayout): Promise<void>;
+
   /** Enqueue a job (planned in the background); returns its id. Non-blocking — it
    *  never waits on a running write. */
   addJob(inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string>;
-  /** Change a queued job's options and/or intent (re-plans on an options change). */
-  updateJob(id: string, patch: { options?: GuiOptions; intent?: JobIntent }): Promise<void>;
+  /** Change a queued job's options, intent, and/or inputs (re-plans + re-classifies
+   *  on an options/inputs change). */
+  updateJob(
+    id: string,
+    patch: { options?: GuiOptions; intent?: JobIntent; inputs?: string[] },
+  ): Promise<void>;
   /** Remove a queued job (no effect while it is running). */
   removeJob(id: string): Promise<void>;
   /** Create one job's archive now (or retry a failed one); the engine serializes. */
   runJob(id: string): Promise<void>;
   /** Trash a finished `save` job's archive and return it to an editable state. */
   removeArchive(id: string): Promise<void>;
+  /** Move a finished `save` job's originals to Trash on explicit request. */
+  trashOriginals(id: string): Promise<void>;
   /** Cancel a job's in-flight plan or write. */
   cancelJob(id: string): Promise<void>;
   /** The full plan for a job's detail view, or null if it has none right now. */

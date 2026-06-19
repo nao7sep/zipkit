@@ -15,6 +15,7 @@ import { log, sendEvent, sendQueue, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import { loadQueue, saveQueue, toResumable } from "./persist.js";
 import { resolveOutputPath } from "./output.js";
+import { classifyPaths } from "./inputs.js";
 import { createQueueEngine } from "./queue-engine.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -38,6 +39,7 @@ const engine = createQueueEngine({
         { signal, onProgress },
       )
     ).reportOk,
+  classify: (paths) => classifyPaths(paths),
   trash: async (paths) => {
     for (const p of paths) await shell.trashItem(p);
   },
@@ -79,8 +81,11 @@ export function registerQueueIpc(): void {
 
   ipcMain.handle(
     "zipkit:updateJob",
-    async (_e, id: string, patch: { options?: GuiOptions; intent?: JobIntent }): Promise<void> =>
-      engine.update(id, patch),
+    async (
+      _e,
+      id: string,
+      patch: { options?: GuiOptions; intent?: JobIntent; inputs?: string[] },
+    ): Promise<void> => engine.update(id, patch),
   );
 
   ipcMain.handle("zipkit:removeJob", async (_e, id: string): Promise<void> => engine.remove(id));
@@ -89,6 +94,10 @@ export function registerQueueIpc(): void {
 
   ipcMain.handle("zipkit:removeArchive", async (_e, id: string): Promise<void> =>
     engine.removeArchive(id),
+  );
+
+  ipcMain.handle("zipkit:trashOriginals", async (_e, id: string): Promise<void> =>
+    engine.trashOriginals(id),
   );
 
   ipcMain.handle("zipkit:cancelJob", async (_e, id: string): Promise<void> => engine.cancel(id));

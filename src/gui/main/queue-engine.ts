@@ -16,7 +16,7 @@
  * forwarded, so the renderer can show each job its own activity.
  */
 
-import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
+import type { InputEntry, Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
 import type { GuiOptions } from "../shared/spec.js";
 import { outputInsideInputs } from "./safety.js";
@@ -29,6 +29,8 @@ export interface EngineDeps {
   write(plan: PlanData, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<number | null>;
   /** Verify a written archive (CRC + metadata); resolves to the SDK's reportOk. */
   verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<boolean>;
+  /** Classify input paths on disk (dir/file/nonexistent) for the job's `entries`. */
+  classify(paths: string[]): Promise<InputEntry[]>;
   /** Move the given paths to the OS Trash. */
   trash(paths: string[]): Promise<void>;
   /** Push the current job list to observers (renderer + persistence). */
@@ -44,13 +46,15 @@ export interface EngineDeps {
 export interface QueueEngine {
   snapshot(): Job[];
   add(inputs: string[], options: GuiOptions, intent: JobIntent): string;
-  update(id: string, patch: { options?: GuiOptions; intent?: JobIntent }): void;
+  update(id: string, patch: { options?: GuiOptions; intent?: JobIntent; inputs?: string[] }): void;
   remove(id: string): void;
   cancel(id: string): void;
   /** Request that a specific job's archive be created (or a failed one retried). */
   run(id: string): void;
   /** Trash a finished `save` job's archive and return it to an editable state. */
   removeArchive(id: string): void;
+  /** Move a finished `save` job's originals to Trash on explicit, deliberate request. */
+  trashOriginals(id: string): void;
   getPlan(id: string): PlanData | null;
   restore(saved: SavedJob[]): void;
 }
@@ -85,6 +89,25 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   /** A progress sink that tags every SDK event with the running job's id. */
   function progressFor(id: string): (e: LogEvent) => void {
     return (e) => deps.sendEvent({ ...e, jobId: id });
+  }
+
+  /** Classify a job's inputs on disk and store the result as `entries`, so the
+   *  label, the input list, and the originals-still-present check stay accurate.
+   *  Best-effort: a classify failure leaves the prior entries rather than crashing. */
+  async function classifyInputs(id: string): Promise<void> {
+    const rec = recs.get(id);
+    if (!rec) return;
+    const inputs = rec.job.inputs;
+    try {
+      const entries = await deps.classify(inputs);
+      const cur = recs.get(id);
+      // Drop a stale result if the inputs changed while we were classifying.
+      if (!cur || cur.job.inputs !== inputs) return;
+      set(cur, { entries });
+      emit();
+    } catch (err) {
+      deps.log.warn("input classification failed", { jobId: id, error: errorInfo(err) });
+    }
   }
 
   async function planJob(id: string): Promise<void> {
@@ -220,22 +243,31 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       order.push(id);
       deps.log.info("job added", { jobId: id, inputs: inputs.length, intent });
       emit();
+      void classifyInputs(id);
       void planJob(id);
       return id;
     },
     update(id, patch) {
       const rec = recs.get(id);
       if (!rec || rec.job.state === "running") return;
+      let replan = false;
       if (patch.intent !== undefined) {
         set(rec, { intent: patch.intent });
         deps.log.info("job intent set", { jobId: id, intent: patch.intent });
       }
+      if (patch.inputs !== undefined) {
+        set(rec, { inputs: patch.inputs });
+        deps.log.info("job inputs changed", { jobId: id, inputs: patch.inputs.length });
+        void classifyInputs(id);
+        replan = true;
+      }
       if (patch.options !== undefined) {
         set(rec, { options: patch.options });
-        void planJob(id);
-      } else {
-        emit();
+        replan = true;
       }
+      // A re-plan emits on its own; a metadata-only change (intent) still must emit.
+      if (replan) void planJob(id);
+      else emit();
     },
     remove(id) {
       const rec = recs.get(id);
@@ -283,6 +315,37 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         void planJob(id);
       })();
     },
+    trashOriginals(id) {
+      const rec = recs.get(id);
+      if (!rec || rec.job.state !== "done" || rec.job.intent !== "save") return;
+      const inputs = rec.job.inputs;
+      // Never trash an original that contains the archive — it would take the .zip too.
+      if (rec.job.output && outputInsideInputs(rec.job.output, inputs)) {
+        set(rec, { message: "the archive is inside an original; originals kept" });
+        deps.log.error("trash originals blocked: archive inside source", {
+          jobId: id,
+          output: rec.job.output,
+        });
+        emit();
+        return;
+      }
+      deps.log.info("trash originals requested", { jobId: id, count: inputs.length });
+      void (async () => {
+        try {
+          await deps.trash(inputs);
+        } catch (err) {
+          set(rec, { message: `could not move the originals to Trash: ${errMsg(err)}` });
+          deps.log.error("trash originals failed", { jobId: id, error: errorInfo(err) });
+          emit();
+          return;
+        }
+        set(rec, { message: `${inputs.length} moved to Trash` });
+        deps.log.info("originals trashed", { jobId: id, count: inputs.length });
+        emit();
+        // Re-classify so the now-missing originals read as such and the command hides.
+        void classifyInputs(id);
+      })();
+    },
     getPlan(id) {
       return recs.get(id)?.plan ?? null;
     },
@@ -292,7 +355,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         order.push(s.id);
       }
       if (saved.length > 0) emit();
-      for (const s of saved) void planJob(s.id);
+      for (const s of saved) {
+        void classifyInputs(s.id);
+        void planJob(s.id);
+      }
     },
   };
 }

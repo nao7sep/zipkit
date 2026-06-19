@@ -17,12 +17,14 @@ const LABEL: Record<JobCommand, string> = {
   cancel: "Cancel",
   verify: "Verify",
   reveal: "Reveal in folder",
+  "trash-originals": "Move originals to Trash",
   "remove-archive": "Remove archive",
 };
 
 const CLASS: Partial<Record<JobCommand, string>> = {
   create: "accent",
   retry: "accent",
+  "trash-originals": "danger",
   "remove-archive": "danger",
 };
 

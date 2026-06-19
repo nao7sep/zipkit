@@ -1,29 +1,35 @@
 /**
  * The queue screen: a bottom-bordered header (title + hamburger menu), a body of
- * three rounded panes, and a status bar. Left, the job list (Add). Middle, the
- * selected job's everything in one scrollable pane, titled with the job's input
- * inventory and a state pill: its Parameters (the archive knobs + an output-folder
- * group, gated by a "use default parameters" toggle), its Operation (file name,
- * intent, the full output-path checkpoint, then the lifecycle buttons), and its
- * Report. Right, this job's live Progress. Jobs are planned in the background;
- * each is created on demand and the engine runs them one at a time. The view
- * sequences queue commands and renders, it computes no archive logic. Defaults
- * for new jobs live in Settings (a draft form, saved on commit).
+ * three rounded panes split by drag handles (the side widths persist), and a
+ * status bar. Left, the job list (Add). Middle, the selected job's everything in
+ * one scrollable pane, titled with the job's input inventory and a state pill:
+ * its Inputs (add/remove without rebuilding the job), its Parameters (the archive
+ * knobs + an output-folder group, gated by a "use default parameters" toggle),
+ * its Operation (file name, intent, the full output-path checkpoint, then the
+ * lifecycle buttons), and its Report. Right, this job's live Progress. Jobs are
+ * planned in the background; each is created on demand and the engine runs them
+ * one at a time. The view sequences queue commands and renders, it computes no
+ * archive logic. Defaults for new jobs live in Settings (a draft form, saved on
+ * commit); the pane widths live in a separate layout store.
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { ExtractData, Finding, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
+import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../../shared/layout";
 import { AboutDialog } from "./components/AboutDialog";
 import { ActivityLog } from "./components/ActivityLog";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
+import { useConfirm } from "./components/DialogHost";
+import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { Pane } from "./components/Pane";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
+import { Splitter } from "./components/Splitter";
 import { StateBadge } from "./components/StateBadge";
 import { StatusBar } from "./components/StatusBar";
 import {
@@ -52,11 +58,17 @@ export function App() {
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
+  // The persisted side-column widths; the middle Archive column flexes to fill.
+  const [layout, setLayout] = useState<PaneLayout>(DEFAULT_LAYOUT);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const dragBase = useRef<PaneLayout>(layout);
 
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
     void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
     void window.zipkit.getSettings().then(setDefaults); // persisted defaults for new jobs
+    void window.zipkit.getLayout().then(setLayout); // persisted pane widths
     return unsubscribe;
   }, []);
   useEffect(
@@ -99,6 +111,37 @@ export function App() {
     setSelectedId(id);
   }
 
+  const persistLayout = () => void window.zipkit.setLayout(layoutRef.current);
+  // The Jobs|Archive handle: drag right widens Jobs. The Archive|Progress handle
+  // (rendered inside the middle column) drags right to widen Archive (narrow
+  // Progress). Both clamp into bounds and persist on release.
+  const jobsSplitter = (
+    <Splitter
+      onDragStart={() => (dragBase.current = layoutRef.current)}
+      onDragDelta={(dx) =>
+        setLayout(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
+      }
+      onDragEnd={persistLayout}
+    />
+  );
+  const progressSplitter = (
+    <Splitter
+      onDragStart={() => (dragBase.current = layoutRef.current)}
+      onDragDelta={(dx) =>
+        setLayout(
+          clampLayout({ ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx }),
+        )
+      }
+      onDragEnd={persistLayout}
+    />
+  );
+
+  // Five tracks: Jobs | handle | Archive (flex) | handle | Progress.
+  const bodyStyle: CSSProperties = {
+    ...S.body,
+    gridTemplateColumns: `${layout.jobsWidth}px 0.6rem minmax(0, 1fr) 0.6rem ${layout.progressWidth}px`,
+  };
+
   return (
     <div style={S.shell}>
       <AppHeader
@@ -107,7 +150,7 @@ export function App() {
         onOpenAbout={() => setDialog("about")}
       />
 
-      <div style={S.body}>
+      <div style={bodyStyle}>
         <Pane
           title="Jobs"
           actions={
@@ -126,13 +169,16 @@ export function App() {
           />
         </Pane>
 
+        {jobsSplitter}
+
         {selected ? (
-          <JobView key={selected.id} job={selected} events={events} />
+          <JobView key={selected.id} job={selected} events={events} splitter={progressSplitter} />
         ) : (
           <>
             <Pane title="Archive" rootStyle={GROW}>
               <p style={S.muted}>Add or select a job.</p>
             </Pane>
+            {progressSplitter}
             <Pane title="Progress" rootStyle={GROW}>
               <p style={S.muted}>No job selected.</p>
             </Pane>
@@ -155,12 +201,21 @@ export function App() {
   );
 }
 
-function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
+function JobView({
+  job,
+  events,
+  splitter,
+}: {
+  job: Job;
+  events: GuiLogEvent[];
+  splitter: ReactNode;
+}) {
   // Keyed by job id in the parent, so this remounts per job: local option draft,
   // the use-defaults toggle, and verify state start fresh, no manual re-sync.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [verify, setVerify] = useState<ExtractData | null>(null);
+  const confirm = useConfirm();
   // New jobs use the shipped defaults: archiving is high-stakes and the defaults
   // are good, so the user opts IN to customizing this job by unchecking the box.
   const [useDefaults, setUseDefaults] = useState(true);
@@ -189,7 +244,20 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
     void window.zipkit.updateJob(job.id, { intent });
   }
 
-  function onCommand(c: JobCommand) {
+  // Input CRUD: add appends the chosen paths (skipping ones already in the job);
+  // remove drops one. Both re-plan + re-classify in the engine.
+  async function addInputs() {
+    const chosen = await window.zipkit.chooseInputs();
+    const next = [...job.inputs, ...chosen.filter((p) => !job.inputs.includes(p))];
+    if (next.length === job.inputs.length) return; // nothing new
+    void window.zipkit.updateJob(job.id, { inputs: next });
+  }
+  function removeInput(path: string) {
+    if (job.inputs.length <= 1) return; // a job must archive something
+    void window.zipkit.updateJob(job.id, { inputs: job.inputs.filter((p) => p !== path) });
+  }
+
+  async function onCommand(c: JobCommand) {
     switch (c) {
       case "create":
       case "retry":
@@ -206,6 +274,19 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
         break;
       case "reveal":
         if (job.output) window.zipkit.reveal(job.output);
+        break;
+      case "trash-originals":
+        // Destructive and not part of the normal run path, so confirm explicitly.
+        if (
+          await confirm({
+            title: "Move originals to Trash?",
+            message:
+              "The original files and folders for this job will be moved to the Trash. The archive is kept.",
+            confirmLabel: "Move to Trash",
+            danger: true,
+          })
+        )
+          void window.zipkit.trashOriginals(job.id);
         break;
       case "remove-archive":
         void window.zipkit.removeArchive(job.id);
@@ -233,10 +314,18 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
   return (
     <>
       <Pane title={label(job)} rootStyle={GROW} actions={<StateBadge state={job.state} />}>
-        {/* Parameters first (no divider above it): the archive knobs, with the
-            use-defaults toggle in the header and output folder + overwrite as a
-            group inside. */}
-        <div style={S.firstSectionHead}>
+        {/* Inputs lead the pane: what this job archives, add/remove without
+            rebuilding it. */}
+        <InputList
+          job={job}
+          editable={editable}
+          onAdd={() => void addInputs()}
+          onRemove={removeInput}
+        />
+
+        {/* Parameters: the archive knobs, with the use-defaults toggle in the
+            header and the output-folder group inside. */}
+        <div style={S.sectionHead}>
           <span style={S.sectionTitle}>Parameters</span>
           <label style={S.lock}>
             <input
@@ -320,6 +409,8 @@ function JobView({ job, events }: { job: Job; events: GuiLogEvent[] }) {
         {verify && <VerifyView data={verify} />}
       </Pane>
 
+      {splitter}
+
       <Pane title="Progress" rootStyle={GROW} bodyStyle={S.progressBody}>
         <ActivityLog events={jobEvents} />
       </Pane>
@@ -379,8 +470,9 @@ const S: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    gridTemplateColumns: "18rem 2fr 1fr",
-    gap: "0.6rem",
+    // gridTemplateColumns is set inline from the persisted layout; the splitter
+    // tracks provide the inter-pane spacing, so there is no grid gap.
+    gap: 0,
     padding: "0.6rem",
   },
   listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
@@ -420,14 +512,6 @@ const S: Record<string, CSSProperties> = {
     margin: "1.1rem 0 0.6rem",
     paddingTop: "0.6rem",
     borderTop: "1px solid var(--border)",
-  },
-  // The first section (Parameters) gets no top rule — it leads the pane.
-  firstSectionHead: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "0.75rem",
-    margin: "0 0 0.6rem",
   },
   sectionTitle: {
     fontSize: "0.7rem",

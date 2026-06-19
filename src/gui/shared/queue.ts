@@ -12,6 +12,20 @@ import type { GuiOptions } from "./spec.js";
 export type JobIntent = "save" | "archive-and-trash";
 
 /**
+ * What an input path is on disk, for the GUI's job-management UX (the label, the
+ * input list, gating "move originals to Trash"). This is filesystem plumbing —
+ * how a job is assembled — not ZIP-codec concern, so it lives GUI-side, not in
+ * the SDK. The union is intentionally open to extension (e.g. "symlink") later.
+ */
+export type PathKind = "directory" | "file" | "nonexistent" | "other";
+
+/** An input path classified by what it currently is on disk. */
+export interface InputEntry {
+  path: string;
+  kind: PathKind;
+}
+
+/**
  * - `planning` — being (re)planned.
  * - `needs-attention` — planned but not writable (a blocking finding); can't run.
  * - `ready` — writable, waiting its turn.
@@ -23,6 +37,10 @@ export type JobState = "planning" | "needs-attention" | "ready" | "running" | "d
 export interface Job {
   id: string;
   inputs: string[];
+  /** `inputs` classified on disk (dir/file/nonexistent), kept in step with
+   *  `inputs` by the engine. Absent only in the brief window before the first
+   *  classification resolves. */
+  entries?: InputEntry[];
   options: GuiOptions;
   intent: JobIntent;
   state: JobState;

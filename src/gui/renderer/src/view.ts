@@ -19,20 +19,35 @@ export const COLOR = {
   idle: "#8c9381",
 } as const;
 
-/** A job's label: every input's basename, sorted alphabetically (case-insensitive)
- *  and comma-joined, so a multi-input job shows its whole inventory rather than
- *  "first +N". Used for the row, the type-ahead, and the Archive pane title.
- *  (Dirs-before-files ordering needs main-side file/dir classification — tracked
- *  separately; this sorts by name only.) */
+function baseName(p: string): string {
+  const norm = p.replace(/\\/g, "/");
+  return norm.split("/").pop() || norm;
+}
+
+/** A job's label: a single input shows its own name (with extension); multiple
+ *  inputs show a quiet count of directories and files (each only when > 0) rather
+ *  than a noisy file list. The counts need the on-disk classification (`entries`);
+ *  before it resolves it falls back to a plain item count. */
 export function label(job: Job): string {
   if (job.inputs.length === 0) return "(no input)";
-  return job.inputs
-    .map((p) => {
-      const norm = p.replace(/\\/g, "/");
-      return norm.split("/").pop() || norm;
-    })
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-    .join(", ");
+  if (job.inputs.length === 1) return baseName(job.inputs[0]!);
+  const entries = job.entries;
+  if (!entries || entries.length === 0) return `${job.inputs.length} items`;
+  const dirs = entries.filter((e) => e.kind === "directory").length;
+  const files = entries.filter((e) => e.kind === "file").length;
+  const parts: string[] = [];
+  if (dirs > 0) parts.push(`${dirs} ${dirs === 1 ? "directory" : "directories"}`);
+  if (files > 0) parts.push(`${files} ${files === 1 ? "file" : "files"}`);
+  // All inputs missing/other: still say something honest.
+  return parts.length > 0 ? parts.join(", ") : `${entries.length} items`;
+}
+
+/** Whether any of the job's originals still exist on disk, so trashing them is
+ *  meaningful. Uses the classified `entries`; if they are not yet known, assume
+ *  present (the engine re-checks before it trashes anything). */
+export function originalsPresent(job: Job): boolean {
+  if (!job.entries) return true;
+  return job.entries.some((e) => e.kind === "directory" || e.kind === "file");
 }
 
 /** The status-badge color for each job state (exhaustive over JobState). */
@@ -108,7 +123,14 @@ export function isTerminal(state: Job["state"]): boolean {
 }
 
 /** A per-job lifecycle command for the right-pane command bar. */
-export type JobCommand = "create" | "retry" | "cancel" | "verify" | "reveal" | "remove-archive";
+export type JobCommand =
+  | "create"
+  | "retry"
+  | "cancel"
+  | "verify"
+  | "reveal"
+  | "trash-originals"
+  | "remove-archive";
 
 /** The lifecycle commands available for a job in its current state. Pure, so the
  *  command bar reads one source and is unit-tested without a DOM. `needs-attention`
@@ -126,9 +148,12 @@ export function jobCommands(job: Job): JobCommand[] {
     case "failed":
       return ["retry"];
     case "done":
-      return job.intent === "save"
-        ? ["verify", "reveal", "remove-archive"]
-        : ["verify", "reveal"];
+      if (job.intent !== "save") return ["verify", "reveal"];
+      // A saved archive: verify/reveal it, optionally trash the originals (only
+      // while they still exist), or remove the archive to edit and re-create.
+      return originalsPresent(job)
+        ? ["verify", "reveal", "trash-originals", "remove-archive"]
+        : ["verify", "reveal", "remove-archive"];
   }
 }
 

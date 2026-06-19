@@ -17,6 +17,7 @@ import {
   jobCommands,
   label,
   manifestRequiredButMissing,
+  originalsPresent,
   severityColor,
   severityLabel,
   stateColor,
@@ -39,16 +40,68 @@ const job = (over: Partial<Job> = {}): Job => ({
 const ALL_STATES: Job["state"][] = ["planning", "needs-attention", "ready", "running", "done", "failed"];
 
 describe("label", () => {
-  it("uses the lone input's basename", () => {
+  it("shows a lone input's own name with extension", () => {
+    expect(label(job({ inputs: ["/x/y/report.pdf"] }))).toBe("report.pdf");
     expect(label(job({ inputs: ["/x/y/photos"] }))).toBe("photos");
   });
-  it("lists every input's basename, sorted alphabetically (not by path)", () => {
-    expect(label(job({ inputs: ["/z/charlie", "/a/alpha", "/m/bravo"] }))).toBe(
-      "alpha, bravo, charlie",
-    );
+  it("counts directories and files for multiple inputs (omitting a zero count)", () => {
+    const j = job({
+      inputs: ["/d1", "/d2", "/f1"],
+      entries: [
+        { path: "/d1", kind: "directory" },
+        { path: "/d2", kind: "directory" },
+        { path: "/f1", kind: "file" },
+      ],
+    });
+    expect(label(j)).toBe("2 directories, 1 file");
+    expect(
+      label(job({ inputs: ["/f1", "/f2"], entries: [
+        { path: "/f1", kind: "file" },
+        { path: "/f2", kind: "file" },
+      ] })),
+    ).toBe("2 files");
+  });
+  it("falls back to an item count before classification resolves", () => {
+    expect(label(job({ inputs: ["/a", "/b", "/c"] }))).toBe("3 items");
   });
   it("falls back when there are no inputs", () => {
     expect(label(job({ inputs: [] }))).toBe("(no input)");
+  });
+});
+
+describe("originalsPresent", () => {
+  it("is true when any input still exists, false when all are gone", () => {
+    expect(
+      originalsPresent(job({ entries: [{ path: "/a", kind: "nonexistent" }, { path: "/b", kind: "file" }] })),
+    ).toBe(true);
+    expect(
+      originalsPresent(job({ entries: [{ path: "/a", kind: "nonexistent" }] })),
+    ).toBe(false);
+  });
+  it("assumes present when not yet classified", () => {
+    expect(originalsPresent(job({ entries: undefined }))).toBe(true);
+  });
+});
+
+describe("jobCommands", () => {
+  it("offers trash-originals on a done save job only while originals remain", () => {
+    const present = job({
+      state: "done",
+      intent: "save",
+      entries: [{ path: "/a", kind: "file" }],
+    });
+    expect(jobCommands(present)).toContain("trash-originals");
+    const gone = job({
+      state: "done",
+      intent: "save",
+      entries: [{ path: "/a", kind: "nonexistent" }],
+    });
+    expect(jobCommands(gone)).not.toContain("trash-originals");
+  });
+  it("never offers trash-originals for archive-and-trash (it already trashed)", () => {
+    expect(jobCommands(job({ state: "done", intent: "archive-and-trash" }))).not.toContain(
+      "trash-originals",
+    );
   });
 });
 
@@ -179,12 +232,11 @@ describe("jobCommands", () => {
   it("offers retry on failure", () => {
     expect(jobCommands(job({ state: "failed" }))).toEqual(["retry"]);
   });
-  it("on done, offers remove-archive only for the save intent", () => {
-    expect(jobCommands(job({ state: "done", intent: "save" }))).toEqual([
-      "verify",
-      "reveal",
-      "remove-archive",
-    ]);
+  it("on done, offers remove-archive (and trash-originals) only for the save intent", () => {
+    // With originals still present (entries with a file), a save job offers both.
+    expect(
+      jobCommands(job({ state: "done", intent: "save", entries: [{ path: "/a", kind: "file" }] })),
+    ).toEqual(["verify", "reveal", "trash-originals", "remove-archive"]);
     expect(jobCommands(job({ state: "done", intent: "archive-and-trash" }))).toEqual([
       "verify",
       "reveal",

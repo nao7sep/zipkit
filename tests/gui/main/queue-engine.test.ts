@@ -49,6 +49,7 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
       calls.verify++;
       return true;
     },
+    classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       calls.trash.push(paths);
     },
@@ -199,6 +200,57 @@ describe("queue engine", () => {
     engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1 } });
     await vi.waitFor(() => expect(calls.plan).toBe(2));
     expect(engine.snapshot()[0]?.options.level).toBe(1);
+  });
+
+  it("classifies inputs on add, storing them as entries", async () => {
+    const { deps } = makeDeps({
+      classify: async (paths) =>
+        paths.map((path) => ({ path, kind: path.endsWith("/") ? "directory" : "file" })),
+    });
+    const engine = createQueueEngine(deps);
+    engine.add(["/dir/", "/file.txt"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() =>
+      expect(engine.snapshot()[0]?.entries).toEqual([
+        { path: "/dir/", kind: "directory" },
+        { path: "/file.txt", kind: "file" },
+      ]),
+    );
+  });
+
+  it("re-plans and re-classifies when a job's inputs change", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    expect(calls.plan).toBe(1);
+    engine.update(id, { inputs: ["/x", "/y"] });
+    await vi.waitFor(() => expect(calls.plan).toBe(2));
+    expect(engine.snapshot()[0]?.inputs).toEqual(["/x", "/y"]);
+    await vi.waitFor(() =>
+      expect(engine.snapshot()[0]?.entries?.map((e) => e.path)).toEqual(["/x", "/y"]),
+    );
+  });
+
+  it("trashOriginals moves a done save job's inputs to Trash", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    engine.trashOriginals(id);
+    await vi.waitFor(() => expect(calls.trash).toEqual([["/a", "/b"]]));
+    expect(engine.snapshot()[0]?.state).toBe("done"); // archive kept; job stays done
+  });
+
+  it("trashOriginals is a no-op unless the job is a done save job", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.trashOriginals(id); // not done yet, wrong intent
+    await tick();
+    expect(calls.trash).toEqual([]);
   });
 
   it("cancel aborts an in-flight plan", async () => {

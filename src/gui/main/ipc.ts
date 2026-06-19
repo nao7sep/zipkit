@@ -6,9 +6,11 @@
 import { app, dialog, ipcMain, shell } from "electron";
 import type { AppInfo, VerifyResult } from "../shared/api.js";
 import type { GuiOptions } from "../shared/spec.js";
+import type { PaneLayout } from "../shared/layout.js";
 import { errorInfo } from "./log.js";
 import { log, sendEvent, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
+import { loadLayout, saveLayout } from "./layout.js";
 import { isHttpUrl } from "./url.js";
 
 export function registerIpc(): void {
@@ -21,6 +23,17 @@ export function registerIpc(): void {
       // Best-effort and non-fatal: a write failure is logged to the session log,
       // never thrown back across the bridge.
       log.error("failed to persist settings", { error: errorInfo(err) });
+    }
+  });
+
+  ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => loadLayout());
+
+  ipcMain.handle("zipkit:setLayout", async (_event, layout: PaneLayout): Promise<void> => {
+    try {
+      await saveLayout(layout);
+    } catch (err) {
+      // Best-effort and non-fatal: a write failure is logged, never thrown back.
+      log.error("failed to persist layout", { error: errorInfo(err) });
     }
   });
 
