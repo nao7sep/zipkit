@@ -7,7 +7,14 @@
 
 import { describe, expect, it } from "vitest";
 import { parseLayout, serializeLayout } from "../../../src/gui/main/layout.js";
-import { DEFAULT_LAYOUT, LAYOUT_BOUNDS } from "../../../src/gui/shared/layout.js";
+import {
+  ARCHIVE_MIN_WIDTH,
+  BODY_PADDING,
+  DEFAULT_LAYOUT,
+  LAYOUT_BOUNDS,
+  minWindowWidth,
+  SPLITTER_WIDTH,
+} from "../../../src/gui/shared/layout.js";
 
 describe("parseLayout", () => {
   it("reads a stored layout", () => {
@@ -34,6 +41,29 @@ describe("parseLayout", () => {
   it("falls back to the default layout on junk or a missing layout", () => {
     expect(parseLayout("not json")).toEqual(DEFAULT_LAYOUT);
     expect(parseLayout(JSON.stringify({ version: 1 }))).toEqual(DEFAULT_LAYOUT);
+  });
+});
+
+describe("persisted bounds feed the derived window minimum", () => {
+  it("the window minimum is derived from the same column minimums the store clamps to", () => {
+    // The persisted-layout clamp (parseLayout) and the OS window minimum must use
+    // ONE source of truth for the column minimums, so the window can never be sized
+    // below what a persisted layout can hold. This ties the two together.
+    expect(minWindowWidth()).toBe(
+      LAYOUT_BOUNDS.jobsWidth.min +
+        ARCHIVE_MIN_WIDTH +
+        LAYOUT_BOUNDS.progressWidth.min +
+        2 * SPLITTER_WIDTH +
+        2 * BODY_PADDING,
+    );
+    // A persisted layout clamped to its minimum side widths still fits the center
+    // pane at the window minimum (no persisted state can violate the invariant).
+    const minSides = parseLayout(
+      JSON.stringify({ version: 1, layout: { jobsWidth: 0, progressWidth: 0 } }),
+    );
+    const centerAtMin =
+      minWindowWidth() - minSides.jobsWidth - minSides.progressWidth - 2 * SPLITTER_WIDTH - 2 * BODY_PADDING;
+    expect(centerAtMin).toBe(ARCHIVE_MIN_WIDTH);
   });
 });
 

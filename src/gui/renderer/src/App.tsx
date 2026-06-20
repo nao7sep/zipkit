@@ -17,7 +17,14 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ExtractData, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
-import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../../shared/layout";
+import {
+  ARCHIVE_MIN_WIDTH,
+  BODY_PADDING,
+  DEFAULT_LAYOUT,
+  SPLITTER_WIDTH,
+  clampLayoutToWidth,
+  type PaneLayout,
+} from "../../shared/layout";
 import { AboutDialog } from "./components/AboutDialog";
 import { ActivityLog } from "./components/ActivityLog";
 import { AppHeader } from "./components/AppHeader";
@@ -58,13 +65,38 @@ export function App() {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const dragBase = useRef<PaneLayout>(layout);
+  // The live body width, kept current by a ResizeObserver, so every clamp (drag,
+  // resize, persisted load) is width-aware and the center Archive pane can never
+  // be squeezed below its minimum.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const bodyWidthRef = useRef<number>(0);
 
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
     void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
     void window.zipkit.getSettings().then(setDefaults); // persisted defaults for new jobs
-    void window.zipkit.getLayout().then(setLayout); // persisted pane widths
+    // Persisted pane widths: clamp against the live body width on load so a file
+    // saved on a wider window can't open with the center pane already squeezed.
+    void window.zipkit
+      .getLayout()
+      .then((loaded) => setLayout(clampLayoutToWidth(loaded, bodyWidthRef.current)));
     return unsubscribe;
+  }, []);
+
+  // Keep the body width current and re-clamp the panes whenever the window (and
+  // thus the body) resizes — widening one side then shrinking the window must
+  // never push the center Archive pane below its minimum.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? el.clientWidth;
+      bodyWidthRef.current = width;
+      setLayout((prev) => clampLayoutToWidth(prev, width));
+    });
+    observer.observe(el);
+    bodyWidthRef.current = el.clientWidth;
+    return () => observer.disconnect();
   }, []);
   useEffect(
     () => window.zipkit.onEvent((e) => setEvents((prev) => [...prev.slice(-999), e])),
@@ -117,7 +149,12 @@ export function App() {
     <Splitter
       onDragStart={() => (dragBase.current = layoutRef.current)}
       onDragDelta={(dx) =>
-        setLayout(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
+        setLayout(
+          clampLayoutToWidth(
+            { ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx },
+            bodyWidthRef.current,
+          ),
+        )
       }
       onDragEnd={persistLayout}
     />
@@ -127,17 +164,24 @@ export function App() {
       onDragStart={() => (dragBase.current = layoutRef.current)}
       onDragDelta={(dx) =>
         setLayout(
-          clampLayout({ ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx }),
+          clampLayoutToWidth(
+            { ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx },
+            bodyWidthRef.current,
+          ),
         )
       }
       onDragEnd={persistLayout}
     />
   );
 
-  // Five tracks: Jobs | handle | Archive (flex) | handle | Progress.
+  // Five tracks: Jobs | handle | Archive (flex) | handle | Progress. The center
+  // track carries a real minimum (ARCHIVE_MIN_WIDTH) so the primary pane can
+  // never collapse; the handle tracks and the body padding use the same px
+  // constants the window minimum is derived from, so layout and minimum agree.
   const bodyStyle: CSSProperties = {
     ...S.body,
-    gridTemplateColumns: `${layout.jobsWidth}px 0.6rem minmax(0, 1fr) 0.6rem ${layout.progressWidth}px`,
+    padding: BODY_PADDING,
+    gridTemplateColumns: `${layout.jobsWidth}px ${SPLITTER_WIDTH}px minmax(${ARCHIVE_MIN_WIDTH}px, 1fr) ${SPLITTER_WIDTH}px ${layout.progressWidth}px`,
   };
 
   return (
@@ -148,7 +192,7 @@ export function App() {
         onOpenAbout={() => setDialog("about")}
       />
 
-      <div style={bodyStyle}>
+      <div ref={bodyRef} style={bodyStyle}>
         <Pane
           title="Jobs"
           actions={
@@ -419,10 +463,10 @@ const S: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    // gridTemplateColumns is set inline from the persisted layout; the splitter
-    // tracks provide the inter-pane spacing, so there is no grid gap.
+    // gridTemplateColumns AND padding are set inline from the layout/constants
+    // (so the body padding matches BODY_PADDING in the derived window minimum);
+    // the splitter tracks provide the inter-pane spacing, so there is no grid gap.
     gap: 0,
-    padding: "0.6rem",
   },
   listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
   progressBody: { display: "flex", flexDirection: "column", padding: "0.6rem", overflow: "hidden" },

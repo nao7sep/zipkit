@@ -9,13 +9,14 @@
  * only once the root is known good.
  */
 
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
 import { errorInfo } from "./log.js";
 import { log, setMainWindow } from "./runtime.js";
+import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 
 // Last-resort hooks: record the failure before the process can die. The session
 // log appends synchronously, so the line is on disk by the time these return.
@@ -30,8 +31,14 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
-    minWidth: 900,
-    minHeight: 560,
+    // Content-based minimum, DERIVED from the pane minimums + fixed chrome in
+    // shared/layout.ts (window-chrome convention) — never a hand-typed literal,
+    // so the window can never be shrunk below the panes' real minimums and
+    // truncate content. minWidth reserves both side columns + the center Archive
+    // minimum + splitters + body padding; minHeight reserves the header, a body
+    // minimum, and the status bar.
+    minWidth: minWindowWidth(),
+    minHeight: minWindowHeight(),
     // Must mirror the renderer's --bg token (index.css). The main process can't
     // read CSS vars, so this literal is the one place the theme bg is duplicated;
     // keep them in sync so the pre-paint/resize edge doesn't flash a stale color.
@@ -71,6 +78,11 @@ app.whenReady().then(() => {
     node: process.versions.node,
     logPath: log.path,
   });
+  // ZipKit is a dark app; force the OS chrome (the native title bar on macOS) to
+  // dark so it matches the UI rather than following the system appearance — a
+  // light title bar on a dark app is the window-chrome convention's prime example
+  // of OS-default chrome fighting the app. Set before the window is created.
+  nativeTheme.themeSource = "dark";
   registerIpc();
   registerQueueIpc();
   createWindow();
