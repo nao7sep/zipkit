@@ -6,7 +6,7 @@
  * must stay Node-free — it carries no `node:*` import and no Node global.)
  */
 
-import type { ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, PlanData } from "../../shared/api";
+import type { ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
 
 /** The dark-theme status palette, in one place so every status reads one map. */
 export const COLOR = {
@@ -182,19 +182,75 @@ export function intentLabel(intent: JobIntent): string {
   return intent === "archive-and-trash" ? "→ Trash" : "";
 }
 
-/** The plan verdict headline: a factual, context-aware status, never a vague
- *  "safe" claim. Blocking findings stop the write; warnings are auto-fixed but
- *  worth noting; otherwise the job is simply ready to archive. */
-export function verdictHeadline(plan: PlanData): string {
-  const s = plan.summary;
-  if (!plan.writable) return s.errors === 1 ? "1 blocking issue" : `${s.errors} blocking issues`;
-  if (s.warnings > 0) return s.warnings === 1 ? "Ready · 1 warning" : `Ready · ${s.warnings} warnings`;
-  return "Ready to archive";
+/** One line of the report — a severity level, a human sentence, and the path it
+ *  concerns (omitted for the summary line). The renderer colors by `level`. */
+export interface ReportLine {
+  level: Severity;
+  text: string;
+  path?: string;
 }
 
-/** The entries the plan dropped (excluded), for the "N dropped" detail. */
-export function droppedEntries(plan: PlanData): PlanData["entries"] {
-  return plan.entries.filter((e) => e.excluded);
+function pluralItems(n: number): string {
+  return `${n} item${n === 1 ? "" : "s"}`;
+}
+
+/** The report's headline sentence: context-aware, factual, and never the vague
+ *  "Windows-safe" claim. Speaks to the job's actual state — failed, done, blocked,
+ *  or ready (with what the archive will carry / what was auto-handled). */
+export function reportSummary(job: Job, plan: PlanData | null): ReportLine | null {
+  if (job.state === "failed") {
+    return { level: "error", text: job.message ?? "The archive could not be created." };
+  }
+  if (!plan) return null;
+  const s = plan.summary;
+  if (job.state === "done") {
+    return { level: "info", text: `Archived ${pluralItems(s.included)}.` };
+  }
+  if (!plan.writable) {
+    const n = s.errors;
+    return {
+      level: "error",
+      text: `${n} blocking issue${n === 1 ? "" : "s"} must be resolved before this can be archived.`,
+    };
+  }
+  const extras: string[] = [];
+  if (s.renamed > 0) extras.push(`${s.renamed} renamed for portability`);
+  if (s.excluded > 0) extras.push(`${s.excluded} excluded`);
+  if (s.warnings > 0) extras.push(`${s.warnings} warning${s.warnings === 1 ? "" : "s"}`);
+  const tail = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+  return {
+    level: s.warnings > 0 ? "warning" : "info",
+    text: `${pluralItems(s.included)} ready to archive${tail}.`,
+  };
+}
+
+/** A finding as a human sentence; a rename also shows the new name (what we did). */
+function findingText(f: Finding): string {
+  if (f.fix?.kind === "rename" && f.fix.to) return `${f.message} → ${f.fix.to}`;
+  return f.message;
+}
+
+/** The report log: every finding as a natural-language, severity-tagged line,
+ *  plus any excluded entry not already covered by a finding (custom excludes,
+ *  pruned empty dirs/files) so a dropped path is never hidden. Ordered most-severe
+ *  first (errors, warnings, info), stable within a tier. Pure and testable. */
+export function planReport(plan: PlanData): ReportLine[] {
+  const lines: ReportLine[] = plan.findings.map((f) => ({
+    level: f.severity,
+    text: findingText(f),
+    path: f.path,
+  }));
+  const covered = new Set(plan.findings.map((f) => f.path));
+  for (const e of plan.entries) {
+    if (e.excluded && !covered.has(e.archivePath)) {
+      lines.push({ level: "info", text: `excluded — ${e.excludeReason ?? "filtered out"}`, path: e.archivePath });
+    }
+  }
+  const rank: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
+  return lines
+    .map((line, i) => ({ line, i }))
+    .sort((a, b) => rank[a.line.level] - rank[b.line.level] || a.i - b.i)
+    .map(({ line }) => line);
 }
 
 /** A local, ISO-ish timestamp for user-facing lines (timestamp-conventions:

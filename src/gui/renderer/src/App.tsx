@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { ExtractData, Finding, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
+import type { ExtractData, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
 import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../../shared/layout";
 import { AboutDialog } from "./components/AboutDialog";
@@ -27,6 +27,7 @@ import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { Pane } from "./components/Pane";
+import { Report } from "./components/Report";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Splitter } from "./components/Splitter";
@@ -36,16 +37,10 @@ import {
   archiveName,
   COLOR,
   containingDir,
-  droppedEntries,
   isEditable,
-  isTerminal,
   type JobCommand,
   label,
   manifestRequiredButMissing,
-  severityColor,
-  severityLabel,
-  verdictHeadline,
-  verifySummary,
 } from "./view";
 
 type DialogName = "settings" | "shortcuts" | "about";
@@ -234,6 +229,13 @@ function JobView({
     };
   }, [job.id, job.state, job.summary]);
 
+  // Clear a stale verify result whenever the job leaves "done" (re-planned, or its
+  // archive removed) — a "Verified" line must never linger past the archive it
+  // described.
+  useEffect(() => {
+    if (job.state !== "done") setVerify(null);
+  }, [job.state]);
+
   function changeOptions(next: GuiOptions) {
     setOpts(next);
     clearTimeout(timer.current);
@@ -310,21 +312,11 @@ function JobView({
   }
 
   const editable = isEditable(job.state);
-  const terminal = isTerminal(job.state);
   const target = archiveName(job.output) || "(planning…)";
   // Where the .zip lands: its own directory once planned, else the input's parent
   // (the SDK's beside-the-input default), so the checkpoint reads immediately.
   const destDir = containingDir(job.output) || containingDir(job.inputs[0]);
   const jobEvents = events.filter((e) => e.jobId === job.id);
-
-  const headline = !plan
-    ? ""
-    : job.state === "done"
-      ? "Done ✓"
-      : job.state === "failed"
-        ? "Failed"
-        : verdictHeadline(plan);
-  const headlineColor = job.state === "failed" || (plan && !plan.writable) ? COLOR.bad : COLOR.ok;
 
   return (
     <>
@@ -384,8 +376,10 @@ function JobView({
             </select>
           </label>
         </div>
-        {/* The final checkpoint: the full output directory, a spaced "/" marking
-            the UI seam, then the resolved .zip name — both at file-name weight. */}
+        {/* The final checkpoint: a small lead-in labels it as information (not a
+            control), then the full output directory, a spaced "/" marking the UI
+            seam, then the resolved .zip name — both at file-name weight. */}
+        <div style={S.pathLabel}>{job.state === "done" ? "Saved to" : "Saves to"}</div>
         <div style={S.pathPreview}>
           <span style={S.pathPart} title={destDir || undefined}>
             {destDir || "(beside the input)"}
@@ -402,28 +396,12 @@ function JobView({
         )}
         <CommandBar job={job} onCommand={onCommand} />
 
-        {/* Report: the plan/result, integrated into the same pane. */}
+        {/* Report: a context-aware, natural-language log of what the archive does
+            for the user, integrated into the same pane. */}
         <div style={S.sectionHead}>
           <span style={S.sectionTitle}>Report</span>
-          {headline && (
-            <strong style={{ color: headlineColor, fontSize: "0.9rem" }}>{headline}</strong>
-          )}
         </div>
-        {plan ? (
-          <>
-            <p style={S.muted}>
-              → <code>{plan.output}</code>: {plan.summary.included} included,{" "}
-              {plan.summary.excluded} dropped, {plan.summary.warnings} warning(s),{" "}
-              {plan.summary.errors} blocking
-            </p>
-            <FindingsList findings={plan.findings} />
-            <Dropped plan={plan} />
-          </>
-        ) : (
-          <p style={S.muted}>No report yet.</p>
-        )}
-        {terminal && job.message && <p style={S.muted}>{job.message}</p>}
-        {verify && <VerifyView data={verify} />}
+        <Report job={job} plan={plan} verify={verify} />
       </Pane>
 
       {splitter}
@@ -432,52 +410,6 @@ function JobView({
         <ActivityLog events={jobEvents} />
       </Pane>
     </>
-  );
-}
-
-function FindingsList({ findings }: { findings: Finding[] }) {
-  if (findings.length === 0) return <p style={S.muted}>No portability issues.</p>;
-  return (
-    <ul style={S.list}>
-      {findings.map((f, i) => (
-        <li key={i}>
-          <code style={{ color: severityColor(f.severity) }}>{severityLabel(f.severity)}</code>{" "}
-          {f.rule}: {f.message} <small style={S.muted}>({f.path})</small>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Dropped({ plan }: { plan: PlanData }) {
-  const dropped = droppedEntries(plan);
-  if (dropped.length === 0) return null;
-  // Never folded: a dropped file the user expected to keep is exactly what they
-  // must see, so the whole list is always visible (no <details>/summary).
-  return (
-    <>
-      <p style={S.droppedHead}>{dropped.length} dropped (not included in the archive):</p>
-      <ul style={S.list}>
-        {dropped.map((e, i) => (
-          <li key={i}>
-            <code>{e.archivePath}</code>{" "}
-            <small style={S.muted}>· {e.excludeReason ?? "excluded"}</small>
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
-function VerifyView({ data }: { data: ExtractData }) {
-  const color = data.reportOk ? COLOR.ok : COLOR.bad;
-  return (
-    <section style={{ margin: "0.5rem 0" }}>
-      <strong style={{ color }}>{data.reportOk ? "Verified ✓" : "Verification failed"}</strong>{" "}
-      <span style={S.muted}>· {verifySummary(data)}</span>
-      {data.missing.length > 0 && <div>Missing: {data.missing.join(", ")}</div>}
-      {data.extra.length > 0 && <div>Extra: {data.extra.join(", ")}</div>}
-    </section>
   );
 }
 
@@ -495,23 +427,22 @@ const S: Record<string, CSSProperties> = {
   listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
   progressBody: { display: "flex", flexDirection: "column", padding: "0.6rem", overflow: "hidden" },
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
-  // The output checkpoint above Create: full directory, a spaced "/" UI seam,
-  // then the .zip name. Both parts at file-name weight; the path wraps (a
-  // checkpoint must show the whole thing, never truncate it away).
+  // The output checkpoint above Create: a small caption ("Saves to"), then the
+  // full directory, a spaced "/" UI seam, then the .zip name. Both parts at
+  // file-name weight; the path wraps (a checkpoint must show the whole thing,
+  // never truncate it away). No box — emphasized text, not a framed field. It is
+  // selectable (so a curious click can copy it) but carries no click action.
+  pathLabel: { color: "var(--text-2)", fontSize: "0.85rem", margin: "0.85rem 0 0.15rem" },
   pathPreview: {
     display: "flex",
     alignItems: "baseline",
     flexWrap: "wrap",
     gap: "0.25rem 0.5rem",
-    margin: "0.85rem 0 0.25rem",
-    padding: "0.6rem 0.7rem",
-    background: "var(--surface-2)",
-    border: "1px solid var(--border)",
-    borderRadius: 6,
+    margin: "0 0 0.25rem",
+    userSelect: "text",
   },
   pathPart: { fontSize: "1rem", fontWeight: 700, wordBreak: "break-all", minWidth: 0 },
   pathSep: { fontSize: "1.35rem", fontWeight: 700, color: "var(--text-2)", padding: "0 0.25rem" },
-  droppedHead: { color: "var(--text-2)", margin: "0.5rem 0 0.1rem", fontSize: "0.85rem" },
   opsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
@@ -538,5 +469,4 @@ const S: Record<string, CSSProperties> = {
     color: "var(--text-2)",
   },
   lock: { display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.85rem" },
-  list: { margin: "0.25rem 0", paddingLeft: "1.25rem" },
 };

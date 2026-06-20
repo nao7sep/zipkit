@@ -7,9 +7,14 @@
  * file / missing), so a vanished input is visible. The last input cannot be
  * removed — a job must archive something. Hovering a row highlights it, so on a
  * wide window it stays clear which input the far-right ✕ will remove.
+ *
+ * Drag tracking uses an enter/leave depth counter (so moving over child rows does
+ * not flicker the highlight off) and force-resets on drop and on any window-level
+ * drop/dragend — a bad drop (e.g. an unsupported item) can never strand the
+ * highlight on. Processing a drop is wrapped so a throw can't strand it either.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
 import { COLOR, orderedEntries } from "../view";
@@ -41,30 +46,61 @@ export function InputList({
   onDropFiles: (files: File[]) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const depth = useRef(0);
   const rows: { path: string; kind?: PathKind }[] = job.entries
     ? orderedEntries(job.entries)
     : job.inputs.map((path) => ({ path }));
   const canRemove = editable && job.inputs.length > 1;
 
+  // Backstop: any drop or drag-end anywhere ends the gesture, so the highlight
+  // can never get stuck on if our own drop/leave events don't fire.
+  useEffect(() => {
+    const reset = () => {
+      depth.current = 0;
+      setDragOver(false);
+    };
+    window.addEventListener("drop", reset);
+    window.addEventListener("dragend", reset);
+    return () => {
+      window.removeEventListener("drop", reset);
+      window.removeEventListener("dragend", reset);
+    };
+  }, []);
+
+  function onDragEnter(e: ReactDragEvent) {
+    if (!editable) return;
+    e.preventDefault();
+    depth.current += 1;
+    setDragOver(true);
+  }
   function onDragOver(e: ReactDragEvent) {
     if (!editable) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    setDragOver(true);
+  }
+  function onDragLeave() {
+    depth.current = Math.max(0, depth.current - 1);
+    if (depth.current === 0) setDragOver(false);
   }
   function onDrop(e: ReactDragEvent) {
     e.preventDefault();
+    depth.current = 0;
     setDragOver(false);
     if (!editable) return;
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) onDropFiles(files);
+    try {
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) onDropFiles(files);
+    } catch {
+      // A bad/unsupported drop must never strand the UI; the highlight is already off.
+    }
   }
 
   return (
     <div
       style={{ ...S.zone, ...(dragOver ? S.zoneActive : null) }}
+      onDragEnter={onDragEnter}
       onDragOver={onDragOver}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       <div style={S.head}>
@@ -92,19 +128,20 @@ export function InputList({
           </li>
         ))}
       </ul>
-      {dragOver && <p style={S.dropHint}>Drop to add to this job</p>}
     </div>
   );
 }
 
 const S: Record<string, CSSProperties> = {
-  // The whole inputs block is the drop zone; the dashed ring + tint appear only
-  // while a drag is over it.
+  // The whole inputs block is the drop zone; padding gives the drag highlight
+  // (fill + ring) room to breathe so it never crowds the header or the rows. The
+  // negative side margins pull the zone out to the pane edges so the content still
+  // lines up with the sections below it.
   zone: {
     border: "1px dashed transparent",
     borderRadius: 8,
-    padding: "0.1rem 0.3rem 0.3rem",
-    margin: "-0.1rem -0.3rem 0",
+    padding: "0.6rem",
+    margin: "-0.3rem -0.6rem 0.6rem",
     transition: "background 80ms, border-color 80ms",
   },
   zoneActive: { borderColor: "var(--accent)", background: "var(--surface-2)" },
@@ -113,7 +150,7 @@ const S: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: "0.75rem",
-    margin: "0.3rem 0 0.5rem",
+    marginBottom: "0.5rem",
   },
   title: { fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
   list: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.1rem" },
@@ -129,5 +166,4 @@ const S: Record<string, CSSProperties> = {
   // Full path, wrapping rather than truncating — in a management list, seeing the
   // whole path matters more than a tidy single line.
   path: { flex: 1, minWidth: 0, wordBreak: "break-all", fontSize: "0.85rem" },
-  dropHint: { margin: "0.3rem 0 0", color: "var(--accent)", fontSize: "0.8rem", fontWeight: 600 },
 };

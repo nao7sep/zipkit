@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import {
   COLOR,
   containingDir,
-  droppedEntries,
   formatEventLine,
   intentLabel,
   isEditable,
@@ -19,11 +18,12 @@ import {
   manifestRequiredButMissing,
   orderedEntries,
   originalsPresent,
+  planReport,
+  reportSummary,
   severityColor,
   severityLabel,
   stateColor,
   stateLabel,
-  verdictHeadline,
   verifySummary,
 } from "../../../src/gui/renderer/src/view";
 import type { ExtractData, Job, LogEvent, PlanData } from "../../../src/gui/shared/api";
@@ -206,32 +206,71 @@ describe("containingDir", () => {
   });
 });
 
-describe("verdictHeadline", () => {
-  const plan = (over: Partial<PlanData["summary"]> & { writable: boolean }): PlanData => {
+describe("reportSummary", () => {
+  const planOf = (over: Partial<PlanData["summary"]> & { writable: boolean }): PlanData => {
     const { writable, ...summary } = over;
     return {
       writable,
-      summary: { included: 0, excluded: 0, warnings: 0, errors: 0, ...summary },
+      summary: { included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, ...summary },
     } as unknown as PlanData;
   };
-  it("is factual and context-aware, never a vague 'safe' claim", () => {
-    expect(verdictHeadline(plan({ writable: true }))).toBe("Ready to archive");
-    expect(verdictHeadline(plan({ writable: true, warnings: 1 }))).toBe("Ready · 1 warning");
-    expect(verdictHeadline(plan({ writable: true, warnings: 3 }))).toBe("Ready · 3 warnings");
-    expect(verdictHeadline(plan({ writable: false, errors: 1 }))).toBe("1 blocking issue");
-    expect(verdictHeadline(plan({ writable: false, errors: 4 }))).toBe("4 blocking issues");
+  it("speaks to the job's actual state, never a vague 'safe' claim", () => {
+    expect(reportSummary(job({ state: "failed", message: "disk full" }), null)?.text).toBe("disk full");
+    expect(reportSummary(job({ state: "done" }), planOf({ writable: true, included: 3 }))).toEqual({
+      level: "info",
+      text: "Archived 3 items.",
+    });
+    expect(
+      reportSummary(job({ state: "needs-attention" }), planOf({ writable: false, errors: 2 }))?.text,
+    ).toBe("2 blocking issues must be resolved before this can be archived.");
+    expect(reportSummary(job({ state: "ready" }), planOf({ writable: true, included: 1 }))).toEqual({
+      level: "info",
+      text: "1 item ready to archive.",
+    });
+    expect(
+      reportSummary(
+        job({ state: "ready" }),
+        planOf({ writable: true, included: 5, renamed: 2, excluded: 1, warnings: 1 }),
+      ),
+    ).toEqual({
+      level: "warning",
+      text: "5 items ready to archive (2 renamed for portability, 1 excluded, 1 warning).",
+    });
+  });
+  it("returns null before a plan exists (non-failed)", () => {
+    expect(reportSummary(job({ state: "planning" }), null)).toBeNull();
   });
 });
 
-describe("droppedEntries", () => {
-  it("keeps only the excluded entries", () => {
+describe("planReport", () => {
+  it("renders findings as severity-tagged lines, most-severe first, with renames showing the new name", () => {
     const plan = {
+      findings: [
+        { rule: "name.nfd", severity: "info", path: "a/café", message: "name normalized from NFD to NFC", fix: { kind: "rename", to: "café" } },
+        { rule: "collision.case", severity: "error", path: "b/X", message: "case-only collision" },
+        { rule: "macos.junk", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" },
+      ],
+      entries: [],
+    } as unknown as PlanData;
+    const lines = planReport(plan);
+    expect(lines[0]).toEqual({ level: "error", text: "case-only collision", path: "b/X" });
+    expect(lines[1]).toEqual({
+      level: "info",
+      text: "name normalized from NFD to NFC → café",
+      path: "a/café",
+    });
+  });
+  it("surfaces an excluded entry that has no finding (custom exclude, pruned empty dir)", () => {
+    const plan = {
+      findings: [],
       entries: [
-        { archivePath: "a", excluded: false },
-        { archivePath: "b", excluded: true },
+        { archivePath: "keep.txt", excluded: false },
+        { archivePath: "build/", excluded: true, excludeReason: "matched an exclude rule" },
       ],
     } as unknown as PlanData;
-    expect(droppedEntries(plan).map((e) => e.archivePath)).toEqual(["b"]);
+    expect(planReport(plan)).toEqual([
+      { level: "info", text: "excluded — matched an exclude rule", path: "build/" },
+    ]);
   });
 });
 
