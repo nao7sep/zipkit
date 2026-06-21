@@ -241,6 +241,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     }
   }
 
+  /** A job is runnable from the pending queue when it is writable-and-waiting
+   *  (`ready`), waiting its turn (`queued`), or a retryable terminal (`failed`).
+   *  Anything else in `pending` (e.g. re-planned to `needs-attention`) is skipped. */
+  function isRunnable(state: Job["state"]): boolean {
+    return state === "ready" || state === "queued" || state === "failed";
+  }
+
   // Drain the explicit run requests one at a time (never two writes at once).
   async function drain(): Promise<void> {
     if (draining) return;
@@ -251,7 +258,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         if (id === undefined) break;
         const rec = recs.get(id);
         // Skip if removed or no longer runnable (e.g. re-planned to needs-attention).
-        if (!rec || (rec.job.state !== "ready" && rec.job.state !== "failed")) continue;
+        if (!rec || !isRunnable(rec.job.state)) continue;
         await runJob(id);
       }
     } finally {
@@ -295,8 +302,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
       // A re-plan emits on its own; a store-only change (intent / write-only
       // option) still must emit so the renderer sees the new state.
-      if (replan) void planJob(id);
-      else emit();
+      if (replan) {
+        // The plan this job may have been enqueued under is now stale, so drop it
+        // from the run queue: an edited job is never auto-run under an old plan;
+        // the user re-requests the run once the fresh plan lands.
+        const p = pending.indexOf(id);
+        if (p >= 0) pending.splice(p, 1);
+        void planJob(id);
+      } else emit();
     },
     remove(id) {
       const rec = recs.get(id);
@@ -311,7 +324,19 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     cancel(id) {
       const rec = recs.get(id);
-      if (!rec?.aborter) return;
+      if (!rec) return;
+      // A `queued` job is only waiting its turn — it has no in-flight work to
+      // abort. Drop it from the run queue and re-plan, so it returns to an
+      // editable, freshly-evaluated state (the world may have changed while it
+      // waited) instead of silently running later.
+      if (rec.job.state === "queued") {
+        const p = pending.indexOf(id);
+        if (p >= 0) pending.splice(p, 1);
+        deps.log.info("queued job cancelled", { jobId: id });
+        void planJob(id);
+        return;
+      }
+      if (!rec.aborter) return;
       deps.log.info("job cancel requested", { jobId: id, state: rec.job.state });
       rec.aborter.abort();
     },
@@ -321,6 +346,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       if (rec.job.state !== "ready" && rec.job.state !== "failed") return;
       if (!pending.includes(id)) pending.push(id);
       deps.log.info("job run requested", { jobId: id, state: rec.job.state });
+      // If another job is mid-run (draining), this one waits its turn — mark it
+      // `queued` so the wait is visible, instead of leaving it indistinguishable
+      // from an idle `ready` job. When the engine is idle, `drain()` below picks it
+      // up synchronously and `runJob` flips it straight to `running`, so an
+      // immediately-started job never flickers through `queued`.
+      if (draining) {
+        set(rec, { state: "queued", message: undefined, errorCode: undefined });
+        emit();
+      }
       void drain();
     },
     removeArchive(id) {

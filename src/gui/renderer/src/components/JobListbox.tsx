@@ -20,7 +20,7 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { Job } from "../../../shared/api";
-import { intentLabel, label, stateTint } from "../view";
+import { intentLabel, isCancelable, label, stateTint } from "../view";
 import { navIndex, recoverIndex, typeaheadIndex } from "../listbox-nav";
 import { isComposing } from "../composition";
 import { StateBadge } from "./StateBadge";
@@ -30,12 +30,18 @@ const TYPEAHEAD_IDLE_MS = 600;
 export function JobListbox({
   jobs,
   selectedId,
+  pullFocusId,
+  onFocusPulled,
   onSelect,
   onRemove,
   onCancel,
 }: {
   jobs: Job[];
   selectedId: string | null;
+  /** A row to pull keyboard focus to once it renders (Add's new job), even when
+   *  focus is currently outside the list. One-shot: cleared via onFocusPulled. */
+  pullFocusId: string | null;
+  onFocusPulled: () => void;
   onSelect: (id: string | null) => void;
   onRemove: (id: string) => void;
   onCancel: (id: string) => void;
@@ -55,6 +61,19 @@ export function JobListbox({
     el?.focus();
     el?.scrollIntoView({ block: "nearest" });
   }, [selectedId]);
+
+  // The one explicit "pull focus in from outside" case (Add's new job). Unlike the
+  // selection effect above, this focuses regardless of where focus currently is.
+  // It depends on `jobs` so that when the request is set before the new row has
+  // rendered, it retries on the render that adds the row, then clears itself.
+  useEffect(() => {
+    if (!pullFocusId) return;
+    const el = optionEl(listRef.current, pullFocusId);
+    if (!el) return; // row not in the DOM yet — re-runs when `jobs` brings it in
+    el.focus();
+    el.scrollIntoView({ block: "nearest" });
+    onFocusPulled();
+  }, [pullFocusId, jobs, onFocusPulled]);
 
   function activate(index: number) {
     const job = jobs[index];
@@ -107,7 +126,7 @@ export function JobListbox({
       return;
     }
     if (e.key === "Escape") {
-      if (active && (active.state === "planning" || active.state === "running")) {
+      if (active && isCancelable(active.state)) {
         e.preventDefault();
         onCancel(active.id);
       }
@@ -176,7 +195,7 @@ export function JobListbox({
                   {metaText(job) && <span style={S.dim}>{metaText(job)}</span>}
                 </div>
               </div>
-              {(job.state === "planning" || job.state === "running") && (
+              {isCancelable(job.state) && (
                 <button
                   className="icon"
                   tabIndex={-1}

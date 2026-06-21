@@ -16,6 +16,10 @@ export const COLOR = {
   warn: "#ffb454",
   info: "#a3d977",
   busy: "#60a5fa",
+  // Waiting its turn: a muted, desaturated blue — kin to `busy` (it's about to
+  // run) but calmer, so "queued" reads as pending rather than active. Picked to
+  // sit in the golden-workbench palette; safe to retone alongside the rest.
+  queued: "#8aa0c0",
   ready: "#f0b429",
   idle: "#8c9381",
 } as const;
@@ -71,6 +75,8 @@ export function stateColor(state: Job["state"]): string {
       return COLOR.warn;
     case "ready":
       return COLOR.ready;
+    case "queued":
+      return COLOR.queued;
     case "running":
       return COLOR.busy;
     case "done":
@@ -103,6 +109,8 @@ export function stateLabel(state: Job["state"]): string {
       return "Needs attention";
     case "ready":
       return "Ready";
+    case "queued":
+      return "Queued";
     case "running":
       return "Running";
     case "done":
@@ -124,14 +132,23 @@ export function severityLabel(severity: Finding["severity"]): string {
   }
 }
 
-/** A job's options/intent may be edited only before it runs and while not done. */
+/** A job's options/intent may be edited only before it runs and while not done. A
+ *  `queued` job is committed to run (waiting its turn), so it is locked too —
+ *  cancelling it returns it to an editable `ready`/`needs-attention` state. */
 export function isEditable(state: Job["state"]): boolean {
-  return state !== "running" && state !== "done";
+  return state !== "running" && state !== "done" && state !== "queued";
 }
 
 /** Terminal states carry a final result, not an editable plan. */
 export function isTerminal(state: Job["state"]): boolean {
   return state === "done" || state === "failed";
+}
+
+/** States a job can be cancelled out of: in-flight work (`planning`/`running`) or
+ *  waiting its turn (`queued`). Cancelling re-plans the job back to an editable
+ *  state. Drives the listbox Cancel affordance (button + Escape). */
+export function isCancelable(state: Job["state"]): boolean {
+  return state === "planning" || state === "queued" || state === "running";
 }
 
 /** A per-job lifecycle command for the right-pane command bar. */
@@ -155,6 +172,9 @@ export function jobCommands(job: Job): JobCommand[] {
       return [];
     case "ready":
       return ["create"];
+    case "queued":
+      // Waiting its turn: the only act is to pull it back out of the queue.
+      return ["cancel"];
     case "running":
       return ["cancel"];
     case "failed":
@@ -361,6 +381,8 @@ export function stateTint(state: Job["state"]): string {
       return "rgba(255, 180, 84, 0.12)";
     case "ready":
       return "rgba(240, 180, 41, 0.14)";
+    case "queued":
+      return "rgba(138, 160, 192, 0.12)";
     case "running":
       return "rgba(96, 165, 250, 0.12)";
     case "done":

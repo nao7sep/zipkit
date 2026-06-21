@@ -28,11 +28,21 @@ export interface InputEntry {
 /**
  * - `planning` — being (re)planned.
  * - `needs-attention` — planned but not writable (a blocking finding); can't run.
- * - `ready` — writable, waiting its turn.
+ * - `ready` — writable, not yet asked to run.
+ * - `queued` — asked to run while another job is running; waiting its turn. (A job
+ *   asked to run while the engine is idle goes straight to `running`, never through
+ *   `queued` — the state appears only when there is a real wait.)
  * - `running` — being written (and, for the destructive intent, verified + trashed).
  * - `done` / `failed` — terminal.
  */
-export type JobState = "planning" | "needs-attention" | "ready" | "running" | "done" | "failed";
+export type JobState =
+  | "planning"
+  | "needs-attention"
+  | "ready"
+  | "queued"
+  | "running"
+  | "done"
+  | "failed";
 
 export interface Job {
   id: string;

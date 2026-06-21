@@ -29,7 +29,7 @@ import {
 import { AboutDialog } from "./components/AboutDialog";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
-import { useConfirm } from "./components/DialogHost";
+import { useConfirm, type ConfirmOptions } from "./components/DialogHost";
 import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
 import { OptionsPanel } from "./components/OptionsPanel";
@@ -44,6 +44,7 @@ import {
   archiveName,
   COLOR,
   isEditable,
+  jobCommands,
   type JobCommand,
   label,
   manifestRequiredButMissing,
@@ -54,12 +55,37 @@ type DialogName = "settings" | "shortcuts" | "about";
 
 const GROW: CSSProperties = { flex: 1 };
 
+/** The confirmation a run needs, or null when it needs none (the confirmation
+ *  policy). Only an `archive-and-trash` run is destructive — it writes, verifies,
+ *  then moves the originals to the Trash, and the "Create archive" button does not
+ *  say so. Shared by the button path (JobView) and the keyboard accelerator (App)
+ *  so both honor the same policy. A plain `save` run moves nothing and needs no
+ *  confirm. */
+function runConfirmation(job: Job): ConfirmOptions | null {
+  if (job.intent !== "archive-and-trash") return null;
+  const n = job.inputs.length;
+  return {
+    title: "Create archive and move originals to Trash?",
+    message: `The archive will be created and verified, then the ${n} original ${
+      n === 1 ? "item" : "items"
+    } will be moved to the Trash. The originals are moved only after the archive verifies.`,
+    confirmLabel: "Create and move to Trash",
+    danger: true,
+  };
+}
+
 export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
+  // A one-shot request to move keyboard focus to a job's row once it renders, set
+  // when Add creates a job (focus/selection policy: Add pulls focus to its result).
+  // The listbox clears it via onFocusPulled once the focus lands.
+  const [pullFocusId, setPullFocusId] = useState<string | null>(null);
+  // App-level confirm for the run accelerator (the button path uses JobView's).
+  const confirm = useConfirm();
   // The user's INTENT side-column widths, in pixels: the widths the user dragged
   // to. This is the ONLY layout state that is persisted, and it changes ONLY on a
   // splitter drag — never on a window resize. The middle Archive column flexes to
@@ -120,8 +146,11 @@ export function App() {
     };
   }, []);
 
-  // Cmd/Ctrl+, opens Settings; Cmd/Ctrl+/ opens Shortcuts (modal-dialog
-  // conventions). Suppressed while any modal is open and inert during IME composition.
+  // App-level accelerators (all Cmd/Ctrl combos; the plain navigation/edit keys
+  // belong to the listbox and the fields): N adds a job, Enter creates the selected
+  // job's archive, Comma opens Settings, Slash opens Shortcuts. Kept in step with
+  // the catalog the Shortcuts dialog renders (shortcuts.ts). Suppressed while any
+  // modal is open and inert during IME composition (text-input-and-IME conventions).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.isComposing) return;
@@ -133,6 +162,12 @@ export function App() {
       } else if (e.key === "/") {
         e.preventDefault();
         setDialog("shortcuts");
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        void runSelectedRef.current();
+      } else if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        void addJobRef.current();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -156,7 +191,31 @@ export function App() {
     if (inputs.length === 0) return;
     const id = await window.zipkit.addJob(inputs, defaults, "save");
     setSelectedId(id);
+    setPullFocusId(id); // focus the new row once it renders (focus/selection policy)
   }
+
+  // The keyboard accelerator for "create the selected job's archive". Mirrors the
+  // command bar's Create / Try again: it acts only when the selection actually
+  // offers that command, and goes through the same run confirmation, so the
+  // accelerator can never bypass the confirmation policy. Blur first, so a
+  // commit-on-blur field (the file name) lands its value before the run re-plans.
+  async function runSelected() {
+    if (!selected) return;
+    const cmds = jobCommands(selected);
+    if (!cmds.includes("create") && !cmds.includes("retry")) return;
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    const ask = runConfirmation(selected);
+    if (ask && !(await confirm(ask))) return;
+    void window.zipkit.runJob(selected.id);
+  }
+
+  // Latest-ref so the window-level key handler (subscribed once) always invokes the
+  // current closures — fresh defaults for Add, fresh selection for Create — without
+  // re-subscribing the listener on every render.
+  const addJobRef = useRef(addJob);
+  addJobRef.current = addJob;
+  const runSelectedRef = useRef(runSelected);
+  runSelectedRef.current = runSelected;
 
   // The persisted value is the INTENT — and persistence happens ONLY here, in the
   // drag-release handler, never on a window resize.
@@ -226,6 +285,8 @@ export function App() {
           <JobListbox
             jobs={jobsNewestFirst}
             selectedId={selectedId}
+            pullFocusId={pullFocusId}
+            onFocusPulled={() => setPullFocusId(null)}
             onSelect={setSelectedId}
             onRemove={(id) => void window.zipkit.removeJob(id)}
             onCancel={(id) => void window.zipkit.cancelJob(id)}
@@ -356,26 +417,15 @@ function JobView({
   async function onCommand(c: JobCommand) {
     switch (c) {
       case "create":
-      case "retry":
-        // Confirm only when running this job also moves the user's data: an
-        // archive-and-trash job writes + verifies, then moves the originals to
-        // the Trash, and the button ("Create archive") doesn't say so — the
-        // intent is a separate dropdown. A plain "save" run touches nothing
-        // irreversible, so it runs straight away.
-        if (job.intent === "archive-and-trash") {
-          const n = job.inputs.length;
-          const ok = await confirm({
-            title: "Create archive and move originals to Trash?",
-            message: `The archive will be created and verified, then the ${n} original ${
-              n === 1 ? "item" : "items"
-            } will be moved to the Trash. The originals are moved only after the archive verifies.`,
-            confirmLabel: "Create and move to Trash",
-            danger: true,
-          });
-          if (!ok) break;
-        }
+      case "retry": {
+        // Confirm only when running this job also moves the user's data (the
+        // confirmation policy) — runConfirmation returns the prompt for an
+        // archive-and-trash run and null for a plain save.
+        const ask = runConfirmation(job);
+        if (ask && !(await confirm(ask))) break;
         void window.zipkit.runJob(job.id);
         break;
+      }
       case "cancel":
         void window.zipkit.cancelJob(job.id);
         break;

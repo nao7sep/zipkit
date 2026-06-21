@@ -153,6 +153,60 @@ describe("queue engine", () => {
     expect(calls.maxWriteInFlight).toBe(1);
   });
 
+  it("a run requested while another job is running waits as queued, then runs in turn", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let writes = 0;
+    const { deps } = makeDeps({
+      write: async () => {
+        writes++;
+        if (writes === 1) await gate; // hold the first job in `running`
+        return 1;
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    engine.run(a);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running")); // idle -> running, no queued
+    engine.run(b);
+    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("queued")); // waits its turn, visibly
+    release();
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
+    expect(writes).toBe(2);
+  });
+
+  it("cancelling a queued job pulls it from the run queue and re-plans it; it never runs", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let writes = 0;
+    const { deps, calls } = makeDeps({
+      write: async () => {
+        writes++;
+        if (writes === 1) await gate;
+        return 1;
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    const plansBefore = calls.plan;
+    engine.run(a);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running"));
+    engine.run(b);
+    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("queued"));
+    engine.cancel(b);
+    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("ready")); // re-planned back to editable
+    expect(calls.plan).toBeGreaterThan(plansBefore);
+    release();
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await tick();
+    expect(engine.snapshot()[1]?.state).toBe("ready"); // stayed out of the run
+    expect(writes).toBe(1); // only A ever wrote
+  });
+
   it("isolates a failing write — the other requested jobs still run", async () => {
     let n = 0;
     const { deps } = makeDeps({

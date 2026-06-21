@@ -11,6 +11,7 @@ import {
   containingDir,
   formatEventLine,
   intentLabel,
+  isCancelable,
   isEditable,
   isTerminal,
   jobCommands,
@@ -40,7 +41,15 @@ const job = (over: Partial<Job> = {}): Job => ({
   ...over,
 });
 
-const ALL_STATES: Job["state"][] = ["planning", "needs-attention", "ready", "running", "done", "failed"];
+const ALL_STATES: Job["state"][] = [
+  "planning",
+  "needs-attention",
+  "ready",
+  "queued",
+  "running",
+  "done",
+  "failed",
+];
 
 describe("label", () => {
   it("shows a lone input's own name with extension", () => {
@@ -177,12 +186,16 @@ describe("severityColor", () => {
   });
 });
 
-describe("isEditable / isTerminal", () => {
-  it("is editable until the job runs or completes", () => {
+describe("isEditable / isTerminal / isCancelable", () => {
+  it("is editable until the job runs, is queued, or completes", () => {
+    // queued is locked (committed to run); cancelling it returns it to editable.
     expect(ALL_STATES.filter(isEditable)).toEqual(["planning", "needs-attention", "ready", "failed"]);
   });
   it("is terminal only when done or failed", () => {
     expect(ALL_STATES.filter(isTerminal)).toEqual(["done", "failed"]);
+  });
+  it("is cancelable while planning, queued, or running", () => {
+    expect(ALL_STATES.filter(isCancelable)).toEqual(["planning", "queued", "running"]);
   });
 });
 
@@ -207,6 +220,7 @@ describe("stateLabel", () => {
       "Planning",
       "Needs attention",
       "Ready",
+      "Queued",
       "Running",
       "Done",
       "Failed",
@@ -377,8 +391,9 @@ describe("jobCommands", () => {
     expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);
   });
-  it("offers cancel while planning or running", () => {
+  it("offers cancel while planning, queued, or running", () => {
     expect(jobCommands(job({ state: "planning" }))).toEqual(["cancel"]);
+    expect(jobCommands(job({ state: "queued" }))).toEqual(["cancel"]);
     expect(jobCommands(job({ state: "running" }))).toEqual(["cancel"]);
   });
   it("offers only retry on a failure with no output (write failed)", () => {

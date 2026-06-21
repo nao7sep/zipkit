@@ -26,11 +26,24 @@ const rows = () => screen.getAllByRole("option");
 
 const noop = () => {};
 
+// One render helper so the required props all have defaults in a single place;
+// each test overrides only what it exercises.
+type Props = Parameters<typeof JobListbox>[0];
+const renderListbox = (props: Partial<Props> & Pick<Props, "jobs" | "selectedId">) =>
+  render(
+    <JobListbox
+      pullFocusId={null}
+      onFocusPulled={noop}
+      onSelect={noop}
+      onRemove={noop}
+      onCancel={noop}
+      {...props}
+    />,
+  );
+
 describe("JobListbox", () => {
   it("is one tab stop: only the selected option is tabbable", () => {
-    render(
-      <JobListbox jobs={[job("a"), job("b"), job("c")]} selectedId="b" onSelect={noop} onRemove={noop} onCancel={noop} />,
-    );
+    renderListbox({ jobs: [job("a"), job("b"), job("c")], selectedId: "b" });
     const [a, b, c] = rows();
     expect(a!.tabIndex).toBe(-1);
     expect(b!.tabIndex).toBe(0);
@@ -40,9 +53,7 @@ describe("JobListbox", () => {
 
   it("ArrowDown moves selection and DOM focus to the next option", () => {
     const onSelect = vi.fn();
-    render(
-      <JobListbox jobs={[job("a"), job("b"), job("c")]} selectedId="a" onSelect={onSelect} onRemove={noop} onCancel={noop} />,
-    );
+    renderListbox({ jobs: [job("a"), job("b"), job("c")], selectedId: "a", onSelect });
     rows()[0]!.focus();
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
     expect(onSelect).toHaveBeenCalledWith("b");
@@ -52,9 +63,7 @@ describe("JobListbox", () => {
   it("Delete on the active row recovers to the neighbor (selection + focus) and removes it", () => {
     const onSelect = vi.fn();
     const onRemove = vi.fn();
-    render(
-      <JobListbox jobs={[job("a"), job("b"), job("c")]} selectedId="a" onSelect={onSelect} onRemove={onRemove} onCancel={noop} />,
-    );
+    renderListbox({ jobs: [job("a"), job("b"), job("c")], selectedId: "a", onSelect, onRemove });
     rows()[0]!.focus();
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Delete" });
     expect(onSelect).toHaveBeenCalledWith("b"); // next slides into place
@@ -65,9 +74,7 @@ describe("JobListbox", () => {
   it("Esc cancels a running active row; Delete is ignored on it", () => {
     const onCancel = vi.fn();
     const onRemove = vi.fn();
-    render(
-      <JobListbox jobs={[job("a", "running")]} selectedId="a" onSelect={noop} onRemove={onRemove} onCancel={onCancel} />,
-    );
+    renderListbox({ jobs: [job("a", "running")], selectedId: "a", onRemove, onCancel });
     const list = screen.getByRole("listbox");
     rows()[0]!.focus();
     fireEvent.keyDown(list, { key: "Escape" });
@@ -76,10 +83,27 @@ describe("JobListbox", () => {
     expect(onRemove).not.toHaveBeenCalled(); // a running job is not removable
   });
 
+  it("Esc cancels a queued active row, and a queued job is still removable", () => {
+    const onCancel = vi.fn();
+    const onRemove = vi.fn();
+    renderListbox({ jobs: [job("a", "queued")], selectedId: "a", onRemove, onCancel });
+    const list = screen.getByRole("listbox");
+    rows()[0]!.focus();
+    fireEvent.keyDown(list, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledWith("a"); // cancel = pull it back out of the queue
+    fireEvent.keyDown(list, { key: "Delete" });
+    expect(onRemove).toHaveBeenCalledWith("a"); // unlike running, a queued job can be removed
+  });
+
+  it("pullFocusId focuses that row even when focus is outside the list, then clears it", () => {
+    const onFocusPulled = vi.fn();
+    renderListbox({ jobs: [job("a"), job("b")], selectedId: "a", pullFocusId: "b", onFocusPulled });
+    expect(document.activeElement).toBe(rows()[1]); // focus pulled to b from outside
+    expect(onFocusPulled).toHaveBeenCalledTimes(1); // one-shot
+  });
+
   it("keeps the row action buttons out of the tab order", () => {
-    render(
-      <JobListbox jobs={[job("a", "planning")]} selectedId="a" onSelect={noop} onRemove={noop} onCancel={noop} />,
-    );
+    renderListbox({ jobs: [job("a", "planning")], selectedId: "a" });
     expect(screen.getByTitle("Cancel (Esc)").tabIndex).toBe(-1);
     expect(screen.getByTitle("Remove (Del)").tabIndex).toBe(-1);
   });

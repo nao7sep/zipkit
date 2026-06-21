@@ -1,8 +1,9 @@
 /**
  * The keyboard-shortcut catalog: one ordered, grouped source of truth, so the
  * Shortcuts dialog and the app-level key handler can never describe a binding
- * that does not exist. App-level accelerators (Settings, Shortcuts) are handled
- * in App.tsx; the queue/list keys are display-only here — they are owned by the
+ * that does not exist. The app-level accelerators (Add a job, Create the selected
+ * job's archive, Settings, Shortcuts — all Cmd/Ctrl combos) are handled in
+ * App.tsx; the plain queue/list keys are display-only here — they are owned by the
  * JobListbox per the composite-control conventions. Pure data, no React/DOM.
  */
 
@@ -24,6 +25,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
   {
     title: "General",
     items: [
+      { keys: "Cmd/Ctrl+N", description: "Add a job" },
       { keys: "Cmd/Ctrl+Comma", description: "Open Settings" },
       { keys: "Cmd/Ctrl+Slash", description: "Show keyboard shortcuts" },
     ],
@@ -40,8 +42,9 @@ export const SHORTCUTS: ShortcutGroup[] = [
   {
     title: "Act on the selected job",
     items: [
+      { keys: "Cmd/Ctrl+Enter", description: "Create the selected job's archive" },
       { keys: "Delete", description: "Remove the job from the queue" },
-      { keys: "Escape", description: "Cancel a planning or running job" },
+      { keys: "Escape", description: "Cancel a planning, queued, or running job" },
     ],
   },
 ];
