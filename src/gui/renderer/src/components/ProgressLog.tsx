@@ -1,8 +1,9 @@
 /**
- * The activity log: the live SDK event stream for the selected job, always
- * visible. It follows the tail — when the user is at (or within a small threshold
- * of) the bottom, new lines auto-scroll into view; when the user has scrolled up
- * to read history, it leaves the viewport alone. Mirrors ScriptDock's console.
+ * The Progress log: the live SDK event stream for the selected job, shown in the
+ * Progress pane. It follows the tail — when the user is at (or within a small
+ * threshold of) the bottom, new lines auto-scroll into view; when the user has
+ * scrolled up to read history, it leaves the viewport alone. Mirrors ScriptDock's
+ * console.
  *
  * Two robustness rules matter: a log SHORTER than its pane has no real overflow,
  * so it is "at the bottom" by definition and must never be read as scrolled-up;
@@ -18,7 +19,7 @@ import { formatEventLine } from "../view";
 // "Near the bottom" tolerance, in pixels (ScriptDock uses 24).
 const PIN_THRESHOLD_PX = 24;
 
-export function ActivityLog({ events }: { events: LogEvent[] }) {
+export function ProgressLog({ events }: { events: LogEvent[] }) {
   const ref = useRef<HTMLPreElement>(null);
   // Whether the user is currently following the tail. Starts pinned; updated on
   // every manual scroll, read (synchronously, before paint) after each new batch.
@@ -38,7 +39,7 @@ export function ActivityLog({ events }: { events: LogEvent[] }) {
     pinned.current = el.scrollHeight <= el.clientHeight || distanceFromBottom <= PIN_THRESHOLD_PX;
   }
 
-  if (events.length === 0) return <p style={S.empty}>No activity yet.</p>;
+  if (events.length === 0) return <p style={S.empty}>Nothing to show yet.</p>;
   return (
     <pre ref={ref} style={S.log} onScroll={onScroll}>
       {events.map(formatEventLine).join("\n")}

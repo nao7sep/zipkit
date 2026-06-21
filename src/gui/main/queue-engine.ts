@@ -13,7 +13,7 @@
  * SDK. The SDK, OS Trash, persistence, event forwarding, and id minting arrive as
  * injected deps, so the engine is Electron-free and unit-testable with fakes. SDK
  * progress events are tagged with the originating job's id before they are
- * forwarded, so the renderer can show each job its own activity.
+ * forwarded, so the renderer can show each job its own Progress.
  */
 
 import type { InputEntry, Job, JobIntent, SavedJob } from "../shared/queue.js";

@@ -2,8 +2,8 @@
  * Shortcuts dialog (modal-dialog conventions): the app's keyboard model, grouped,
  * description on the left and keys on the right with every key spelled out. It
  * renders the one shortcut catalog (`shortcuts.ts`), so it can never list a
- * binding the app does not actually have. Replaces the former Help dialog. Rows
- * are separated by a zebra fill inside a rounded group card — no per-row rules.
+ * binding the app does not actually have. Rows are separated by a zebra fill
+ * inside a rounded group card — no per-row rules.
  */
 
 import type { CSSProperties } from "react";

@@ -26,7 +26,7 @@ export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, Log
 export type { PaneLayout };
 
 /** An SDK progress event tagged with the job it belongs to, so the renderer can
- *  show each job its own activity stream. `jobId` is absent for any untagged event. */
+ *  show each job its own Progress stream. `jobId` is absent for any untagged event. */
 export type GuiLogEvent = LogEvent & { jobId?: string };
 
 /** A structured SDK fault surfaced to the renderer (mirrors `ZipKitError`'s shape). */
@@ -89,7 +89,7 @@ export interface ZipKitGuiApi {
   onQueue(callback: (jobs: Job[]) => void): () => void;
 
   /** Verify a job's archive on demand: CRC always, plus manifest + SHA when set.
-   *  The job id tags the verify's progress events to that job's activity stream. */
+   *  The job id tags the verify's progress events to that job's Progress stream. */
   verify(jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult>;
   /** Reveal a file in the OS file manager (Finder / Explorer). */
   reveal(path: string): void;

@@ -7,6 +7,7 @@
  */
 
 import type { ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
+import type { GuiOptions } from "../../shared/spec";
 
 /** The dark-theme status palette, in one place so every status reads one map. */
 export const COLOR = {
@@ -284,7 +285,7 @@ function formatLocalTime(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-/** One activity-log line, with the time shown in local (not raw UTC) form. */
+/** One Progress-log line, with the time shown in local (not raw UTC) form. */
 export function formatEventLine(event: LogEvent): string {
   return `${formatLocalTime(event.time)}  ${event.level}  ${event.message}`;
 }
@@ -298,13 +299,35 @@ export function archiveName(output: string | undefined): string {
 }
 
 /** The directory that contains a path (its parent), normalized for display.
- *  Empty string when the path is bare or at the filesystem root. Shown above the
- *  source → target line so the user sees where the archive lands. */
+ *  Empty string when the path is bare or at the filesystem root. */
 export function containingDir(p: string | undefined): string {
   if (!p) return "";
   const norm = p.replace(/\\/g, "/");
   const i = norm.lastIndexOf("/");
   return i <= 0 ? "" : norm.slice(0, i);
+}
+
+/**
+ * The destination preview shown above Create — the directory the archive lands in
+ * and its file name, as two separate concerns. The AUTHORITATIVE composition is
+ * the main process's `resolveOutputPath` (it owns `~` expansion and absolute-path
+ * validation); this is a DISPLAY preview only. It prefers the SDK-resolved
+ * `job.output`, falls back to what the user typed, says "resolving…" only while a
+ * plan is actually running, and otherwise names the default the user still needs
+ * to see — so it never claims "planning" for a blocked/failed job. One place, so
+ * the renderer has a single (tested) derivation instead of an inline ladder.
+ */
+export function outputPreview(job: Job, opts: GuiOptions): { dir: string; name: string } {
+  const name =
+    archiveName(job.output) ||
+    opts.fileName.trim() ||
+    (job.state === "planning" ? "resolving…" : "(set a file name)");
+  const dir =
+    containingDir(job.output) ||
+    opts.outputDir.trim() ||
+    containingDir(job.inputs[0]) ||
+    "(beside the input)";
+  return { dir, name };
 }
 
 /** A subtle row-background tint per job state, for at-a-glance distinction in the

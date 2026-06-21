@@ -21,7 +21,7 @@ export function setMainWindow(w: BrowserWindow): void {
   win = w;
 }
 
-/** Forward one job-tagged progress event to the renderer's activity stream. */
+/** Forward one job-tagged progress event to the renderer's Progress stream. */
 export function sendEvent(event: GuiLogEvent): void {
   win?.webContents.send("zipkit:event", event);
 }

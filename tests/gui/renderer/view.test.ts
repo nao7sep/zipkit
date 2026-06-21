@@ -18,6 +18,7 @@ import {
   manifestRequiredButMissing,
   orderedEntries,
   originalsPresent,
+  outputPreview,
   planReport,
   reportSummary,
   severityColor,
@@ -94,6 +95,32 @@ describe("orderedEntries", () => {
     ];
     orderedEntries(entries);
     expect(entries.map((e) => e.path)).toEqual(["/b", "/a"]);
+  });
+});
+
+describe("outputPreview", () => {
+  it("prefers the resolved output (split into dir + name)", () => {
+    const j = job({ state: "ready", output: "/out/dir/report.zip" });
+    expect(outputPreview(j, DEFAULT_OPTIONS)).toEqual({ dir: "/out/dir", name: "report.zip" });
+  });
+  it("falls back to the user's typed values when not yet resolved", () => {
+    const j = job({ state: "needs-attention", inputs: ["/a/b/c"] });
+    expect(outputPreview(j, { ...DEFAULT_OPTIONS, outputDir: "/picked", fileName: "mine" })).toEqual({
+      dir: "/picked",
+      name: "mine",
+    });
+  });
+  it("says 'resolving…' for the name only while planning, never claims planning when blocked", () => {
+    const planning = job({ state: "planning", inputs: ["/a/b/c"] });
+    expect(outputPreview(planning, DEFAULT_OPTIONS).name).toBe("resolving…");
+    const blocked = job({ state: "needs-attention", inputs: ["/a/x", "/b/y"] });
+    expect(outputPreview(blocked, DEFAULT_OPTIONS).name).toBe("(set a file name)");
+  });
+  it("defaults the directory to the first input's parent, else a clear placeholder", () => {
+    expect(outputPreview(job({ state: "ready", inputs: ["/a/b/c"] }), DEFAULT_OPTIONS).dir).toBe("/a/b");
+    expect(outputPreview(job({ state: "ready", inputs: ["bare"] }), DEFAULT_OPTIONS).dir).toBe(
+      "(beside the input)",
+    );
   });
 });
 

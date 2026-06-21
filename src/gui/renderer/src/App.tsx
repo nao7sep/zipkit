@@ -27,7 +27,6 @@ import {
   type PaneLayout,
 } from "../../shared/layout";
 import { AboutDialog } from "./components/AboutDialog";
-import { ActivityLog } from "./components/ActivityLog";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
 import { useConfirm } from "./components/DialogHost";
@@ -35,6 +34,7 @@ import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { Pane } from "./components/Pane";
+import { ProgressLog } from "./components/ProgressLog";
 import { Report } from "./components/Report";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
@@ -44,11 +44,11 @@ import { StatusBar } from "./components/StatusBar";
 import {
   archiveName,
   COLOR,
-  containingDir,
   isEditable,
   type JobCommand,
   label,
   manifestRequiredButMissing,
+  outputPreview,
 } from "./view";
 
 type DialogName = "settings" | "shortcuts" | "about";
@@ -394,16 +394,8 @@ function JobView({
   }
 
   const editable = isEditable(job.state);
-  // The destination preview. Prefer the SDK-resolved output; fall back to what the
-  // user typed; only say "resolving" while actually planning; otherwise it is
-  // genuinely unset and the Report explains why (e.g. inputs in different folders
-  // need an explicit name). Never claim "planning" for a blocked/failed job.
-  const planning = job.state === "planning";
-  const target =
-    archiveName(job.output) || opts.fileName.trim() || (planning ? "resolving…" : "(set a file name)");
-  // Where the .zip lands: its own directory once planned, else what the user set,
-  // else the first input's parent (the beside-the-input default once a name is set).
-  const destDir = containingDir(job.output) || opts.outputDir.trim() || containingDir(job.inputs[0]);
+  // Destination preview (directory + file name), derived in one place — see view.ts.
+  const { dir: destDir, name: target } = outputPreview(job, opts);
   const jobEvents = events.filter((e) => e.jobId === job.id);
 
   return (
@@ -471,8 +463,8 @@ function JobView({
           <span style={S.destLead}>{job.state === "done" ? "Saved" : "Will save"}</span>
           <div style={S.destRow}>
             <span style={S.destKey}>in</span>
-            <span style={S.destVal} title={destDir || undefined}>
-              {destDir || "(beside the input)"}
+            <span style={S.destVal} title={destDir}>
+              {destDir}
             </span>
           </div>
           <div style={S.destRow}>
@@ -500,7 +492,7 @@ function JobView({
       {splitter}
 
       <Pane title="Progress" rootStyle={GROW} bodyStyle={S.progressBody}>
-        <ActivityLog events={jobEvents} />
+        <ProgressLog events={jobEvents} />
       </Pane>
     </>
   );
