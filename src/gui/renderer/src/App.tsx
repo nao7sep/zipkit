@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ExtractData, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
-import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
+import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_PADDING,
@@ -236,7 +236,13 @@ export function App() {
         {jobsSplitter}
 
         {selected ? (
-          <JobView key={selected.id} job={selected} events={events} splitter={progressSplitter} />
+          <JobView
+            key={selected.id}
+            job={selected}
+            defaults={defaults}
+            events={events}
+            splitter={progressSplitter}
+          />
         ) : (
           <>
             <Pane title="Archive" rootStyle={GROW}>
@@ -267,22 +273,26 @@ export function App() {
 
 function JobView({
   job,
+  defaults,
   events,
   splitter,
 }: {
   job: Job;
+  defaults: GuiOptions;
   events: GuiLogEvent[];
   splitter: ReactNode;
 }) {
-  // Keyed by job id in the parent, so this remounts per job: local option draft,
-  // the use-defaults toggle, and verify state start fresh, no manual re-sync.
+  // Keyed by job id in the parent, so this remounts per job: local option draft and
+  // verify state start fresh, no manual re-sync.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [verify, setVerify] = useState<ExtractData | null>(null);
   const confirm = useConfirm();
-  // New jobs use the shipped defaults: archiving is high-stakes and the defaults
-  // are good, so the user opts IN to customizing this job by unchecking the box.
-  const [useDefaults, setUseDefaults] = useState(true);
+  // "Use default parameters" is DERIVED from whether the job's options still equal
+  // the defaults — not a free-floating flag that could claim "defaults" while the
+  // job is actually customized. Unchecking enables editing; re-checking restores
+  // the defaults (see toggleUseDefaults).
+  const [useDefaults, setUseDefaults] = useState(() => optionsEqual(job.options, defaults));
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -313,6 +323,12 @@ function JobView({
     setOpts(next);
     clearTimeout(timer.current);
     void window.zipkit.updateJob(job.id, { options: next });
+  }
+  // Unchecking enables editing (options unchanged until the user edits); re-checking
+  // actually restores the defaults, so the box can never claim "defaults" falsely.
+  function toggleUseDefaults(checked: boolean) {
+    setUseDefaults(checked);
+    if (checked) commitOptions({ ...defaults });
   }
 
   // No confirmation here: choosing an intent only edits a parameter — nothing is
@@ -407,12 +423,12 @@ function JobView({
             header and the output-directory group inside. */}
         <div style={S.sectionHead}>
           <span style={S.sectionTitle}>Parameters</span>
-          <label style={S.lock}>
+          <label style={S.defaultsToggle}>
             <input
               type="checkbox"
               checked={useDefaults}
               disabled={!editable}
-              onChange={(e) => setUseDefaults(e.target.checked)}
+              onChange={(e) => toggleUseDefaults(e.target.checked)}
             />
             <span>Use default parameters</span>
           </label>
@@ -538,5 +554,5 @@ const S: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     color: "var(--text-2)",
   },
-  lock: { display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.85rem" },
+  defaultsToggle: { display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.85rem" },
 };

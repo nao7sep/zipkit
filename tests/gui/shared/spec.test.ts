@@ -5,7 +5,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildSpec, DEFAULT_OPTIONS, planAffectingChanged } from "../../../src/gui/shared/spec.js";
+import {
+  buildSpec,
+  DEFAULT_OPTIONS,
+  optionsEqual,
+  planAffectingChanged,
+} from "../../../src/gui/shared/spec.js";
 
 describe("buildSpec", () => {
   it("maps defaults to an inclusive policy with metadata + hashing on", () => {
@@ -73,5 +78,15 @@ describe("planAffectingChanged", () => {
   });
   it("is false when nothing changed", () => {
     expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS })).toBe(false);
+  });
+});
+
+describe("optionsEqual", () => {
+  it("is true only when every field matches (incl. the write-only ones)", () => {
+    expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS })).toBe(true);
+    expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, level: 1 })).toBe(false);
+    expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, comment: "x" })).toBe(false);
+    expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, outputDir: "/a" })).toBe(false);
+    expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, junk: false })).toBe(false);
   });
 });

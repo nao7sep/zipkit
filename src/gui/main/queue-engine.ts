@@ -70,6 +70,17 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The SDK error code for a thrown value, if it is a ZipKitError (carries both a
+ *  dot-separated `code` and an `errorType`). Returns undefined for plain/Node
+ *  errors, so a Node `code` like ENOENT is never mistaken for an SDK code. */
+function errCode(err: unknown): string | undefined {
+  if (err instanceof Error && typeof (err as { errorType?: unknown }).errorType === "string") {
+    const code = (err as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
+
 export function createQueueEngine(deps: EngineDeps): QueueEngine {
   const recs = new Map<string, Rec>();
   const order: string[] = [];
@@ -113,11 +124,19 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   async function planJob(id: string): Promise<void> {
     const rec = recs.get(id);
     if (!rec) return;
-    rec.aborter = new AbortController();
-    set(rec, { state: "planning", message: undefined });
+    // Supersede any in-flight plan for this job (rapid input/option edits can stack
+    // re-plans), then mark THIS run as the current one. A run that is no longer
+    // current discards its result, so a slow stale plan can never overwrite the
+    // newest one's state — the staleness guard `classifyInputs` already has.
+    rec.aborter?.abort();
+    const aborter = new AbortController();
+    rec.aborter = aborter;
+    const current = (): boolean => recs.get(id) === rec && rec.aborter === aborter;
+    set(rec, { state: "planning", message: undefined, errorCode: undefined });
     emit();
     try {
-      const plan = await deps.plan(rec.job.inputs, rec.job.options, rec.aborter.signal, progressFor(id));
+      const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id));
+      if (!current()) return; // a newer plan superseded this one — discard the result
       rec.plan = plan;
       set(rec, {
         output: plan.output,
@@ -134,12 +153,17 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         errors: plan.summary.errors,
       });
     } catch (err) {
+      if (!current()) return; // superseded (often via the abort above) — discard
       rec.plan = null;
-      set(rec, { state: "needs-attention", writable: false, message: errMsg(err) });
+      set(rec, { state: "needs-attention", writable: false, message: errMsg(err), errorCode: errCode(err) });
       deps.log.error("job plan failed", { jobId: id, error: errorInfo(err) });
     } finally {
-      rec.aborter = null;
-      emit();
+      // Only the current run owns the aborter and the post-plan emit; a superseded
+      // run leaves both to the newer plan it was replaced by.
+      if (current()) {
+        rec.aborter = null;
+        emit();
+      }
     }
   }
 
@@ -149,7 +173,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.aborter = new AbortController();
     const signal = rec.aborter.signal;
     const onProgress = progressFor(id);
-    set(rec, { state: "running", message: undefined });
+    set(rec, { state: "running", message: undefined, errorCode: undefined });
     emit();
     deps.log.info("job run started", { jobId: id, intent: rec.job.intent });
     try {
@@ -160,7 +184,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         rec.plan = plan;
         set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
       } catch (err) {
-        set(rec, { state: "needs-attention", writable: false, message: errMsg(err) });
+        set(rec, { state: "needs-attention", writable: false, message: errMsg(err), errorCode: errCode(err) });
         deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
         return;
       }

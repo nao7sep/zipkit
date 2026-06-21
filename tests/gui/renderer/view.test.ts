@@ -250,6 +250,25 @@ describe("reportSummary", () => {
       text: "cannot infer the output path; pass an explicit output",
     });
   });
+  it("prefers friendly guidance keyed on the SDK error code over the raw message", () => {
+    const line = reportSummary(
+      job({
+        state: "needs-attention",
+        errorCode: "output.ambiguous",
+        message: "cannot infer the output path: inputs live in different parents; pass an explicit output",
+      }),
+      null,
+    );
+    expect(line?.level).toBe("error");
+    expect(line?.text).toContain("different folders");
+    expect(line?.text).toContain("Set a file name");
+  });
+  it("falls back to the raw message for an unmapped error code", () => {
+    expect(
+      reportSummary(job({ state: "needs-attention", errorCode: "write.failed", message: "disk is full" }), null)
+        ?.text,
+    ).toBe("disk is full");
+  });
   it("returns null only while planning (nothing to report yet)", () => {
     expect(reportSummary(job({ state: "planning" }), null)).toBeNull();
   });

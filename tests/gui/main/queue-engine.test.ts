@@ -110,6 +110,25 @@ describe("queue engine", () => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
       expect(j?.message).toBe("scan boom");
+      expect(j?.errorCode).toBeUndefined(); // a plain Error carries no SDK code
+    });
+  });
+
+  it("captures the SDK error code (errorType + code) on a plan that throws", async () => {
+    const { deps } = makeDeps({
+      plan: async () => {
+        throw Object.assign(new Error("inputs live in different parents"), {
+          errorType: "policy",
+          code: "output.ambiguous",
+        });
+      },
+    });
+    const engine = createQueueEngine(deps);
+    engine.add(["/a", "/b"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => {
+      const j = engine.snapshot()[0];
+      expect(j?.state).toBe("needs-attention");
+      expect(j?.errorCode).toBe("output.ambiguous");
     });
   });
 
@@ -189,6 +208,35 @@ describe("queue engine", () => {
     engine.removeArchive(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(calls.trash).toEqual([["/tmp/out.zip"]]); // the archive was trashed
+  });
+
+  it("discards a superseded re-plan; only the newest plan's result wins", async () => {
+    // A slow, stale plan must never overwrite a newer one (rapid input/option edits
+    // stack re-plans). The first plan is held open; a second plan starts and
+    // resolves; then the first is released and must be discarded.
+    const release: Array<() => void> = [];
+    let n = 0;
+    const { deps } = makeDeps({
+      plan: (inputs) => {
+        n += 1;
+        if (n === 1) {
+          return new Promise<PlanData>((resolve) => {
+            release.push(() => resolve(planData(true, "/STALE.zip")));
+          });
+        }
+        return Promise.resolve(planData(true, "/FRESH.zip"));
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save"); // plan #1 (held open)
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } }); // plan #2 (fresh)
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.output).toBe("/FRESH.zip"));
+    release[0]!(); // release the stale plan #1 — it must NOT win
+    await tick();
+    await tick();
+    expect(engine.snapshot()[0]?.output).toBe("/FRESH.zip");
+    expect(engine.snapshot()[0]?.state).toBe("ready");
   });
 
   it("re-plans when a plan-affecting option changes", async () => {

@@ -50,6 +50,10 @@ export interface Job {
   writable?: boolean;
   /** A short status line for needs-attention / failed / done. */
   message?: string;
+  /** The SDK error code (e.g. `output.ambiguous`) when a fault produced the
+   *  current state, so the renderer can show stable, friendly guidance keyed on
+   *  the code rather than parsing `message`. Absent when there is no fault. */
+  errorCode?: string;
 }
 
 /** The resumable part of a job that survives a restart (no transient run state). */

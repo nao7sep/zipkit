@@ -100,3 +100,10 @@ const PLAN_AFFECTING: (keyof GuiOptions)[] = [
 export function planAffectingChanged(a: GuiOptions, b: GuiOptions): boolean {
   return PLAN_AFFECTING.some((k) => a[k] !== b[k]);
 }
+
+/** Whether two option states are identical across every field (all GuiOptions
+ *  fields are primitives, so `===` per field is a full comparison). Used to decide
+ *  whether a job is still on the defaults vs customized. */
+export function optionsEqual(a: GuiOptions, b: GuiOptions): boolean {
+  return (Object.keys(DEFAULT_OPTIONS) as (keyof GuiOptions)[]).every((k) => a[k] === b[k]);
+}

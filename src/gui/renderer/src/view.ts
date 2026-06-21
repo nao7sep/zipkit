@@ -194,6 +194,17 @@ function pluralItems(n: number): string {
   return `${n} item${n === 1 ? "" : "s"}`;
 }
 
+/** Plain, actionable GUI guidance for the SDK error codes a user can hit while
+ *  setting up a job, keyed on the stable `code` (never the message text). Codes
+ *  without an entry fall back to the SDK's own message — accurate, if terser. */
+const ERROR_GUIDANCE: Record<string, string> = {
+  "output.ambiguous":
+    "These inputs are in different folders, so ZipKit can't choose a location on its own. Set a file name (the output directory defaults to the first input's folder) and they'll be archived together.",
+  "scan.input-missing": "An input no longer exists on disk. Remove it from the list or restore it, then try again.",
+  "scan.stat-failed": "An input couldn't be read — it may be locked or permission-protected. Check it, then try again.",
+  "scan.walk-failed": "A folder couldn't be fully read (a permission or I/O problem). Check it, then try again.",
+};
+
 /** The report's headline sentence: context-aware, factual, and never the vague
  *  "Windows-safe" claim. Speaks to the job's actual state — failed, done, blocked,
  *  or ready (with what the archive will carry / what was auto-handled). */
@@ -203,8 +214,11 @@ export function reportSummary(job: Job, plan: PlanData | null): ReportLine | nul
   }
   // A blocked job must ALWAYS explain itself, even when the plan threw and left no
   // structured data (plan === null) — the captured message is the only explanation
-  // the user gets, so never swallow it.
+  // the user gets, so never swallow it. Prefer friendly guidance keyed on the SDK
+  // error code; fall back to the structured count, then the raw message.
   if (job.state === "needs-attention") {
+    const guidance = job.errorCode ? ERROR_GUIDANCE[job.errorCode] : undefined;
+    if (guidance) return { level: "error", text: guidance };
     if (plan) {
       const n = plan.summary.errors;
       return {
@@ -263,7 +277,7 @@ export function planReport(plan: PlanData): ReportLine[] {
  *  user-facing = local time, ISO-ish, English). The event's `time` is the SDK's
  *  internal UTC ISO form; this renders it in the viewer's local zone. Falls back
  *  to the raw value if it cannot be parsed. */
-export function formatLocalTime(iso: string): string {
+function formatLocalTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const p = (n: number): string => String(n).padStart(2, "0");
