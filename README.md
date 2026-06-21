@@ -28,7 +28,7 @@ The desktop app (in development) runs with `npm install` then `npm run dev`, or 
 
 ## Scope
 
-Creates clean, portable archives from a source tree and reads them back — extraction, plus validation (CRC always, and against the embedded manifest, completeness and SHA-256). **Out of scope:** repairing or re-writing existing archives, encryption, compression methods beyond Store and Deflate, and split or multi-volume archives.
+**Out of scope:** repairing or re-writing existing archives, encryption, compression methods beyond Store and Deflate, and split or multi-volume archives. (What it *does* cover is the abstract above — said once.)
 
 ## License
 

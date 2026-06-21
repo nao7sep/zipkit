@@ -210,6 +210,117 @@ describe("queue engine", () => {
     expect(calls.trash).toEqual([["/tmp/out.zip"]]); // the archive was trashed
   });
 
+  it("removeArchive can clean up a FAILED job whose archive was written (verify failed)", async () => {
+    // archive-and-trash that wrote the .zip then failed verify: the file exists and
+    // the originals are kept, so the user may remove that partial archive.
+    const { deps, calls } = makeDeps({ verify: async () => false });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(engine.snapshot()[0]?.output).toBe("/tmp/out.zip"); // the .zip was written
+    expect(calls.trash).toEqual([]); // verify failed before any trash
+    engine.removeArchive(id);
+    await vi.waitFor(() => expect(calls.trash).toEqual([["/tmp/out.zip"]])); // archive removed
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready")); // back to editable
+  });
+
+  it("restore reloads saved jobs and plans each fresh to ready", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    engine.restore([
+      { id: "j1", inputs: ["/a"], options: DEFAULT_OPTIONS, intent: "save" },
+      { id: "j2", inputs: ["/b"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" },
+    ]);
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    expect(engine.snapshot().map((j) => j.id)).toEqual(["j1", "j2"]);
+    expect(calls.plan).toBe(2); // each restored job is re-planned
+  });
+
+  it("cancel aborts an in-flight write — the job fails, not silently hangs", async () => {
+    const { deps } = makeDeps({
+      write: (_plan, signal) =>
+        new Promise<number>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running"));
+    engine.cancel(id);
+    await vi.waitFor(() => {
+      const j = engine.snapshot()[0];
+      expect(j?.state).toBe("failed");
+      expect(j?.message).toContain("write failed");
+    });
+  });
+
+  it("archive-and-trash refuses to Trash when the archive is inside the source", async () => {
+    const { deps, calls } = makeDeps({ plan: async (inputs) => planData(true, `${inputs[0]}/out.zip`) });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => {
+      const j = engine.snapshot()[0];
+      expect(j?.state).toBe("failed");
+      expect(j?.message).toContain("inside the source");
+    });
+    expect(calls.trash).toEqual([]); // originals untouched
+  });
+
+  it("trashOriginals refuses when the archive sits inside an input (no self-deletion)", async () => {
+    const { deps, calls } = makeDeps({ plan: async (inputs) => planData(true, `${inputs[0]}/out.zip`) });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    engine.trashOriginals(id);
+    await tick();
+    expect(calls.trash).toEqual([]); // refused — never trashed
+    expect(engine.snapshot()[0]?.message).toContain("inside an original");
+  });
+
+  it("trashOriginals surfaces a Trash failure instead of claiming success", async () => {
+    const { deps } = makeDeps({
+      trash: async () => {
+        throw new Error("trash boom");
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    engine.trashOriginals(id);
+    await vi.waitFor(() =>
+      expect(engine.snapshot()[0]?.message).toContain("could not move the originals"),
+    );
+    expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
+  });
+
+  it("removeArchive surfaces a Trash failure and leaves the job done", async () => {
+    const { deps } = makeDeps({
+      trash: async () => {
+        throw new Error("nope");
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    engine.removeArchive(id);
+    await vi.waitFor(() =>
+      expect(engine.snapshot()[0]?.message).toContain("could not remove the archive"),
+    );
+    expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
+  });
+
   it("discards a superseded re-plan; only the newest plan's result wins", async () => {
     // A slow, stale plan must never overwrite a newer one (rapid input/option edits
     // stack re-plans). The first plan is held open; a second plan starts and

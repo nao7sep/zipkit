@@ -29,14 +29,18 @@ process.on("unhandledRejection", (reason) => {
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 1100,
-    height: 720,
+    // Opening size: comfortable for the default layout — the dense center Archive
+    // pane (inputs + the options grid + operation + report all stack here) gets
+    // ~550px wide and the body ~710px tall, so the common case opens roomy without
+    // a huge window. The user can resize/drag from here; nothing is persisted.
+    width: 1200,
+    height: 780,
     // Content-based minimum, DERIVED from the pane minimums + fixed chrome in
     // shared/layout.ts (window-chrome convention) — never a hand-typed literal,
     // so the window can never be shrunk below the panes' real minimums and
     // truncate content. minWidth reserves both side columns + the center Archive
-    // minimum + splitters + body padding; minHeight reserves the header, a body
-    // minimum, and the status bar.
+    // minimum + splitters + body padding; minHeight reserves the header and a
+    // usable body below it.
     minWidth: minWindowWidth(),
     minHeight: minWindowHeight(),
     // Must mirror the renderer's --bg token (index.css). The main process can't

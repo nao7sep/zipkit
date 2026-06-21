@@ -11,7 +11,15 @@
 
 import type { CSSProperties } from "react";
 import type { ExtractData, Job, PlanData } from "../../../shared/api";
-import { planReport, reportSummary, severityColor, severityLabel, verifySummary, type ReportLine } from "../view";
+import {
+  jobAdvisories,
+  planReport,
+  reportSummary,
+  severityColor,
+  severityLabel,
+  verifySummary,
+  type ReportLine,
+} from "../view";
 
 export function Report({
   job,
@@ -23,9 +31,13 @@ export function Report({
   verify: ExtractData | null;
 }) {
   const summary = reportSummary(job, plan);
+  // GUI advisories about the inputs (e.g. re-zipping a .zip) lead the log — they
+  // are relevant before any plan exists, so they keep the report from reading
+  // "No report yet" when there's genuinely something to say.
+  const advisories = jobAdvisories(job);
   const lines = plan ? planReport(plan) : [];
 
-  if (!plan && !summary) return <p style={S.muted}>No report yet.</p>;
+  if (!plan && !summary && advisories.length === 0) return <p style={S.muted}>No report yet.</p>;
 
   const verifyLines: ReportLine[] = verify
     ? [
@@ -51,8 +63,11 @@ export function Report({
       {plan && lines.length === 0 && plan.writable && (
         <p style={S.note}>Everything is clean — nothing needed fixing.</p>
       )}
-      {(lines.length > 0 || verifyLines.length > 0) && (
+      {(advisories.length > 0 || lines.length > 0 || verifyLines.length > 0) && (
         <ul style={S.log}>
+          {advisories.map((line, i) => (
+            <LogRow key={`a${i}`} line={line} />
+          ))}
           {lines.map((line, i) => (
             <LogRow key={`f${i}`} line={line} />
           ))}

@@ -325,7 +325,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     removeArchive(id) {
       const rec = recs.get(id);
-      if (!rec || rec.job.state !== "done" || rec.job.intent !== "save" || !rec.job.output) return;
+      if (!rec || !rec.job.output) return;
+      // Removable only when trashing the .zip cannot lose data: a done `save` job
+      // (originals always kept), or a `failed` job whose write succeeded but a
+      // later step failed (archive-and-trash keeps the originals on any failure).
+      // A done archive-and-trash is NOT removable — its originals are already gone.
+      const removable =
+        (rec.job.state === "done" && rec.job.intent === "save") || rec.job.state === "failed";
+      if (!removable) return;
       const output = rec.job.output;
       deps.log.info("remove archive requested", { jobId: id, output });
       void (async () => {

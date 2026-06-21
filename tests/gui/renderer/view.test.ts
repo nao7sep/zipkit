@@ -15,6 +15,7 @@ import {
   isTerminal,
   jobCommands,
   label,
+  jobAdvisories,
   manifestRequiredButMissing,
   orderedEntries,
   originalsPresent,
@@ -301,6 +302,31 @@ describe("reportSummary", () => {
   });
 });
 
+describe("jobAdvisories", () => {
+  it("warns when the lone input is already a .zip file", () => {
+    const j = job({ inputs: ["/x/foo.zip"], entries: [{ path: "/x/foo.zip", kind: "file" }] });
+    const lines = jobAdvisories(j);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.level).toBe("warning");
+    expect(lines[0]!.text).toContain("already a .zip");
+  });
+  it("does not warn for a directory, a non-zip file, or multiple inputs", () => {
+    expect(jobAdvisories(job({ inputs: ["/x/foo.zip"], entries: [{ path: "/x/foo.zip", kind: "directory" }] }))).toEqual([]);
+    expect(jobAdvisories(job({ inputs: ["/x/notes.txt"], entries: [{ path: "/x/notes.txt", kind: "file" }] }))).toEqual([]);
+    expect(
+      jobAdvisories(
+        job({
+          inputs: ["/x/a.zip", "/x/b.zip"],
+          entries: [
+            { path: "/x/a.zip", kind: "file" },
+            { path: "/x/b.zip", kind: "file" },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe("planReport", () => {
   it("renders findings as severity-tagged lines, most-severe first, with renames showing the new name", () => {
     const plan = {
@@ -355,8 +381,15 @@ describe("jobCommands", () => {
     expect(jobCommands(job({ state: "planning" }))).toEqual(["cancel"]);
     expect(jobCommands(job({ state: "running" }))).toEqual(["cancel"]);
   });
-  it("offers retry on failure", () => {
+  it("offers only retry on a failure with no output (write failed)", () => {
     expect(jobCommands(job({ state: "failed" }))).toEqual(["retry"]);
+  });
+  it("offers reveal + remove-archive on a failure whose output exists", () => {
+    expect(jobCommands(job({ state: "failed", output: "/out/x.zip" }))).toEqual([
+      "retry",
+      "reveal",
+      "remove-archive",
+    ]);
   });
   it("on done, offers remove-archive (and trash-originals last) only for the save intent", () => {
     // With originals still present (entries with a file), a save job offers both;

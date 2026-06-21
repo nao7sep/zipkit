@@ -158,7 +158,11 @@ export function jobCommands(job: Job): JobCommand[] {
     case "running":
       return ["cancel"];
     case "failed":
-      return ["retry"];
+      // If the archive was written but a later step failed (an archive-and-trash
+      // whose verify/Trash failed, so the .zip exists and the originals are kept),
+      // let the user inspect or clean up that file — not just retry. A plain write
+      // failure leaves no output, so it offers only "Try again".
+      return job.output ? ["retry", "reveal", "remove-archive"] : ["retry"];
     case "done":
       if (job.intent !== "save") return ["verify", "reveal"];
       // A saved archive: verify/reveal it, remove the archive to edit and
@@ -243,6 +247,23 @@ export function reportSummary(job: Job, plan: PlanData | null): ReportLine | nul
     level: s.warnings > 0 ? "warning" : "info",
     text: `${pluralItems(s.included)} ready to archive${tail}.`,
   };
+}
+
+/** GUI-side advisories about the inputs themselves — guidance the SDK doesn't
+ *  emit (it isn't an archive fault, just advice). Currently: a lone `.zip` input
+ *  gains little from re-compression and would only nest. Shown in the Report so
+ *  the user sees it before creating. */
+export function jobAdvisories(job: Job): ReportLine[] {
+  const lines: ReportLine[] = [];
+  const onlyInput = job.inputs.length === 1 ? job.inputs[0] : undefined;
+  const isFile = job.entries?.[0]?.kind === "file";
+  if (onlyInput && isFile && /\.zip$/i.test(onlyInput)) {
+    lines.push({
+      level: "warning",
+      text: "This input is already a .zip — re-compressing it saves little and just nests a zip inside a zip. Archive its contents instead, or give the output a different name.",
+    });
+  }
+  return lines;
 }
 
 /** A finding as a human sentence; a rename also shows the new name (what we did). */

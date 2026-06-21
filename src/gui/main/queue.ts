@@ -25,9 +25,9 @@ const engine = createQueueEngine({
   // (absolute, or empty so the SDK infers beside the input — never resolved
   // against the unpredictable working directory). The engine supplies a
   // job-tagging `onProgress`, so progress reaches the right job's Progress stream.
-  plan: (inputs, options, signal, onProgress) => {
+  plan: async (inputs, options, signal, onProgress) => {
     const spec = buildSpec(inputs, options);
-    const output = resolveOutputPath(options.outputDir, options.fileName, inputs);
+    const output = await resolveOutputPath(options.outputDir, options.fileName, inputs);
     if (output) spec.output = output;
     return zip.plan(spec, { signal, onProgress });
   },

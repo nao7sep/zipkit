@@ -7,7 +7,8 @@
  */
 
 export interface ShortcutItem {
-  /** The key combination, spelled out (no glyphs): "Cmd/Ctrl+,", "Up / Down". */
+  /** The key combination, spelled out — names not glyphs, and symbol keys as words
+   *  ("Cmd/Ctrl+Comma", not "Cmd/Ctrl+,"). "/" is only an "either key" separator. */
   keys: string;
   description: string;
 }
@@ -17,23 +18,30 @@ export interface ShortcutGroup {
   items: ShortcutItem[];
 }
 
+// Grouped semantically and ordered general → navigate → act; within "navigate",
+// by increasing scope (one step → ends → page → by name).
 export const SHORTCUTS: ShortcutGroup[] = [
   {
-    title: "App",
+    title: "General",
     items: [
-      { keys: "Cmd/Ctrl+,", description: "Open Settings" },
-      { keys: "Cmd/Ctrl+/", description: "Show keyboard shortcuts" },
+      { keys: "Cmd/Ctrl+Comma", description: "Open Settings" },
+      { keys: "Cmd/Ctrl+Slash", description: "Show keyboard shortcuts" },
     ],
   },
   {
-    title: "Job queue",
+    title: "Move around the job list",
     items: [
-      { keys: "Up / Down", description: "Move the selection" },
-      { keys: "Home / End", description: "First / last job" },
-      { keys: "PageUp / PageDown", description: "Move by a page" },
+      { keys: "Up / Down", description: "Select the previous / next job" },
+      { keys: "Home / End", description: "Select the first / last job" },
+      { keys: "Page Up / Page Down", description: "Jump up / down a page" },
       { keys: "Type a name", description: "Jump to a matching job" },
-      { keys: "Delete", description: "Remove the selected job" },
-      { keys: "Esc", description: "Cancel a planning or running job" },
+    ],
+  },
+  {
+    title: "Act on the selected job",
+    items: [
+      { keys: "Delete", description: "Remove the job from the queue" },
+      { keys: "Escape", description: "Cancel a planning or running job" },
     ],
   },
 ];

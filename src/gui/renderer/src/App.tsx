@@ -1,7 +1,7 @@
 /**
- * The queue screen: a bottom-bordered header (title + hamburger menu), a body of
- * three rounded panes split by drag handles (the side widths persist), and a
- * status bar. Left, the job list (Add). Middle, the selected job's everything in
+ * The queue screen: a bottom-bordered header (title + hamburger menu) and a body
+ * of three rounded panes split by drag handles (the side widths persist). Left,
+ * the job list (Add). Middle, the selected job's everything in
  * one scrollable pane, titled with the job's input inventory and a state pill:
  * its Inputs (add/remove without rebuilding the job), its Parameters (the archive
  * knobs + an output-directory group, gated by a "use default parameters" toggle),
@@ -40,7 +40,6 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Splitter } from "./components/Splitter";
 import { StateBadge } from "./components/StateBadge";
-import { StatusBar } from "./components/StatusBar";
 import {
   archiveName,
   COLOR,
@@ -255,8 +254,6 @@ export function App() {
           </>
         )}
       </div>
-
-      <StatusBar />
 
       {dialog === "settings" && (
         <SettingsDialog

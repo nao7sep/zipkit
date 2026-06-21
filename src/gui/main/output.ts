@@ -13,11 +13,15 @@
  * (and `~/`) is expanded to the home directory, the convention's expansion for a
  * user-supplied path, so `~/Desktop/out.zip` is a valid absolute output.
  *
- * This lives in the main process, not in the Node-free shared `spec.ts`: the
- * renderer typechecks `shared/` without `@types/node`, so the path/home logic
- * cannot live there.
+ * The default NAME (when the user set an output directory but no file name)
+ * mirrors the SDK's beside-the-input inference: a directory keeps its name, a file
+ * drops its extension (`strategy.md` → `strategy.zip`). Knowing which it is is the
+ * one impure edge — `resolveOutputPath` stats the input; the rest is the pure
+ * `composeOutputPath`. This lives in the main process, not the Node-free shared
+ * `spec.ts`: the renderer typechecks `shared/` without `@types/node`.
  */
 
+import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -33,26 +37,44 @@ function withZipExtension(name: string): string {
 }
 
 /**
- * Compose the SDK's output path from the GUI's output **directory** and **file
- * name**, given the job's inputs. Both empty → "" so the SDK infers the archive
- * beside the input (cwd-independent, since inputs are absolute). When only one is
- * set, the other defaults from the first input: the directory to the input's
- * parent, the name to the input's basename + `.zip` (the SDK's beside-the-input
- * form for a single input). The directory must resolve to an absolute path.
+ * The default archive name for an auto-named single input, mirroring the SDK's
+ * beside-the-input inference (`sdk/scan/output.ts`): a DIRECTORY keeps its
+ * (possibly dotted) name; a FILE drops its extension (`strategy.md` → `strategy`).
+ * An input already named `*.zip` keeps its full name (→ `foo.zip.zip`) so the
+ * archive never collides with the very input it archives — re-zipping a `.zip` is
+ * separately surfaced as a report advisory, not silently overwritten.
+ */
+function defaultName(base: string, isDir: boolean): string {
+  if (isDir) return withZipExtension(base);
+  if (/\.zip$/i.test(base)) return `${base}.zip`; // foo.zip → foo.zip.zip (no self-collision)
+  const ext = path.extname(base);
+  const stem = ext ? base.slice(0, -ext.length) : base;
+  return `${stem}.zip`;
+}
+
+/**
+ * Pure composition given whether the first input is a directory. Both empty → ""
+ * so the SDK infers beside the input. Otherwise each side defaults from the first
+ * input: the directory to its parent, the name via {@link defaultName}. The
+ * directory must resolve to an absolute path.
  *
  * @throws Error when a typed directory is non-empty but not absolute (after `~`
- *   expansion) — never resolved against `process.cwd()`, whose value a
- *   double-clicked desktop app cannot rely on. The queue engine surfaces it as
- *   the job's message.
+ *   expansion) — never resolved against `process.cwd()`. The engine surfaces it.
  */
-export function resolveOutputPath(outputDir: string, fileName: string, inputs: string[]): string {
+export function composeOutputPath(
+  outputDir: string,
+  fileName: string,
+  inputs: string[],
+  firstIsDir: boolean,
+): string {
   const dir = outputDir.trim();
   const name = fileName.trim();
   if (dir === "" && name === "") return ""; // let the SDK infer beside the input
 
   const first = inputs[0];
   const baseDir = dir === "" ? (first ? path.dirname(first) : "") : expandHome(dir);
-  const baseName = name === "" ? (first ? `${path.basename(first)}.zip` : "") : withZipExtension(name);
+  const baseName =
+    name === "" ? (first ? defaultName(path.basename(first), firstIsDir) : "") : withZipExtension(name);
   if (baseDir === "" || baseName === "") return "";
 
   if (!path.isAbsolute(baseDir)) {
@@ -61,4 +83,29 @@ export function resolveOutputPath(outputDir: string, fileName: string, inputs: s
     );
   }
   return path.join(baseDir, baseName);
+}
+
+/** Whether a path is a directory on disk; false (treat as a file) if it cannot be
+ *  stat'd, so a vanished input still composes a name rather than throwing here. */
+async function isDirectory(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the output path. Stats the first input ONLY when a default name must be
+ * inferred (a directory keeps its name, a file drops its extension) — the single
+ * impure edge over the pure {@link composeOutputPath}.
+ */
+export async function resolveOutputPath(
+  outputDir: string,
+  fileName: string,
+  inputs: string[],
+): Promise<string> {
+  const needsDefaultName = fileName.trim() === "" && outputDir.trim() !== "" && inputs.length > 0;
+  const firstIsDir = needsDefaultName ? await isDirectory(inputs[0]!) : false;
+  return composeOutputPath(outputDir, fileName, inputs, firstIsDir);
 }

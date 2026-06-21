@@ -24,7 +24,6 @@ import {
   minWindowHeight,
   minWindowWidth,
   SPLITTER_WIDTH,
-  STATUS_BAR_MIN_HEIGHT,
   BODY_MIN_HEIGHT,
 } from "../../../src/gui/shared/layout.js";
 
@@ -46,10 +45,8 @@ describe("derived window minimum", () => {
     );
   });
 
-  it("minWindowHeight is exactly header + body + status bar (chrome accounted for)", () => {
-    expect(minWindowHeight()).toBe(HEADER_MIN_HEIGHT + BODY_MIN_HEIGHT + STATUS_BAR_MIN_HEIGHT);
-    // The reserved status bar is a real term — its slot is never overlapped.
-    expect(minWindowHeight()).toBeGreaterThan(HEADER_MIN_HEIGHT + BODY_MIN_HEIGHT);
+  it("minWindowHeight is exactly header + body (the stacked fixed chrome)", () => {
+    expect(minWindowHeight()).toBe(HEADER_MIN_HEIGHT + BODY_MIN_HEIGHT);
   });
 });
 

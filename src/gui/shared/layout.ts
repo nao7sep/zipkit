@@ -7,9 +7,9 @@
  *
  * SINGLE SOURCE OF TRUTH FOR SIZING. The pane minimums declared here
  * (`LAYOUT_BOUNDS.*.min`, `ARCHIVE_MIN_WIDTH`) plus the fixed chrome sizes
- * (`SPLITTER_WIDTH`, `BODY_PADDING`, `HEADER_MIN_HEIGHT`, `BODY_MIN_HEIGHT`,
- * `STATUS_BAR_MIN_HEIGHT`) are the only place those numbers live. The window's
- * minimum size is DERIVED from them by `minWindowWidth`/`minWindowHeight` (used
+ * (`SPLITTER_WIDTH`, `BODY_PADDING`, `HEADER_MIN_HEIGHT`, `BODY_MIN_HEIGHT`) are
+ * the only place those numbers live. The window's minimum size is DERIVED from
+ * them by `minWindowWidth`/`minWindowHeight` (used
  * by the main process) and the body grid's center track / splitter widths are
  * derived from them in the renderer — never a hand-typed window minimum that
  * could drift out of sync with the panes and silently truncate content.
@@ -47,14 +47,9 @@ export const BODY_PADDING = 10;
 
 /** Fixed chrome heights, mirrored from the components so the derived window
  *  minimum reserves them: the header bar (AppHeader, minHeight 3rem worth at the
- *  app's 14px base ≈ 42px shown here as its rounded px), a usable body minimum,
- *  and the status bar (StatusBar, minHeight 1.75rem ≈ 28px). The status bar is a
- *  reserved placeholder whose content is a separate task, but its slot is fixed
- *  chrome and must be accounted for so it is never overlapped when the window
- *  shrinks. */
+ *  app's 14px base ≈ 42px, rounded here) and a usable body minimum below it. */
 export const HEADER_MIN_HEIGHT = 50;
 export const BODY_MIN_HEIGHT = 360;
-export const STATUS_BAR_MIN_HEIGHT = 28;
 
 export const DEFAULT_LAYOUT: PaneLayout = { jobsWidth: 288, progressWidth: 320 };
 
@@ -75,13 +70,12 @@ export function minWindowWidth(): number {
 }
 
 /**
- * The minimum window height, DERIVED from the stacked regions: the header bar,
- * the body's own minimum, and the reserved status bar — so all three fixed-chrome
- * strips plus a usable body are always visible and the status bar is never
- * overlapped.
+ * The minimum window height, DERIVED from the stacked regions: the header bar and
+ * the body's own minimum below it, so the header and a usable body are always
+ * visible.
  */
 export function minWindowHeight(): number {
-  return HEADER_MIN_HEIGHT + BODY_MIN_HEIGHT + STATUS_BAR_MIN_HEIGHT;
+  return HEADER_MIN_HEIGHT + BODY_MIN_HEIGHT;
 }
 
 function clamp(value: number, min: number, max: number): number {
