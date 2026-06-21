@@ -8,13 +8,15 @@
  * removed — a job must archive something. Hovering a row highlights it, so on a
  * wide window it stays clear which input the far-right ✕ will remove.
  *
- * Drag tracking uses an enter/leave depth counter (so moving over child rows does
- * not flicker the highlight off) and force-resets on drop and on any window-level
- * drop/dragend — a bad drop (e.g. an unsupported item) can never strand the
- * highlight on. Processing a drop is wrapped so a throw can't strand it either.
+ * The drop area is marked by a permanent, plain border — NOT a drag-state
+ * highlight. A highlight driven by drag events can get stuck (an external drag
+ * cancelled over the window fires no drop/leave/dragend in the renderer), so there
+ * is no drag state to strand: the border is always there, the OS shows the copy
+ * cursor while dragging, and the list updating is the drop's confirmation. The
+ * window blocks accidental file-to-page navigation globally (see App). Processing a
+ * drop is wrapped so an unsupported item can't throw out of the handler.
  */
 
-import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
 import { COLOR, orderedEntries } from "../view";
@@ -45,64 +47,29 @@ export function InputList({
   onRemove: (path: string) => void;
   onDropFiles: (files: File[]) => void;
 }) {
-  const [dragOver, setDragOver] = useState(false);
-  const depth = useRef(0);
   const rows: { path: string; kind?: PathKind }[] = job.entries
     ? orderedEntries(job.entries)
     : job.inputs.map((path) => ({ path }));
   const canRemove = editable && job.inputs.length > 1;
 
-  // Backstop: any drop or drag-end anywhere ends the gesture, so the highlight
-  // can never get stuck on if our own drop/leave events don't fire.
-  useEffect(() => {
-    const reset = () => {
-      depth.current = 0;
-      setDragOver(false);
-    };
-    window.addEventListener("drop", reset);
-    window.addEventListener("dragend", reset);
-    return () => {
-      window.removeEventListener("drop", reset);
-      window.removeEventListener("dragend", reset);
-    };
-  }, []);
-
-  function onDragEnter(e: ReactDragEvent) {
-    if (!editable) return;
-    e.preventDefault();
-    depth.current += 1;
-    setDragOver(true);
-  }
   function onDragOver(e: ReactDragEvent) {
     if (!editable) return;
-    e.preventDefault();
+    e.preventDefault(); // required for the drop to fire
     e.dataTransfer.dropEffect = "copy";
-  }
-  function onDragLeave() {
-    depth.current = Math.max(0, depth.current - 1);
-    if (depth.current === 0) setDragOver(false);
   }
   function onDrop(e: ReactDragEvent) {
     e.preventDefault();
-    depth.current = 0;
-    setDragOver(false);
     if (!editable) return;
     try {
       const files = Array.from(e.dataTransfer.files);
       if (files.length > 0) onDropFiles(files);
     } catch {
-      // A bad/unsupported drop must never strand the UI; the highlight is already off.
+      // An unsupported item must never throw out of the handler.
     }
   }
 
   return (
-    <div
-      style={{ ...S.zone, ...(dragOver ? S.zoneActive : null) }}
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
+    <div style={S.zone} onDragOver={onDragOver} onDrop={onDrop}>
       <div style={S.head}>
         <span style={S.title}>Inputs</span>
         <button onClick={onAdd} disabled={!editable}>
@@ -133,18 +100,15 @@ export function InputList({
 }
 
 const S: Record<string, CSSProperties> = {
-  // The whole inputs block is the drop zone; padding gives the drag highlight
-  // (fill + ring) room to breathe so it never crowds the header or the rows. The
-  // negative side margins pull the zone out to the pane edges so the content still
-  // lines up with the sections below it.
+  // The whole inputs block is the drop zone, marked by a permanent, plain border
+  // (no drag-state highlight that could get stuck). An inset box with comfortable
+  // padding so it reads as "the inputs / drop here" area.
   zone: {
-    border: "1px dashed transparent",
+    border: "1px solid var(--border)",
     borderRadius: 8,
     padding: "0.6rem",
-    margin: "-0.3rem -0.6rem 0.6rem",
-    transition: "background 80ms, border-color 80ms",
+    margin: "0 0 0.75rem",
   },
-  zoneActive: { borderColor: "var(--accent)", background: "var(--surface-2)" },
   head: {
     display: "flex",
     alignItems: "center",

@@ -107,6 +107,20 @@ export function App() {
     [],
   );
 
+  // Block the renderer's default file-drop behavior window-wide: without this, a
+  // file dropped anywhere OUTSIDE the inputs drop zone makes Chromium navigate the
+  // window to that file:// URL — replacing the whole app. The inputs zone's own
+  // onDrop still runs (and adds the file); every other drop is just swallowed.
+  useEffect(() => {
+    const prevent = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", prevent);
+    window.addEventListener("drop", prevent);
+    return () => {
+      window.removeEventListener("dragover", prevent);
+      window.removeEventListener("drop", prevent);
+    };
+  }, []);
+
   // Cmd/Ctrl+, opens Settings; Cmd/Ctrl+/ opens Shortcuts (modal-dialog
   // conventions). Suppressed while any modal is open and inert during IME composition.
   useEffect(() => {
@@ -364,10 +378,16 @@ function JobView({
   }
 
   const editable = isEditable(job.state);
-  const target = archiveName(job.output) || "(planning…)";
-  // Where the .zip lands: its own directory once planned, else the input's parent
-  // (the SDK's beside-the-input default), so the checkpoint reads immediately.
-  const destDir = containingDir(job.output) || containingDir(job.inputs[0]);
+  // The destination preview. Prefer the SDK-resolved output; fall back to what the
+  // user typed; only say "resolving" while actually planning; otherwise it is
+  // genuinely unset and the Report explains why (e.g. inputs in different folders
+  // need an explicit name). Never claim "planning" for a blocked/failed job.
+  const planning = job.state === "planning";
+  const target =
+    archiveName(job.output) || opts.fileName.trim() || (planning ? "resolving…" : "(set a file name)");
+  // Where the .zip lands: its own directory once planned, else what the user set,
+  // else the first input's parent (the beside-the-input default once a name is set).
+  const destDir = containingDir(job.output) || opts.outputDir.trim() || containingDir(job.inputs[0]);
   const jobEvents = events.filter((e) => e.jobId === job.id);
 
   return (
@@ -428,18 +448,23 @@ function JobView({
             </select>
           </label>
         </div>
-        {/* The final checkpoint: a small lead-in labels it as information (not a
-            control), then the full output directory, a spaced "/" marking the UI
-            seam, then the resolved .zip name — both at file-name weight. */}
-        <div style={S.pathLabel}>{job.state === "done" ? "Saved to" : "Saves to"}</div>
-        <div style={S.pathPreview}>
-          <span style={S.pathPart} title={destDir || undefined}>
-            {destDir || "(beside the input)"}
-          </span>
-          <span style={S.pathSep}>/</span>
-          <span style={S.pathPart} title={target}>
-            {target}
-          </span>
+        {/* The destination checkpoint above Create. "Where" (directory) and "what
+            name" (file name) are still separate concerns here, so they are shown as
+            two labeled lines, never joined into one finalized path. */}
+        <div style={S.dest}>
+          <span style={S.destLead}>{job.state === "done" ? "Saved" : "Will save"}</span>
+          <div style={S.destRow}>
+            <span style={S.destKey}>in</span>
+            <span style={S.destVal} title={destDir || undefined}>
+              {destDir || "(beside the input)"}
+            </span>
+          </div>
+          <div style={S.destRow}>
+            <span style={S.destKey}>as</span>
+            <span style={S.destVal} title={target}>
+              {target}
+            </span>
+          </div>
         </div>
         {manifestRequiredButMissing(job.intent, opts.metadata) && (
           <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>
@@ -479,22 +504,15 @@ const S: Record<string, CSSProperties> = {
   listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
   progressBody: { display: "flex", flexDirection: "column", padding: "0.6rem", overflow: "hidden" },
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
-  // The output checkpoint above Create: a small caption ("Saves to"), then the
-  // full directory, a spaced "/" UI seam, then the .zip name. Both parts at
-  // file-name weight; the path wraps (a checkpoint must show the whole thing,
-  // never truncate it away). No box — emphasized text, not a framed field. It is
-  // selectable (so a curious click can copy it) but carries no click action.
-  pathLabel: { color: "var(--text-2)", fontSize: "0.85rem", margin: "0.85rem 0 0.15rem" },
-  pathPreview: {
-    display: "flex",
-    alignItems: "baseline",
-    flexWrap: "wrap",
-    gap: "0.25rem 0.5rem",
-    margin: "0 0 0.25rem",
-    userSelect: "text",
-  },
-  pathPart: { fontSize: "1rem", fontWeight: 700, wordBreak: "break-all", minWidth: 0 },
-  pathSep: { fontSize: "1.35rem", fontWeight: 700, color: "var(--text-2)", padding: "0 0.25rem" },
+  // The destination checkpoint above Create: a "Will save" lead, then "in <dir>"
+  // and "as <name>" on their own lines so where and what-name read as the two
+  // separate concerns they still are. Plain text (no box); values selectable and
+  // wrapping so the whole path/name is always visible.
+  dest: { display: "grid", gap: "0.25rem", margin: "0.85rem 0 0.25rem", userSelect: "text" },
+  destLead: { color: "var(--text-2)", fontSize: "0.85rem" },
+  destRow: { display: "flex", gap: "0.6rem", alignItems: "baseline", minWidth: 0 },
+  destKey: { color: "var(--text-2)", fontSize: "0.85rem", width: "1.75rem", flexShrink: 0, textAlign: "right" },
+  destVal: { flex: 1, minWidth: 0, fontSize: "0.95rem", fontWeight: 600, wordBreak: "break-all" },
   opsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",

@@ -201,17 +201,23 @@ export function reportSummary(job: Job, plan: PlanData | null): ReportLine | nul
   if (job.state === "failed") {
     return { level: "error", text: job.message ?? "The archive could not be created." };
   }
-  if (!plan) return null;
+  // A blocked job must ALWAYS explain itself, even when the plan threw and left no
+  // structured data (plan === null) — the captured message is the only explanation
+  // the user gets, so never swallow it.
+  if (job.state === "needs-attention") {
+    if (plan) {
+      const n = plan.summary.errors;
+      return {
+        level: "error",
+        text: `${n} blocking issue${n === 1 ? "" : "s"} must be resolved before this can be archived.`,
+      };
+    }
+    return { level: "error", text: job.message ?? "This job can't be archived yet." };
+  }
+  if (!plan) return null; // planning — nothing to report yet
   const s = plan.summary;
   if (job.state === "done") {
     return { level: "info", text: `Archived ${pluralItems(s.included)}.` };
-  }
-  if (!plan.writable) {
-    const n = s.errors;
-    return {
-      level: "error",
-      text: `${n} blocking issue${n === 1 ? "" : "s"} must be resolved before this can be archived.`,
-    };
   }
   const extras: string[] = [];
   if (s.renamed > 0) extras.push(`${s.renamed} renamed for portability`);

@@ -237,7 +237,20 @@ describe("reportSummary", () => {
       text: "5 items ready to archive (2 renamed for portability, 1 excluded, 1 warning).",
     });
   });
-  it("returns null before a plan exists (non-failed)", () => {
+  it("surfaces a blocked job's message even when the plan threw (no structured plan)", () => {
+    // Regression: a plan that throws (e.g. inputs in different folders) leaves
+    // plan === null; the captured error must still reach the user, never be swallowed.
+    expect(
+      reportSummary(
+        job({ state: "needs-attention", message: "cannot infer the output path; pass an explicit output" }),
+        null,
+      ),
+    ).toEqual({
+      level: "error",
+      text: "cannot infer the output path; pass an explicit output",
+    });
+  });
+  it("returns null only while planning (nothing to report yet)", () => {
     expect(reportSummary(job({ state: "planning" }), null)).toBeNull();
   });
 });
