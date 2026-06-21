@@ -357,6 +357,23 @@ function JobView({
     switch (c) {
       case "create":
       case "retry":
+        // Confirm only when running this job also moves the user's data: an
+        // archive-and-trash job writes + verifies, then moves the originals to
+        // the Trash, and the button ("Create archive") doesn't say so — the
+        // intent is a separate dropdown. A plain "save" run touches nothing
+        // irreversible, so it runs straight away.
+        if (job.intent === "archive-and-trash") {
+          const n = job.inputs.length;
+          const ok = await confirm({
+            title: "Create archive and move originals to Trash?",
+            message: `The archive will be created and verified, then the ${n} original ${
+              n === 1 ? "item" : "items"
+            } will be moved to the Trash. The originals are moved only after the archive verifies.`,
+            confirmLabel: "Create and move to Trash",
+            danger: true,
+          });
+          if (!ok) break;
+        }
         void window.zipkit.runJob(job.id);
         break;
       case "cancel":
@@ -385,7 +402,18 @@ function JobView({
           void window.zipkit.trashOriginals(job.id);
         break;
       case "remove-archive":
-        void window.zipkit.removeArchive(job.id);
+        // Deletes the user's archive (to the Trash), so confirm explicitly. The
+        // inputs are untouched, so the job stays and can create the archive again.
+        if (
+          await confirm({
+            title: "Move this archive to the Trash?",
+            message:
+              "The archive file for this job will be moved to the Trash. Your original files and directories are kept, so you can create the archive again.",
+            confirmLabel: "Move to Trash",
+            danger: true,
+          })
+        )
+          void window.zipkit.removeArchive(job.id);
         break;
     }
   }
