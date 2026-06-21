@@ -13,7 +13,7 @@
  * commit); the pane widths live in a separate layout store.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ExtractData, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../../shared/spec";
@@ -22,6 +22,7 @@ import {
   BODY_PADDING,
   DEFAULT_LAYOUT,
   SPLITTER_WIDTH,
+  clampLayout,
   clampLayoutToWidth,
   type PaneLayout,
 } from "../../shared/layout";
@@ -60,42 +61,45 @@ export function App() {
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
   const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
-  // The persisted side-column widths; the middle Archive column flexes to fill.
-  const [layout, setLayout] = useState<PaneLayout>(DEFAULT_LAYOUT);
-  const layoutRef = useRef(layout);
-  layoutRef.current = layout;
-  const dragBase = useRef<PaneLayout>(layout);
-  // The live body width, kept current by a ResizeObserver, so every clamp (drag,
-  // resize, persisted load) is width-aware and the center Archive pane can never
-  // be squeezed below its minimum.
+  // The user's INTENT side-column widths, in pixels: the widths the user dragged
+  // to. This is the ONLY layout state that is persisted, and it changes ONLY on a
+  // splitter drag — never on a window resize. The middle Archive column flexes to
+  // fill. The displayed widths are derived from this (see `displayed` below); a
+  // window-shrink narrows what's shown without ever touching the stored intent, so
+  // re-growing the window returns the panes to exactly the intended widths.
+  const [intent, setIntent] = useState<PaneLayout>(DEFAULT_LAYOUT);
+  const intentRef = useRef(intent);
+  intentRef.current = intent;
+  const dragBase = useRef<PaneLayout>(intent);
+  // The live body width, kept current by a ResizeObserver. Ephemeral display state
+  // only: it drives the width-aware clamp of the displayed widths and is NEVER
+  // persisted, so resizing the window leaves the saved layout untouched.
   const bodyRef = useRef<HTMLDivElement>(null);
-  const bodyWidthRef = useRef<number>(0);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
 
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
     void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
     void window.zipkit.getSettings().then(setDefaults); // persisted defaults for new jobs
-    // Persisted pane widths: clamp against the live body width on load so a file
-    // saved on a wider window can't open with the center pane already squeezed.
-    void window.zipkit
-      .getLayout()
-      .then((loaded) => setLayout(clampLayoutToWidth(loaded, bodyWidthRef.current)));
+    // Persisted pane widths ARE the intent. Display-time clamping against the live
+    // body width (below) keeps the center pane usable on a smaller window without
+    // mutating the intent. (A stale fr value from the old conversion reads as tiny
+    // px → clampLayout floors it to the column minimum, which is acceptable.)
+    void window.zipkit.getLayout().then((loaded) => setIntent(clampLayout(loaded)));
     return unsubscribe;
   }, []);
 
-  // Keep the body width current and re-clamp the panes whenever the window (and
-  // thus the body) resizes — widening one side then shrinking the window must
-  // never push the center Archive pane below its minimum.
+  // Track the live body width so the displayed widths can be clamped against it.
+  // The observer updates ONLY the ephemeral container width — it does not write to
+  // or persist the intent. The displayed panes are recomputed in `displayed`.
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? el.clientWidth;
-      bodyWidthRef.current = width;
-      setLayout((prev) => clampLayoutToWidth(prev, width));
+      setContainerWidth(entries[0]?.contentRect.width ?? el.clientWidth);
     });
     observer.observe(el);
-    bodyWidthRef.current = el.clientWidth;
+    setContainerWidth(el.clientWidth);
     return () => observer.disconnect();
   }, []);
   useEffect(
@@ -141,37 +145,41 @@ export function App() {
     setSelectedId(id);
   }
 
-  const persistLayout = () => void window.zipkit.setLayout(layoutRef.current);
+  // The persisted value is the INTENT — and persistence happens ONLY here, in the
+  // drag-release handler, never on a window resize.
+  const persistLayout = () => void window.zipkit.setLayout(intentRef.current);
   // The Jobs|Archive handle: drag right widens Jobs. The Archive|Progress handle
   // (rendered inside the middle column) drags right to widen Archive (narrow
-  // Progress). Both clamp into bounds and persist on release.
+  // Progress). A drag sets the user's intent (clamped only into the per-column
+  // bounds — the live width-aware clamp is applied for DISPLAY, not stored), and
+  // persists it on release.
   const jobsSplitter = (
     <Splitter
-      onDragStart={() => (dragBase.current = layoutRef.current)}
+      onDragStart={() => (dragBase.current = intentRef.current)}
       onDragDelta={(dx) =>
-        setLayout(
-          clampLayoutToWidth(
-            { ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx },
-            bodyWidthRef.current,
-          ),
-        )
+        setIntent(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
       }
       onDragEnd={persistLayout}
     />
   );
   const progressSplitter = (
     <Splitter
-      onDragStart={() => (dragBase.current = layoutRef.current)}
+      onDragStart={() => (dragBase.current = intentRef.current)}
       onDragDelta={(dx) =>
-        setLayout(
-          clampLayoutToWidth(
-            { ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx },
-            bodyWidthRef.current,
-          ),
+        setIntent(
+          clampLayout({ ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx }),
         )
       }
       onDragEnd={persistLayout}
     />
+  );
+
+  // The DISPLAYED widths fed to the grid: the intent clamped to the live body
+  // width, so a window-shrink narrows the panes toward their minimums while a
+  // window-grow returns them to the intent. Display-only — never persisted.
+  const displayed = useMemo(
+    () => clampLayoutToWidth(intent, containerWidth),
+    [intent, containerWidth],
   );
 
   // Five tracks: Jobs | handle | Archive (flex) | handle | Progress. The center
@@ -181,7 +189,7 @@ export function App() {
   const bodyStyle: CSSProperties = {
     ...S.body,
     padding: BODY_PADDING,
-    gridTemplateColumns: `${layout.jobsWidth}px ${SPLITTER_WIDTH}px minmax(${ARCHIVE_MIN_WIDTH}px, 1fr) ${SPLITTER_WIDTH}px ${layout.progressWidth}px`,
+    gridTemplateColumns: `${displayed.jobsWidth}px ${SPLITTER_WIDTH}px minmax(${ARCHIVE_MIN_WIDTH}px, 1fr) ${SPLITTER_WIDTH}px ${displayed.progressWidth}px`,
   };
 
   return (

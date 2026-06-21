@@ -1,10 +1,12 @@
 /**
  * Tests for the pure window/pane sizing in shared/layout.ts — the single source
  * of truth from which the window minimum is derived (window-chrome convention).
- * Pins three things: the derived-minimum invariant (the window min equals the
+ * Pins four things: the derived-minimum invariant (the window min equals the
  * summed pane minimums + chrome, a literal guard so a magic number can't creep
- * back in), the width-aware clamp (the center Archive pane keeps its minimum
- * across a width sweep and a drag stops before crossing it), and a CSS-text guard
+ * back in), the width-aware clamp as the intent→display map (the center Archive
+ * pane keeps its minimum across a width sweep and a drag stops before crossing
+ * it), the intent invariant (clamping for display is pure — it returns a new
+ * layout and never mutates the stored intent it was given), and a CSS-text guard
  * that index.css carries the global scroll-bar styling alongside color-scheme.
  */
 
@@ -111,6 +113,27 @@ describe("clampLayoutToWidth", () => {
   it("falls back to the bounds clamp when the width is not finite", () => {
     const out = clampLayoutToWidth(DEFAULT_LAYOUT, Number.NaN);
     expect(out).toEqual(DEFAULT_LAYOUT);
+  });
+
+  it("maps intent to display without mutating the stored intent", () => {
+    // The renderer keeps the user's drag widths as the persisted INTENT and feeds
+    // the display grid clampLayoutToWidth(intent, containerWidth). That map must be
+    // pure: clamping for a narrow window narrows what's shown but leaves the intent
+    // object untouched, so re-growing the window returns the panes to the intent.
+    const intent = { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max };
+    const snapshot = { ...intent };
+
+    // Display on a too-narrow window: shown widths collapse toward the minimums…
+    const small = clampLayoutToWidth(intent, minWindowWidth());
+    expect(small.jobsWidth).toBe(LAYOUT_BOUNDS.jobsWidth.min);
+    expect(small.progressWidth).toBe(LAYOUT_BOUNDS.progressWidth.min);
+    expect(small).not.toBe(intent); // a fresh object, not the intent itself
+    expect(intent).toEqual(snapshot); // …but the intent is unchanged
+
+    // …and a wide-enough window shows the full intent again.
+    const wide = clampLayoutToWidth(intent, minWindowWidth() + 1000);
+    expect(wide).toEqual(snapshot);
+    expect(intent).toEqual(snapshot);
   });
 });
 

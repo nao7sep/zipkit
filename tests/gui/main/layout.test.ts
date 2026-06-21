@@ -10,6 +10,7 @@ import { parseLayout, serializeLayout } from "../../../src/gui/main/layout.js";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_PADDING,
+  clampLayoutToWidth,
   DEFAULT_LAYOUT,
   LAYOUT_BOUNDS,
   minWindowWidth,
@@ -79,5 +80,29 @@ describe("serializeLayout", () => {
       jobsWidth: LAYOUT_BOUNDS.jobsWidth.min,
       progressWidth: LAYOUT_BOUNDS.progressWidth.max,
     });
+  });
+});
+
+describe("persists the intent, not the resize-clamped display", () => {
+  it("stores the user's drag widths verbatim, even when a narrow window would clamp the display", () => {
+    // The renderer persists the INTENT (the dragged widths) and only ever clamps
+    // for DISPLAY against the live body width. So a wide intent saved on a big
+    // window must survive in the file as-is — NOT collapsed to what a later, smaller
+    // window would show. This pins that the persistence boundary stores the intent.
+    const intent = { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max };
+
+    // What a shrunk window would DISPLAY (the clamped widths) — must NOT be persisted.
+    const clampedForDisplay = clampLayoutToWidth(intent, minWindowWidth());
+    expect(clampedForDisplay).not.toEqual(intent); // the display really is narrowed
+
+    // Persisting the intent (drag value) and reading it back yields the intent,
+    // never the resize-clamped display.
+    const restored = parseLayout(serializeLayout(intent));
+    expect(restored).toEqual(intent);
+    expect(restored).not.toEqual(clampedForDisplay);
+
+    // And reopening on a small window re-derives the same narrowed display from the
+    // preserved intent — maximizing later returns to the full intent.
+    expect(clampLayoutToWidth(restored, minWindowWidth())).toEqual(clampedForDisplay);
   });
 });
