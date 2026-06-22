@@ -1,8 +1,8 @@
 # ZipKit
 
-ZipKit is a cross-platform **ZIP archiver and portability linter/fixer** — a TypeScript SDK with a desktop app built on it. It produces archives that are clean across platforms: one made on macOS carries nothing a Windows user will trip over, and the reverse. And it reads them back — `extract` verifies an archive's CRC integrity (and, against an embedded manifest, its completeness and per-file content identity), then unpacks it.
+ZipKit is a cross-platform **ZIP archiver and portability linter/fixer** — a TypeScript SDK with a desktop app built on it, for developers who hand off ZIP archives across macOS and Windows and need them to arrive clean. It produces archives that carry nothing a recipient on another OS will trip over, and it reads them back — `extract` verifies an archive's CRC integrity (and, against an embedded manifest, its completeness and per-file content identity), then unpacks it.
 
-The compression is the small part; the value is the **portability checks and the policy** that decides each one — NFD-decomposed names, Windows-illegal characters, reserved device names, OS junk files, Unix-only attributes, unknown extra fields — each fixed, warned, or made a hard build-failing error per your settings. It's SDK-first: the planning core is pure (a dry run is faithful to the real write by construction), and the desktop app is a thin wrapper over it.
+The compression is the small part; the value is the **portability checks and the policy** that decides each one — NFD-decomposed names, Windows-illegal characters, reserved device names, OS junk files, Unix-only attributes, unknown extra fields — each fixed, warned, or made a hard build-failing error per your settings. It's SDK-first: the planning core is pure (a dry run is faithful to the real write by construction), and the desktop app is a thin wrapper over it. Out of scope: repairing existing archives, encryption, compression methods beyond Store and Deflate, and split/multi-volume archives. The project is pre-release (0.x).
 
 ## Requirements
 
@@ -25,10 +25,6 @@ if (plan.writable) await zip.write(plan); // or: zip.create({ inputs, output })
 Run it with `npx tsx your-script.ts`; `import "zipkit"` resolves to the TypeScript source, so there's no build to keep in sync.
 
 The desktop app (in development) runs with `npm install` then `npm run dev`, or the `scripts/run-dev.*` launchers.
-
-## Scope
-
-**Out of scope:** repairing or re-writing existing archives, encryption, compression methods beyond Store and Deflate, and split or multi-volume archives. (What it *does* cover is the abstract above — said once.)
 
 ## License
 

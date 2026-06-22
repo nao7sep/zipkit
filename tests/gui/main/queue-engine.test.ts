@@ -207,6 +207,79 @@ describe("queue engine", () => {
     expect(writes).toBe(1); // only A ever wrote
   });
 
+  it("ignores update() on a queued job, so it can't be silently re-armed to a new intent", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let writes = 0;
+    const { deps, calls } = makeDeps({
+      write: async () => {
+        writes++;
+        if (writes === 1) await gate;
+        return 1;
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    engine.run(a);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running"));
+    engine.run(b);
+    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("queued"));
+    // Flipping a queued job's intent must be a no-op: a queued job is committed to
+    // run, and a store-only edit would otherwise leave it queued and auto-run later
+    // under the new (destructive) intent.
+    engine.update(b, { intent: "archive-and-trash" });
+    expect(engine.snapshot()[1]?.intent).toBe("save");
+    release();
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
+    expect(calls.trash).toEqual([]); // B ran as a plain save — nothing trashed
+  });
+
+  it("honors a run requested while the job is still (re)planning, once the plan lands ready", async () => {
+    let releasePlan!: () => void;
+    const planGate = new Promise<void>((r) => (releasePlan = r));
+    let plans = 0;
+    const { deps, calls } = makeDeps({
+      plan: async (inputs) => {
+        plans++;
+        if (plans === 1) await planGate; // hold the add-time plan open
+        return planData(inputs[0] !== "bad");
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
+    engine.run(id); // requested mid-plan — must be deferred, not dropped
+    await tick();
+    expect(engine.snapshot()[0]?.state).toBe("planning"); // still waiting on the plan
+    releasePlan();
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done")); // ran once it became ready
+    expect(calls.write).toBe(1);
+  });
+
+  it("drops a run requested mid-plan if the plan lands not-writable (no write)", async () => {
+    let releasePlan!: () => void;
+    const planGate = new Promise<void>((r) => (releasePlan = r));
+    let plans = 0;
+    const { deps, calls } = makeDeps({
+      plan: async () => {
+        plans++;
+        if (plans === 1) await planGate;
+        return planData(false); // not writable
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
+    engine.run(id);
+    releasePlan();
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    await tick();
+    expect(engine.snapshot()[0]?.state).toBe("needs-attention"); // stale request dropped
+    expect(calls.write).toBe(0);
+  });
+
   it("isolates a failing write — the other requested jobs still run", async () => {
     let n = 0;
     const { deps } = makeDeps({

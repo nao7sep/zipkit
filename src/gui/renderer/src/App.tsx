@@ -13,7 +13,7 @@
  * commit); the pane widths live in a separate layout store.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ExtractData, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
 import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions } from "../../shared/spec";
@@ -82,8 +82,10 @@ export function App() {
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
   // when Add creates a job (focus/selection policy: Add pulls focus to its result).
-  // The listbox clears it via onFocusPulled once the focus lands.
+  // The listbox clears it via onFocusPulled once the focus lands. The clear is
+  // stable (useCallback) so the listbox's focus effect re-runs only on real changes.
   const [pullFocusId, setPullFocusId] = useState<string | null>(null);
+  const clearPullFocus = useCallback(() => setPullFocusId(null), []);
   // App-level confirm for the run accelerator (the button path uses JobView's).
   const confirm = useConfirm();
   // The user's INTENT side-column widths, in pixels: the widths the user dragged
@@ -286,7 +288,7 @@ export function App() {
             jobs={jobsNewestFirst}
             selectedId={selectedId}
             pullFocusId={pullFocusId}
-            onFocusPulled={() => setPullFocusId(null)}
+            onFocusPulled={clearPullFocus}
             onSelect={setSelectedId}
             onRemove={(id) => void window.zipkit.removeJob(id)}
             onCancel={(id) => void window.zipkit.cancelJob(id)}

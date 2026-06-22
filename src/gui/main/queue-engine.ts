@@ -163,6 +163,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       if (current()) {
         rec.aborter = null;
         emit();
+        // If a run was requested while this plan was in flight, act on it now.
+        maybeRunPending(id);
       }
     }
   }
@@ -266,6 +268,33 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     }
   }
 
+  /** Start a run now, or — if another job is mid-run — mark it `queued` and let the
+   *  drain pick it up in turn (so the wait is visible, not a silent `ready`). The
+   *  caller has already placed the id in `pending`. */
+  function startOrQueue(rec: Rec): void {
+    if (draining) {
+      set(rec, { state: "queued", message: undefined, errorCode: undefined });
+      emit();
+    }
+    void drain();
+  }
+
+  /** Honor a run that was requested while the job was still (re)planning: once the
+   *  plan lands, run it if it became runnable, else drop the now-stale request.
+   *  Called from planJob's tail. Without this, a run requested during the brief
+   *  re-plan a field edit triggers (e.g. committing a file name, then Create) would
+   *  be dropped by `run`'s state guard and silently do nothing. */
+  function maybeRunPending(id: string): void {
+    const rec = recs.get(id);
+    if (!rec || !pending.includes(id)) return;
+    if (rec.job.state === "ready" || rec.job.state === "failed") {
+      startOrQueue(rec);
+    } else {
+      const p = pending.indexOf(id);
+      if (p >= 0) pending.splice(p, 1);
+    }
+  }
+
   return {
     snapshot,
     add(inputs, options, intent) {
@@ -280,7 +309,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     update(id, patch) {
       const rec = recs.get(id);
-      if (!rec || rec.job.state === "running") return;
+      // No edits to a job that is committed to run: `running` (in flight) or
+      // `queued` (waiting its turn). Editing a queued job must go through cancel
+      // first (which un-queues + re-plans) — otherwise a store-only edit (e.g. an
+      // intent flip) would leave it queued and auto-run later under the new intent.
+      if (!rec || rec.job.state === "running" || rec.job.state === "queued") return;
       let replan = false;
       if (patch.intent !== undefined) {
         set(rec, { intent: patch.intent });
@@ -343,19 +376,16 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     run(id) {
       const rec = recs.get(id);
       if (!rec) return;
-      if (rec.job.state !== "ready" && rec.job.state !== "failed") return;
+      const s = rec.job.state;
+      // Accept a request for a runnable job (ready / retryable) or one still
+      // (re)planning — the latter is honored when its plan lands (maybeRunPending),
+      // which keeps "edit a field, then Create" from being dropped mid-re-plan.
+      if (s !== "ready" && s !== "failed" && s !== "planning") return;
       if (!pending.includes(id)) pending.push(id);
-      deps.log.info("job run requested", { jobId: id, state: rec.job.state });
-      // If another job is mid-run (draining), this one waits its turn — mark it
-      // `queued` so the wait is visible, instead of leaving it indistinguishable
-      // from an idle `ready` job. When the engine is idle, `drain()` below picks it
-      // up synchronously and `runJob` flips it straight to `running`, so an
-      // immediately-started job never flickers through `queued`.
-      if (draining) {
-        set(rec, { state: "queued", message: undefined, errorCode: undefined });
-        emit();
-      }
-      void drain();
+      deps.log.info("job run requested", { jobId: id, state: s });
+      // A planning job waits for its plan; only a runnable one starts (or queues
+      // behind a running job, so the wait is visible rather than a silent `ready`).
+      if (s !== "planning") startOrQueue(rec);
     },
     removeArchive(id) {
       const rec = recs.get(id);

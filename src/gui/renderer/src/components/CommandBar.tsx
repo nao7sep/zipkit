@@ -36,40 +36,42 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
   // buttons, so a Trash/Remove click is deliberate, not a slip.
   const firstDanger = commands.findIndex((c) => CLASS[c] === "danger");
 
-  // Focus follows the workflow (focus/selection policy). When the user activates a
-  // command whose button then unmounts because the job advanced (Create -> the
-  // job is running, Remove archive -> back to ready), the browser would drop focus
-  // to <body>. Instead, pull it to the bar's new primary action so keyboard focus
-  // is never stranded. Commands that leave the set unchanged (Verify, Reveal) keep
-  // focus on the same button. The activation is remembered in a ref so it survives
-  // the confirm dialog that some commands raise (focus enters/leaves the dialog in
-  // between). A no-op activation (e.g. a cancelled confirm) is cleared once focus
-  // settles back in the bar, so it can never steal focus later.
+  // Focus follows the workflow (focus/selection policy). When a button the user was
+  // on unmounts because the job advanced (Create -> running, Remove archive -> back
+  // through planning to ready), the browser drops focus to <body>. We act only when
+  // the command SET changes AND focus has fallen to the body — i.e. exactly when a
+  // button just unmounted from under focus — and pull it to the bar's new primary
+  // (falling back to the bar itself when the job is blocked and shows only a hint).
+  // Two properties make this robust where the obvious approaches break:
+  //  - It triggers on the set change, not on a prior render, so it works for a
+  //    keyboard user who tabbed to a button (no render happened while focused).
+  //  - It refocuses ONLY from <body>, so it never yanks focus out of a dialog or
+  //    another pane, and it naturally survives the confirm dialog + Radix's
+  //    focus-restore (the steal would only happen on the later running transition,
+  //    where focus is genuinely on the body). It chains across the intermediate
+  //    states one action passes through, each being its own set change.
+  // The cmdKey-value compare (not a run counter) keeps it correct under StrictMode's
+  // double-invoked effects and skips the initial mount, so selecting a job never
+  // grabs focus.
   const barRef = useRef<HTMLDivElement>(null);
-  const activated = useRef<JobCommand | null>(null);
+  const cmdKey = commands.join("|");
+  const prevKey = useRef<string | null>(null);
   useLayoutEffect(() => {
-    const c = activated.current;
-    if (!c) return;
+    const changed = prevKey.current !== null && prevKey.current !== cmdKey;
+    prevKey.current = cmdKey;
+    if (!changed) return;
     const bar = barRef.current;
     if (!bar) return;
-    if (commands.includes(c)) {
-      // The activated button still exists; if focus has settled back onto it (or
-      // anywhere in the bar) the action resolved with focus intact — done.
-      if (bar.contains(document.activeElement)) activated.current = null;
-      return;
+    const active = document.activeElement;
+    if (active === null || active === document.body) {
+      (bar.querySelector<HTMLButtonElement>("button") ?? bar).focus();
     }
-    // The activated button is gone: move focus to the new primary action.
-    activated.current = null;
-    bar.querySelector<HTMLButtonElement>("button")?.focus();
-  });
-
-  function activate(c: JobCommand) {
-    activated.current = c;
-    onCommand(c);
-  }
+  }, [cmdKey]);
 
   return (
-    <div ref={barRef} style={S.bar}>
+    // tabIndex -1 so the bar itself can hold focus as a last resort (a blocked job
+    // shows only a hint with no button to land on); it never becomes a tab stop.
+    <div ref={barRef} tabIndex={-1} style={S.bar}>
       {commands.length === 0 ? (
         <span style={S.hint}>{job.message ?? "Resolve the blocking issues to create this archive."}</span>
       ) : (
@@ -78,7 +80,7 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
             key={c}
             className={CLASS[c]}
             style={i === firstDanger ? S.pushRight : undefined}
-            onClick={() => activate(c)}
+            onClick={() => onCommand(c)}
           >
             {LABEL[c]}
           </button>

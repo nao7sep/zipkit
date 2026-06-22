@@ -8,7 +8,7 @@ import type { AppInfo, VerifyResult } from "../shared/api.js";
 import type { GuiOptions } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import { errorInfo } from "./log.js";
-import { log, sendEvent, toGuiError, zip } from "./runtime.js";
+import { getMainWindow, log, sendEvent, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { loadLayout, saveLayout } from "./layout.js";
 import { isHttpUrl } from "./url.js";
@@ -38,20 +38,32 @@ export function registerIpc(): void {
   });
 
   ipcMain.handle("zipkit:chooseInputs", async (): Promise<string[]> => {
-    const result = await dialog.showOpenDialog({
-      title: "Choose directories or files to archive",
-      properties: ["openDirectory", "openFile", "multiSelections"],
-    });
+    const owner = getMainWindow();
+    const result = owner
+      ? await dialog.showOpenDialog(owner, {
+          title: "Choose directories or files to archive",
+          properties: ["openDirectory", "openFile", "multiSelections"],
+        })
+      : await dialog.showOpenDialog({
+          title: "Choose directories or files to archive",
+          properties: ["openDirectory", "openFile", "multiSelections"],
+        });
     const chosen = result.canceled ? [] : result.filePaths;
     log.info("inputs chosen", { count: chosen.length });
     return chosen;
   });
 
   ipcMain.handle("zipkit:chooseOutputDir", async (): Promise<string> => {
-    const result = await dialog.showOpenDialog({
-      title: "Choose the output directory",
-      properties: ["openDirectory", "createDirectory"],
-    });
+    const owner = getMainWindow();
+    const result = owner
+      ? await dialog.showOpenDialog(owner, {
+          title: "Choose the output directory",
+          properties: ["openDirectory", "createDirectory"],
+        })
+      : await dialog.showOpenDialog({
+          title: "Choose the output directory",
+          properties: ["openDirectory", "createDirectory"],
+        });
     const dir = result.canceled || result.filePaths.length === 0 ? "" : result.filePaths[0]!;
     log.info("output directory chosen", { chosen: dir !== "" });
     return dir;

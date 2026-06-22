@@ -20,6 +20,9 @@ let win: BrowserWindow | null = null;
 export function setMainWindow(w: BrowserWindow): void {
   win = w;
 }
+export function getMainWindow(): BrowserWindow | null {
+  return win;
+}
 
 /** Forward one job-tagged progress event to the renderer's Progress stream. */
 export function sendEvent(event: GuiLogEvent): void {

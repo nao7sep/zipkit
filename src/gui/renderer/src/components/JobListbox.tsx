@@ -70,8 +70,15 @@ export function JobListbox({
     if (!pullFocusId) return;
     const el = optionEl(listRef.current, pullFocusId);
     if (!el) return; // row not in the DOM yet — re-runs when `jobs` brings it in
-    el.focus();
-    el.scrollIntoView({ block: "nearest" });
+    // Guard the rare race where the row renders a tick after Add and the user has
+    // meanwhile started typing in a field: don't yank focus out of it. Abandon the
+    // (now-stale) request instead of stealing.
+    const active = document.activeElement as HTMLElement | null;
+    const typing = !!active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+    if (!typing) {
+      el.focus();
+      el.scrollIntoView({ block: "nearest" });
+    }
     onFocusPulled();
   }, [pullFocusId, jobs, onFocusPulled]);
 
