@@ -12,6 +12,7 @@
 import { app, BrowserWindow, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
+import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
 import { errorInfo } from "./log.js";
@@ -60,6 +61,15 @@ function createWindow(): void {
 
   setMainWindow(win);
   log.info("main window created");
+
+  // Navigation guard (defense-in-depth alongside the CSP): the SPA stays on its
+  // own origin and opens no child windows, so deny every renderer-initiated
+  // window open and prevent any navigation that would leave the loaded origin.
+  // Same-origin navigation (reloads / in-app routing) is left to proceed.
+  win.webContents.setWindowOpenHandler(windowOpenHandler);
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!isSameOrigin(win.webContents.getURL(), url)) event.preventDefault();
+  });
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) {
