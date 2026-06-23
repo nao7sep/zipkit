@@ -29,6 +29,7 @@ import {
 import { AboutDialog } from "./components/AboutDialog";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
+import { isComposing } from "./composition";
 import { useConfirm, type ConfirmOptions } from "./components/DialogHost";
 import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
@@ -155,7 +156,7 @@ export function App() {
   // modal is open and inert during IME composition (text-input-and-IME conventions).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.isComposing) return;
+      if (isComposing(e)) return;
       if (!(e.metaKey || e.ctrlKey)) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (e.key === ",") {
