@@ -5,7 +5,7 @@ set -euo pipefail
 # and launch that bundle. Slow — run this after changing source. The build runs
 # the production type checks and re-bundles from clean, so type, import, CSP, and
 # packaged-layout errors that run-dev hides surface here; packaging then gives the
-# app its own bundle identity (correct dock/menu name and icon). run-built is the
+# app its own bundle identity (correct dock/menu name). run-built is the
 # fast, no-build launcher for everything after this.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
