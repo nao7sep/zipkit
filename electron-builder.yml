@@ -13,12 +13,25 @@ files:
   - out/**
   - "!**/*.map"
 
+# Tahoe "Liquid Glass" icon: ship the pre-compiled asset catalog (committed in
+# company/assets, deployed here by the liquid-glass-icon tool) into Contents/Resources.
+# macOS 26 reads CFBundleIconName below → this catalog; older macOS falls back to
+# CFBundleIconFile → build/icon.icns (mac.icon). Building does NOT need Xcode — the
+# Assets.car is prebuilt; only re-generating the icon does.
+extraResources:
+  - from: build/Assets.car
+    to: Assets.car
+
 mac:
   category: public.app-category.utilities
+  icon: build/icon.icns
+  extendInfo:
+    CFBundleIconName: zipper-z-olive
   target:
     - dmg
     - zip
 
 win:
+  icon: build/icon.ico
   target:
     - nsis
