@@ -15,12 +15,27 @@
  */
 
 import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity } from "../../sdk/types.js";
-import type { GuiOptions } from "./spec.js";
+import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
 import type { PaneLayout } from "./layout.js";
 
 /** The `mode:"plan"` payload — the dry run shown in a job's detail. */
 export type PlanData = Extract<CreateData, { mode: "plan" }>;
+
+/** The host OS, as a portable literal union — mirrors `process.platform` without
+ *  pulling Node's `NodeJS` namespace into the renderer program. */
+export type GuiPlatform =
+  | "aix"
+  | "android"
+  | "darwin"
+  | "freebsd"
+  | "haiku"
+  | "linux"
+  | "openbsd"
+  | "sunos"
+  | "win32"
+  | "cygwin"
+  | "netbsd";
 
 export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity };
 export type { PaneLayout };
@@ -51,11 +66,14 @@ export interface ZipKitGuiApi {
   chooseOutputDir(): Promise<string>;
   /** The absolute path for a drag-dropped File (Electron's webUtils route). */
   pathForFile(file: File): string;
+  /** The host OS platform (`process.platform`), so the renderer can show the
+   *  running platform's modifier word — "Cmd" on macOS, "Ctrl" elsewhere. */
+  platform: GuiPlatform;
 
-  /** The persisted defaults for new jobs (the built-in defaults if none saved). */
-  getSettings(): Promise<GuiOptions>;
-  /** Persist the defaults for new jobs (best-effort; never rejects). */
-  setSettings(defaults: GuiOptions): Promise<void>;
+  /** The persisted GUI settings — new-job defaults plus the UI font (built-in defaults if none saved). */
+  getSettings(): Promise<GuiSettings>;
+  /** Persist the GUI settings (best-effort; never rejects). */
+  setSettings(settings: GuiSettings): Promise<void>;
 
   /** The persisted pane layout (the default layout if none saved). */
   getLayout(): Promise<PaneLayout>;

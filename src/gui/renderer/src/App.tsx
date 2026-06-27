@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { ExtractData, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
-import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions } from "../../shared/spec";
+import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_PADDING,
@@ -79,6 +79,8 @@ export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
+  // The UI (chrome) font family. Blank = the built-in default stack (the index.css --font-ui var).
+  const [uiFontFamily, setUiFontFamily] = useState<string>("");
   const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
@@ -108,7 +110,10 @@ export function App() {
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
     void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
-    void window.zipkit.getSettings().then(setDefaults); // persisted defaults for new jobs
+    void window.zipkit.getSettings().then((s) => {
+      setDefaults(s.defaults); // persisted defaults for new jobs
+      setUiFontFamily(s.uiFontFamily);
+    });
     // Persisted pane widths ARE the intent. Display-time clamping against the live
     // body width (below) keeps the center pane usable on a smaller window without
     // mutating the intent. (A stale fr value from the old conversion reads as tiny
@@ -116,6 +121,16 @@ export function App() {
     void window.zipkit.getLayout().then((loaded) => setIntent(clampLayout(loaded)));
     return unsubscribe;
   }, []);
+
+  // Apply the configured UI font by overriding the `--font-ui` CSS variable on :root; blank reverts
+  // to the index.css default. The string is handed to CSS verbatim (system fonts only — the CSP
+  // forbids web fonts); the read-only mono log/report keep their own --font-mono.
+  useEffect(() => {
+    const family = uiFontFamily.trim();
+    const root = document.documentElement;
+    if (family) root.style.setProperty("--font-ui", family);
+    else root.style.removeProperty("--font-ui");
+  }, [uiFontFamily]);
 
   // Track the live body width so the displayed widths can be clamped against it.
   // The observer updates ONLY the ephemeral container width — it does not write to
@@ -184,8 +199,9 @@ export function App() {
 
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
-  function saveDefaults(next: GuiOptions) {
-    setDefaults(next);
+  function saveSettings(next: GuiSettings) {
+    setDefaults(next.defaults);
+    setUiFontFamily(next.uiFontFamily);
     void window.zipkit.setSettings(next);
   }
 
@@ -321,8 +337,8 @@ export function App() {
 
       {dialog === "settings" && (
         <SettingsDialog
-          defaults={defaults}
-          onSave={saveDefaults}
+          settings={{ defaults, uiFontFamily }}
+          onSave={saveSettings}
           onClose={() => setDialog(null)}
         />
       )}

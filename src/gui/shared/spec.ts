@@ -45,6 +45,21 @@ export const DEFAULT_OPTIONS: GuiOptions = {
   overwrite: false,
 };
 
+/** The persisted GUI settings: the new-job option defaults plus app-level appearance. */
+export interface GuiSettings {
+  /** Defaults applied to every new job. */
+  defaults: GuiOptions;
+  /** UI (chrome) font family. Family only; blank = the built-in default stack (the renderer's
+   *  `--font-ui` variable). System fonts only — the renderer CSP forbids web fonts (`font-src 'self'`),
+   *  and a free-text family naming installed fonts needs no `@font-face`. */
+  uiFontFamily: string;
+}
+
+export const DEFAULT_SETTINGS: GuiSettings = {
+  defaults: DEFAULT_OPTIONS,
+  uiFontFamily: "",
+};
+
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields
  *  the UI controls are set; the SDK fills the rest from its defaults. The output
  *  path is NOT set here — it is composed from `outputDir`/`fileName` in the main

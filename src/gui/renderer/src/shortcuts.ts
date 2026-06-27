@@ -7,9 +7,14 @@
  * JobListbox per the composite-control conventions. Pure data, no React/DOM.
  */
 
+import type { GuiPlatform } from "../../shared/api";
+
 export interface ShortcutItem {
-  /** The key combination, spelled out — names not glyphs, and symbol keys as words
-   *  ("Cmd/Ctrl+Comma", not "Cmd/Ctrl+,"). "/" is only an "either key" separator. */
+  /** The key combination, spelled out per the display convention — modifier words
+   *  not glyphs, symbol keys as words ("Cmd+Comma", not "Cmd+,"), full key names
+   *  ("Escape", "PageUp"). The shared modifier is the running platform's single
+   *  word ("Cmd" on macOS, "Ctrl" elsewhere). Tight "/" is an "either key"
+   *  separator; spaced " / " joins independent chords. */
   keys: string;
   description: string;
 }
@@ -19,32 +24,42 @@ export interface ShortcutGroup {
   items: ShortcutItem[];
 }
 
+/** The platform's single modifier word for display: "Cmd" on macOS, "Ctrl"
+ *  everywhere else. Never the combined "Cmd/Ctrl" in live UI. */
+export function modifierWord(platform: GuiPlatform): string {
+  return platform === "darwin" ? "Cmd" : "Ctrl";
+}
+
 // Grouped semantically and ordered general → navigate → act; within "navigate",
-// by increasing scope (one step → ends → page → by name).
-export const SHORTCUTS: ShortcutGroup[] = [
-  {
-    title: "General",
-    items: [
-      { keys: "Cmd/Ctrl+N", description: "Add a job" },
-      { keys: "Cmd/Ctrl+Comma", description: "Open Settings" },
-      { keys: "Cmd/Ctrl+Slash", description: "Show keyboard shortcuts" },
-    ],
-  },
-  {
-    title: "Move around the job list",
-    items: [
-      { keys: "Up / Down", description: "Select the previous / next job" },
-      { keys: "Home / End", description: "Select the first / last job" },
-      { keys: "Page Up / Page Down", description: "Jump up / down a page" },
-      { keys: "Type a name", description: "Jump to a matching job" },
-    ],
-  },
-  {
-    title: "Act on the selected job",
-    items: [
-      { keys: "Cmd/Ctrl+Enter", description: "Create the selected job's archive" },
-      { keys: "Delete", description: "Remove the job from the queue" },
-      { keys: "Escape", description: "Cancel a planning, queued, or running job" },
-    ],
-  },
-];
+// by increasing scope (one step → ends → page → by name). Built per-render with
+// the running platform's modifier word so the displayed accelerator matches the
+// host OS rather than showing the combined "Cmd/Ctrl".
+export function buildShortcuts(mod: string): ShortcutGroup[] {
+  return [
+    {
+      title: "General",
+      items: [
+        { keys: `${mod}+N`, description: "Add a job" },
+        { keys: `${mod}+Comma`, description: "Open Settings" },
+        { keys: `${mod}+Slash`, description: "Show keyboard shortcuts" },
+      ],
+    },
+    {
+      title: "Move around the job list",
+      items: [
+        { keys: "Up/Down", description: "Select the previous / next job" },
+        { keys: "Home/End", description: "Select the first / last job" },
+        { keys: "PageUp/PageDown", description: "Jump up / down a page" },
+        { keys: "Type a name", description: "Jump to a matching job" },
+      ],
+    },
+    {
+      title: "Act on the selected job",
+      items: [
+        { keys: `${mod}+Enter`, description: "Create the selected job's archive" },
+        { keys: "Delete", description: "Remove the job from the queue" },
+        { keys: "Escape", description: "Cancel a planning, queued, or running job" },
+      ],
+    },
+  ];
+}

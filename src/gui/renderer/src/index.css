@@ -9,6 +9,11 @@
 
 :root {
   color-scheme: dark;
+  /* Fonts. --font-ui is the UI (chrome) font: the Settings "UI font" field overrides it at runtime
+     with a verbatim family string; blank reverts to this default. System fonts only — the renderer
+     CSP forbids web fonts. --font-mono is the read-only log/report face. Family only — no UI size knob. */
+  --font-ui: system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --bg: #16170f;
   --surface: #202218;
   --surface-2: #292c20;
@@ -75,7 +80,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -177,7 +182,7 @@ input[type="checkbox"] {
 }
 
 code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
 }
 

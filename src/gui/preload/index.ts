@@ -6,7 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { GuiOptions } from "../shared/spec.js";
+import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import type { AppInfo, GuiLogEvent, Job, JobIntent, PlanData, VerifyResult, ZipKitGuiApi } from "../shared/api.js";
 
@@ -16,9 +16,12 @@ const api = {
   // The absolute path for a drag-dropped File (Electron 32+ removed File.path, so
   // this is the supported route). Synchronous, no IPC — webUtils runs in preload.
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
-  getSettings: (): Promise<GuiOptions> => ipcRenderer.invoke("zipkit:getSettings"),
-  setSettings: (defaults: GuiOptions): Promise<void> =>
-    ipcRenderer.invoke("zipkit:setSettings", defaults),
+  // The host OS, read synchronously in preload (no IPC) so the renderer can
+  // display the running platform's modifier word in the shortcuts dialog.
+  platform: process.platform,
+  getSettings: (): Promise<GuiSettings> => ipcRenderer.invoke("zipkit:getSettings"),
+  setSettings: (settings: GuiSettings): Promise<void> =>
+    ipcRenderer.invoke("zipkit:setSettings", settings),
   getLayout: (): Promise<PaneLayout> => ipcRenderer.invoke("zipkit:getLayout"),
   setLayout: (layout: PaneLayout): Promise<void> => ipcRenderer.invoke("zipkit:setLayout", layout),
   addJob: (inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string> =>

@@ -16,12 +16,17 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
-import { DEFAULT_OPTIONS, type GuiOptions } from "../../../shared/spec";
+import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../../../shared/spec";
 
 /** Two option sets are equal when every visible field matches — the draft's
  *  dirty check (flat record, so a key-wise compare is exact). */
 function optionsEqual(a: GuiOptions, b: GuiOptions): boolean {
   return (Object.keys(DEFAULT_OPTIONS) as (keyof GuiOptions)[]).every((k) => a[k] === b[k]);
+}
+
+/** Settings are equal when the option defaults and the UI font both match. */
+function settingsEqual(a: GuiSettings, b: GuiSettings): boolean {
+  return a.uiFontFamily === b.uiFontFamily && optionsEqual(a.defaults, b.defaults);
 }
 
 /** The only field that can be made invalid from the UI: the compression level. */
@@ -30,19 +35,19 @@ function isValid(o: GuiOptions): boolean {
 }
 
 export function SettingsDialog({
-  defaults,
+  settings,
   onSave,
   onClose,
 }: {
-  defaults: GuiOptions;
-  onSave: (o: GuiOptions) => void;
+  settings: GuiSettings;
+  onSave: (s: GuiSettings) => void;
   onClose: () => void;
 }) {
   const confirm = useConfirm();
-  const [draft, setDraft] = useState<GuiOptions>(defaults);
+  const [draft, setDraft] = useState<GuiSettings>(settings);
 
-  const dirty = !optionsEqual(draft, defaults);
-  const canSave = dirty && isValid(draft);
+  const dirty = !settingsEqual(draft, settings);
+  const canSave = dirty && isValid(draft.defaults);
 
   function save() {
     onSave(draft);
@@ -58,7 +63,7 @@ export function SettingsDialog({
     }
     const discard = await confirm({
       title: "Discard unsaved changes?",
-      message: "Your changes to the default options have not been saved.",
+      message: "Your changes to the settings have not been saved.",
       confirmLabel: "Discard",
       danger: true,
     });
@@ -77,7 +82,10 @@ export function SettingsDialog({
         // (flex order + auto margin); Save stays last per the conventions' order.
         <>
           <button onClick={() => void requestClose()}>Cancel</button>
-          <button style={S.restore} onClick={() => setDraft({ ...DEFAULT_OPTIONS })}>
+          <button
+            style={S.restore}
+            onClick={() => setDraft({ defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "" })}
+          >
             Restore defaults
           </button>
           <button className="accent" disabled={!canSave} onClick={save}>
@@ -86,7 +94,24 @@ export function SettingsDialog({
         </>
       }
     >
-      <OptionsPanel options={draft} onChange={setDraft} disabled={false} />
+      {/* Appearance leads: the UI (chrome) font, set apart from the per-job archive knobs below. */}
+      <label style={S.fontField}>
+        <span style={S.fontLabel}>UI font</span>
+        <input
+          value={draft.uiFontFamily}
+          placeholder="Default"
+          onChange={(e) => setDraft({ ...draft, uiFontFamily: e.target.value })}
+        />
+        <span style={S.fontHint}>
+          The app interface font. Comma-separated families; the first one your system has is used.
+          Blank uses the built-in default.
+        </span>
+      </label>
+      <OptionsPanel
+        options={draft.defaults}
+        onChange={(o) => setDraft({ ...draft, defaults: o })}
+        disabled={false}
+      />
     </ModalShell>
   );
 }
@@ -94,4 +119,7 @@ export function SettingsDialog({
 const S: Record<string, CSSProperties> = {
   // Pulled to the far left of the footer; the auto margin pushes Cancel/Save right.
   restore: { order: -1, marginRight: "auto" },
+  fontField: { display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "1rem" },
+  fontLabel: { fontWeight: 600 },
+  fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
 };

@@ -5,7 +5,7 @@
 
 import { app, dialog, ipcMain, shell } from "electron";
 import type { AppInfo, VerifyResult } from "../shared/api.js";
-import type { GuiOptions } from "../shared/spec.js";
+import type { GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log, sendEvent, toGuiError, zip } from "./runtime.js";
@@ -14,11 +14,11 @@ import { loadLayout, saveLayout } from "./layout.js";
 import { isHttpUrl } from "./url.js";
 
 export function registerIpc(): void {
-  ipcMain.handle("zipkit:getSettings", async (): Promise<GuiOptions> => loadSettings());
+  ipcMain.handle("zipkit:getSettings", async (): Promise<GuiSettings> => loadSettings());
 
-  ipcMain.handle("zipkit:setSettings", async (_event, defaults: GuiOptions): Promise<void> => {
+  ipcMain.handle("zipkit:setSettings", async (_event, settings: GuiSettings): Promise<void> => {
     try {
-      await saveSettings(defaults);
+      await saveSettings(settings);
     } catch (err) {
       // Best-effort and non-fatal: a write failure is logged to the session log,
       // never thrown back across the bridge.

@@ -8,9 +8,12 @@
 
 import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
-import { SHORTCUTS } from "../shortcuts";
+import { buildShortcuts, modifierWord } from "../shortcuts";
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  // The running platform's single modifier word ("Cmd" on macOS, "Ctrl" else),
+  // so the displayed accelerators match the host OS rather than "Cmd/Ctrl".
+  const groups = buildShortcuts(modifierWord(window.zipkit.platform));
   return (
     <ModalShell
       title="Keyboard shortcuts"
@@ -18,7 +21,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
       footer={<button onClick={onClose}>Close</button>}
     >
       <div style={S.groups}>
-        {SHORTCUTS.map((group) => (
+        {groups.map((group) => (
           <section key={group.title}>
             <div style={S.groupTitle}>{group.title}</div>
             <div style={S.card}>
