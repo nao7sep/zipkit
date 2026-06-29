@@ -7,8 +7,9 @@
  * dynamic import so the root is validated before any module that reads it runs.
  */
 
-import { app, dialog } from "electron";
+import { app } from "electron";
 import { storageRoot, StorageRootError } from "../../sdk/storage.js";
+import { notifyStartupFailure } from "./startup-dialog.js";
 
 try {
   // Resolve once at this defined startup point, after the environment is known
@@ -24,7 +25,7 @@ try {
   // then stop — the app cannot decide where to keep its files.
   process.stderr.write(`zipkit: ${message}\n`);
   app.whenReady().then(() => {
-    dialog.showErrorBox("ZipKit cannot start", message);
+    notifyStartupFailure(message);
     app.exit(1);
   });
   // Prevent the heavy bootstrap (which would re-resolve the root) from loading.
