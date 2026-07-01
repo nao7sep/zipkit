@@ -3,7 +3,7 @@
  * reopen as the user left them. The file lives at `layout.json` under zipkit's
  * storage root (`ZIPKIT_HOME` or `~/.zipkit`, resolved by the SDK's
  * {@link storageRoot}, beside the queue, settings, and logs). Kept in its own
- * file — separate from the new-job-defaults `settings.json` — because layout and
+ * file — separate from the new-job-defaults `config.json` — because layout and
  * archive defaults are unrelated concerns. Parsing is pure and defensive (clamps
  * into bounds, falls back to the default layout, never throws); file I/O is the
  * best-effort edge and its failures are logged by the caller.

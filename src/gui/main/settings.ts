@@ -1,7 +1,7 @@
 /**
  * Settings persistence: the new-job option defaults plus app-level appearance (the
  * UI font), saved so they are configured once rather than every session. The file
- * lives at `settings.json` under zipkit's storage root (`ZIPKIT_HOME` or `~/.zipkit`,
+ * lives at `config.json` under zipkit's storage root (`ZIPKIT_HOME` or `~/.zipkit`,
  * resolved in one place by the SDK's {@link storageRoot}, beside the queue and logs).
  * Parsing is pure and defensive (fills missing fields from the built-in defaults,
  * never throws) so a stale or corrupt file — or one written before a field existed —
@@ -16,9 +16,10 @@ import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../shared/sp
 
 /** The settings file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
- *  environment is set, per the storage-path convention. */
-function settingsFile(): string {
-  return path.join(storageRoot(), "settings.json");
+ *  environment is set, per the storage-path convention. Exported so tests can pin
+ *  the resolved filename against the actual derivation, not a duplicated literal. */
+export function settingsFile(): string {
+  return path.join(storageRoot(), "config.json");
 }
 
 function freshSettings(): GuiSettings {

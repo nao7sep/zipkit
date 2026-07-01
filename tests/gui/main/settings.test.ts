@@ -1,12 +1,23 @@
 /**
  * Tests for the pure settings parse/serialize: a round-trip of the option defaults
  * plus the UI font, missing fields filled from the built-in defaults, and
- * corrupt/foreign input degrading to the defaults rather than throwing. The file
- * I/O edge is not exercised here.
+ * corrupt/foreign input degrading to the defaults rather than throwing. The
+ * filename-resolution and file-I/O edges are pinned in the last block below.
  */
 
-import { describe, expect, it } from "vitest";
-import { parseSettings, serializeSettings } from "../../../src/gui/main/settings";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  loadSettings,
+  parseSettings,
+  saveSettings,
+  serializeSettings,
+  settingsFile,
+} from "../../../src/gui/main/settings";
+import { storageRoot } from "../../../src/sdk/storage.js";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 
 describe("settings", () => {
@@ -43,5 +54,55 @@ describe("settings", () => {
     expect(parseSettings(JSON.stringify({ version: 1 }))).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings(JSON.stringify({ defaults: null }))).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings(JSON.stringify({ defaults: 5 }))).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe("settings file location and persistence", () => {
+  // The durable settings live at `config.json` under the resolved storage root,
+  // beside — and distinct from — `layout.json` and `queue.json`. Relocating the
+  // root via ZIPKIT_HOME to a throwaway directory keeps the suite out of the real
+  // home dir and pins the resolved filename + atomic round-trip in one place.
+  let root: string;
+  const prev = process.env.ZIPKIT_HOME;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
+    process.env.ZIPKIT_HOME = root;
+  });
+  afterEach(async () => {
+    if (prev === undefined) delete process.env.ZIPKIT_HOME;
+    else process.env.ZIPKIT_HOME = prev;
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("resolves the durable settings to config.json under the storage root", () => {
+    expect(settingsFile()).toBe(path.join(storageRoot(), "config.json"));
+    expect(path.basename(settingsFile())).toBe("config.json");
+  });
+
+  it("stays a separate file from the layout and queue stores", () => {
+    // layout.json and queue.json are distinct roles under the same root; the
+    // settings file must never collide with either.
+    const layout = path.join(storageRoot(), "layout.json");
+    const queue = path.join(storageRoot(), "queue.json");
+    expect(settingsFile()).not.toBe(layout);
+    expect(settingsFile()).not.toBe(queue);
+    expect(path.basename(settingsFile())).not.toBe("settings.json");
+  });
+
+  it("writes and reads back the settings as config.json, leaving no temp file", async () => {
+    const settings = {
+      defaults: { ...DEFAULT_OPTIONS, level: 9 },
+      uiFontFamily: "Iosevka, monospace",
+    };
+    await saveSettings(settings);
+
+    const file = path.join(root, "config.json");
+    // The atomic write renames the temp over the target, so only the final
+    // `config.json` remains (no orphaned `.tmp`, no legacy `settings.json`).
+    expect(() => readFileSync(`${file}.tmp`, "utf8")).toThrow();
+    expect(() => readFileSync(path.join(root, "settings.json"), "utf8")).toThrow();
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(await loadSettings()).toEqual(settings);
   });
 });
