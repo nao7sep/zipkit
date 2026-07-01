@@ -27,9 +27,15 @@ mac:
   icon: build/icon.icns
   extendInfo:
     CFBundleIconName: zipper-z-olive
+  # Pin arm64 explicitly so the macOS artifact's architecture is deterministic,
+  # not inherited from whatever the build host/runner happens to be.
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
 
 win:
   icon: build/icon.ico
