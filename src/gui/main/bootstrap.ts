@@ -16,6 +16,7 @@ import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
 import { ensureSettingsFile } from "./settings.js";
+import { runBackupInBackground } from "./backup/backupService.js";
 import { errorInfo } from "./log.js";
 import { log, setMainWindow } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
@@ -106,6 +107,11 @@ app.whenReady().then(async () => {
   } catch (err) {
     log.error("failed to create config.json on first run", { error: errorInfo(err) });
   }
+  // Just-in-case data backup (data-backup conventions): fire-and-forget now that config.json is
+  // materialized, so a best-effort snapshot of `~/.zipkit/` (config.json + the resumable queue.json,
+  // minus volatile layout.json) is taken before the session dirties anything. It never blocks the
+  // window, shows an error, or throws — the service catches and logs everything itself.
+  runBackupInBackground();
   registerIpc();
   registerQueueIpc();
   createWindow();
