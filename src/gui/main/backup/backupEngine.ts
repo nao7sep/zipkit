@@ -55,8 +55,7 @@ async function runCore(now: Date): Promise<BackupReport> {
       lastWriteUtc: toIsoSeconds(item.mtimeMs),
     });
   }
-  // Index second: the archive is already in place, so a crash here just re-captures next run. The index
-  // is written 0600 (it lives in the 0700 backups dir, but owner-only on the file too costs nothing).
+  // Index second: the archive is already in place, so a crash here just re-captures next run.
   await writeFileAtomic(backupIndexPath(), `${JSON.stringify(index, null, 2)}\n`);
 
   return { nothingChanged: false, archiveFileName, filesArchived: archived.length, skips, indexWasReset };
@@ -115,7 +114,7 @@ async function writeArchive(
 
   zip.end();
   try {
-    await pipeline(zip.outputStream, createWriteStream(tempPath, { mode: 0o600 }));
+    await pipeline(zip.outputStream, createWriteStream(tempPath));
     await fs.promises.rename(tempPath, finalPath);
   } catch (err) {
     await tryDelete(tempPath);
@@ -126,20 +125,17 @@ async function writeArchive(
 
 async function ensureBackupsDir(): Promise<string> {
   const dir = backupsDir();
+  // Default modes: ZipKit stores no secrets, so the backups dir and its archives need no owner-only
+  // hardening (secrets are excluded fleet-wide; nothing sensitive can reach this mirror).
   await fs.promises.mkdir(dir, { recursive: true });
-  // Owner-only: a backup mirrors `~/.zipkit/`, so the archives must not be readable by other users even
-  // though the zip itself carries the umask default (data-backup conventions). Skipped on Windows.
-  if (process.platform !== "win32") {
-    await fs.promises.chmod(dir, 0o700);
-  }
   return dir;
 }
 
-/** Atomic write: temp file + rename, mode 0600. Mirrors the settings/queue persistence idiom, so a crash
+/** Atomic write: temp file + rename. Mirrors the settings/queue persistence idiom, so a crash
  *  mid-write cannot corrupt the index. */
 async function writeFileAtomic(file: string, contents: string): Promise<void> {
   const tmp = `${file}.tmp`;
-  await fs.promises.writeFile(tmp, contents, { mode: 0o600 });
+  await fs.promises.writeFile(tmp, contents);
   await fs.promises.rename(tmp, file);
 }
 
