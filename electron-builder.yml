@@ -41,3 +41,9 @@ win:
   icon: build/icon.ico
   target:
     - nsis
+    - zip
+
+# Clean, predictable installer filename (electron-builder's default is
+# "ZipKit Setup 0.1.0.exe", with a space). Portable zips keep their defaults.
+nsis:
+  artifactName: ${productName}-${version}-setup.${ext}

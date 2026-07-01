@@ -23,8 +23,8 @@ const EXCLUDED_DIRS = ["logs", "backups"];
 /** Fixed home-root files never captured. */
 const EXCLUDED_FILES = ["layout.json"];
 
-/** Basenames excluded anywhere in the tree (the fleet always-exclude noise files). */
-const EXCLUDED_BASENAMES = [".ds_store", "thumbs.db"];
+/** Basenames excluded anywhere in the tree (the fleet always-exclude noise files, matched lowercased). */
+const EXCLUDED_BASENAMES = [".ds_store", "thumbs.db", "desktop.ini"];
 
 function basename(path: string): string {
   const slash = path.lastIndexOf("/");
