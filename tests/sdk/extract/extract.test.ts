@@ -201,6 +201,35 @@ describe("path safety and exclusion", () => {
     ).rejects.toThrow(/escapes/i);
   });
 
+  it("refuses to extract two entries in a directory that differ only by case", async () => {
+    // A corrupt/hostile archive: `a/File.txt` and `a/file.txt` fold to one path on
+    // a case-insensitive destination and would silently clobber each other. The
+    // creation side already refuses such a pair; extraction fails loudly rather
+    // than overwriting, before anything is written.
+    const archive = await writeArchive([
+      fileEntry("a/File.txt", "one"),
+      fileEntry("a/file.txt", "two"),
+    ]);
+    const dest = path.join(dir, "out");
+    await expect(new ZipKit().extract({ archive, dest })).rejects.toThrow(/differ only by case/i);
+    // Nothing was written for the colliding pair.
+    await expect(stat(path.join(dest, "a", "File.txt"))).rejects.toThrow();
+  });
+
+  it("rejects a case-colliding archive in dry-run too (validation must match the real run)", async () => {
+    // The GUI validates input with a dry-run before extracting, so a dry-run that
+    // passes MUST guarantee the real run won't fail. A case-collision is a property
+    // of the archive itself, not of the destination — so dry-run has to reject it
+    // exactly as a real extraction does, or validation and execution would disagree.
+    const archive = await writeArchive([
+      fileEntry("a/File.txt", "one"),
+      fileEntry("a/file.txt", "two"),
+    ]);
+    await expect(new ZipKit().extract({ archive, dryRun: true })).rejects.toThrow(
+      /differ only by case/i,
+    );
+  });
+
   it("never writes through a symlink whose target escapes the destination (symlink zip-slip)", async () => {
     // The classic symlink-indirected zip-slip: a symlink entry pointing OUTSIDE
     // the destination, then a file written "through" it. concurrency:1 forces the

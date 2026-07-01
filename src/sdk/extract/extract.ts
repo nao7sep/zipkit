@@ -117,6 +117,29 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
+/**
+ * The first pair of distinct entry paths that fold together case-insensitively,
+ * or null when none collide. Mirrors the creation side's collision check
+ * (`plan/collision.ts`): case-folded paths are grouped, and a group holding two
+ * distinct paths would clobber itself on a macOS/Windows (case-insensitive)
+ * destination — so on extraction we refuse rather than let one silently
+ * overwrite the other. The check runs on the raw entry paths, before path
+ * resolution, so it holds regardless of the destination filesystem.
+ */
+function findCaseCollision(archivePaths: readonly string[]): [string, string] | null {
+  const seen = new Map<string, string>();
+  for (const p of archivePaths) {
+    const key = p.toLowerCase();
+    const prior = seen.get(key);
+    if (prior !== undefined) {
+      if (prior !== p) return [prior, p];
+    } else {
+      seen.set(key, p);
+    }
+  }
+  return null;
+}
+
 interface ManifestRecord {
   archivePath?: unknown;
   sha256?: unknown;
@@ -309,6 +332,25 @@ export async function extractArchive(
       for (const m of docEntries) {
         if (typeof m.archivePath === "string") manifestMap.set(m.archivePath, m);
       }
+    }
+
+    // Case-collision guard — runs on BOTH dry-run and write. Two entries whose
+    // paths differ only in case would resolve to one file on a case-insensitive
+    // (macOS/Windows) destination and silently clobber each other. This is a
+    // structural property of the archive's entry set, independent of the
+    // destination, so it must not be gated on `write`: zipkit's GUI validates
+    // input with a dry-run and then extracts, and a dry-run that passes MUST
+    // guarantee the real run won't fail — the two runs cannot disagree. The
+    // creation side already refuses to produce such a pair (`plan/collision.ts`);
+    // zipkit treats a Windows-incompatible archive as invalid and never
+    // auto-fixes (no disambiguation), so a corrupt/hostile archive carrying the
+    // pair is rejected here — before anything is written or validated OK.
+    const collision = findCaseCollision(parsed.entries.map((e) => e.archivePath));
+    if (collision) {
+      throw new ReadError(
+        "read.case-collision",
+        `entries '${collision[0]}' and '${collision[1]}' differ only by case and collide on case-insensitive filesystems`,
+      );
     }
 
     if (write && dest !== undefined) await mkdir(dest, { recursive: true });
