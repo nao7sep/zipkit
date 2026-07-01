@@ -28,6 +28,8 @@ describe("isExcludedFile", () => {
     expect(isExcludedFile(".DS_Store")).toBe(true);
     expect(isExcludedFile("sub/.DS_Store")).toBe(true);
     expect(isExcludedFile("Thumbs.db")).toBe(true);
+    expect(isExcludedFile("desktop.ini")).toBe(true);
+    expect(isExcludedFile("Desktop.ini")).toBe(true); // matched case-insensitively
   });
 
   it("does not exclude a file whose name merely contains an excluded token", () => {
