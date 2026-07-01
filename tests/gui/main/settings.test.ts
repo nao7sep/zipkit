@@ -11,6 +11,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  ensureSettingsFile,
   loadSettings,
   parseSettings,
   saveSettings,
@@ -88,6 +89,30 @@ describe("settings file location and persistence", () => {
     expect(settingsFile()).not.toBe(layout);
     expect(settingsFile()).not.toBe(queue);
     expect(path.basename(settingsFile())).not.toBe("settings.json");
+  });
+
+  it("creates config.json from defaults on first run", async () => {
+    const file = path.join(root, "config.json");
+    expect(() => readFileSync(file, "utf8")).toThrow();
+
+    const created = await ensureSettingsFile();
+
+    expect(created).toBe(true);
+    // Written through saveSettings, so it round-trips and carries the schema version.
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(await loadSettings()).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("never overwrites an existing config.json", async () => {
+    const custom = { defaults: { ...DEFAULT_OPTIONS, level: 9 }, uiFontFamily: "Iosevka" };
+    await saveSettings(custom);
+    const before = readFileSync(path.join(root, "config.json"), "utf8");
+
+    const created = await ensureSettingsFile();
+
+    expect(created).toBe(false);
+    expect(readFileSync(path.join(root, "config.json"), "utf8")).toBe(before);
+    expect(await loadSettings()).toEqual(custom);
   });
 
   it("writes and reads back the settings as config.json, leaving no temp file", async () => {

@@ -9,7 +9,7 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../shared/spec.js";
@@ -72,4 +72,20 @@ export async function saveSettings(settings: GuiSettings): Promise<void> {
   const tmp = `${file}.tmp`;
   await writeFile(tmp, serializeSettings(settings), "utf8");
   await rename(tmp, file);
+}
+
+/** Create config.json from the built-in defaults on first run — only when it does not yet exist — so
+ *  the settings file is present on disk immediately rather than only after the first save
+ *  (storage-path conventions, "Materializing settings on first run"). An existing file is never
+ *  inspected or overwritten (F_OK succeeds iff the file exists), so a good or hand-edited file is
+ *  never at risk. Produced through saveSettings — the same serializer the normal save path uses, not
+ *  a hand-built literal. Returns true when a file was created. */
+export async function ensureSettingsFile(): Promise<boolean> {
+  try {
+    await access(settingsFile());
+    return false;
+  } catch {
+    await saveSettings(freshSettings());
+    return true;
+  }
 }

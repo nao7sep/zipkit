@@ -15,6 +15,7 @@ import { installContentSecurityPolicy } from "./csp.js";
 import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
+import { ensureSettingsFile } from "./settings.js";
 import { errorInfo } from "./log.js";
 import { log, setMainWindow } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
@@ -83,7 +84,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   log.info("app started", {
     version: app.getVersion(),
     platform: process.platform,
@@ -97,6 +98,14 @@ app.whenReady().then(() => {
   // light title bar on a dark app is the window-chrome convention's prime example
   // of OS-default chrome fighting the app. Set before the window is created.
   nativeTheme.themeSource = "dark";
+  // Create config.json from the built-in defaults on first run so the settings file exists on disk
+  // immediately, not only after the first save (storage-path conventions). Create-if-absent, and
+  // before the window/renderer reads settings over IPC; a write failure is logged, not fatal.
+  try {
+    await ensureSettingsFile();
+  } catch (err) {
+    log.error("failed to create config.json on first run", { error: errorInfo(err) });
+  }
   registerIpc();
   registerQueueIpc();
   createWindow();
