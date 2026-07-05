@@ -32,6 +32,12 @@ describe("isExcludedFile", () => {
     expect(isExcludedFile("Desktop.ini")).toBe(true); // matched case-insensitively
   });
 
+  it("excludes quarantined-corrupt files anywhere, matched case-insensitively", () => {
+    expect(isExcludedFile("config-20260705-121314-123-utc.invalid")).toBe(true);
+    expect(isExcludedFile("CONFIG-20260705-121314-123-UTC.INVALID")).toBe(true); // all-caps variant
+    expect(isExcludedFile("sub/queue-20260705-121314-123-utc.invalid")).toBe(true);
+  });
+
   it("does not exclude a file whose name merely contains an excluded token", () => {
     expect(isExcludedFile("logszilla.json")).toBe(false);
     expect(isExcludedFile("my-layout.json")).toBe(false);

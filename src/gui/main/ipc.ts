@@ -14,7 +14,7 @@ import { loadLayout, saveLayout } from "./layout.js";
 import { isHttpUrl } from "./url.js";
 
 export function registerIpc(): void {
-  ipcMain.handle("zipkit:getSettings", async (): Promise<GuiSettings> => loadSettings());
+  ipcMain.handle("zipkit:getSettings", async (): Promise<GuiSettings> => loadSettings(log));
 
   ipcMain.handle("zipkit:setSettings", async (_event, settings: GuiSettings): Promise<void> => {
     try {
@@ -26,7 +26,7 @@ export function registerIpc(): void {
     }
   });
 
-  ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => loadLayout());
+  ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => loadLayout(log));
 
   ipcMain.handle("zipkit:setLayout", async (_event, layout: PaneLayout): Promise<void> => {
     try {

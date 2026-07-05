@@ -236,7 +236,7 @@ describe("symlink exception", () => {
 });
 
 describe("temp file shape", () => {
-  it("uses <outputStem>-<uuid>.tmp beside the output, not a hidden pid/epoch dotfile", async () => {
+  it("uses <outputStem>-<nanoid>.tmp beside the output, not a hidden pid/epoch dotfile", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-shape-"));
     const output = path.join(dir, "archive.zip");
     const writer = new ZipWriter(output, baseOptions);
@@ -246,9 +246,7 @@ describe("temp file shape", () => {
     // directly rather than reaching into the writer's private state.
     const midWrite = readdirSync(dir);
     expect(midWrite).toHaveLength(1);
-    expect(midWrite[0]).toMatch(
-      /^archive-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/,
-    );
+    expect(midWrite[0]).toMatch(/^archive-[A-Za-z0-9_-]{21}\.tmp$/);
     expect(midWrite[0]?.startsWith(".")).toBe(false); // not a hidden dotfile
     expect(midWrite[0]?.split(".").length).toBe(2); // one role extension, no `.zip.tmp` stacking
 

@@ -10,11 +10,11 @@
  * portability-linting archiver (which rewrites paths, records a manifest, and resolves collisions) — its
  * format must not leak into this mirror or its index.
  */
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { nanoid } from "nanoid";
 import yazl from "yazl";
 import { backupIndexPath, backupsDir, collectRoots } from "./backupCollector.js";
 import { selectChanged } from "./backupPlan.js";
@@ -115,9 +115,9 @@ async function writeArchive(
   }
 
   const initialStamp = formatArchivedAt(now);
-  // `<stem>-<nanoid>.tmp` in the same directory (derived-filename grammar). No `nanoid` package/utility
-  // exists in this app, so `randomUUID` (node:crypto, already used for job ids) supplies the discriminator.
-  const tempPath = path.join(dir, `backup-${initialStamp}-${randomUUID()}.tmp`);
+  // `<stem>-<nanoid>.tmp` in the same directory (derived-filename grammar): `nanoid` (already used
+  // for job ids and the other atomic-write discriminators) supplies the tag.
+  const tempPath = path.join(dir, `backup-${initialStamp}-${nanoid()}.tmp`);
 
   zip.end();
   try {
@@ -162,7 +162,7 @@ async function ensureBackupsDir(): Promise<string> {
  *  mid-write cannot corrupt the index. The temp is `<stem>-<nanoid>.tmp` in the same directory
  *  (storage-path conventions' derived-filename grammar). */
 async function writeFileAtomic(file: string, contents: string): Promise<void> {
-  const tmp = path.join(path.dirname(file), `${path.parse(file).name}-${randomUUID()}.tmp`);
+  const tmp = path.join(path.dirname(file), `${path.parse(file).name}-${nanoid()}.tmp`);
   await fs.promises.writeFile(tmp, contents);
   await fs.promises.rename(tmp, file);
 }

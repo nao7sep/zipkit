@@ -10,7 +10,9 @@
  *   and defeat the skip-empty property (data-backup conventions, "Volatile UI state").
  * - `backups/` — the feature's own output; capturing it would recurse.
  * - `logs/` — recreatable per-launch session/SDK logs.
- * - the fleet always-exclude set: `*.tmp` (atomic-write temporaries), `.DS_Store`, `Thumbs.db`.
+ * - the fleet always-exclude set: `*.tmp` (atomic-write temporaries), `*.invalid` (a quarantined
+ *   corrupt managed file — src/gui/main/managedJson.ts — which must never re-enter an archive),
+ *   `.DS_Store`, `Thumbs.db`.
  *
  * Paths are the forward-slash relative path under the root. Directory names are matched
  * case-insensitively so a `Logs/` or `Backups/` on a case-insensitive filesystem is still pruned.
@@ -36,6 +38,7 @@ export function isExcludedFile(relativePath: string): boolean {
   const path = normalize(relativePath);
   const lower = path.toLowerCase();
   if (lower.endsWith(".tmp")) return true;
+  if (lower.endsWith(".invalid")) return true;
   if (EXCLUDED_FILES.includes(lower)) return true;
   if (EXCLUDED_BASENAMES.includes(basename(lower))) return true;
   return EXCLUDED_DIRS.some((dir) => lower === dir || lower.startsWith(`${dir}/`));

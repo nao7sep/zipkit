@@ -6,8 +6,8 @@
  * file is the wiring.
  */
 
-import { randomUUID } from "node:crypto";
 import { ipcMain, shell } from "electron";
+import { nanoid } from "nanoid";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
@@ -53,7 +53,7 @@ const engine = createQueueEngine({
     }, 500);
   },
   sendEvent,
-  newId: () => randomUUID(),
+  newId: () => nanoid(),
   log,
 });
 
@@ -61,7 +61,7 @@ const engine = createQueueEngine({
 export async function restoreQueue(): Promise<void> {
   let saved: SavedJob[];
   try {
-    saved = await loadQueue();
+    saved = await loadQueue(log);
   } catch (err) {
     log.warn("could not load the saved queue; starting empty", { error: errorInfo(err) });
     saved = [];

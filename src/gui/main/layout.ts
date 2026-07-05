@@ -9,11 +9,13 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
-import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../shared/layout.js";
+import { nullLog, type AppLog } from "./log.js";
+import { isInvalidJson, quarantineIfCorrupt } from "./managedJson.js";
 
 /** The layout file under the resolved storage root. Computed lazily so
  *  `ZIPKIT_HOME` is read after the environment is set (storage-path convention). */
@@ -39,10 +41,15 @@ export function serializeLayout(layout: PaneLayout): string {
   return JSON.stringify({ version: 1, layout: clampLayout(layout) }, null, 2);
 }
 
-/** Load the persisted layout; the default layout if there is no readable file. */
-export async function loadLayout(): Promise<PaneLayout> {
+/** Load the persisted layout; the default layout if there is no readable file. A present-but-corrupt
+ *  file (invalid JSON) is quarantined aside — never silently reset in place — before the default
+ *  layout is returned; see {@link quarantineIfCorrupt}. */
+export async function loadLayout(logger: AppLog = nullLog): Promise<PaneLayout> {
   try {
-    return parseLayout(await readFile(layoutFile(), "utf8"));
+    const file = layoutFile();
+    const text = await readFile(file, "utf8");
+    await quarantineIfCorrupt(file, text, isInvalidJson, logger);
+    return parseLayout(text);
   } catch {
     return { ...DEFAULT_LAYOUT };
   }
@@ -55,7 +62,7 @@ export async function saveLayout(layout: PaneLayout): Promise<void> {
   const file = layoutFile();
   const dir = path.dirname(file);
   await mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `${path.parse(file).name}-${randomUUID()}.tmp`);
+  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   await writeFile(tmp, serializeLayout(layout), "utf8");
   await rename(tmp, file);
 }

@@ -35,10 +35,10 @@
  * the bytes match what a same-archive reader and `unzip` expect.
  */
 
-import { randomUUID } from "node:crypto";
 import { close, fsync, open, rename, write as fsWrite } from "node:fs";
 import { dirname, join, parse } from "node:path";
 import { promisify } from "node:util";
+import { nanoid } from "nanoid";
 import { throwIfAborted } from "../errors.js";
 import { wallClockInZone } from "../internal/timeZone.js";
 import { deflateBound } from "../plan/zip64.js";
@@ -342,13 +342,13 @@ export class ZipWriter {
     this.#options = options;
     // A temp file in the output's own directory, so the closing rename is a
     // same-filesystem atomic replace — the same atomic guarantee, kept without
-    // buffering the whole archive in memory. `<stem>-<uuid>.tmp` (derived-filename
+    // buffering the whole archive in memory. `<stem>-<nanoid>.tmp` (derived-filename
     // grammar): stem from the output name (whatever archive extension it carries —
-    // never hardcoded), `randomUUID` (node:crypto, the established discriminator
-    // elsewhere in this app) for the tag, one `.tmp` extension. Not hidden: it sits
-    // beside the user's own output file, and a crash-stranded one must stay visible
-    // and identifiable by that `.tmp` role extension.
-    this.#tempPath = join(dirname(output), `${parse(output).name}-${randomUUID()}.tmp`);
+    // never hardcoded), `nanoid` (the established discriminator elsewhere in this
+    // app) for the tag, one `.tmp` extension. Not hidden: it sits beside the user's
+    // own output file, and a crash-stranded one must stay visible and identifiable
+    // by that `.tmp` role extension.
+    this.#tempPath = join(dirname(output), `${parse(output).name}-${nanoid()}.tmp`);
   }
 
   async open(): Promise<void> {

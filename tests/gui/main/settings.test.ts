@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,6 +18,7 @@ import {
   serializeSettings,
   settingsFile,
 } from "../../../src/gui/main/settings";
+import type { AppLog } from "../../../src/gui/main/log.js";
 import { storageRoot } from "../../../src/sdk/storage.js";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 
@@ -129,5 +130,45 @@ describe("settings file location and persistence", () => {
     expect(readdirSync(root)).toEqual(["config.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(await loadSettings()).toEqual(settings);
+  });
+
+  it("quarantines a corrupt config.json aside (bytes intact) and returns the defaults", async () => {
+    const file = path.join(root, "config.json");
+    const corruptBytes = "{ not json";
+    writeFileSync(file, corruptBytes, "utf8");
+    const warnings: { message: string; fields?: Record<string, unknown> }[] = [];
+    const logger: AppLog = {
+      debug() {},
+      info() {},
+      warn: (message, fields) => warnings.push({ message, fields }),
+      error() {},
+    };
+
+    const settings = await loadSettings(logger);
+
+    expect(settings).toEqual(DEFAULT_SETTINGS);
+    expect(existsSync(file)).toBe(false); // moved aside, not left in place
+    const entries = readdirSync(root);
+    expect(entries).toHaveLength(1);
+    const quarantined = entries[0]!;
+    expect(quarantined).toMatch(/^config-\d{8}-\d{6}-\d{3}-utc\.invalid$/);
+    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(corruptBytes);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.fields?.original).toBe(file);
+    expect(warnings[0]?.fields?.quarantined).toBe(path.join(root, quarantined));
+  });
+
+  it("a save after quarantine writes a fresh config.json and never touches the quarantine file", async () => {
+    const file = path.join(root, "config.json");
+    writeFileSync(file, "{ not json", "utf8");
+    await loadSettings();
+    const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"))!;
+    const before = readFileSync(path.join(root, quarantined), "utf8");
+
+    await saveSettings({ defaults: { ...DEFAULT_OPTIONS, level: 3 }, uiFontFamily: "" });
+
+    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(readdirSync(root).sort()).toEqual(["config.json", quarantined].sort());
   });
 });

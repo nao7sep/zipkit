@@ -9,12 +9,14 @@
  * edge.
  */
 
-import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../shared/spec.js";
 import type { Job, SavedJob } from "../shared/queue.js";
+import { nullLog, type AppLog } from "./log.js";
+import { quarantineIfCorrupt } from "./managedJson.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -31,17 +33,33 @@ export function toResumable(jobs: Job[]): SavedJob[] {
     .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options, intent: j.intent }));
 }
 
-/** Parse queue-file text into resumable jobs: default missing option fields, drop
- *  malformed entries, normalize the intent. Pure; never throws. */
-export function parseQueue(text: string): SavedJob[] {
+/** The queue document's top-level `jobs` array, or `undefined` when the text is not valid JSON or
+ *  lacks an array `jobs` field — the one place that shape check lives, shared by `parseQueue` and
+ *  {@link isQueueCorrupt} so the two never drift apart. */
+function extractJobsArray(text: string): unknown[] | undefined {
   let doc: unknown;
   try {
     doc = JSON.parse(text);
   } catch {
-    return [];
+    return undefined;
   }
   const jobs = (doc as { jobs?: unknown } | null)?.jobs;
-  if (!Array.isArray(jobs)) return [];
+  return Array.isArray(jobs) ? jobs : undefined;
+}
+
+/** The queue store's corrupt-detection: invalid JSON, or valid JSON whose top-level `jobs` field is
+ *  not an array — either way there is no resumable document to recover a single entry from, so the
+ *  whole file is treated as corrupt (unlike a malformed individual entry within a good `jobs` array,
+ *  which `parseQueue` drops and tolerates). */
+export function isQueueCorrupt(text: string): boolean {
+  return extractJobsArray(text) === undefined;
+}
+
+/** Parse queue-file text into resumable jobs: default missing option fields, drop
+ *  malformed entries, normalize the intent. Pure; never throws. */
+export function parseQueue(text: string): SavedJob[] {
+  const jobs = extractJobsArray(text);
+  if (!jobs) return [];
 
   const out: SavedJob[] = [];
   for (const entry of jobs) {
@@ -65,15 +83,22 @@ export function serializeQueue(jobs: SavedJob[]): string {
 
 /** Load the persisted resumable jobs. Returns an empty list when there is simply
  *  no file yet (the normal first-run case); a genuine read error is thrown so the
- *  caller can log it through the session log rather than swallowing it. (Corrupt
- *  *content* still degrades to an empty queue via {@link parseQueue}.) */
-export async function loadQueue(): Promise<SavedJob[]> {
+ *  caller can log it through the session log rather than swallowing it. Corrupt
+ *  *content* — invalid JSON or a missing `jobs` array, see {@link isQueueCorrupt}
+ *  — is quarantined aside (never silently reset in place) before degrading to an
+ *  empty queue via {@link parseQueue}; a quarantine-rename failure propagates like
+ *  any other genuine I/O error on this durable store. */
+export async function loadQueue(logger: AppLog = nullLog): Promise<SavedJob[]> {
+  const file = queueFile();
+  let text: string;
   try {
-    return parseQueue(await readFile(queueFile(), "utf8"));
+    text = await readFile(file, "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw err;
   }
+  await quarantineIfCorrupt(file, text, isQueueCorrupt, logger);
+  return parseQueue(text);
 }
 
 /** Persist resumable jobs atomically (temp file + rename), so a crash mid-write
@@ -84,7 +109,7 @@ export async function saveQueue(jobs: SavedJob[]): Promise<void> {
   const file = queueFile();
   const dir = path.dirname(file);
   await mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `${path.parse(file).name}-${randomUUID()}.tmp`);
+  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   await writeFile(tmp, serializeQueue(jobs), "utf8");
   await rename(tmp, file);
 }

@@ -21,6 +21,7 @@ import { lstat, mkdir, rename, rm, symlink, utimes } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { nanoid } from "nanoid";
 import { ReadError, throwIfAborted, toAbortError } from "../errors.js";
 import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
@@ -631,9 +632,7 @@ async function commitSymlink(
   return "written"; // link times are not restored: no portable lutimes guarantee
 }
 
-let tagCounter = 0;
 /** A short, collision-resistant suffix for a per-entry temp file. */
 function randomTag(): string {
-  tagCounter = (tagCounter + 1) >>> 0;
-  return `${Date.now().toString(36)}-${tagCounter.toString(36)}`;
+  return nanoid(10);
 }

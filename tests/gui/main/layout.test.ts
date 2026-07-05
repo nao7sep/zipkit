@@ -5,8 +5,13 @@
  * file degrades to a usable layout rather than a broken one.
  */
 
-import { describe, expect, it } from "vitest";
-import { parseLayout, serializeLayout } from "../../../src/gui/main/layout.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { loadLayout, parseLayout, saveLayout, serializeLayout } from "../../../src/gui/main/layout.js";
+import type { AppLog } from "../../../src/gui/main/log.js";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_PADDING,
@@ -104,5 +109,62 @@ describe("persists the intent, not the resize-clamped display", () => {
     // And reopening on a small window re-derives the same narrowed display from the
     // preserved intent — maximizing later returns to the full intent.
     expect(clampLayoutToWidth(restored, minWindowWidth())).toEqual(clampedForDisplay);
+  });
+});
+
+describe("layout file quarantine-then-reset", () => {
+  // Relocating the root via ZIPKIT_HOME to a throwaway directory keeps the suite out of the real
+  // home dir, matching settings.test.ts's and persist.test.ts's file-I/O sections.
+  let root: string;
+  const prev = process.env.ZIPKIT_HOME;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
+    process.env.ZIPKIT_HOME = root;
+  });
+  afterEach(async () => {
+    if (prev === undefined) delete process.env.ZIPKIT_HOME;
+    else process.env.ZIPKIT_HOME = prev;
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("quarantines a corrupt layout.json aside (bytes intact) and returns the default layout", async () => {
+    const file = path.join(root, "layout.json");
+    const corruptBytes = "not json";
+    writeFileSync(file, corruptBytes, "utf8");
+    const warnings: { message: string; fields?: Record<string, unknown> }[] = [];
+    const logger: AppLog = {
+      debug() {},
+      info() {},
+      warn: (message, fields) => warnings.push({ message, fields }),
+      error() {},
+    };
+
+    const layout = await loadLayout(logger);
+
+    expect(layout).toEqual(DEFAULT_LAYOUT);
+    expect(existsSync(file)).toBe(false); // moved aside, not left in place
+    const entries = readdirSync(root);
+    expect(entries).toHaveLength(1);
+    const quarantined = entries[0]!;
+    expect(quarantined).toMatch(/^layout-\d{8}-\d{6}-\d{3}-utc\.invalid$/);
+    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(corruptBytes);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.fields?.original).toBe(file);
+    expect(warnings[0]?.fields?.quarantined).toBe(path.join(root, quarantined));
+  });
+
+  it("a save after quarantine writes a fresh layout.json and never touches the quarantine file", async () => {
+    const file = path.join(root, "layout.json");
+    writeFileSync(file, "not json", "utf8");
+    await loadLayout();
+    const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"))!;
+    const before = readFileSync(path.join(root, quarantined), "utf8");
+
+    await saveLayout({ jobsWidth: 300, progressWidth: 360 });
+
+    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(readdirSync(root).sort()).toEqual(["layout.json", quarantined].sort());
   });
 });

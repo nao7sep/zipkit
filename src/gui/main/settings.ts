@@ -9,11 +9,13 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
-import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../shared/spec.js";
+import { nullLog, type AppLog } from "./log.js";
+import { isInvalidJson, quarantineIfCorrupt } from "./managedJson.js";
 
 /** The settings file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -56,10 +58,15 @@ export function serializeSettings(settings: GuiSettings): string {
   );
 }
 
-/** Load the persisted settings; the built-in defaults if there is no readable file. */
-export async function loadSettings(): Promise<GuiSettings> {
+/** Load the persisted settings; the built-in defaults if there is no readable file. A present-but-
+ *  corrupt file (invalid JSON) is quarantined aside — never silently reset in place — before the
+ *  defaults are returned; see {@link quarantineIfCorrupt}. */
+export async function loadSettings(logger: AppLog = nullLog): Promise<GuiSettings> {
   try {
-    return parseSettings(await readFile(settingsFile(), "utf8"));
+    const file = settingsFile();
+    const text = await readFile(file, "utf8");
+    await quarantineIfCorrupt(file, text, isInvalidJson, logger);
+    return parseSettings(text);
   } catch {
     return freshSettings();
   }
@@ -73,7 +80,7 @@ export async function saveSettings(settings: GuiSettings): Promise<void> {
   const file = settingsFile();
   const dir = path.dirname(file);
   await mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `${path.parse(file).name}-${randomUUID()}.tmp`);
+  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   await writeFile(tmp, serializeSettings(settings), "utf8");
   await rename(tmp, file);
 }

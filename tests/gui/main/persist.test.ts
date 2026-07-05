@@ -5,11 +5,19 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadQueue, parseQueue, saveQueue, serializeQueue, toResumable } from "../../../src/gui/main/persist.js";
+import {
+  isQueueCorrupt,
+  loadQueue,
+  parseQueue,
+  saveQueue,
+  serializeQueue,
+  toResumable,
+} from "../../../src/gui/main/persist.js";
+import type { AppLog } from "../../../src/gui/main/log.js";
 import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 
@@ -49,6 +57,19 @@ describe("parseQueue", () => {
   });
 });
 
+describe("isQueueCorrupt", () => {
+  it("flags bad JSON or a non-array jobs field as corrupt, same cases parseQueue resets", () => {
+    expect(isQueueCorrupt("not json")).toBe(true);
+    expect(isQueueCorrupt(JSON.stringify({ jobs: "x" }))).toBe(true);
+    expect(isQueueCorrupt(JSON.stringify({}))).toBe(true);
+  });
+
+  it("does not flag a well-shaped document, even with malformed individual entries", () => {
+    const text = JSON.stringify({ jobs: [{ id: "a", inputs: ["/x"], intent: "save" }, { inputs: ["/y"] }] });
+    expect(isQueueCorrupt(text)).toBe(false);
+  });
+});
+
 describe("queue file location and persistence", () => {
   // The queue lives under the resolved storage root. Relocating that root via
   // ZIPKIT_HOME to a throwaway directory keeps the suite out of the real home dir
@@ -80,6 +101,47 @@ describe("queue file location and persistence", () => {
 
   it("loads an empty queue when no file exists under the root", async () => {
     expect(await loadQueue()).toEqual([]);
+  });
+
+  it("quarantines a corrupt queue.json aside (bytes intact) and returns an empty queue", async () => {
+    const file = path.join(root, "queue.json");
+    const corruptBytes = "{ not json";
+    writeFileSync(file, corruptBytes, "utf8");
+    const warnings: { message: string; fields?: Record<string, unknown> }[] = [];
+    const logger: AppLog = {
+      debug() {},
+      info() {},
+      warn: (message, fields) => warnings.push({ message, fields }),
+      error() {},
+    };
+
+    const jobs = await loadQueue(logger);
+
+    expect(jobs).toEqual([]);
+    expect(existsSync(file)).toBe(false); // moved aside, not left in place
+    const entries = readdirSync(root);
+    expect(entries).toHaveLength(1);
+    const quarantined = entries[0]!;
+    expect(quarantined).toMatch(/^queue-\d{8}-\d{6}-\d{3}-utc\.invalid$/);
+    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(corruptBytes);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.fields?.original).toBe(file);
+    expect(warnings[0]?.fields?.quarantined).toBe(path.join(root, quarantined));
+  });
+
+  it("a save after quarantine writes a fresh queue.json and never touches the quarantine file", async () => {
+    const file = path.join(root, "queue.json");
+    writeFileSync(file, "{ not json", "utf8");
+    await loadQueue();
+    const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"))!;
+    const before = readFileSync(path.join(root, quarantined), "utf8");
+
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    await saveQueue(jobs);
+
+    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(readdirSync(root).sort()).toEqual(["queue.json", quarantined].sort());
   });
 });
 
