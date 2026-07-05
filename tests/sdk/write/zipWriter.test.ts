@@ -10,11 +10,15 @@
  * tests also implicitly cover the seek-back header patching.
  */
 
+import { mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
 import { findExtra, readZipFile } from "../../helpers/readZip.js";
 import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../../src/sdk/plan/zip64.js";
+import { ZipWriter } from "../../../src/sdk/write/zipWriter.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 // 100-ns ticks between 1601 (FILETIME epoch) and 1970, for decoding NTFS times.
@@ -228,6 +232,28 @@ describe("symlink exception", () => {
     expect(entries[0]?.hostByte).toBe(3); // Unix
     expect((entries[0]!.externalAttr >>> 16)).toBe(0o120777);
     expect(entries[0]?.content.toString("utf8")).toBe("target");
+  });
+});
+
+describe("temp file shape", () => {
+  it("uses <outputStem>-<uuid>.tmp beside the output, not a hidden pid/epoch dotfile", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-shape-"));
+    const output = path.join(dir, "archive.zip");
+    const writer = new ZipWriter(output, baseOptions);
+    await writer.open();
+
+    // While open, the only file in the directory is the temp — assert its shape
+    // directly rather than reaching into the writer's private state.
+    const midWrite = readdirSync(dir);
+    expect(midWrite).toHaveLength(1);
+    expect(midWrite[0]).toMatch(
+      /^archive-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/,
+    );
+    expect(midWrite[0]?.startsWith(".")).toBe(false); // not a hidden dotfile
+    expect(midWrite[0]?.split(".").length).toBe(2); // one role extension, no `.zip.tmp` stacking
+
+    await writer.finalize(false);
+    expect(readdirSync(dir)).toEqual(["archive.zip"]); // renamed into place, temp gone
   });
 });
 

@@ -19,20 +19,8 @@
 
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { defaultLogDir } from "../../sdk/log/session.js";
+import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { redact } from "../../sdk/log/redact.js";
-
-/**
- * `yyyymmdd-hhmmss-utc` — a second-precision UTC session stamp. Unlike the SDK
- * (a tool designed to fan out, which takes the `-fff` millisecond exception so
- * parallel same-second runs stay distinct), the GUI is a single desktop app, so
- * it uses the convention's second-precision default. A same-second double-launch
- * collision is accepted, not engineered around.
- */
-function sessionTimestamp(now: Date): string {
-  const s = now.toISOString().slice(0, 19).replace(/[-:]/g, "");
-  return `${s.replace("T", "-")}-utc`;
-}
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogFields = Record<string, unknown>;
@@ -76,7 +64,10 @@ export function createAppLog(
   dir: string = process.env.ZIPKIT_LOG_DIR ?? defaultLogDir(),
   now: Date = new Date(),
 ): SessionAppLog {
-  const file = path.join(dir, `${sessionTimestamp(now)}.log`);
+  // `yyyymmdd-hhmmss-fff-utc.log` — the timestamp conventions' machine-paced form (a session log is
+  // machine-paced regardless of process count), reusing the SDK's session-stamp helper rather than
+  // duplicating the format here.
+  const file = path.join(dir, `${defaultSessionTimestamp(now)}.log`);
   let degraded = false;
 
   const degrade = (reason: string): void => {

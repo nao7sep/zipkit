@@ -13,9 +13,9 @@ import { createAppLog, errorInfo } from "../../../src/gui/main/log.js";
 describe("createAppLog", () => {
   it("writes JSON Lines with the envelope, gates debug off by default, and redacts denied keys", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
-    const log = createAppLog(dir, new Date("2026-06-14T05:25:48.000Z"));
-    // Second precision (a single desktop app, not the concurrent SDK): no -fff.
-    expect(path.basename(log.path)).toBe("20260614-052548-utc.log");
+    const log = createAppLog(dir, new Date("2026-06-14T05:25:48.123Z"));
+    // Millisecond precision (`-fff`): a session log is machine-paced, per the timestamp conventions.
+    expect(path.basename(log.path)).toBe("20260614-052548-123-utc.log");
     log.info("hello", { jobId: "a", password: "hunter2" });
     log.debug("noise"); // gated off — no ZIPKIT_DEBUG
     log.error("bad", { code: 7 });

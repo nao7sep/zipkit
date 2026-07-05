@@ -9,6 +9,7 @@
  * edge.
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
@@ -76,12 +77,14 @@ export async function loadQueue(): Promise<SavedJob[]> {
 }
 
 /** Persist resumable jobs atomically (temp file + rename), so a crash mid-write
- *  cannot corrupt the queue. Throws on failure; the caller logs it through the
- *  session log. */
+ *  cannot corrupt the queue. The temp is `<stem>-<nanoid>.tmp` in the same directory
+ *  (storage-path conventions' derived-filename grammar). Throws on failure; the
+ *  caller logs it through the session log. */
 export async function saveQueue(jobs: SavedJob[]): Promise<void> {
   const file = queueFile();
-  await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `${path.parse(file).name}-${randomUUID()}.tmp`);
   await writeFile(tmp, serializeQueue(jobs), "utf8");
   await rename(tmp, file);
 }

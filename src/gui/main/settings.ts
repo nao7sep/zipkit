@@ -9,6 +9,7 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
+import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
@@ -65,11 +66,14 @@ export async function loadSettings(): Promise<GuiSettings> {
 }
 
 /** Persist the GUI settings atomically (temp file + rename), so a crash mid-write
- *  cannot corrupt them. Throws on write failure; the caller logs it. */
+ *  cannot corrupt them. The temp is `<stem>-<nanoid>.tmp` in the same directory
+ *  (storage-path conventions' derived-filename grammar). Throws on write failure;
+ *  the caller logs it. */
 export async function saveSettings(settings: GuiSettings): Promise<void> {
   const file = settingsFile();
-  await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `${path.parse(file).name}-${randomUUID()}.tmp`);
   await writeFile(tmp, serializeSettings(settings), "utf8");
   await rename(tmp, file);
 }

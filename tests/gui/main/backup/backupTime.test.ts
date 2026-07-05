@@ -22,7 +22,7 @@ describe("truncateToSecondMs", () => {
 });
 
 describe("formatArchivedAt", () => {
-  it("produces the yyyymmdd-hhmmss-utc filename stamp", () => {
-    expect(formatArchivedAt(new Date("2026-07-01T02:22:20.500Z"))).toBe("20260701-022220-utc");
+  it("produces the yyyymmdd-hhmmss-fff-utc filename stamp", () => {
+    expect(formatArchivedAt(new Date("2026-07-01T02:22:20.500Z"))).toBe("20260701-022220-500-utc");
   });
 });

@@ -24,7 +24,7 @@ describe("isExcludedFile", () => {
   });
 
   it("excludes atomic-write temporaries and the fleet noise files anywhere", () => {
-    expect(isExcludedFile("config.json.tmp")).toBe(true);
+    expect(isExcludedFile("config-3f9c2b1e-4a7d-4c8b-9e2f-1a3b5c6d7e8f.tmp")).toBe(true);
     expect(isExcludedFile(".DS_Store")).toBe(true);
     expect(isExcludedFile("sub/.DS_Store")).toBe(true);
     expect(isExcludedFile("Thumbs.db")).toBe(true);

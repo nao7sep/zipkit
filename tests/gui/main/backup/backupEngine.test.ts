@@ -51,10 +51,14 @@ describe("runBackup", () => {
     expect(report.nothingChanged).toBe(false);
     expect(report.indexWasReset).toBe(false);
     expect(report.filesArchived).toBe(2);
-    expect(report.archiveFileName).toBe("backup-20260701-022220-utc.zip");
+    expect(report.archiveFileName).toBe("backup-20260701-022220-000-utc.zip");
 
     const zip = readZipFile(path.join(backupsDir(), report.archiveFileName!));
     expect(zip.entries.map((e) => e.name).sort()).toEqual(["config.json", "queue.json"]);
+
+    // Both atomic writes (the archive's temp zip and the index's temp json) rename their temp away, so
+    // backups/ holds only the final archive and index — no orphaned `<stem>-<nanoid>.tmp`.
+    expect((await readdir(backupsDir())).sort()).toEqual([report.archiveFileName, "index.json"].sort());
 
     const index = await readIndex();
     expect(index.entries).toHaveLength(2);
@@ -65,7 +69,7 @@ describe("runBackup", () => {
       "lastWriteUtc",
     ]);
     expect(index.entries).toContainEqual(
-      expect.objectContaining({ archivedAt: "20260701-022220-utc", archivePath: "config.json" }),
+      expect.objectContaining({ archivedAt: "20260701-022220-000-utc", archivePath: "config.json" }),
     );
   });
 
@@ -128,6 +132,35 @@ describe("runBackup", () => {
     expect(report.filesArchived).toBe(1);
     const index = await readIndex();
     expect(index.entries).toHaveLength(1); // reset, then one fresh row
+  });
+
+  it("advances to the next free millisecond when the stamped archive name is already taken", async () => {
+    await write("config.json", "{}");
+
+    const now = new Date("2026-07-01T02:22:20.000Z");
+    // Pre-create the archive the run would otherwise land on, simulating a second instance that already
+    // claimed this millisecond (the data-backup conventions' no-clobber create).
+    await mkdir(backupsDir(), { recursive: true });
+    await writeFile(path.join(backupsDir(), "backup-20260701-022220-000-utc.zip"), "not a real zip", "utf8");
+
+    const report = await runBackup(now);
+
+    expect(report.fatal).toBeUndefined();
+    expect(report.nothingChanged).toBe(false);
+    expect(report.archiveFileName).toBe("backup-20260701-022220-001-utc.zip");
+
+    // The pre-created (colliding) archive is left untouched.
+    const preCreated = await readFile(path.join(backupsDir(), "backup-20260701-022220-000-utc.zip"), "utf8");
+    expect(preCreated).toBe("not a real zip");
+
+    const zip = readZipFile(path.join(backupsDir(), report.archiveFileName!));
+    expect(zip.entries.map((e) => e.name)).toEqual(["config.json"]);
+
+    // The index carries the winning (advanced) stamp, not the originally-requested one.
+    const index = await readIndex();
+    expect(index.entries).toContainEqual(
+      expect.objectContaining({ archivedAt: "20260701-022220-001-utc", archivePath: "config.json" }),
+    );
   });
 
   it("returns a first-run empty result when the home root does not exist yet", async () => {

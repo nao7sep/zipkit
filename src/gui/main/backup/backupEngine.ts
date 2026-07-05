@@ -10,6 +10,7 @@
  * portability-linting archiver (which rewrites paths, records a manifest, and resolves collisions) — its
  * format must not leak into this mirror or its index.
  */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
@@ -39,9 +40,7 @@ async function runCore(now: Date): Promise<BackupReport> {
     return { nothingChanged: true, filesArchived: 0, skips, indexWasReset };
   }
 
-  const archivedAt = formatArchivedAt(now);
-  const archiveFileName = `backup-${archivedAt}.zip`;
-  const archived = await writeArchive(archiveFileName, changed, skips);
+  const { archived, archivedAt, archiveFileName } = await writeArchive(now, changed, skips);
   if (archived.length === 0) {
     // Every changed file vanished before it could be archived; nothing was written, nothing is recorded.
     return { nothingChanged: true, filesArchived: 0, skips, indexWasReset };
@@ -87,16 +86,19 @@ async function loadIndex(): Promise<{ index: BackupIndex; indexWasReset: boolean
   }
 }
 
-/** Streams the changed files to a temp zip and renames it into place, returning the files that were
- *  actually archived (a file that vanished since collection is skipped, not recorded). */
+/** Streams the changed files to a temp zip and renames it into place as a no-clobber create, returning the
+ *  files that were actually archived (a file that vanished since collection is skipped, not recorded)
+ *  together with the stamp and name that won. If `backup-<archivedAt>.zip` is already taken — a second
+ *  instance that stamped the same millisecond — the instant is advanced one millisecond at a time and
+ *  re-formatted until a free name is found; the winning stamp is what the caller records in the index, so
+ *  the zip name stays derivable from `archivedAt` and no run ever clobbers another's (data-backup
+ *  conventions). */
 async function writeArchive(
-  archiveFileName: string,
+  now: Date,
   changed: readonly BackupCandidate[],
   skips: BackupSkip[],
-): Promise<BackupCandidate[]> {
+): Promise<{ archived: BackupCandidate[]; archivedAt: string; archiveFileName: string }> {
   const dir = await ensureBackupsDir();
-  const finalPath = path.join(dir, archiveFileName);
-  const tempPath = path.join(dir, `.${process.pid}-${archiveFileName}.tmp`);
 
   const zip = new yazl.ZipFile();
   const archived: BackupCandidate[] = [];
@@ -109,18 +111,43 @@ async function writeArchive(
     archived.push(item);
   }
   if (archived.length === 0) {
-    return archived;
+    return { archived, archivedAt: "", archiveFileName: "" };
   }
+
+  const initialStamp = formatArchivedAt(now);
+  // `<stem>-<nanoid>.tmp` in the same directory (derived-filename grammar). No `nanoid` package/utility
+  // exists in this app, so `randomUUID` (node:crypto, already used for job ids) supplies the discriminator.
+  const tempPath = path.join(dir, `backup-${initialStamp}-${randomUUID()}.tmp`);
 
   zip.end();
   try {
     await pipeline(zip.outputStream, createWriteStream(tempPath));
+  } catch (err) {
+    await tryDelete(tempPath);
+    throw err;
+  }
+
+  // No-clobber create: check for the target right before the final move and, if it is already taken,
+  // advance the instant one millisecond at a time — keeping the Date instant, not the string — until
+  // `formatArchivedAt` produces a free name.
+  let instant = now;
+  let archivedAt = initialStamp;
+  let archiveFileName = `backup-${archivedAt}.zip`;
+  let finalPath = path.join(dir, archiveFileName);
+  while (fs.existsSync(finalPath)) {
+    instant = new Date(instant.getTime() + 1);
+    archivedAt = formatArchivedAt(instant);
+    archiveFileName = `backup-${archivedAt}.zip`;
+    finalPath = path.join(dir, archiveFileName);
+  }
+
+  try {
     await fs.promises.rename(tempPath, finalPath);
   } catch (err) {
     await tryDelete(tempPath);
     throw err;
   }
-  return archived;
+  return { archived, archivedAt, archiveFileName };
 }
 
 async function ensureBackupsDir(): Promise<string> {
@@ -132,9 +159,10 @@ async function ensureBackupsDir(): Promise<string> {
 }
 
 /** Atomic write: temp file + rename. Mirrors the settings/queue persistence idiom, so a crash
- *  mid-write cannot corrupt the index. */
+ *  mid-write cannot corrupt the index. The temp is `<stem>-<nanoid>.tmp` in the same directory
+ *  (storage-path conventions' derived-filename grammar). */
 async function writeFileAtomic(file: string, contents: string): Promise<void> {
-  const tmp = `${file}.tmp`;
+  const tmp = path.join(path.dirname(file), `${path.parse(file).name}-${randomUUID()}.tmp`);
   await fs.promises.writeFile(tmp, contents);
   await fs.promises.rename(tmp, file);
 }

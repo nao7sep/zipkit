@@ -9,6 +9,7 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
@@ -47,12 +48,14 @@ export async function loadLayout(): Promise<PaneLayout> {
   }
 }
 
-/** Persist the layout atomically (temp file + rename). Throws on write failure;
- *  the caller logs it. */
+/** Persist the layout atomically (temp file + rename). The temp is `<stem>-<nanoid>.tmp`
+ *  in the same directory (storage-path conventions' derived-filename grammar). Throws
+ *  on write failure; the caller logs it. */
 export async function saveLayout(layout: PaneLayout): Promise<void> {
   const file = layoutFile();
-  await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `${path.parse(file).name}-${randomUUID()}.tmp`);
   await writeFile(tmp, serializeLayout(layout), "utf8");
   await rename(tmp, file);
 }

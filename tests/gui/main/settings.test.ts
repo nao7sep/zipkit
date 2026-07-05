@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -123,10 +123,10 @@ describe("settings file location and persistence", () => {
     await saveSettings(settings);
 
     const file = path.join(root, "config.json");
-    // The atomic write renames the temp over the target, so only the final
-    // `config.json` remains (no orphaned `.tmp`, no legacy `settings.json`).
-    expect(() => readFileSync(`${file}.tmp`, "utf8")).toThrow();
-    expect(() => readFileSync(path.join(root, "settings.json"), "utf8")).toThrow();
+    // The atomic write renames the temp (`config-<nanoid>.tmp`) over the target, so only
+    // the final `config.json` remains (no orphaned temp, no dot-appended `config.json.tmp`,
+    // no legacy `settings.json`).
+    expect(readdirSync(root)).toEqual(["config.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(await loadSettings()).toEqual(settings);
   });

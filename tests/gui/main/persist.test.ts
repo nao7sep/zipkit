@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -71,9 +71,9 @@ describe("queue file location and persistence", () => {
     await saveQueue(jobs);
 
     const file = path.join(root, "queue.json");
-    // The atomic write renames the temp over the target, so only the final file
-    // remains (no orphaned `.tmp`).
-    expect(() => readFileSync(`${file}.tmp`, "utf8")).toThrow();
+    // The atomic write renames the temp (`queue-<nanoid>.tmp`) over the target, so only
+    // the final file remains (no orphaned temp, no dot-appended `queue.json.tmp`).
+    expect(readdirSync(root)).toEqual(["queue.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(await loadQueue()).toEqual(jobs);
   });
