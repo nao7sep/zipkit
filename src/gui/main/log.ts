@@ -17,7 +17,7 @@
  * the app keeps running.
  */
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { redact } from "../../sdk/log/redact.js";
@@ -86,7 +86,40 @@ export function createAppLog(
     degrade(`${file}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const append = (line: string): void => {
+  if (!degraded) {
+    try {
+      // Exclusive create ('wx'): the filename is millisecond-paced, so a
+      // same-millisecond clash between two processes is only vanishingly
+      // possible, not impossible. 'wx' fails with EEXIST rather than letting
+      // the second process append into the first process's session file, which
+      // would interleave two sessions into one log — the failure flows into the
+      // same console fallback as any other open failure (tapebox's logger is the
+      // fleet model for this open).
+      writeFileSync(file, "", { flag: "wx" });
+    } catch (err) {
+      degrade(`${file}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const append = (event: LogFields): void => {
+    let line: string;
+    try {
+      line = `${JSON.stringify(event)}\n`;
+    } catch (err) {
+      // A non-serializable field (a BigInt, a throwing toJSON) must not crash the
+      // caller or lose the message: fall back to the envelope alone, which
+      // `write` guarantees are three plain strings, so this can never itself
+      // throw (the SDK's own session sink, src/sdk/log/session.ts, is the model
+      // for keeping serialization inside this same guard as the write).
+      const fallback: LogFields = {
+        time: event.time,
+        level: event.level,
+        message: event.message,
+        error: `serialization failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+      line = `${JSON.stringify(fallback)}\n`;
+    }
+
     if (!degraded) {
       try {
         appendFileSync(file, line);
@@ -104,8 +137,11 @@ export function createAppLog(
 
   const write = (level: LogLevel, message: string, fields?: LogFields): void => {
     if (level === "debug" && process.env.ZIPKIT_DEBUG !== "1") return;
-    const event = redact({ time: new Date().toISOString(), level, message, ...fields });
-    append(`${JSON.stringify(event)}\n`);
+    // Caller fields are spread FIRST so the envelope keys always win: a field
+    // accidentally (or maliciously) named `time`/`level`/`message` can never
+    // overwrite the line's own envelope (tapebox's formatter is the fleet model).
+    const event = redact({ ...fields, time: new Date().toISOString(), level, message });
+    append(event);
   };
 
   return {
