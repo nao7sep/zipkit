@@ -9,14 +9,14 @@
  * edge.
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../shared/spec.js";
 import type { Job, SavedJob } from "../shared/queue.js";
 import { nullLog, type AppLog } from "./log.js";
-import { quarantineIfCorrupt } from "./managedJson.js";
+import { loadManagedJson } from "./managedJson.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -87,18 +87,12 @@ export function serializeQueue(jobs: SavedJob[]): string {
  *  *content* — invalid JSON or a missing `jobs` array, see {@link isQueueCorrupt}
  *  — is quarantined aside (never silently reset in place) before degrading to an
  *  empty queue via {@link parseQueue}; a quarantine-rename failure propagates like
- *  any other genuine I/O error on this durable store. */
+ *  any other genuine I/O error on this durable store. The shared
+ *  {@link loadManagedJson} owns that quarantine-outside-the-catch shape, identical
+ *  to config.json and layout.json (which differ only in degrading any read error to
+ *  their defaults rather than rethrowing it). */
 export async function loadQueue(logger: AppLog = nullLog): Promise<SavedJob[]> {
-  const file = queueFile();
-  let text: string;
-  try {
-    text = await readFile(file, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw err;
-  }
-  await quarantineIfCorrupt(file, text, isQueueCorrupt, logger);
-  return parseQueue(text);
+  return loadManagedJson(queueFile(), isQueueCorrupt, parseQueue, () => [], "rethrow-non-enoent", logger);
 }
 
 /** Persist resumable jobs atomically (temp file + rename), so a crash mid-write

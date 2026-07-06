@@ -9,13 +9,13 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
-import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { nullLog, type AppLog } from "./log.js";
-import { isInvalidJson, quarantineIfCorrupt } from "./managedJson.js";
+import { isInvalidJson, loadManagedJson } from "./managedJson.js";
 
 /** The settings file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -60,16 +60,11 @@ export function serializeSettings(settings: GuiSettings): string {
 
 /** Load the persisted settings; the built-in defaults if there is no readable file. A present-but-
  *  corrupt file (invalid JSON) is quarantined aside — never silently reset in place — before the
- *  defaults are returned; see {@link quarantineIfCorrupt}. */
+ *  defaults are returned; a quarantine-rename failure propagates rather than degrading to defaults
+ *  over the corrupt bytes. The shared {@link loadManagedJson} owns that quarantine-outside-the-catch
+ *  shape, identical to layout.json and queue.json. */
 export async function loadSettings(logger: AppLog = nullLog): Promise<GuiSettings> {
-  try {
-    const file = settingsFile();
-    const text = await readFile(file, "utf8");
-    await quarantineIfCorrupt(file, text, isInvalidJson, logger);
-    return parseSettings(text);
-  } catch {
-    return freshSettings();
-  }
+  return loadManagedJson(settingsFile(), isInvalidJson, parseSettings, freshSettings, "default", logger);
 }
 
 /** Persist the GUI settings atomically (temp file + rename), so a crash mid-write

@@ -9,18 +9,25 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
-import { isInvalidJson, quarantineIfCorrupt } from "./managedJson.js";
+import { isInvalidJson, loadManagedJson } from "./managedJson.js";
 
 /** The layout file under the resolved storage root. Computed lazily so
  *  `ZIPKIT_HOME` is read after the environment is set (storage-path convention). */
 function layoutFile(): string {
   return path.join(storageRoot(), "layout.json");
+}
+
+/** A fresh copy of the default layout — the value returned when there is no readable or usable file.
+ *  A new object each call so a caller mutating it (a drag resize) can never mutate the shared
+ *  {@link DEFAULT_LAYOUT} baseline; mirrors settings.ts's `freshSettings`. */
+function freshLayout(): PaneLayout {
+  return { ...DEFAULT_LAYOUT };
 }
 
 /** Parse layout-file text into a clamped {@link PaneLayout}. Pure; never throws. */
@@ -43,16 +50,11 @@ export function serializeLayout(layout: PaneLayout): string {
 
 /** Load the persisted layout; the default layout if there is no readable file. A present-but-corrupt
  *  file (invalid JSON) is quarantined aside — never silently reset in place — before the default
- *  layout is returned; see {@link quarantineIfCorrupt}. */
+ *  layout is returned; a quarantine-rename failure propagates rather than degrading to the default
+ *  over the corrupt bytes. The shared {@link loadManagedJson} owns that quarantine-outside-the-catch
+ *  shape, identical to config.json and queue.json. */
 export async function loadLayout(logger: AppLog = nullLog): Promise<PaneLayout> {
-  try {
-    const file = layoutFile();
-    const text = await readFile(file, "utf8");
-    await quarantineIfCorrupt(file, text, isInvalidJson, logger);
-    return parseLayout(text);
-  } catch {
-    return { ...DEFAULT_LAYOUT };
-  }
+  return loadManagedJson(layoutFile(), isInvalidJson, parseLayout, freshLayout, "default", logger);
 }
 
 /** Persist the layout atomically (temp file + rename). The temp is `<stem>-<nanoid>.tmp`
