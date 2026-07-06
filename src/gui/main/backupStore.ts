@@ -79,6 +79,9 @@ function ensureOpen(): DatabaseSync | null {
     mkdirSync(path.dirname(file), { recursive: true });
     const opened = new DatabaseSync(file);
     opened.exec("PRAGMA journal_mode = WAL");
+    // busy_timeout: under the tolerated two-instance case, a contended write waits up to this long for
+    // SQLite's write lock instead of immediately failing with SQLITE_BUSY and dropping that record.
+    opened.exec("PRAGMA busy_timeout = 5000");
     opened.exec(SCHEMA);
     db = opened;
   } catch (err) {
