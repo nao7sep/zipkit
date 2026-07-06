@@ -21,6 +21,8 @@ import {
   minWindowWidth,
   SPLITTER_WIDTH,
 } from "../../../src/gui/shared/layout.js";
+import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
+import { managedEntries } from "../../helpers/managedEntries.js";
 
 describe("parseLayout", () => {
   it("reads a stored layout", () => {
@@ -125,6 +127,9 @@ describe("layout file quarantine-then-reset", () => {
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_HOME;
     else process.env.ZIPKIT_HOME = prev;
+    // saveLayout now records through the write-through backup store (backups.sqlite3 under this root);
+    // close it so the next test re-opens against its own throwaway root and the rm below can delete it.
+    closeBackupStore();
     await rm(root, { recursive: true, force: true });
   });
 
@@ -165,6 +170,6 @@ describe("layout file quarantine-then-reset", () => {
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect(readdirSync(root).sort()).toEqual(["layout.json", quarantined].sort());
+    expect(managedEntries(root).sort()).toEqual(["layout.json", quarantined].sort());
   });
 });

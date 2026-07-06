@@ -9,14 +9,12 @@
  * edge.
  */
 
-import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../shared/spec.js";
 import type { Job, SavedJob } from "../shared/queue.js";
 import { nullLog, type AppLog } from "./log.js";
-import { loadManagedJson } from "./managedJson.js";
+import { loadManagedJson, writeManagedJson } from "./managedJson.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -95,15 +93,10 @@ export async function loadQueue(logger: AppLog = nullLog): Promise<SavedJob[]> {
   return loadManagedJson(queueFile(), isQueueCorrupt, parseQueue, () => [], "rethrow-non-enoent", logger);
 }
 
-/** Persist resumable jobs atomically (temp file + rename), so a crash mid-write
- *  cannot corrupt the queue. The temp is `<stem>-<nanoid>.tmp` in the same directory
- *  (storage-path conventions' derived-filename grammar). Throws on failure; the
- *  caller logs it through the session log. */
+/** Persist resumable jobs through the shared managed-text atomic write (temp file + rename), so a crash
+ *  mid-write cannot corrupt the queue, and the exact bytes are recorded to the data-backup store after
+ *  the rename lands. queue.json is the user's own in-progress work — managed text — and RECORDS on every
+ *  save (data-backup conventions). Throws on failure; the caller logs it through the session log. */
 export async function saveQueue(jobs: SavedJob[]): Promise<void> {
-  const file = queueFile();
-  const dir = path.dirname(file);
-  await mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
-  await writeFile(tmp, serializeQueue(jobs), "utf8");
-  await rename(tmp, file);
+  await writeManagedJson(queueFile(), serializeQueue(jobs));
 }

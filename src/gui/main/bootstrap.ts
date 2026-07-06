@@ -16,7 +16,6 @@ import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
 import { ensureSettingsFile } from "./settings.js";
-import { runBackupInBackground } from "./backup/backupService.js";
 import { errorInfo } from "./log.js";
 import { log, setMainWindow } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
@@ -107,11 +106,9 @@ app.whenReady().then(async () => {
   } catch (err) {
     log.error("failed to create config.json on first run", { error: errorInfo(err) });
   }
-  // Just-in-case data backup (data-backup conventions): fire-and-forget now that config.json is
-  // materialized, so a best-effort snapshot of `~/.zipkit/` (config.json + the resumable queue.json,
-  // minus volatile layout.json) is taken before the session dirties anything. It never blocks the
-  // window, shows an error, or throws — the service catches and logs everything itself.
-  runBackupInBackground();
+  // Just-in-case data backup (data-backup conventions): write-through, not a startup scan. Each managed
+  // text save records the exact bytes into `~/.zipkit/backups.sqlite3` strictly after its atomic rename
+  // lands (see managedJson.ts's writeManagedJson + the backup store). There is nothing to kick off here.
   registerIpc();
   registerQueueIpc();
   createWindow();

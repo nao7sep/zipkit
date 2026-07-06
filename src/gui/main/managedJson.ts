@@ -15,9 +15,11 @@
  * genuinely disposable cache and stays out of scope here (governed by the data-backup conventions).
  */
 
-import { readFile, rename } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { nanoid } from "nanoid";
 import { defaultSessionTimestamp } from "../../sdk/log/session.js";
+import { record } from "./backupStore.js";
 import { nullLog, type AppLog } from "./log.js";
 
 /** True when `text` — already read from a managed JSON store's file — counts as corrupt for that
@@ -50,6 +52,10 @@ export async function quarantineIfCorrupt(
   const dir = path.dirname(file);
   const stem = path.parse(file).name;
   const quarantined = path.join(dir, `${stem}-${defaultSessionTimestamp(now)}.invalid`);
+  // not recorded: this is a move-aside of an already-unreadable managed file, not a managed-text write —
+  // no new content is produced here, and the corrupt bytes are not a version to preserve in the history
+  // (the store never captured them, so there is nothing to add). The subsequent fresh save through
+  // writeManagedJson is what records the recovered-to-defaults content.
   await rename(file, quarantined);
   logger.warn("quarantined a corrupt managed file; falling back to defaults", {
     original: file,
@@ -109,4 +115,36 @@ export async function loadManagedJson<T>(
   // to `onDefault()` while the corrupt bytes still sit at `file`.
   await quarantineIfCorrupt(file, text, isCorrupt, logger);
   return parse(text);
+}
+
+/**
+ * The single managed-text atomic-write choke point, shared by config.json (settings.ts), layout.json
+ * (layout.ts), and queue.json (persist.ts) so all three take the identical shape rather than each
+ * hand-rolling the temp-then-rename — and, crucially, so the data-backup hook lives in exactly ONE
+ * place. A managed-text write that bypasses this helper is a silent backup gap; there is deliberately
+ * no second atomic-write path in the app.
+ *
+ * Writes `text` to a same-directory temp named `<stem>-<nanoid>.tmp` (the storage-path conventions'
+ * derived-filename grammar — the nanoid guarantees two concurrent writers never share a temp), then
+ * atomically renames it over `file`, so a crash mid-write cannot corrupt the target. Throws on failure;
+ * the caller (an IPC handler, the queue's debounced save) logs it through the session log.
+ *
+ * **The data-backup record fires strictly AFTER the rename lands (data-backup conventions).** Recording
+ * before the rename would risk a "backup of a save that never happened": if the rename then failed, the
+ * history would hold a version that never reached disk. So: rename lands, *then* record the exact bytes
+ * just written — the same `bytes` buffer already in hand, never a re-read of the file (which would risk
+ * capturing a concurrent writer's content, not what this call wrote). The record is best-effort and
+ * silent; it never throws back into this write and never affects the save's success (see backupStore).
+ */
+export async function writeManagedJson(file: string, text: string): Promise<void> {
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true });
+  const bytes = Buffer.from(text, "utf8");
+  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
+  await writeFile(tmp, bytes);
+  await rename(tmp, file);
+  // After the rename: the file is exactly where it belongs, so record the bytes we just wrote. Best-
+  // effort — record() catches, logs once, and swallows every failure, so a backup problem can never
+  // break the save that already succeeded above.
+  record(file, bytes);
 }

@@ -122,6 +122,9 @@ export function createAppLog(
 
     if (!degraded) {
       try {
+        // not recorded: the session log is append-mode and never uses the managed-text atomic
+        // temp-then-rename path, so it never reaches the data-backup hook (excluded by construction —
+        // data-backup conventions).
         appendFileSync(file, line);
         return;
       } catch (err) {

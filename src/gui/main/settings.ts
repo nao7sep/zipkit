@@ -9,13 +9,12 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
-import { access, mkdir, rename, writeFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import path from "node:path";
-import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { nullLog, type AppLog } from "./log.js";
-import { isInvalidJson, loadManagedJson } from "./managedJson.js";
+import { isInvalidJson, loadManagedJson, writeManagedJson } from "./managedJson.js";
 
 /** The settings file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -67,17 +66,12 @@ export async function loadSettings(logger: AppLog = nullLog): Promise<GuiSetting
   return loadManagedJson(settingsFile(), isInvalidJson, parseSettings, freshSettings, "default", logger);
 }
 
-/** Persist the GUI settings atomically (temp file + rename), so a crash mid-write
- *  cannot corrupt them. The temp is `<stem>-<nanoid>.tmp` in the same directory
- *  (storage-path conventions' derived-filename grammar). Throws on write failure;
- *  the caller logs it. */
+/** Persist the GUI settings through the shared managed-text atomic write (temp file + rename), so a
+ *  crash mid-write cannot corrupt them, and the exact bytes are recorded to the data-backup store
+ *  after the rename lands. config.json is managed text and RECORDS on every save (data-backup
+ *  conventions). Throws on write failure; the caller logs it. */
 export async function saveSettings(settings: GuiSettings): Promise<void> {
-  const file = settingsFile();
-  const dir = path.dirname(file);
-  await mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
-  await writeFile(tmp, serializeSettings(settings), "utf8");
-  await rename(tmp, file);
+  await writeManagedJson(settingsFile(), serializeSettings(settings));
 }
 
 /** Create config.json from the built-in defaults on first run — only when it does not yet exist — so

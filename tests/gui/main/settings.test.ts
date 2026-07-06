@@ -21,6 +21,8 @@ import {
 import type { AppLog } from "../../../src/gui/main/log.js";
 import { storageRoot } from "../../../src/sdk/storage.js";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
+import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
+import { managedEntries } from "../../helpers/managedEntries.js";
 
 describe("settings", () => {
   it("round-trips the settings (option defaults + UI font)", () => {
@@ -74,6 +76,9 @@ describe("settings file location and persistence", () => {
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_HOME;
     else process.env.ZIPKIT_HOME = prev;
+    // saveSettings now records through the write-through backup store (backups.sqlite3 under this root);
+    // close it so the next test re-opens against its own throwaway root and the rm below can delete it.
+    closeBackupStore();
     await rm(root, { recursive: true, force: true });
   });
 
@@ -124,10 +129,10 @@ describe("settings file location and persistence", () => {
     await saveSettings(settings);
 
     const file = path.join(root, "config.json");
-    // The atomic write renames the temp (`config-<nanoid>.tmp`) over the target, so only
-    // the final `config.json` remains (no orphaned temp, no dot-appended `config.json.tmp`,
-    // no legacy `settings.json`).
-    expect(readdirSync(root)).toEqual(["config.json"]);
+    // The atomic write renames the temp (`config-<nanoid>.tmp`) over the target, so only the final
+    // `config.json` remains (no orphaned temp, no dot-appended `config.json.tmp`, no legacy
+    // `settings.json`). The write-through backup store's own files are filtered out by managedEntries.
+    expect(managedEntries(root)).toEqual(["config.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(await loadSettings()).toEqual(settings);
   });
@@ -169,6 +174,6 @@ describe("settings file location and persistence", () => {
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect(readdirSync(root).sort()).toEqual(["config.json", quarantined].sort());
+    expect(managedEntries(root).sort()).toEqual(["config.json", quarantined].sort());
   });
 });

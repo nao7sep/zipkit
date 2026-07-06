@@ -9,13 +9,11 @@
  * best-effort edge and its failures are logged by the caller.
  */
 
-import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { nanoid } from "nanoid";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
-import { isInvalidJson, loadManagedJson } from "./managedJson.js";
+import { isInvalidJson, loadManagedJson, writeManagedJson } from "./managedJson.js";
 
 /** The layout file under the resolved storage root. Computed lazily so
  *  `ZIPKIT_HOME` is read after the environment is set (storage-path convention). */
@@ -57,14 +55,12 @@ export async function loadLayout(logger: AppLog = nullLog): Promise<PaneLayout> 
   return loadManagedJson(layoutFile(), isInvalidJson, parseLayout, freshLayout, "default", logger);
 }
 
-/** Persist the layout atomically (temp file + rename). The temp is `<stem>-<nanoid>.tmp`
- *  in the same directory (storage-path conventions' derived-filename grammar). Throws
- *  on write failure; the caller logs it. */
+/** Persist the layout through the shared managed-text atomic write (temp file + rename), recording the
+ *  exact bytes to the data-backup store after the rename lands. layout.json is managed text and RECORDS
+ *  on every save — geometry/throwaway UI state included: the data-backup conventions deliberately record
+ *  all managed text and let per-path content-hash dedup absorb the churn of near-identical geometry
+ *  saves (this is the new design, not the old "exclude volatile state" rule). Throws on write failure;
+ *  the caller logs it. */
 export async function saveLayout(layout: PaneLayout): Promise<void> {
-  const file = layoutFile();
-  const dir = path.dirname(file);
-  await mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
-  await writeFile(tmp, serializeLayout(layout), "utf8");
-  await rename(tmp, file);
+  await writeManagedJson(layoutFile(), serializeLayout(layout));
 }

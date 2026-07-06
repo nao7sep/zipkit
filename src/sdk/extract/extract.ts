@@ -244,6 +244,10 @@ async function commitFile(
     await rm(tempPath, { force: true });
     return "exists";
   }
+  // not recorded: this is extracted archive content written to the user's chosen destination — output
+  // (arbitrary, often binary) the app writes for the user and then forgets, not managed state the app
+  // reloads. It lives outside `~/.zipkit/` and is not captured by the data-backup layer (data-backup
+  // conventions). The SDK is also a separate layer with no dependency on the GUI's backup store.
   await rename(tempPath, target);
   if (options.restore) {
     const t = restoreTimes(entry, options.timeZone);

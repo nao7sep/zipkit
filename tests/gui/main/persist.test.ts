@@ -20,6 +20,8 @@ import {
 import type { AppLog } from "../../../src/gui/main/log.js";
 import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
+import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
+import { managedEntries } from "../../helpers/managedEntries.js";
 
 describe("parseQueue", () => {
   it("round-trips serialized jobs", () => {
@@ -84,6 +86,10 @@ describe("queue file location and persistence", () => {
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_HOME;
     else process.env.ZIPKIT_HOME = prev;
+    // saveQueue now records through the write-through backup store (backups.sqlite3 under this root);
+    // close it so the next test re-opens against its own throwaway root and the rm below can delete
+    // the file with no open handle.
+    closeBackupStore();
     await rm(root, { recursive: true, force: true });
   });
 
@@ -92,9 +98,11 @@ describe("queue file location and persistence", () => {
     await saveQueue(jobs);
 
     const file = path.join(root, "queue.json");
-    // The atomic write renames the temp (`queue-<nanoid>.tmp`) over the target, so only
-    // the final file remains (no orphaned temp, no dot-appended `queue.json.tmp`).
-    expect(readdirSync(root)).toEqual(["queue.json"]);
+    // The atomic write renames the temp (`queue-<nanoid>.tmp`) over the target, so only the final file
+    // remains (no orphaned temp, no dot-appended `queue.json.tmp`). The write-through backup store's own
+    // files (backups.sqlite3 + its WAL sidecars) are the one other expected presence and are filtered
+    // out here; that they never carry a `.tmp` is what this still proves.
+    expect(managedEntries(root)).toEqual(["queue.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(await loadQueue()).toEqual(jobs);
   });
@@ -141,7 +149,7 @@ describe("queue file location and persistence", () => {
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect(readdirSync(root).sort()).toEqual(["queue.json", quarantined].sort());
+    expect(managedEntries(root).sort()).toEqual(["queue.json", quarantined].sort());
   });
 });
 
