@@ -1,0 +1,27 @@
+{
+  // Test program: tests/ mirrors src/ and stays out of the shipped build. It runs
+  // under BOTH environments — the SDK tests in Node, the renderer-logic and
+  // component tests against DOM types — so it carries node + vite/client types and
+  // DOM libs. noEmit; never shipped. Wired into `typecheck` so test code is too.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"]
+  },
+  "include": ["tests/**/*", "vitest.config.ts"]
+}
