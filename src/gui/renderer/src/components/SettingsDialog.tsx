@@ -90,7 +90,7 @@ export function SettingsDialog({
             <button
               onClick={() => setDraft({ defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "" })}
             >
-              Restore defaults
+              Reset to latest defaults
             </button>
             {/* Restore only rewrites the unsaved draft, so it carries the
                 config-seeding conventions' discardable-draft hint: close without
