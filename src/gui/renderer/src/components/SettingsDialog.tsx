@@ -78,17 +78,29 @@ export function SettingsDialog({
       footer={
         // Cancel is first in DOM so the shell's footer-first focus lands on the
         // safe default, never on Restore (which would reset the draft on a stray
-        // Enter) or the primary Save. Restore is visually pulled to the far left
-        // (flex order + auto margin); Save stays last per the conventions' order.
+        // Enter) or the primary Save. The Restore group (button + its discard
+        // hint) is visually pulled to the far left (flex order + auto margin);
+        // Cancel/Save align to the group's top so the hint hangs below them
+        // without stretching them. Save stays last per the conventions' order.
         <>
-          <button onClick={() => void requestClose()}>Cancel</button>
-          <button
-            style={S.restore}
-            onClick={() => setDraft({ defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "" })}
-          >
-            Restore defaults
+          <button style={S.footerButton} onClick={() => void requestClose()}>
+            Cancel
           </button>
-          <button className="accent" disabled={!canSave} onClick={save}>
+          <div style={S.restore}>
+            <button
+              onClick={() => setDraft({ defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "" })}
+            >
+              Restore defaults
+            </button>
+            {/* Restore only rewrites the unsaved draft, so it carries the
+                config-seeding conventions' discardable-draft hint: close without
+                saving is the safety net that keeps the user's current settings. */}
+            <span style={S.restoreHint}>
+              Replaces these settings with the latest built-in defaults. Save to persist; close
+              without saving to keep your current settings.
+            </span>
+          </div>
+          <button className="accent" style={S.footerButton} disabled={!canSave} onClick={save}>
             Save
           </button>
         </>
@@ -117,8 +129,23 @@ export function SettingsDialog({
 }
 
 const S: Record<string, CSSProperties> = {
-  // Pulled to the far left of the footer; the auto margin pushes Cancel/Save right.
-  restore: { order: -1, marginRight: "auto" },
+  // The Restore group (button + discard hint) is pulled to the far left of the
+  // footer; the auto margin pushes Cancel/Save right. A column so the hint sits
+  // directly beneath the button, always pinned with it in the footer.
+  restore: {
+    order: -1,
+    marginRight: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.35rem",
+    alignItems: "flex-start",
+  },
+  // Keep Cancel/Save at the top of the (taller) Restore group rather than
+  // stretching to its full height.
+  footerButton: { alignSelf: "flex-start" },
+  // Same hint idiom as fontHint below, capped so the two-sentence note wraps
+  // tidily under the button instead of crowding Cancel/Save.
+  restoreHint: { fontSize: "0.85em", color: "var(--text-2)", maxWidth: "24rem" },
   fontField: { display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "1rem" },
   fontLabel: { fontWeight: 600 },
   fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
