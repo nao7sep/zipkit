@@ -23,5 +23,9 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"]
   },
-  "include": ["tests/**/*", "vitest.config.ts"]
+  // The renderer's ambient `Window.zipkit` augmentation is listed because a
+  // component test renders components that reach for the bridge (the settings
+  // dialog's output-directory picker); without it the test program would see a
+  // bare `Window` and fail on code the web program checks fine.
+  "include": ["tests/**/*", "vitest.config.ts", "src/gui/renderer/src/env.d.ts"]
 }

@@ -54,6 +54,18 @@ export function SettingsDialog({
     onClose();
   }
 
+  // Named for exactly what it resets, so the label and the code agree
+  // (config-seeding conventions) — "default parameters" is the same phrase the
+  // main window's per-job toggle uses for these knobs. It only rewrites the
+  // unsaved draft — Save commits it, closing without saving keeps the current
+  // settings — so the label is the whole warning and no confirmation is needed.
+  // The UI font is deliberately left alone: it is the user's own cosmetic
+  // preference, not a built-in that goes stale, so a reset must not drag it
+  // along.
+  function resetDefaultParameters() {
+    setDraft({ ...draft, defaults: { ...DEFAULT_OPTIONS } });
+  }
+
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):
   // ask before throwing away unsaved edits; close immediately when clean.
   async function requestClose() {
@@ -77,30 +89,16 @@ export function SettingsDialog({
       maxWidth="44rem"
       footer={
         // Cancel is first in DOM so the shell's footer-first focus lands on the
-        // safe default, never on Restore (which would reset the draft on a stray
-        // Enter) or the primary Save. The Restore group (button + its discard
-        // hint) is visually pulled to the far left (flex order + auto margin);
-        // Cancel/Save align to the group's top so the hint hangs below them
-        // without stretching them. Save stays last per the conventions' order.
+        // safe default, never on the reset (which would rewrite the draft on a
+        // stray Enter) or the primary Save. The reset button is visually pulled
+        // to the far left (flex order + auto margin); Save stays last per the
+        // conventions' order.
         <>
-          <button style={S.footerButton} onClick={() => void requestClose()}>
-            Cancel
+          <button onClick={() => void requestClose()}>Cancel</button>
+          <button style={S.resetDefaultParameters} onClick={resetDefaultParameters}>
+            Reset default parameters
           </button>
-          <div style={S.restore}>
-            <button
-              onClick={() => setDraft({ defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "" })}
-            >
-              Reset to latest defaults
-            </button>
-            {/* Restore only rewrites the unsaved draft, so it carries the
-                config-seeding conventions' discardable-draft hint: close without
-                saving is the safety net that keeps the user's current settings. */}
-            <span style={S.restoreHint}>
-              Replaces these settings with the latest built-in defaults. Save to persist; close
-              without saving to keep your current settings.
-            </span>
-          </div>
-          <button className="accent" style={S.footerButton} disabled={!canSave} onClick={save}>
+          <button className="accent" disabled={!canSave} onClick={save}>
             Save
           </button>
         </>
@@ -129,23 +127,10 @@ export function SettingsDialog({
 }
 
 const S: Record<string, CSSProperties> = {
-  // The Restore group (button + discard hint) is pulled to the far left of the
-  // footer; the auto margin pushes Cancel/Save right. A column so the hint sits
-  // directly beneath the button, always pinned with it in the footer.
-  restore: {
-    order: -1,
-    marginRight: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.35rem",
-    alignItems: "flex-start",
-  },
-  // Keep Cancel/Save at the top of the (taller) Restore group rather than
-  // stretching to its full height.
-  footerButton: { alignSelf: "flex-start" },
-  // Same hint idiom as fontHint below, capped so the two-sentence note wraps
-  // tidily under the button instead of crowding Cancel/Save.
-  restoreHint: { fontSize: "0.85em", color: "var(--text-2)", maxWidth: "24rem" },
+  // Reset sits at the far left of the footer, apart from the Cancel/Save pair:
+  // the auto margin pushes those two right, the order pulls it ahead of Cancel
+  // (which stays first in DOM for the shell's footer-first focus).
+  resetDefaultParameters: { order: -1, marginRight: "auto" },
   fontField: { display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "1rem" },
   fontLabel: { fontWeight: 600 },
   fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
