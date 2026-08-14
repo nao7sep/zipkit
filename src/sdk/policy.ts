@@ -175,6 +175,10 @@ const mergePolicy = createDefu((object, key, value) => {
     object[key] = value;
     return true;
   }
+  // defu's merger contract: true means "handled here", false means "fall through
+  // to the default deep merge". Stated explicitly rather than left to an implicit
+  // undefined, so the scalar/nested-object path reads as a decision.
+  return false;
 });
 
 /**

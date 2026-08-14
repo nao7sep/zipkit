@@ -33,7 +33,6 @@ export interface CompressResult {
  * entry — it owns a single zlib stream that cannot be reused.
  */
 export class EntryCompressor {
-  readonly #method: "store" | "deflate";
   readonly #sink: ChunkSink;
   readonly #deflate: zlib.DeflateRaw | null;
   #crc = 0;
@@ -45,7 +44,6 @@ export class EntryCompressor {
   #error: unknown;
 
   constructor(method: "store" | "deflate", sink: ChunkSink, chunkSize: number, level: number) {
-    this.#method = method;
     this.#sink = sink;
     if (method === "deflate") {
       // Chunks are fed with plain `write()` and finalized once at `end()` — no

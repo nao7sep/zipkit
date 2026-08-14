@@ -455,7 +455,7 @@ describe("queue engine", () => {
     const release: Array<() => void> = [];
     let n = 0;
     const { deps } = makeDeps({
-      plan: (inputs) => {
+      plan: () => {
         n += 1;
         if (n === 1) {
           return new Promise<PlanData>((resolve) => {

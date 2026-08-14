@@ -36,6 +36,25 @@ const fontInput = () => screen.getByPlaceholderText("Default") as HTMLInputEleme
 const levelInput = () => screen.getByLabelText("Compression level (1–9)") as HTMLInputElement;
 const reset = () => screen.getByText("Reset default parameters");
 
+// ModalShell gives the footer's FIRST DOM control the safe-default focus, so a
+// stray Enter on open must land on Cancel. The footer is deliberately written in
+// a different order than it renders: the reset is pulled to the visual far left
+// with `order: -1`, but stays SECOND in the DOM. Until now the only thing
+// recording that was a comment above the JSX, and a comment does not fail a
+// build — reordering the JSX to match what the eye sees (the natural tidy-up,
+// since a reader will ask why Cancel is written first when it renders second)
+// would silently move the open-then-Enter target onto "Reset default
+// parameters". This asserts the DOM order that safety rides on.
+describe("SettingsDialog footer order", () => {
+  it("puts Cancel first in the DOM so footer-first focus is the safe default", () => {
+    renderDialog();
+    const footer = document.querySelector("[data-modal-footer]");
+    expect(footer).toBeTruthy();
+    const labels = Array.from(footer!.querySelectorAll("button")).map((b) => b.textContent);
+    expect(labels).toEqual(["Cancel", "Reset default parameters", "Save"]);
+  });
+});
+
 describe("SettingsDialog reset", () => {
   it("labels the control for exactly what it resets", () => {
     renderDialog();
