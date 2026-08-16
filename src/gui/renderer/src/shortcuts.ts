@@ -24,6 +24,55 @@ export interface ShortcutGroup {
   items: ShortcutItem[];
 }
 
+/**
+ * The one shared command-modifier predicate (keyboard-shortcut-conventions):
+ * BOTH Cmd and Ctrl fire on every platform, and Alt is excluded because
+ * Chromium delivers Windows AltGr as Ctrl+Alt — an unguarded predicate would
+ * let an AltGr-typed character (unmapped combos fall back to the base key)
+ * fire an accelerator and swallow the character. Co-located with the catalog
+ * so the label and the binding come from one module.
+ */
+export function hasMod(e: KeyboardEvent): boolean {
+  return (e.metaKey || e.ctrlKey) && !e.altKey;
+}
+
+// Bare-Ctrl chords on these keys shadow Cocoa's text-editing keymap
+// (StandardKeyBinding.dict — Ctrl+N is next-line, Ctrl+Slash is bound too).
+const COCOA_CTRL_TEXT_KEYS = new Set([
+  "a", "b", "d", "e", "f", "h", "k", "l", "n", "o", "p", "t", "v", "y", "/",
+]);
+
+/**
+ * True when this chord shadows a macOS text-editing binding and must stand
+ * down while the event target is editable; the Cmd half of the same chord is
+ * unbound there and always fires (keyboard-shortcut-conventions).
+ */
+export function shadowsMacTextBinding(e: KeyboardEvent, isMac: boolean): boolean {
+  if (!isMac) return false;
+  if (e.metaKey || !e.ctrlKey) return false;
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  return COCOA_CTRL_TEXT_KEYS.has(key);
+}
+
+/**
+ * One editable-target predicate for the whole app. The parentElement walk is
+ * load-bearing: a rich-text target is a descendant of its contenteditable,
+ * so a tagName-only test would let every chord through.
+ */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  let current = target instanceof HTMLElement ? target : null;
+  while (current) {
+    if (current.isContentEditable) return true;
+    if (current.tagName === "TEXTAREA") return true;
+    if (current.tagName === "INPUT") {
+      const type = (current.getAttribute("type") ?? "text").toLowerCase();
+      return !["checkbox", "radio", "range", "button", "submit", "reset", "color", "file"].includes(type);
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
 /** The platform's single modifier word for display: "Cmd" on macOS, "Ctrl"
  *  everywhere else. Never the combined "Cmd/Ctrl" in live UI. */
 export function modifierWord(platform: GuiPlatform): string {

@@ -30,6 +30,7 @@ import { AboutDialog } from "./components/AboutDialog";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
 import { isComposing } from "./composition";
+import { hasMod, isEditableTarget, shadowsMacTextBinding } from "./shortcuts";
 import { useConfirm, type ConfirmOptions } from "./components/DialogHost";
 import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
@@ -172,8 +173,18 @@ export function App() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (isComposing(e)) return;
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!hasMod(e)) return;
       if (document.querySelector('[role="dialog"]')) return;
+      // On macOS a bare-Ctrl chord on a Cocoa text-editing key (Ctrl+N =
+      // next-line, Ctrl+Slash too) belongs to the text system while the caret
+      // is in a job field; the Cmd half always fires
+      // (keyboard-shortcut-conventions).
+      if (
+        isEditableTarget(e.target) &&
+        shadowsMacTextBinding(e, /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent))
+      ) {
+        return;
+      }
       if (e.key === ",") {
         e.preventDefault();
         setDialog("settings");
