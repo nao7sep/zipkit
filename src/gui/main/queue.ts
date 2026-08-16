@@ -59,13 +59,11 @@ const engine = createQueueEngine({
 
 /** Reload the persisted jobs at launch and re-plan each one fresh. */
 export async function restoreQueue(): Promise<void> {
-  let saved: SavedJob[];
-  try {
-    saved = await loadQueue(log);
-  } catch (err) {
-    log.warn("could not load the saved queue; starting empty", { error: errorInfo(err) });
-    saved = [];
-  }
+  // Missing files and successfully quarantined corrupt files already resolve to
+  // an empty queue inside loadQueue. Every rejection is therefore a real I/O or
+  // preservation failure and must reach startup rather than being overwritten by
+  // a later save from an invented empty queue.
+  const saved: SavedJob[] = await loadQueue(log);
   log.info("queue restored", { jobs: saved.length });
   engine.restore(saved);
 }

@@ -51,9 +51,14 @@ export async function quarantineIfCorrupt(
 }
 
 // Material or actionable recoveries that happen before the window exists.
-const quarantineNotices: Array<{ original: string; quarantined: string }> = [];
+export interface QuarantineNotice {
+  original: string;
+  quarantined: string;
+}
 
-export function drainQuarantineNotices(): Array<{ original: string; quarantined: string }> {
+const quarantineNotices: QuarantineNotice[] = [];
+
+export function drainQuarantineNotices(): QuarantineNotice[] {
   return quarantineNotices.splice(0);
 }
 

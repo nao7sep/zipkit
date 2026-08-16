@@ -13,6 +13,7 @@ import { app, BrowserWindow, dialog, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
 import { drainQuarantineNotices } from "./managedJson.js";
+import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
@@ -86,19 +87,16 @@ function createWindow(): void {
   }
 }
 
-// A store that is corrupt AND cannot be set aside rejects out of the startup body below:
-// zipkit must not reset over bytes it failed to preserve, so it halts — and a halt has to
-// reach the user, never just the log (storage-path conventions).
+// Any startup failure reaches the user and halts. Managed-store loaders include
+// the affected path in their own error when recovery cannot preserve the bytes.
 function reportStartupHalt(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   log.error("startup halted", { error: errorInfo(error) });
   dialog.showErrorBox(
     "ZipKit could not start",
-    "A settings file could not be read, and ZipKit could not set it aside either — so it has been left " +
-      "exactly where it is rather than risk overwriting it.\n\n" +
-      message +
-      "\n\nYour archive files on disk are not affected. Repair or move the file under the ZipKit data " +
-      "folder, then start ZipKit again.",
+    message +
+      "\n\nZipKit stopped before opening its window. Correct the reported problem, then start it again. " +
+      "Your archive files on disk are not affected.",
   );
   app.exit(1);
 }
@@ -141,14 +139,8 @@ app.whenReady().then(async () => {
   await restoreQueue();
 
   // Config and queue recovery can require action; layout recovery is log-only.
-  const quarantined = drainQuarantineNotices();
-  if (quarantined.length > 0) {
-    dialog.showErrorBox(
-      "A settings file was reset",
-      "A file was unreadable and has been set aside so nothing is lost:\n\n" +
-        quarantined.map((n) => n.quarantined).join("\n") +
-        "\n\nZipKit started with defaults for it. Your archive files on disk are untouched.",
-    );
+  for (const recoveryDialog of buildRecoveryDialogs(drainQuarantineNotices())) {
+    dialog.showErrorBox(recoveryDialog.title, recoveryDialog.message);
   }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
