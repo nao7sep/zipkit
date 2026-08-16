@@ -1,19 +1,4 @@
-/**
- * Shared quarantine-then-reset for a present-but-corrupt managed JSON store: config.json (settings.ts),
- * layout.json (layout.ts), and queue.json (persist.ts). Storage-path conventions forbid the one path
- * those three loaders used to take — silently resetting to defaults *over* a corrupt file, so the very
- * next save overwrites the user's original bytes with no trace they ever existed. Quarantine instead:
- * rename the corrupt file aside (bytes preserved, not copied) to `<stem>-<ms-utc-stamp>.invalid` in the
- * same directory — the storage-path conventions' derived-filename grammar for a quarantine name — log
- * one warning naming both paths, and let the caller fall through to its own defaults. The millisecond
- * stamp reuses {@link defaultSessionTimestamp}, the same formatter the SDK's and the GUI's session logs
- * already use, rather than a fourth timestamp formatter.
- *
- * What counts as "corrupt" is store-specific — each store already enforces its own shape on load — so
- * it is supplied by the caller as `isCorrupt`; this module owns only the quarantine mechanics, once, for
- * all three stores. The backup index's own unreadable-index-resets-to-empty path is a different,
- * genuinely disposable cache and stays out of scope here (governed by the data-backup conventions).
- */
+/** Shared safe loading and atomic writing for the GUI's managed JSON stores. */
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -46,6 +31,7 @@ export async function quarantineIfCorrupt(
   text: string,
   isCorrupt: CorruptionCheck,
   logger: AppLog = nullLog,
+  reportRecovery = true,
   now: Date = new Date(),
 ): Promise<void> {
   if (!isCorrupt(text)) return;
@@ -61,13 +47,10 @@ export async function quarantineIfCorrupt(
     original: file,
     quarantined,
   });
-  quarantineNotices.push({ original: file, quarantined });
+  if (reportRecovery) quarantineNotices.push({ original: file, quarantined });
 }
 
-// Quarantines that happened before any window existed (settings and layout are
-// read at bootstrap), journaled so the app edge can report them once a surface
-// exists — an unreported quarantine is a silent reset with extra steps
-// (storage-path conventions: both branches report).
+// Material or actionable recoveries that happen before the window exists.
 const quarantineNotices: Array<{ original: string; quarantined: string }> = [];
 
 export function drainQuarantineNotices(): Array<{ original: string; quarantined: string }> {
@@ -86,25 +69,7 @@ export function drainQuarantineNotices(): Array<{ original: string; quarantined:
  */
 export type ReadErrorPolicy = "default" | "rethrow-non-enoent";
 
-/**
- * Load a managed JSON store the one correct way, shared by config.json (settings.ts), layout.json
- * (layout.ts), and queue.json (persist.ts) so all three take the identical shape rather than each
- * hand-rolling it. The single invariant this centralizes: the corrupt-file **quarantine runs OUTSIDE
- * the read's failure handling**, so a quarantine-rename failure (a transient lock, an AV hold, a
- * permission hiccup) propagates to the caller — it is never swallowed into "return defaults", which
- * would leave the corrupt bytes in place for the next save to overwrite, the silent-reset-over-a-
- * corrupt-file outcome the storage-path convention forbids.
- *
- * The default value is therefore returned in exactly two cases, never a third: the file is absent
- * (or, under `"default"`, otherwise unreadable), or its corrupt bytes were **successfully** moved
- * aside. While corrupt bytes remain on disk, no default is returned.
- *
- * @param file       the resolved store path (each store still owns its own path resolver).
- * @param isCorrupt  the store's own corrupt-detection over the read text.
- * @param parse      the store's pure parse of a readable, non-corrupt text into its value.
- * @param onDefault  the store's default value, used for an absent (or unreadable, per policy) file.
- * @param readError  how an outright read failure is treated (see {@link ReadErrorPolicy}).
- */
+/** Load without ever returning defaults while corrupt bytes remain at the live path. */
 export async function loadManagedJson<T>(
   file: string,
   isCorrupt: CorruptionCheck,
@@ -112,6 +77,7 @@ export async function loadManagedJson<T>(
   onDefault: () => T,
   readError: ReadErrorPolicy,
   logger: AppLog = nullLog,
+  reportRecovery = true,
 ): Promise<T> {
   let text: string;
   try {
@@ -124,7 +90,7 @@ export async function loadManagedJson<T>(
   }
   // Quarantine sits OUTSIDE the read's catch: a rename failure here must propagate, not fall through
   // to `onDefault()` while the corrupt bytes still sit at `file`.
-  await quarantineIfCorrupt(file, text, isCorrupt, logger);
+  await quarantineIfCorrupt(file, text, isCorrupt, logger, reportRecovery);
   return parse(text);
 }
 

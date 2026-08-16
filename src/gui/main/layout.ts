@@ -52,7 +52,9 @@ export function serializeLayout(layout: PaneLayout): string {
  *  over the corrupt bytes. The shared {@link loadManagedJson} owns that quarantine-outside-the-catch
  *  shape, identical to config.json and queue.json. */
 export async function loadLayout(logger: AppLog = nullLog): Promise<PaneLayout> {
-  return loadManagedJson(layoutFile(), isInvalidJson, parseLayout, freshLayout, "default", logger);
+  // Layout is disposable view state: preserve and log bad bytes, but do not
+  // interrupt startup with a recovery dialog.
+  return loadManagedJson(layoutFile(), isInvalidJson, parseLayout, freshLayout, "default", logger, false);
 }
 
 /** Persist the layout through the shared managed-text atomic write (temp file + rename), recording the

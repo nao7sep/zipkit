@@ -99,9 +99,6 @@ export function App() {
   // window-shrink narrows what's shown without ever touching the stored intent, so
   // re-growing the window returns the panes to exactly the intended widths.
   const [intent, setIntent] = useState<PaneLayout>(DEFAULT_LAYOUT);
-  // Set when a store could not be read and could not be set aside: every persist path
-  // stands down so the preserved bytes survive until the user repairs the file.
-  const [storeUnreadable, setStoreUnreadable] = useState<string | null>(null);
   const intentRef = useRef(intent);
   intentRef.current = intent;
   const dragBase = useRef<PaneLayout>(intent);
@@ -114,26 +111,15 @@ export function App() {
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
     void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
-    // A rejection here means a store could not be read AND could not be set aside — the
-    // main process leaves those bytes in place, so the renderer must not carry on and
-    // overwrite them on the next save. Blocking persistence is the point: swallowing this
-    // is what let a splitter drag rename a temp over a still-corrupt store (storage-path
-    // conventions).
-    void window.zipkit
-      .getSettings()
-      .then((s) => {
-        setDefaults(s.defaults); // persisted defaults for new jobs
-        setUiFontFamily(s.uiFontFamily);
-      })
-      .catch((err: unknown) => setStoreUnreadable(String(err)));
+    void window.zipkit.getSettings().then((s) => {
+      setDefaults(s.defaults); // persisted defaults for new jobs
+      setUiFontFamily(s.uiFontFamily);
+    });
     // Persisted pane widths ARE the intent. Display-time clamping against the live
     // body width (below) keeps the center pane usable on a smaller window without
     // mutating the intent. (A stale fr value from the old conversion reads as tiny
     // px → clampLayout floors it to the column minimum, which is acceptable.)
-    void window.zipkit
-      .getLayout()
-      .then((loaded) => setIntent(clampLayout(loaded)))
-      .catch((err: unknown) => setStoreUnreadable(String(err)));
+    void window.zipkit.getLayout().then((loaded) => setIntent(clampLayout(loaded)));
     return unsubscribe;
   }, []);
 
@@ -189,10 +175,6 @@ export function App() {
       if (isComposing(e)) return;
       if (!hasMod(e)) return;
       if (document.querySelector('[role="dialog"]')) return;
-      // On macOS a bare-Ctrl chord on a Cocoa text-editing key (Ctrl+N =
-      // next-line, Ctrl+Slash too) belongs to the text system while the caret
-      // is in a job field; the Cmd half always fires
-      // (keyboard-shortcut-conventions).
       if (
         isEditableTarget(e.target) &&
         shadowsMacTextBinding(e, /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent))
@@ -227,9 +209,6 @@ export function App() {
   function saveSettings(next: GuiSettings) {
     setDefaults(next.defaults);
     setUiFontFamily(next.uiFontFamily);
-    // Same stand-down as persistLayout: never write over bytes the main process
-    // preserved because it could not set them aside.
-    if (storeUnreadable !== null) return;
     void window.zipkit.setSettings(next);
   }
 
@@ -266,10 +245,7 @@ export function App() {
 
   // The persisted value is the INTENT — and persistence happens ONLY here, in the
   // drag-release handler, never on a window resize.
-  const persistLayout = () => {
-    if (storeUnreadable !== null) return; // never write over bytes the main process preserved
-    void window.zipkit.setLayout(intentRef.current);
-  };
+  const persistLayout = () => void window.zipkit.setLayout(intentRef.current);
   // The Jobs|Archive handle: drag right widens Jobs. The Archive|Progress handle
   // (rendered inside the middle column) drags right to widen Archive (narrow
   // Progress). A drag sets the user's intent (clamped only into the per-column
@@ -321,18 +297,6 @@ export function App() {
         onOpenShortcuts={() => setDialog("shortcuts")}
         onOpenAbout={() => setDialog("about")}
       />
-      {/* Writes are standing down because a store could not be read and could not be
-          set aside. Saying so is the point: silently not persisting would read as the
-          app losing the user's settings (storage-path conventions: both branches
-          report, and a degraded state names itself). */}
-      {storeUnreadable !== null && (
-        <div style={S.storeUnreadableBanner} role="alert">
-          A settings file could not be read and has been left exactly where it is.
-          ZipKit is running on defaults and will not save settings or pane widths until
-          it is repaired. ({storeUnreadable})
-        </div>
-      )}
-
       <div ref={bodyRef} style={bodyStyle}>
         <Pane
           title="Jobs"
@@ -636,13 +600,6 @@ function JobView({
 
 const S: Record<string, CSSProperties> = {
   shell: { height: "100%", display: "flex", flexDirection: "column" },
-  storeUnreadableBanner: {
-    padding: "8px 12px",
-    background: "#4a2318",
-    color: "#ffd7c2",
-    fontSize: 13,
-    borderBottom: "1px solid #6b3524",
-  },
   body: {
     flex: 1,
     minHeight: 0,

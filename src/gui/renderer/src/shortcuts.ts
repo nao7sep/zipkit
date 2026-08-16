@@ -24,26 +24,13 @@ export interface ShortcutGroup {
   items: ShortcutItem[];
 }
 
-/**
- * The one shared command-modifier predicate (keyboard-shortcut-conventions):
- * BOTH Cmd and Ctrl fire on every platform, and Alt is excluded because
- * Chromium delivers Windows AltGr as Ctrl+Alt — an unguarded predicate would
- * let an AltGr-typed character (unmapped combos fall back to the base key)
- * fire an accelerator and swallow the character. Co-located with the catalog
- * so the label and the binding come from one module.
- */
+/** Alt is excluded because Chromium delivers Windows AltGr as Ctrl+Alt. */
 export function hasMod(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && !e.altKey;
 }
 
-// Bare-Ctrl chords on these keys shadow Cocoa's text-editing keymap
-// (StandardKeyBinding.dict — Ctrl+N is next-line, Ctrl+Slash is bound too).
-const COCOA_CTRL_TEXT_KEYS = new Set([
-  "a", "b", "d", "e", "f", "h", "k", "l", "n", "o", "p", "t", "v", "y", "/",
-  // Ctrl+Return is insertLineBreak: — omitting it let Ctrl+Return in a text field
-  // both swallow the line break and fire the chord.
-  "Enter",
-]);
+// App chords that overlap Cocoa text editing while a job field has focus.
+const MAC_TEXT_BINDING_KEYS = new Set(["n", "/", "Enter"]);
 
 /**
  * True when this chord shadows a macOS text-editing binding and must stand
@@ -54,7 +41,7 @@ export function shadowsMacTextBinding(e: KeyboardEvent, isMac: boolean): boolean
   if (!isMac) return false;
   if (e.metaKey || !e.ctrlKey) return false;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  return COCOA_CTRL_TEXT_KEYS.has(key);
+  return MAC_TEXT_BINDING_KEYS.has(key);
 }
 
 /**

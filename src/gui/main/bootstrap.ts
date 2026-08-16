@@ -131,24 +131,16 @@ app.whenReady().then(async () => {
   registerIpc();
   registerQueueIpc();
 
-  // Warm the managed stores HERE, before the window. They were previously read only
-  // lazily, from the IPC handlers the renderer calls after it mounts — which meant a
-  // corrupt store was quarantined after this point, so the report below drained an
-  // always-empty journal and a corrupt config still silently reset. Reading them here
-  // also puts a failed quarantine on this call stack, where the catch below can report
-  // it, instead of surfacing as an unhandled rejection in a renderer that has already
-  // rendered on defaults and will overwrite the preserved bytes on its next save.
+  // Warm stores before the renderer can save defaults over an unreadable file.
+  // This also keeps failed quarantines on the startup error path.
   await loadSettings(log);
   await loadLayout(log);
 
   createWindow();
-  // restoreQueue reads queue.json, the third store feeding the same journal, so the
-  // drain waits for it — one report covers every store read during startup.
+  // Queue recovery is material, so wait for it before draining notices.
   await restoreQueue();
 
-  // Report any quarantine those loads performed: the store was set aside with its bytes
-  // preserved and defaults took over — the user hears it from a dialog, never only from
-  // the log (storage-path conventions: both branches report).
+  // Config and queue recovery can require action; layout recovery is log-only.
   const quarantined = drainQuarantineNotices();
   if (quarantined.length > 0) {
     dialog.showErrorBox(
