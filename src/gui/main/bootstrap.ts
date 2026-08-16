@@ -93,12 +93,12 @@ function reportStartupHalt(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   log.error("startup halted", { error: errorInfo(error) });
   dialog.showErrorBox(
-    "zipkit could not start",
-    "A settings file could not be read, and zipkit could not set it aside either — so it has been left " +
+    "ZipKit could not start",
+    "A settings file could not be read, and ZipKit could not set it aside either — so it has been left " +
       "exactly where it is rather than risk overwriting it.\n\n" +
       message +
-      "\n\nYour archive files on disk are not affected. Repair or move the file under the zipkit data " +
-      "folder, then start zipkit again.",
+      "\n\nYour archive files on disk are not affected. Repair or move the file under the ZipKit data " +
+      "folder, then start ZipKit again.",
   );
   app.exit(1);
 }
@@ -155,7 +155,7 @@ app.whenReady().then(async () => {
       "A settings file was reset",
       "A file was unreadable and has been set aside so nothing is lost:\n\n" +
         quarantined.map((n) => n.quarantined).join("\n") +
-        "\n\nzipkit started with defaults for it. Your archive files on disk are untouched.",
+        "\n\nZipKit started with defaults for it. Your archive files on disk are untouched.",
     );
   }
   app.on("activate", () => {

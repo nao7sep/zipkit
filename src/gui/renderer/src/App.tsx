@@ -328,7 +328,7 @@ export function App() {
       {storeUnreadable !== null && (
         <div style={S.storeUnreadableBanner} role="alert">
           A settings file could not be read and has been left exactly where it is.
-          zipkit is running on defaults and will not save settings or pane widths until
+          ZipKit is running on defaults and will not save settings or pane widths until
           it is repaired. ({storeUnreadable})
         </div>
       )}
