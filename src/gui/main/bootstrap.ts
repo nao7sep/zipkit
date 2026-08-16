@@ -16,10 +16,11 @@ import { drainQuarantineNotices } from "./managedJson.js";
 import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
-import { ensureSettingsFile } from "./settings.js";
+import { ensureSettingsFile, loadSettings } from "./settings.js";
 import { errorInfo } from "./log.js";
 import { log, setMainWindow } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
+import { loadLayout } from "./layout.js";
 
 // Last-resort hooks: record the failure before the process can die. The session
 // log appends synchronously, so the line is on disk by the time these return.
@@ -85,6 +86,23 @@ function createWindow(): void {
   }
 }
 
+// A store that is corrupt AND cannot be set aside rejects out of the startup body below:
+// zipkit must not reset over bytes it failed to preserve, so it halts — and a halt has to
+// reach the user, never just the log (storage-path conventions).
+function reportStartupHalt(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  log.error("startup halted", { error: errorInfo(error) });
+  dialog.showErrorBox(
+    "zipkit could not start",
+    "A settings file could not be read, and zipkit could not set it aside either — so it has been left " +
+      "exactly where it is rather than risk overwriting it.\n\n" +
+      message +
+      "\n\nYour archive files on disk are not affected. Repair or move the file under the zipkit data " +
+      "folder, then start zipkit again.",
+  );
+  app.exit(1);
+}
+
 app.whenReady().then(async () => {
   log.info("app started", {
     version: app.getVersion(),
@@ -112,25 +130,38 @@ app.whenReady().then(async () => {
   // lands (see managedJson.ts's writeManagedJson + the backup store). There is nothing to kick off here.
   registerIpc();
   registerQueueIpc();
+
+  // Warm the managed stores HERE, before the window. They were previously read only
+  // lazily, from the IPC handlers the renderer calls after it mounts — which meant a
+  // corrupt store was quarantined after this point, so the report below drained an
+  // always-empty journal and a corrupt config still silently reset. Reading them here
+  // also puts a failed quarantine on this call stack, where the catch below can report
+  // it, instead of surfacing as an unhandled rejection in a renderer that has already
+  // rendered on defaults and will overwrite the preserved bytes on its next save.
+  await loadSettings(log);
+  await loadLayout(log);
+
   createWindow();
-  // Report any quarantine the pre-window loads performed (settings, layout):
-  // the store was set aside with its bytes preserved and defaults took over —
-  // the user hears it from a dialog, never only from the log (storage-path
-  // conventions).
+  // restoreQueue reads queue.json, the third store feeding the same journal, so the
+  // drain waits for it — one report covers every store read during startup.
+  await restoreQueue();
+
+  // Report any quarantine those loads performed: the store was set aside with its bytes
+  // preserved and defaults took over — the user hears it from a dialog, never only from
+  // the log (storage-path conventions: both branches report).
   const quarantined = drainQuarantineNotices();
   if (quarantined.length > 0) {
     dialog.showErrorBox(
       "A settings file was reset",
       "A file was unreadable and has been set aside so nothing is lost:\n\n" +
         quarantined.map((n) => n.quarantined).join("\n") +
-        "\n\nzipkit started with defaults for it. Your archives and queue are untouched.",
+        "\n\nzipkit started with defaults for it. Your archive files on disk are untouched.",
     );
   }
-  void restoreQueue();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
+}).catch(reportStartupHalt);
 
 app.on("window-all-closed", () => {
   const quitting = process.platform !== "darwin";
