@@ -61,6 +61,17 @@ export async function quarantineIfCorrupt(
     original: file,
     quarantined,
   });
+  quarantineNotices.push({ original: file, quarantined });
+}
+
+// Quarantines that happened before any window existed (settings and layout are
+// read at bootstrap), journaled so the app edge can report them once a surface
+// exists — an unreported quarantine is a silent reset with extra steps
+// (storage-path conventions: both branches report).
+const quarantineNotices: Array<{ original: string; quarantined: string }> = [];
+
+export function drainQuarantineNotices(): Array<{ original: string; quarantined: string }> {
+  return quarantineNotices.splice(0);
 }
 
 /**

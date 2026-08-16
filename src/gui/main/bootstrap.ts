@@ -9,9 +9,10 @@
  * only once the root is known good.
  */
 
-import { app, BrowserWindow, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
+import { drainQuarantineNotices } from "./managedJson.js";
 import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { registerQueueIpc, restoreQueue } from "./queue.js";
@@ -112,6 +113,19 @@ app.whenReady().then(async () => {
   registerIpc();
   registerQueueIpc();
   createWindow();
+  // Report any quarantine the pre-window loads performed (settings, layout):
+  // the store was set aside with its bytes preserved and defaults took over —
+  // the user hears it from a dialog, never only from the log (storage-path
+  // conventions).
+  const quarantined = drainQuarantineNotices();
+  if (quarantined.length > 0) {
+    dialog.showErrorBox(
+      "A settings file was reset",
+      "A file was unreadable and has been set aside so nothing is lost:\n\n" +
+        quarantined.map((n) => n.quarantined).join("\n") +
+        "\n\nzipkit started with defaults for it. Your archives and queue are untouched.",
+    );
+  }
   void restoreQueue();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
