@@ -46,7 +46,7 @@ describe("restoreQueue", () => {
 
   it("restores the value returned by the queue loader", async () => {
     const saved = [{ id: "a", inputs: ["/x"], options: {}, intent: "save" }];
-    mocks.loadQueue.mockResolvedValue(saved);
+    mocks.loadQueue.mockResolvedValue({ value: saved, quarantinedTo: null });
 
     await restoreQueue();
 

@@ -106,7 +106,7 @@ describe("settings file location and persistence", () => {
     expect(created).toBe(true);
     // Written through saveSettings, so it round-trips and carries the schema version.
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect(await loadSettings()).toEqual(DEFAULT_SETTINGS);
+    expect((await loadSettings()).value).toEqual(DEFAULT_SETTINGS);
   });
 
   it("never overwrites an existing config.json", async () => {
@@ -118,7 +118,7 @@ describe("settings file location and persistence", () => {
 
     expect(created).toBe(false);
     expect(readFileSync(path.join(root, "config.json"), "utf8")).toBe(before);
-    expect(await loadSettings()).toEqual(custom);
+    expect((await loadSettings()).value).toEqual(custom);
   });
 
   it("writes and reads back the settings as config.json, leaving no temp file", async () => {
@@ -134,7 +134,7 @@ describe("settings file location and persistence", () => {
     // `settings.json`). The write-through backup store's own files are filtered out by managedEntries.
     expect(managedEntries(root)).toEqual(["config.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect(await loadSettings()).toEqual(settings);
+    expect((await loadSettings()).value).toEqual(settings);
   });
 
   it("quarantines a corrupt config.json aside (bytes intact) and returns the defaults", async () => {
@@ -149,7 +149,7 @@ describe("settings file location and persistence", () => {
       error() {},
     };
 
-    const settings = await loadSettings(logger);
+    const { value: settings, quarantinedTo } = await loadSettings(logger);
 
     expect(settings).toEqual(DEFAULT_SETTINGS);
     expect(existsSync(file)).toBe(false); // moved aside, not left in place
@@ -161,6 +161,7 @@ describe("settings file location and persistence", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.fields?.original).toBe(file);
     expect(warnings[0]?.fields?.quarantined).toBe(path.join(root, quarantined));
+    expect(quarantinedTo).toBe(path.join(root, quarantined));
   });
 
   it("a save after quarantine writes a fresh config.json and never touches the quarantine file", async () => {

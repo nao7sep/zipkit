@@ -13,7 +13,7 @@ import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
-import { isInvalidJson, loadManagedJson, writeManagedJson } from "./managedJson.js";
+import { isInvalidJson, loadManagedJson, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** The layout file under the resolved storage root. Computed lazily so
  *  `ZIPKIT_HOME` is read after the environment is set (storage-path convention). */
@@ -50,11 +50,10 @@ export function serializeLayout(layout: PaneLayout): string {
  *  file (invalid JSON) is quarantined aside — never silently reset in place — before the default
  *  layout is returned; a quarantine-rename failure propagates rather than degrading to the default
  *  over the corrupt bytes. The shared {@link loadManagedJson} owns that quarantine-outside-the-catch
- *  shape, identical to config.json and queue.json. */
-export async function loadLayout(logger: AppLog = nullLog): Promise<PaneLayout> {
-  // Layout is disposable view state: preserve and log bad bytes, but do not
-  // interrupt startup with a recovery dialog.
-  return loadManagedJson(layoutFile(), isInvalidJson, parseLayout, freshLayout, "default", logger, false);
+ *  shape, identical to config.json and queue.json. Layout is disposable view state, so callers leave
+ *  its quarantine outcome log-only rather than raising a recovery dialog. */
+export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<PaneLayout>> {
+  return loadManagedJson(layoutFile(), isInvalidJson, parseLayout, freshLayout, "default", logger);
 }
 
 /** Persist the layout through the shared managed-text atomic write (temp file + rename), recording the

@@ -9,7 +9,7 @@
 import { ipcMain, shell } from "electron";
 import { nanoid } from "nanoid";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
-import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
+import type { Job, JobIntent } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
 import { log, sendEvent, sendQueue, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
@@ -57,15 +57,17 @@ const engine = createQueueEngine({
   log,
 });
 
-/** Reload the persisted jobs at launch and re-plan each one fresh. */
-export async function restoreQueue(): Promise<void> {
+/** Reload the persisted jobs at launch and re-plan each one fresh. Returns where
+ *  a corrupt queue file was set aside (null normally) so startup can report it. */
+export async function restoreQueue(): Promise<string | null> {
   // Missing files and successfully quarantined corrupt files already resolve to
   // an empty queue inside loadQueue. Every rejection is therefore a real I/O or
   // preservation failure and must reach startup rather than being overwritten by
   // a later save from an invented empty queue.
-  const saved: SavedJob[] = await loadQueue(log);
+  const { value: saved, quarantinedTo } = await loadQueue(log);
   log.info("queue restored", { jobs: saved.length });
   engine.restore(saved);
+  return quarantinedTo;
 }
 
 export function registerQueueIpc(): void {

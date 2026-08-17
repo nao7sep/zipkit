@@ -29,19 +29,14 @@ export function hasMod(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && !e.altKey;
 }
 
-// App chords that overlap Cocoa text editing while a job field has focus.
-const MAC_TEXT_BINDING_KEYS = new Set(["n", "/", "Enter"]);
-
 /**
- * True when this chord shadows a macOS text-editing binding and must stand
- * down while the event target is editable; the Cmd half of the same chord is
- * unbound there and always fires (keyboard-shortcut-conventions).
+ * On macOS, Ctrl inside a text field belongs to the text system whatever the
+ * key is, so the Ctrl half of a dual-bound chord stands down there — one
+ * blanket test, no per-chord key list (keyboard-shortcut-conventions). The
+ * Cmd half is the binding and always fires.
  */
 export function shadowsMacTextBinding(e: KeyboardEvent, isMac: boolean): boolean {
-  if (!isMac) return false;
-  if (e.metaKey || !e.ctrlKey) return false;
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  return MAC_TEXT_BINDING_KEYS.has(key);
+  return isMac && e.ctrlKey && !e.metaKey;
 }
 
 /**

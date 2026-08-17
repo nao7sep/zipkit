@@ -104,11 +104,11 @@ describe("queue file location and persistence", () => {
     // out here; that they never carry a `.tmp` is what this still proves.
     expect(managedEntries(root)).toEqual(["queue.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect(await loadQueue()).toEqual(jobs);
+    expect((await loadQueue()).value).toEqual(jobs);
   });
 
   it("loads an empty queue when no file exists under the root", async () => {
-    expect(await loadQueue()).toEqual([]);
+    expect((await loadQueue()).value).toEqual([]);
   });
 
   it("quarantines a corrupt queue.json aside (bytes intact) and returns an empty queue", async () => {
@@ -123,7 +123,7 @@ describe("queue file location and persistence", () => {
       error() {},
     };
 
-    const jobs = await loadQueue(logger);
+    const { value: jobs, quarantinedTo } = await loadQueue(logger);
 
     expect(jobs).toEqual([]);
     expect(existsSync(file)).toBe(false); // moved aside, not left in place
@@ -135,6 +135,7 @@ describe("queue file location and persistence", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.fields?.original).toBe(file);
     expect(warnings[0]?.fields?.quarantined).toBe(path.join(root, quarantined));
+    expect(quarantinedTo).toBe(path.join(root, quarantined));
   });
 
   it("a save after quarantine writes a fresh queue.json and never touches the quarantine file", async () => {

@@ -12,7 +12,6 @@
 import { app, BrowserWindow, dialog, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
-import { drainQuarantineNotices } from "./managedJson.js";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
@@ -130,16 +129,17 @@ app.whenReady().then(async () => {
   registerQueueIpc();
 
   // Warm stores before the renderer can save defaults over an unreadable file.
-  // This also keeps failed quarantines on the startup error path.
-  await loadSettings(log);
+  // This also keeps failed quarantines on the startup error path. Each load
+  // returns its own quarantine outcome; layout is disposable view state and its
+  // recovery stays log-only.
+  const { quarantinedTo: settingsQuarantinedTo } = await loadSettings(log);
   await loadLayout(log);
 
   createWindow();
-  // Queue recovery is material, so wait for it before draining notices.
-  await restoreQueue();
+  // Queue recovery is material, so wait for it before reporting.
+  const queueQuarantinedTo = await restoreQueue();
 
-  // Config and queue recovery can require action; layout recovery is log-only.
-  for (const recoveryDialog of buildRecoveryDialogs(drainQuarantineNotices())) {
+  for (const recoveryDialog of buildRecoveryDialogs({ settingsQuarantinedTo, queueQuarantinedTo })) {
     dialog.showErrorBox(recoveryDialog.title, recoveryDialog.message);
   }
   app.on("activate", () => {

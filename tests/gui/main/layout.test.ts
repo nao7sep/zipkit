@@ -145,7 +145,7 @@ describe("layout file quarantine-then-reset", () => {
       error() {},
     };
 
-    const layout = await loadLayout(logger);
+    const { value: layout, quarantinedTo } = await loadLayout(logger);
 
     expect(layout).toEqual(DEFAULT_LAYOUT);
     expect(existsSync(file)).toBe(false); // moved aside, not left in place
@@ -157,6 +157,7 @@ describe("layout file quarantine-then-reset", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.fields?.original).toBe(file);
     expect(warnings[0]?.fields?.quarantined).toBe(path.join(root, quarantined));
+    expect(quarantinedTo).toBe(path.join(root, quarantined));
   });
 
   it("a save after quarantine writes a fresh layout.json and never touches the quarantine file", async () => {

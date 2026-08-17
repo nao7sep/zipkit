@@ -14,7 +14,7 @@ import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions } from "../shared/spec.js";
 import type { Job, SavedJob } from "../shared/queue.js";
 import { nullLog, type AppLog } from "./log.js";
-import { loadManagedJson, writeManagedJson } from "./managedJson.js";
+import { loadManagedJson, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -89,7 +89,7 @@ export function serializeQueue(jobs: SavedJob[]): string {
  *  {@link loadManagedJson} owns that quarantine-outside-the-catch shape, identical
  *  to config.json and layout.json (which differ only in degrading any read error to
  *  their defaults rather than rethrowing it). */
-export async function loadQueue(logger: AppLog = nullLog): Promise<SavedJob[]> {
+export async function loadQueue(logger: AppLog = nullLog): Promise<ManagedJsonLoad<SavedJob[]>> {
   return loadManagedJson(queueFile(), isQueueCorrupt, parseQueue, () => [], "rethrow-non-enoent", logger);
 }
 
