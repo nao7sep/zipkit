@@ -60,8 +60,13 @@ export function ModalShell({
           onOpenAutoFocus={(e) => {
             const surface = e.currentTarget as HTMLElement | null;
             if (!surface) return;
+            // A surface may name the control that takes focus with
+            // [data-modal-autofocus] — a confirmation marks its Cancel, so a
+            // reflexive Enter can never reach the destructive action even if the
+            // footer is reordered. Unmarked surfaces keep the first footer action.
             const footerEl = surface.querySelector<HTMLElement>("[data-modal-footer]");
             const target =
+              surface.querySelector<HTMLElement>("[data-modal-autofocus]") ??
               footerEl?.querySelector<HTMLElement>(FOCUSABLE) ??
               surface.querySelector<HTMLElement>(FOCUSABLE) ??
               surface;

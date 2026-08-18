@@ -74,7 +74,10 @@ function ConfirmDialog({ options, onResult }: { options: ConfirmOptions; onResul
       describedById="confirm-message"
       footer={
         <>
-          <button onClick={() => onResult(false)}>Cancel</button>
+          {/* Cancel takes focus, named here rather than left to footer order: a
+              confirmation exists because something could go wrong, so the action a
+              reflexive Enter reaches must be the one that costs nothing. */}
+          <button data-modal-autofocus onClick={() => onResult(false)}>Cancel</button>
           <button onClick={() => onResult(true)} className={options.danger ? "danger" : undefined}>
             {options.confirmLabel}
           </button>
