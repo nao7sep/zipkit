@@ -226,11 +226,11 @@ describe("estimateMetadataSize (Zip64 manifest bound)", () => {
       rule: "name.invalid-char",
       severity: "info",
       path: `path/${i}/${"w".repeat(80)}`,
-      message: "replaced an invalid character with a control  char",
+      message: "replaced an invalid character with a control \u0001 char",
       fix: { kind: "rename", to: `fixed-${i}` },
     }));
 
-    const comment = "release  build ".repeat(50);
+    const comment = "release \u0002 build ".repeat(50);
 
     const policy = resolvePolicy(undefined, {
       filters: [
