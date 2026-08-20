@@ -15,6 +15,8 @@
 
 import zlib from "node:zlib";
 
+import { awaitDrain } from "../internal/drain.js";
+
 /** A sink for compressed (or stored) output chunks, written in stream order. */
 export type ChunkSink = (chunk: Buffer) => Promise<void>;
 
@@ -79,7 +81,7 @@ export class EntryCompressor {
     // Respect backpressure: when the deflate stream's buffer is full, wait for
     // it to drain before feeding more, so memory stays bounded under fast input.
     if (!this.#deflate.write(chunk)) {
-      await new Promise<void>((resolve) => this.#deflate!.once("drain", resolve));
+      await awaitDrain(this.#deflate);
     }
   }
 

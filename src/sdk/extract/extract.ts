@@ -29,6 +29,7 @@ import { machineTimeZone } from "../internal/timeZone.js";
 import type { Unlogged } from "../internal/types.js";
 import { reportFindings } from "../log/findings.js";
 import type { Logger } from "../log/logger.js";
+import { awaitDrain } from "../internal/drain.js";
 import { finding } from "../registry.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
@@ -186,7 +187,7 @@ async function verifyEntry(
     if (hasher) hasher.update(chunk);
     if (captureLink) linkChunks.push(chunk);
     if (out) {
-      if (!out.write(chunk)) await new Promise<void>((resolve) => out.once("drain", resolve));
+      if (!out.write(chunk)) await awaitDrain(out, signal);
     }
   };
 
