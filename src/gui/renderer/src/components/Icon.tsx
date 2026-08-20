@@ -13,7 +13,7 @@ import type { ReactElement } from "react";
 /** The remove/close mark, used by the job list and the input list. */
 export function CloseIcon(): ReactElement {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false" style={{ display: "inline-block" }}>
       <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
@@ -22,7 +22,7 @@ export function CloseIcon(): ReactElement {
 /** The app menu trigger. */
 export function HamburgerIcon(): ReactElement {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false" style={{ display: "inline-block" }}>
       <path
         d="M3 5.5h14M3 10h14M3 14.5h14"
         stroke="currentColor"
