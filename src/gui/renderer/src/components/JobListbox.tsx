@@ -24,6 +24,7 @@ import { intentLabel, isCancelable, label, stateTint } from "../view";
 import { navIndex, recoverIndex, typeaheadIndex } from "../listbox-nav";
 import { isComposing } from "../composition";
 import { StateBadge } from "./StateBadge";
+import { CloseIcon } from "./Icon";
 
 const TYPEAHEAD_IDLE_MS = 600;
 
@@ -243,14 +244,6 @@ export function JobListbox({
  *  for the default save) and the job message, whichever are present. */
 function metaText(job: Job): string {
   return [intentLabel(job.intent), job.message].filter(Boolean).join(" · ");
-}
-
-function CloseIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
-      <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 function optionEl(list: HTMLUListElement | null, id: string | null): HTMLElement | null {

@@ -6,7 +6,7 @@
  * within each group) and show the full path plus what it is on disk (directory /
  * file / missing), so a vanished input is visible. The last input cannot be
  * removed — a job must archive something. Hovering a row highlights it, so on a
- * wide window it stays clear which input the far-right ✕ will remove.
+ * wide window it stays clear which input the far-right remove icon will remove.
  *
  * The drop area is marked by a permanent, plain border — NOT a drag-state
  * highlight. A highlight driven by drag events can get stuck (an external drag
@@ -20,6 +20,7 @@
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
 import { COLOR, orderedEntries } from "../view";
+import { CloseIcon } from "./Icon";
 
 const KIND_LABEL: Record<PathKind, string> = {
   directory: "Directory",
@@ -90,7 +91,7 @@ export function InputList({
               title={canRemove ? "Remove from this job" : "A job needs at least one input"}
               aria-label={`Remove ${path}`}
             >
-              ✕
+              <CloseIcon />
             </button>
           </li>
         ))}

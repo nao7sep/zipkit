@@ -8,6 +8,7 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { CSSProperties } from "react";
+import { HamburgerIcon } from "./Icon";
 
 export function AppHeader({
   onOpenSettings,
@@ -42,19 +43,6 @@ export function AppHeader({
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
     </header>
-  );
-}
-
-function HamburgerIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-      <path
-        d="M3 5.5h14M3 10h14M3 14.5h14"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 
