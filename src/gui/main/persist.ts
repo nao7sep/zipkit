@@ -3,18 +3,17 @@
  * inputs, options, intent — never the transient run state; restored jobs are
  * re-planned fresh. The file lives under zipkit's storage root (`ZIPKIT_HOME`
  * or `~/.zipkit`, resolved in one place by the SDK's {@link storageRoot}, beside
- * the SDK's logs). Parsing is pure and defensive (defaults missing option fields,
- * drops malformed entries, never throws) so a stale or corrupt file degrades to
- * an empty queue rather than crashing the app; the file I/O is the best-effort
- * edge.
+ * the SDK's logs). Parsing defaults absent option fields but rejects malformed
+ * jobs and non-unique durable identities so recoverable bytes are quarantined
+ * rather than silently dropped or aliased.
  */
 
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
-import { DEFAULT_OPTIONS, type GuiOptions } from "../shared/spec.js";
 import type { Job, SavedJob } from "../shared/queue.js";
 import { nullLog, type AppLog } from "./log.js";
-import { loadManagedJson, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { parseGuiOptions } from "./settings.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -31,44 +30,32 @@ export function toResumable(jobs: Job[]): SavedJob[] {
     .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options, intent: j.intent }));
 }
 
-/** The queue document's top-level `jobs` array, or `undefined` when the text is not valid JSON or
- *  lacks an array `jobs` field — the one place that shape check lives, shared by `parseQueue` and
- *  {@link isQueueCorrupt} so the two never drift apart. */
-function extractJobsArray(text: string): unknown[] | undefined {
-  let doc: unknown;
-  try {
-    doc = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  const jobs = (doc as { jobs?: unknown } | null)?.jobs;
-  return Array.isArray(jobs) ? jobs : undefined;
-}
-
-/** The queue store's corrupt-detection: invalid JSON, or valid JSON whose top-level `jobs` field is
- *  not an array — either way there is no resumable document to recover a single entry from, so the
- *  whole file is treated as corrupt (unlike a malformed individual entry within a good `jobs` array,
- *  which `parseQueue` drops and tolerates). */
-export function isQueueCorrupt(text: string): boolean {
-  return extractJobsArray(text) === undefined;
-}
-
-/** Parse queue-file text into resumable jobs: default missing option fields, drop
- *  malformed entries, normalize the intent. Pure; never throws. */
+/** Parse queue-file text into resumable jobs, defaulting absent option fields and
+ * rejecting malformed entries or duplicate/empty IDs as one invalid snapshot. */
 export function parseQueue(text: string): SavedJob[] {
-  const jobs = extractJobsArray(text);
-  if (!jobs) return [];
+  const root = parseManagedObject(text, "queue.json");
+  if (!Array.isArray(root.jobs)) throw new InvalidManagedJsonError("queue.json", "jobs must be an array");
 
   const out: SavedJob[] = [];
-  for (const entry of jobs) {
-    const j = entry as { id?: unknown; inputs?: unknown; options?: unknown; intent?: unknown };
-    if (typeof j.id !== "string") continue;
-    if (!Array.isArray(j.inputs) || !j.inputs.every((p) => typeof p === "string")) continue;
+  const ids = new Set<string>();
+  for (const entry of root.jobs) {
+    if (!isPlainObject(entry)) throw new InvalidManagedJsonError("queue.json", "every job must be an object");
+    const j = entry;
+    if (typeof j.id !== "string" || j.id === "" || ids.has(j.id)) {
+      throw new InvalidManagedJsonError("queue.json", "job IDs must be non-empty and unique");
+    }
+    ids.add(j.id);
+    if (!Array.isArray(j.inputs) || j.inputs.length === 0 || !j.inputs.every((p) => typeof p === "string" && p !== "")) {
+      throw new InvalidManagedJsonError("queue.json", "job inputs must be a non-empty array of non-empty strings");
+    }
+    if (j.intent !== "save" && j.intent !== "archive-and-trash") {
+      throw new InvalidManagedJsonError("queue.json", "job intent is invalid");
+    }
     out.push({
       id: j.id,
       inputs: j.inputs as string[],
-      options: { ...DEFAULT_OPTIONS, ...((j.options ?? {}) as Partial<GuiOptions>) },
-      intent: j.intent === "archive-and-trash" ? "archive-and-trash" : "save",
+      options: parseGuiOptions(j.options, "queue.json"),
+      intent: j.intent,
     });
   }
   return out;
@@ -81,16 +68,11 @@ export function serializeQueue(jobs: SavedJob[]): string {
 
 /** Load the persisted resumable jobs. Returns an empty list when there is simply
  *  no file yet (the normal first-run case); a genuine read error is thrown so the
- *  caller can log it through the session log rather than swallowing it. Corrupt
- *  *content* — invalid JSON or a missing `jobs` array, see {@link isQueueCorrupt}
- *  — is quarantined aside (never silently reset in place) before degrading to an
- *  empty queue via {@link parseQueue}; a quarantine-rename failure propagates like
- *  any other genuine I/O error on this durable store. The shared
- *  {@link loadManagedJson} owns that quarantine-outside-the-catch shape, identical
- *  to config.json and layout.json (which differ only in degrading any read error to
- *  their defaults rather than rethrowing it). */
+ *  caller can log it through the session log rather than swallowing it. Invalid
+ *  v1 content is quarantined before returning an empty queue; future versions,
+ *  quarantine failures, and non-ENOENT read errors propagate. */
 export async function loadQueue(logger: AppLog = nullLog): Promise<ManagedJsonLoad<SavedJob[]>> {
-  return loadManagedJson(queueFile(), isQueueCorrupt, parseQueue, () => [], "rethrow-non-enoent", logger);
+  return loadManagedJson(queueFile(), parseQueue, () => [], logger);
 }
 
 /** Persist resumable jobs through the shared managed-text atomic write (temp file + rename), so a crash

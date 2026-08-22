@@ -3,8 +3,8 @@
  * Plans each job in the background on add (non-blocking — never waiting on a
  * running write). Jobs are run one at a time, but only on explicit request: the
  * user creates a specific job's archive, the engine serializes the requests, and
- * runs each (write -> for the destructive intent, verify -> Trash) all-or-nothing,
- * keeping the originals on any failure. One job failing never blocks the rest.
+ * runs each (write -> for the destructive intent, verify -> per-item Trash).
+ * Partial Trash outcomes are reported exactly; one job failing never blocks the rest.
  * A finished `save` job's archive can be removed, returning the job to an editable
  * state for another attempt.
  *
@@ -19,8 +19,12 @@
 import type { InputEntry, Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
-import { outputInsideInputs } from "./safety.js";
 import { errorInfo, type AppLog } from "./log.js";
+
+export interface TrashResult {
+  moved: string[];
+  failed: Array<{ path: string; message: string }>;
+}
 
 export interface EngineDeps {
   /** Dry-run plan for the given inputs/options; progress events go to `onProgress`. */
@@ -31,8 +35,10 @@ export interface EngineDeps {
   verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<boolean>;
   /** Classify input paths on disk (dir/file/nonexistent) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
-  /** Move the given paths to the OS Trash. */
-  trash(paths: string[]): Promise<void>;
+  /** Move each path independently to the OS Trash and report the exact outcome. */
+  trash(paths: string[]): Promise<TrashResult>;
+  /** Physical-identity containment guard for every destructive action. */
+  outputInsideInputs(output: string, inputs: string[]): Promise<boolean>;
   /** Push the current job list to observers (renderer + persistence). */
   emit(jobs: Job[]): void;
   /** Forward one (job-tagged) progress event to the renderer. */
@@ -64,6 +70,8 @@ interface Rec {
   /** The held live plan (carries the writer's out-of-band instructions). */
   plan: PlanData | null;
   aborter: AbortController | null;
+  /** The archive path from the most recent write that actually committed. */
+  publishedOutput: string | null;
 }
 
 function errMsg(err: unknown): string {
@@ -100,6 +108,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   /** A progress sink that tags every SDK event with the running job's id. */
   function progressFor(id: string): (e: LogEvent) => void {
     return (e) => deps.sendEvent({ ...e, jobId: id });
+  }
+
+  function trashFailureMessage(result: TrashResult): string {
+    return result.failed.map(({ path, message }) => `${path}: ${message}`).join("; ");
   }
 
   /** Classify a job's inputs on disk and store the result as `entries`, so the
@@ -197,6 +209,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
 
       let bytes: number | null;
+      rec.publishedOutput = null;
       try {
         bytes = await deps.write(plan, signal, onProgress);
       } catch (err) {
@@ -204,6 +217,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
         return;
       }
+      rec.publishedOutput = plan.output;
 
       if (rec.job.intent === "save") {
         set(rec, { state: "done", message: `saved (${bytes ?? 0} bytes)` });
@@ -212,9 +226,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
 
       // archive-and-trash: guard, verify, then Trash — originals kept on any failure.
-      if (outputInsideInputs(plan.output, rec.job.inputs)) {
-        set(rec, { state: "failed", message: "archive is inside the source; originals untouched" });
-        deps.log.error("job trash blocked: archive inside source", { jobId: id, output: plan.output });
+      try {
+        if (await deps.outputInsideInputs(plan.output, rec.job.inputs)) {
+          set(rec, { state: "failed", message: "archive is inside the source; originals untouched" });
+          deps.log.error("job trash blocked: archive inside source", { jobId: id, output: plan.output });
+          return;
+        }
+      } catch (err) {
+        set(rec, { state: "failed", message: `could not verify archive/source identity; originals untouched: ${errMsg(err)}` });
+        deps.log.error("job trash blocked: physical identity check failed", { jobId: id, error: errorInfo(err) });
         return;
       }
       try {
@@ -228,11 +248,21 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         deps.log.error("job verification errored; originals kept", { jobId: id, error: errorInfo(err) });
         return;
       }
+      let trashResult: TrashResult;
       try {
-        await deps.trash(rec.job.inputs);
+        trashResult = await deps.trash(rec.job.inputs);
       } catch (err) {
         set(rec, { state: "failed", message: `saved & verified, but Trash failed: ${errMsg(err)}` });
         deps.log.error("job Trash failed after verify", { jobId: id, error: errorInfo(err) });
+        return;
+      }
+      if (trashResult.failed.length > 0) {
+        set(rec, {
+          state: "failed",
+          message: `saved & verified; ${trashResult.moved.length} moved to recoverable Trash, ${trashResult.failed.length} kept (${trashFailureMessage(trashResult)})`,
+        });
+        deps.log.error("job Trash partially failed after verify", { jobId: id, moved: trashResult.moved, failed: trashResult.failed });
+        void classifyInputs(id);
         return;
       }
       set(rec, { state: "done", message: `saved, verified, ${rec.job.inputs.length} moved to Trash` });
@@ -299,7 +329,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     snapshot,
     add(inputs, options, intent) {
       const id = deps.newId();
-      recs.set(id, { job: { id, inputs, options, intent, state: "planning" }, plan: null, aborter: null });
+      recs.set(id, { job: { id, inputs, options, intent, state: "planning" }, plan: null, aborter: null, publishedOutput: null });
       order.push(id);
       deps.log.info("job added", { jobId: id, inputs: inputs.length, intent });
       emit();
@@ -314,6 +344,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // first (which un-queues + re-plans) — otherwise a store-only edit (e.g. an
       // intent flip) would leave it queued and auto-run later under the new intent.
       if (!rec || rec.job.state === "running" || rec.job.state === "queued") return;
+      rec.publishedOutput = null;
       let replan = false;
       if (patch.intent !== undefined) {
         set(rec, { intent: patch.intent });
@@ -389,19 +420,20 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     removeArchive(id) {
       const rec = recs.get(id);
-      if (!rec || !rec.job.output) return;
+      if (!rec || !rec.publishedOutput) return;
       // Removable only when trashing the .zip cannot lose data: a done `save` job
       // (originals always kept), or a `failed` job whose write succeeded but a
-      // later step failed (archive-and-trash keeps the originals on any failure).
+      // later step failed (any moved originals remain recoverable from Trash).
       // A done archive-and-trash is NOT removable — its originals are already gone.
       const removable =
         (rec.job.state === "done" && rec.job.intent === "save") || rec.job.state === "failed";
       if (!removable) return;
-      const output = rec.job.output;
+      const output = rec.publishedOutput;
       deps.log.info("remove archive requested", { jobId: id, output });
       void (async () => {
         try {
-          await deps.trash([output]);
+          const result = await deps.trash([output]);
+          if (result.failed.length > 0) throw new Error(trashFailureMessage(result));
         } catch (err) {
           set(rec, { message: `could not remove the archive: ${errMsg(err)}` });
           deps.log.error("remove archive failed", { jobId: id, error: errorInfo(err) });
@@ -411,6 +443,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         // Back to an editable, re-planned job so options can be adjusted and the
         // archive created again.
         set(rec, { output: undefined, summary: undefined, writable: undefined, message: undefined });
+        rec.publishedOutput = null;
         emit();
         void planJob(id);
       })();
@@ -419,20 +452,23 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const rec = recs.get(id);
       if (!rec || rec.job.state !== "done" || rec.job.intent !== "save") return;
       const inputs = rec.job.inputs;
-      // Never trash an original that contains the archive — it would take the .zip too.
-      if (rec.job.output && outputInsideInputs(rec.job.output, inputs)) {
-        set(rec, { message: "the archive is inside an original; originals kept" });
-        deps.log.error("trash originals blocked: archive inside source", {
-          jobId: id,
-          output: rec.job.output,
-        });
-        emit();
-        return;
-      }
       deps.log.info("trash originals requested", { jobId: id, count: inputs.length });
       void (async () => {
         try {
-          await deps.trash(inputs);
+          if (!rec.publishedOutput) throw new Error("no successfully written archive is available");
+          if (await deps.outputInsideInputs(rec.publishedOutput, inputs)) {
+            throw new Error("the archive is inside an original; originals kept");
+          }
+          const result = await deps.trash(inputs);
+          if (result.failed.length > 0) {
+            set(rec, {
+              message: `${result.moved.length} moved to recoverable Trash; ${result.failed.length} kept (${trashFailureMessage(result)})`,
+            });
+            deps.log.error("trash originals partially failed", { jobId: id, moved: result.moved, failed: result.failed });
+            emit();
+            void classifyInputs(id);
+            return;
+          }
         } catch (err) {
           set(rec, { message: `could not move the originals to Trash: ${errMsg(err)}` });
           deps.log.error("trash originals failed", { jobId: id, error: errorInfo(err) });
@@ -451,7 +487,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     restore(saved) {
       for (const s of saved) {
-        recs.set(s.id, { job: { ...s, state: "planning" }, plan: null, aborter: null });
+        recs.set(s.id, { job: { ...s, state: "planning" }, plan: null, aborter: null, publishedOutput: null });
         order.push(s.id);
       }
       if (saved.length > 0) emit();

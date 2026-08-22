@@ -45,19 +45,18 @@ describe("settings", () => {
     expect(parsed.uiFontFamily).toBe("");
   });
 
-  it("ignores a non-string UI font", () => {
-    const parsed = parseSettings(JSON.stringify({ version: 1, defaults: {}, uiFontFamily: 42 }));
-    expect(parsed.uiFontFamily).toBe("");
+  it("rejects a non-string UI font", () => {
+    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: {}, uiFontFamily: 42 }))).toThrow(/uiFontFamily/);
   });
 
-  it("degrades to the defaults on invalid JSON", () => {
-    expect(parseSettings("{ not json")).toEqual(DEFAULT_SETTINGS);
+  it("rejects invalid JSON", () => {
+    expect(() => parseSettings("{ not json")).toThrow(/invalid/);
   });
 
-  it("degrades to the defaults when 'defaults' is absent or not an object", () => {
+  it("fills an absent defaults object but rejects its wrong shape", () => {
     expect(parseSettings(JSON.stringify({ version: 1 }))).toEqual(DEFAULT_SETTINGS);
-    expect(parseSettings(JSON.stringify({ defaults: null }))).toEqual(DEFAULT_SETTINGS);
-    expect(parseSettings(JSON.stringify({ defaults: 5 }))).toEqual(DEFAULT_SETTINGS);
+    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: null }))).toThrow(/options/);
+    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: 5 }))).toThrow(/options/);
   });
 });
 
@@ -176,5 +175,17 @@ describe("settings file location and persistence", () => {
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(managedEntries(root).sort()).toEqual(["config.json", quarantined].sort());
+  });
+
+  it("quarantines a valid-JSON wrong shape but preserves a future-version file live", async () => {
+    const file = path.join(root, "config.json");
+    writeFileSync(file, JSON.stringify({ version: 1, defaults: { overwrite: "yes" } }));
+    await expect(loadSettings()).resolves.toMatchObject({ value: DEFAULT_SETTINGS });
+    expect(existsSync(file)).toBe(false);
+
+    const future = JSON.stringify({ version: 99, defaults: {} });
+    writeFileSync(file, future);
+    await expect(loadSettings()).rejects.toThrow(/unsupported schema version 99/);
+    expect(readFileSync(file, "utf8")).toBe(future);
   });
 });

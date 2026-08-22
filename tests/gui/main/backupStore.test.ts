@@ -23,7 +23,7 @@ import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
 
 // Capturing logger swapped in for runtime.log so warn/ error lines are asserted exactly and nothing is
 // written to the real session log. Hoisted so the vi.mock factory can close over it.
@@ -177,6 +177,7 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
     vi.resetModules();
     vi.doMock("node:sqlite", async (importActual) => {
       const actual = await importActual<typeof import("node:sqlite")>();
+      let failNextInsert = true;
       class FailingInsertDb extends actual.DatabaseSync {
         override prepare(sql: string): StatementSync {
           const stmt = super.prepare(sql);
@@ -184,8 +185,12 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
             return new Proxy(stmt, {
               get(target, prop, receiver) {
                 if (prop === "run") {
-                  return () => {
-                    throw new Error("disk full: simulated insert failure");
+                  return (...args: SQLInputValue[]) => {
+                    if (failNextInsert) {
+                      failNextInsert = false;
+                      throw new Error("disk full: simulated insert failure");
+                    }
+                    return target.run(...args);
                   };
                 }
                 return Reflect.get(target, prop, receiver);
@@ -209,10 +214,13 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
     expect(logCalls.warn[0]!.fields?.error).toBeDefined();
     expect(logCalls.error).toHaveLength(0);
 
-    // The earlier good row is untouched — the failure disturbed nothing that had already been recorded.
+    // The failed transaction was rolled back, so the same live store can record
+    // the next save instead of remaining stuck inside an open transaction.
+    record(path.join(root, "config.json"), Buffer.from("recovered", "utf8"));
     const rows = readRows(root);
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(Buffer.from(rows[0]!.content).toString("utf8")).toBe("good");
+    expect(Buffer.from(rows[1]!.content).toString("utf8")).toBe("recovered");
   });
 
   it("logs one warn and disables recording for the session when the store cannot be opened", async () => {

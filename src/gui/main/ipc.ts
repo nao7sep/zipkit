@@ -22,9 +22,8 @@ export function registerIpc(): void {
     try {
       await saveSettings(settings);
     } catch (err) {
-      // Best-effort and non-fatal: a write failure is logged to the session log,
-      // never thrown back across the bridge.
       log.error("failed to persist settings", { error: errorInfo(err) });
+      throw err;
     }
   });
 

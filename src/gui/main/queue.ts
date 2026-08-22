@@ -9,7 +9,7 @@
 import { ipcMain, shell } from "electron";
 import { nanoid } from "nanoid";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
-import type { Job, JobIntent } from "../shared/queue.js";
+import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
 import { log, sendEvent, sendQueue, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
@@ -17,8 +17,11 @@ import { loadQueue, saveQueue, toResumable } from "./persist.js";
 import { resolveOutputPath } from "./output.js";
 import { classifyPaths } from "./inputs.js";
 import { createQueueEngine } from "./queue-engine.js";
+import { outputInsideInputs } from "./safety.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let pendingJobs: SavedJob[] | undefined;
+let saveChain: Promise<void> = Promise.resolve();
 
 const engine = createQueueEngine({
   // Compose the output path from the GUI's directory + file name at the boundary
@@ -41,21 +44,54 @@ const engine = createQueueEngine({
     ).reportOk,
   classify: (paths) => classifyPaths(paths),
   trash: async (paths) => {
-    for (const p of paths) await shell.trashItem(p);
+    const moved: string[] = [];
+    const failed: Array<{ path: string; message: string }> = [];
+    for (const p of paths) {
+      try {
+        await shell.trashItem(p);
+        moved.push(p);
+      } catch (err) {
+        failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return { moved, failed };
   },
+  outputInsideInputs,
   emit: (jobs) => {
-    sendQueue(jobs);
+    pendingJobs = toResumable(jobs);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      void saveQueue(toResumable(jobs)).catch((err) =>
+      void flushQueue().catch((err) =>
         log.error("failed to persist the queue", { error: errorInfo(err) }),
       );
     }, 500);
+    sendQueue(jobs);
   },
   sendEvent,
   newId: () => nanoid(),
   log,
 });
+
+/** Persist the newest emitted resumable snapshot now. Used by the debounce and
+ * every window/process shutdown path so an immediately closed window loses no
+ * queue mutation. */
+export async function flushQueue(): Promise<void> {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  const jobs = pendingJobs;
+  if (!jobs) return;
+  pendingJobs = undefined;
+  const save = saveChain.catch(() => {}).then(() => saveQueue(jobs));
+  saveChain = save;
+  try {
+    await save;
+  } catch (err) {
+    // Keep a newer emitted snapshot if one arrived while this write was in
+    // flight; otherwise retain this failed snapshot for the next flush attempt.
+    pendingJobs ??= jobs;
+    throw err;
+  }
+}
 
 /** Reload the persisted jobs at launch and re-plan each one fresh. Returns where
  *  a corrupt queue file was set aside (null normally) so startup can report it. */

@@ -24,7 +24,13 @@ const out = path.join(path.sep, "out");
 describe("composeOutputPath", () => {
   it("stays empty when both directory and name are blank, so the SDK infers", () => {
     expect(composeOutputPath("", "", [dirInput], true)).toBe("");
-    expect(composeOutputPath("   ", "  ", [dirInput], true)).toBe("");
+  });
+
+  it("preserves a native-selected directory whose name contains surrounding spaces", () => {
+    const spaced = path.join(path.sep, "out", " chosen ");
+    expect(composeOutputPath(spaced, "archive", [dirInput], true)).toBe(
+      path.join(spaced, "archive.zip"),
+    );
   });
 
   it("keeps a directory's name when auto-naming into a chosen directory", () => {

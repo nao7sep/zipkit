@@ -46,9 +46,9 @@ describe("parseLayout", () => {
     });
   });
 
-  it("falls back to the default layout on junk or a missing layout", () => {
-    expect(parseLayout("not json")).toEqual(DEFAULT_LAYOUT);
-    expect(parseLayout(JSON.stringify({ version: 1 }))).toEqual(DEFAULT_LAYOUT);
+  it("rejects junk or a missing layout so the loader can preserve it", () => {
+    expect(() => parseLayout("not json")).toThrow(/invalid/);
+    expect(() => parseLayout(JSON.stringify({ version: 1 }))).toThrow(/layout/);
   });
 });
 
@@ -172,5 +172,14 @@ describe("layout file quarantine-then-reset", () => {
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(managedEntries(root).sort()).toEqual(["layout.json", quarantined].sort());
+  });
+
+  it("quarantines wrong-shaped widths instead of silently rewriting them", async () => {
+    const file = path.join(root, "layout.json");
+    writeFileSync(file, JSON.stringify({ version: 1, layout: { jobsWidth: "wide" } }));
+    const loaded = await loadLayout();
+    expect(loaded.value).toEqual(DEFAULT_LAYOUT);
+    expect(loaded.quarantinedTo).toMatch(/\.invalid$/);
+    expect(existsSync(file)).toBe(false);
   });
 });

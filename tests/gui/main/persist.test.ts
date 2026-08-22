@@ -10,7 +10,6 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  isQueueCorrupt,
   loadQueue,
   parseQueue,
   saveQueue,
@@ -30,45 +29,36 @@ describe("parseQueue", () => {
   });
 
   it("defaults missing option fields over DEFAULT_OPTIONS", () => {
-    const text = JSON.stringify({ jobs: [{ id: "a", inputs: ["/x"], options: { level: 9 }, intent: "save" }] });
+    const text = JSON.stringify({ version: 1, jobs: [{ id: "a", inputs: ["/x"], options: { level: 9 }, intent: "save" }] });
     expect(parseQueue(text)[0]?.options).toEqual({ ...DEFAULT_OPTIONS, level: 9 });
   });
 
-  it("drops malformed entries and normalizes an unknown intent to save", () => {
+  it("rejects malformed entries and unknown intents", () => {
     const text = JSON.stringify({
+      version: 1,
       jobs: [
-        { id: "a", inputs: ["/x"], intent: "weird" }, // unknown intent -> save
-        { inputs: ["/y"] }, // no id -> dropped
-        { id: "c", inputs: "nope" }, // inputs not an array -> dropped
+        { id: "a", inputs: ["/x"], intent: "weird" },
+        { inputs: ["/y"] },
       ],
     });
-    const out = parseQueue(text);
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ id: "a", intent: "save" });
+    expect(() => parseQueue(text)).toThrow(/intent/);
   });
 
   it("preserves the archive-and-trash intent", () => {
-    const text = JSON.stringify({ jobs: [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" }] });
+    const text = JSON.stringify({ version: 1, jobs: [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" }] });
     expect(parseQueue(text)[0]?.intent).toBe("archive-and-trash");
   });
 
-  it("returns [] for bad JSON or a non-array jobs field", () => {
-    expect(parseQueue("not json")).toEqual([]);
-    expect(parseQueue(JSON.stringify({ jobs: "x" }))).toEqual([]);
-    expect(parseQueue(JSON.stringify({}))).toEqual([]);
-  });
-});
-
-describe("isQueueCorrupt", () => {
-  it("flags bad JSON or a non-array jobs field as corrupt, same cases parseQueue resets", () => {
-    expect(isQueueCorrupt("not json")).toBe(true);
-    expect(isQueueCorrupt(JSON.stringify({ jobs: "x" }))).toBe(true);
-    expect(isQueueCorrupt(JSON.stringify({}))).toBe(true);
+  it("rejects bad JSON or a non-array jobs field", () => {
+    expect(() => parseQueue("not json")).toThrow(/invalid/);
+    expect(() => parseQueue(JSON.stringify({ version: 1, jobs: "x" }))).toThrow(/jobs/);
+    expect(() => parseQueue(JSON.stringify({ version: 1 }))).toThrow(/jobs/);
   });
 
-  it("does not flag a well-shaped document, even with malformed individual entries", () => {
-    const text = JSON.stringify({ jobs: [{ id: "a", inputs: ["/x"], intent: "save" }, { inputs: ["/y"] }] });
-    expect(isQueueCorrupt(text)).toBe(false);
+  it("rejects empty or duplicate durable job identities", () => {
+    const entry = { inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" };
+    expect(() => parseQueue(JSON.stringify({ version: 1, jobs: [{ id: "", ...entry }] }))).toThrow(/IDs/);
+    expect(() => parseQueue(JSON.stringify({ version: 1, jobs: [{ id: "a", ...entry }, { id: "a", ...entry }] }))).toThrow(/IDs/);
   });
 });
 
@@ -151,6 +141,23 @@ describe("queue file location and persistence", () => {
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(managedEntries(root).sort()).toEqual(["queue.json", quarantined].sort());
+  });
+
+  it("quarantines a malformed individual job rather than silently dropping it", async () => {
+    const file = path.join(root, "queue.json");
+    const bytes = JSON.stringify({ version: 1, jobs: [{ id: "", inputs: ["/x"], intent: "save" }] });
+    writeFileSync(file, bytes);
+    const loaded = await loadQueue();
+    expect(loaded.value).toEqual([]);
+    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
+  });
+
+  it("preserves unsupported future queue versions at the live path", async () => {
+    const file = path.join(root, "queue.json");
+    const bytes = JSON.stringify({ version: 2, jobs: [] });
+    writeFileSync(file, bytes);
+    await expect(loadQueue()).rejects.toThrow(/unsupported schema version 2/);
+    expect(readFileSync(file, "utf8")).toBe(bytes);
   });
 });
 

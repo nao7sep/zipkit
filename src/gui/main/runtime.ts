@@ -17,20 +17,26 @@ export const zip = new ZipKit();
 export const log = createAppLog();
 
 let win: BrowserWindow | null = null;
-export function setMainWindow(w: BrowserWindow): void {
+export function setMainWindow(w: BrowserWindow | null): void {
   win = w;
 }
 export function getMainWindow(): BrowserWindow | null {
-  return win;
+  return win && !win.isDestroyed() ? win : null;
+}
+
+function liveWindow(): BrowserWindow | null {
+  const current = getMainWindow();
+  if (!current || current.webContents.isDestroyed()) return null;
+  return current;
 }
 
 /** Forward one job-tagged progress event to the renderer's Progress stream. */
 export function sendEvent(event: GuiLogEvent): void {
-  win?.webContents.send("zipkit:event", event);
+  liveWindow()?.webContents.send("zipkit:event", event);
 }
 
 export function sendQueue(jobs: Job[]): void {
-  win?.webContents.send("zipkit:queue", jobs);
+  liveWindow()?.webContents.send("zipkit:queue", jobs);
 }
 
 export function toGuiError(err: unknown): GuiError {

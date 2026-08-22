@@ -62,9 +62,9 @@ let initialized = false;
 
 /**
  * Open and initialize the store once (create the table if absent, switch on WAL). Best-effort: on any
- * failure it logs ONE warn, leaves recording disabled for the session, and never throws. WAL is what
- * lets the tolerated two-instance case (two zipkit windows writing at once) serialize safely without a
- * cross-process lock.
+ * failure it logs ONE warn, leaves recording disabled for the session, and never throws. The app's
+ * OS-owned single-instance lock gives this store one process owner; WAL remains useful for independent
+ * diagnostic readers.
  */
 function ensureOpen(): DatabaseSync | null {
   if (initialized) return db;
@@ -79,8 +79,7 @@ function ensureOpen(): DatabaseSync | null {
     mkdirSync(path.dirname(file), { recursive: true });
     const opened = new DatabaseSync(file);
     opened.exec("PRAGMA journal_mode = WAL");
-    // busy_timeout: under the tolerated two-instance case, a contended write waits up to this long for
-    // SQLite's write lock instead of immediately failing with SQLITE_BUSY and dropping that record.
+    // Independent diagnostic readers may briefly contend with a checkpoint/write.
     opened.exec("PRAGMA busy_timeout = 5000");
     opened.exec(SCHEMA);
     db = opened;
@@ -114,19 +113,39 @@ function sha256(bytes: Buffer): string {
 export function record(absolutePath: string, bytes: Buffer): void {
   const store = ensureOpen();
   if (!store) return; // open failed earlier; disabled for the session (already warned once)
+  let transactionOpen = false;
   try {
     const hash = sha256(bytes);
+    // Latest-read + conditional insert is one immediate transaction. There is one
+    // app process owner, and this also makes the dedup invariant self-contained at
+    // the database boundary rather than depending on that lifecycle fact.
+    store.exec("BEGIN IMMEDIATE");
+    transactionOpen = true;
     const latest = store
       .prepare("SELECT content_sha256 AS h FROM backups WHERE path = ? ORDER BY id DESC LIMIT 1")
       .get(absolutePath) as { h: string } | undefined;
-    if (latest?.h === hash) return; // unchanged since the last recorded version — dedup skip
+    if (latest?.h === hash) {
+      store.exec("COMMIT");
+      transactionOpen = false;
+      return;
+    }
 
     store
       .prepare(
         "INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc) VALUES (?, ?, ?, ?, ?)",
       )
       .run(absolutePath, bytes, hash, bytes.byteLength, new Date().toISOString());
+    store.exec("COMMIT");
+    transactionOpen = false;
   } catch (err) {
+    if (transactionOpen) {
+      try {
+        store.exec("ROLLBACK");
+      } catch {
+        // The original record failure is the actionable one; backup remains
+        // best-effort and a rollback failure must not break the managed save.
+      }
+    }
     log.warn("backup store: failed to record a managed write", {
       file: absolutePath,
       error: errorInfo(err),

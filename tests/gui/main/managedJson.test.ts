@@ -24,11 +24,20 @@ import path from "node:path";
 // A one-shot rename failure armed per test; when unarmed, the mock delegates to the real rename so
 // every atomic write (saveSettings/saveLayout/saveQueue) in setup still works against the real root.
 const armedRenameError = vi.hoisted(() => ({ current: null as Error | null }));
+const armedReadError = vi.hoisted(() => ({ current: null as Error | null }));
 
 vi.mock("node:fs/promises", async (importActual) => {
   const actual = await importActual<typeof import("node:fs/promises")>();
   return {
     ...actual,
+    readFile: (...args: Parameters<typeof actual.readFile>) => {
+      if (armedReadError.current) {
+        const err = armedReadError.current;
+        armedReadError.current = null;
+        return Promise.reject(err);
+      }
+      return actual.readFile(...args);
+    },
     rename: (from: string, to: string) => {
       if (armedRenameError.current) {
         const err = armedRenameError.current;
@@ -50,11 +59,13 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
     process.env.ZIPKIT_HOME = root;
     armedRenameError.current = null;
+    armedReadError.current = null;
   });
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_HOME;
     else process.env.ZIPKIT_HOME = prev;
     armedRenameError.current = null;
+    armedReadError.current = null;
     await rm(root, { recursive: true, force: true });
   });
 
@@ -109,5 +120,15 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     armedRenameError.current = injected;
 
     await expect(loadSettings()).rejects.toBe(injected);
+  });
+
+  it("a non-ENOENT read failure propagates instead of being treated as absence", async () => {
+    const { loadSettings } = await import("../../../src/gui/main/settings.js");
+    const file = path.join(root, "config.json");
+    writeFileSync(file, JSON.stringify({ version: 1, defaults: {} }));
+    const injected = Object.assign(new Error("EACCES: read blocked"), { code: "EACCES" });
+    armedReadError.current = injected;
+    await expect(loadSettings()).rejects.toBe(injected);
+    expect(readFileSync(file, "utf8")).toContain('"version":1');
   });
 });

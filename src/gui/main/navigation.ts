@@ -10,6 +10,8 @@
  * `createWindow`, which can't be exercised without a real BrowserWindow.
  */
 
+import { fileURLToPath } from "node:url";
+
 /**
  * Deny every renderer-initiated window open. The app routes the one outbound URL
  * (the GitHub link) through the `openExternal` IPC bridge to the OS browser, so
@@ -28,7 +30,27 @@ export function windowOpenHandler(): { action: "deny" } {
  */
 export function isSameOrigin(appUrl: string, targetUrl: string): boolean {
   try {
-    return new URL(targetUrl).origin === new URL(appUrl).origin;
+    const app = new URL(appUrl);
+    const target = new URL(targetUrl);
+    if (app.protocol === "file:" || target.protocol === "file:") {
+      return app.protocol === "file:" && target.protocol === "file:" &&
+        fileURLToPath(app) === fileURLToPath(target);
+    }
+    return target.origin === app.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Development renderers may only be served by this machine. Packaged builds
+ * never consult the environment variable at all. */
+export function isLoopbackRendererUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    return (url.protocol === "http:" || url.protocol === "https:") &&
+      url.username === "" && url.password === "" &&
+      (host === "localhost" || host === "127.0.0.1" || host === "::1");
   } catch {
     return false;
   }

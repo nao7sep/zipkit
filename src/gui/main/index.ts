@@ -8,30 +8,30 @@
  */
 
 import { app } from "electron";
-import { storageRoot, StorageRootError } from "../../sdk/storage.js";
-import { notifyStartupFailure } from "./startup-dialog.js";
 
-try {
-  // Resolve once at this defined startup point, after the environment is known
-  // (not frozen into a module constant at import time). A bad ZIPKIT_HOME throws
-  // here, where we can report it and quit cleanly.
-  storageRoot();
-} catch (err) {
-  const message =
-    err instanceof StorageRootError
-      ? err.message
-      : `failed to resolve the storage root: ${err instanceof Error ? err.message : String(err)}`;
-  // Surface to both the terminal (dev/launcher) and a dialog (double-clicked app),
-  // then stop — the app cannot decide where to keep its files.
-  process.stderr.write(`zipkit: ${message}\n`);
-  app.whenReady().then(() => {
-    notifyStartupFailure(message);
-    app.exit(1);
-  });
-  // Prevent the heavy bootstrap (which would re-resolve the root) from loading.
-  throw new StorageRootError(message);
+// Own every managed store and queue from one OS-enforced app instance. Acquire
+// this before importing storage/bootstrap modules so a second process never
+// reads, plans, or writes shared durable state.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  const { storageRoot, StorageRootError } = await import("../../sdk/storage.js");
+  try {
+    storageRoot();
+  } catch (err) {
+    const message =
+      err instanceof StorageRootError
+        ? err.message
+        : `failed to resolve the storage root: ${err instanceof Error ? err.message : String(err)}`;
+    process.stderr.write(`zipkit: ${message}\n`);
+    app.whenReady().then(async () => {
+      const { notifyStartupFailure } = await import("./startup-dialog.js");
+      notifyStartupFailure(message);
+      app.exit(1);
+    });
+    throw new StorageRootError(message);
+  }
+
+  // Transitive imports that resolve the storage root run only after validation.
+  await import("./bootstrap.js");
 }
-
-// Dynamically imported so its transitive imports — which resolve the storage
-// root eagerly — run only after the validation above has passed.
-await import("./bootstrap.js");

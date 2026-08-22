@@ -67,7 +67,7 @@ export function composeOutputPath(
   inputs: string[],
   firstIsDir: boolean,
 ): string {
-  const dir = outputDir.trim();
+  const dir = outputDir;
   const name = fileName.trim();
   if (dir === "" && name === "") return ""; // let the SDK infer beside the input
 
@@ -105,7 +105,7 @@ export async function resolveOutputPath(
   fileName: string,
   inputs: string[],
 ): Promise<string> {
-  const needsDefaultName = fileName.trim() === "" && outputDir.trim() !== "" && inputs.length > 0;
+  const needsDefaultName = fileName.trim() === "" && outputDir !== "" && inputs.length > 0;
   const firstIsDir = needsDefaultName ? await isDirectory(inputs[0]!) : false;
   return composeOutputPath(outputDir, fileName, inputs, firstIsDir);
 }

@@ -4,16 +4,15 @@
  * storage root (`ZIPKIT_HOME` or `~/.zipkit`, resolved by the SDK's
  * {@link storageRoot}, beside the queue, settings, and logs). Kept in its own
  * file — separate from the new-job-defaults `config.json` — because layout and
- * archive defaults are unrelated concerns. Parsing is pure and defensive (clamps
- * into bounds, falls back to the default layout, never throws); file I/O is the
- * best-effort edge and its failures are logged by the caller.
+ * archive defaults are unrelated concerns. Parsing validates the v1 schema then
+ * clamps into bounds; invalid bytes are quarantined and real I/O errors surface.
  */
 
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
-import { isInvalidJson, loadManagedJson, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** The layout file under the resolved storage root. Computed lazily so
  *  `ZIPKIT_HOME` is read after the environment is set (storage-path convention). */
@@ -28,16 +27,16 @@ function freshLayout(): PaneLayout {
   return { ...DEFAULT_LAYOUT };
 }
 
-/** Parse layout-file text into a clamped {@link PaneLayout}. Pure; never throws. */
+/** Parse and validate layout-file text into a clamped {@link PaneLayout}. */
 export function parseLayout(text: string): PaneLayout {
-  let doc: unknown;
-  try {
-    doc = JSON.parse(text);
-  } catch {
-    return { ...DEFAULT_LAYOUT };
+  const root = parseManagedObject(text, "layout.json");
+  const layout = root.layout;
+  if (!isPlainObject(layout)) throw new InvalidManagedJsonError("layout.json", "layout must be an object");
+  for (const key of ["jobsWidth", "progressWidth"] as const) {
+    if (layout[key] !== undefined && typeof layout[key] !== "number") {
+      throw new InvalidManagedJsonError("layout.json", `layout.${key} must be a number`);
+    }
   }
-  const layout = (doc as { layout?: unknown } | null)?.layout;
-  if (layout === null || typeof layout !== "object") return { ...DEFAULT_LAYOUT };
   return clampLayout({ ...DEFAULT_LAYOUT, ...(layout as Partial<PaneLayout>) });
 }
 
@@ -53,7 +52,7 @@ export function serializeLayout(layout: PaneLayout): string {
  *  shape, identical to config.json and queue.json. Layout is disposable view state, so callers leave
  *  its quarantine outcome log-only rather than raising a recovery dialog. */
 export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<PaneLayout>> {
-  return loadManagedJson(layoutFile(), isInvalidJson, parseLayout, freshLayout, "default", logger);
+  return loadManagedJson(layoutFile(), parseLayout, freshLayout, logger);
 }
 
 /** Persist the layout through the shared managed-text atomic write (temp file + rename), recording the

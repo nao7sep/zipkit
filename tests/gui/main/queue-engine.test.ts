@@ -52,7 +52,9 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       calls.trash.push(paths);
+      return { moved: paths, failed: [] };
     },
+    outputInsideInputs: async () => false,
     emit: () => {},
     sendEvent: () => {},
     newId: () => `job-${++idN}`,
@@ -386,7 +388,10 @@ describe("queue engine", () => {
   });
 
   it("archive-and-trash refuses to Trash when the archive is inside the source", async () => {
-    const { deps, calls } = makeDeps({ plan: async (inputs) => planData(true, `${inputs[0]}/out.zip`) });
+    const { deps, calls } = makeDeps({
+      plan: async (inputs) => planData(true, `${inputs[0]}/out.zip`),
+      outputInsideInputs: async () => true,
+    });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
@@ -400,7 +405,10 @@ describe("queue engine", () => {
   });
 
   it("trashOriginals refuses when the archive sits inside an input (no self-deletion)", async () => {
-    const { deps, calls } = makeDeps({ plan: async (inputs) => planData(true, `${inputs[0]}/out.zip`) });
+    const { deps, calls } = makeDeps({
+      plan: async (inputs) => planData(true, `${inputs[0]}/out.zip`),
+      outputInsideInputs: async () => true,
+    });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "save");
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
@@ -428,6 +436,35 @@ describe("queue engine", () => {
       expect(engine.snapshot()[0]?.message).toContain("could not move the originals"),
     );
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
+  });
+
+  it("reports partial Trash truthfully and keeps the recoverable moves", async () => {
+    const { deps } = makeDeps({
+      trash: async (paths) => ({
+        moved: [paths[0]!],
+        failed: [{ path: paths[1]!, message: "permission denied" }],
+      }),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(engine.snapshot()[0]?.message).toContain("1 moved to recoverable Trash, 1 kept");
+  });
+
+  it("does not offer a planned output as removable after its write fails", async () => {
+    const { deps, calls } = makeDeps({
+      write: async () => { throw new Error("disk full"); },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    engine.removeArchive(id);
+    await tick();
+    expect(calls.trash).toEqual([]);
   });
 
   it("removeArchive surfaces a Trash failure and leaves the job done", async () => {

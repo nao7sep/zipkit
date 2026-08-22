@@ -7,34 +7,50 @@ import { defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { record } from "./backupStore.js";
 import { nullLog, type AppLog } from "./log.js";
 
-/** True when `text` — already read from a managed JSON store's file — counts as corrupt for that
- *  store, per its own current corrupt-detection. */
-export type CorruptionCheck = (text: string) => boolean;
-
-/** The corrupt-detection shared by config.json and layout.json: the file must be valid JSON. A
- *  missing or wrong-shaped individual field beyond that is tolerated and filled from defaults by the
- *  store's own parse function, not treated as corruption. */
-export function isInvalidJson(text: string): boolean {
-  try {
-    JSON.parse(text);
-    return false;
-  } catch {
-    return true;
+export class InvalidManagedJsonError extends Error {
+  constructor(store: string, detail: string) {
+    super(`${store} is invalid: ${detail}`);
+    this.name = "InvalidManagedJsonError";
   }
 }
 
-/** When `text` is corrupt per `isCorrupt`, rename `file` aside to its quarantine name (original bytes
- *  preserved), log one warning naming both paths, and return the quarantine path; null when `text` is
- *  not corrupt. `file` is moved, not copied, so the original path is free for the caller's next save
- *  immediately after. */
-export async function quarantineIfCorrupt(
+export class UnsupportedManagedJsonVersionError extends Error {
+  constructor(store: string, version: unknown) {
+    super(`${store} uses unsupported schema version ${String(version)}`);
+    this.name = "UnsupportedManagedJsonVersionError";
+  }
+}
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Parse the shared versioned document envelope. Future versions are not
+ * quarantined: preserving their live bytes is safer than treating newer data as
+ * corrupt and replacing it with this build's defaults. */
+export function parseManagedObject(text: string, store: string): Record<string, unknown> {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new InvalidManagedJsonError(store, "not valid JSON");
+  }
+  if (!isPlainObject(value)) throw new InvalidManagedJsonError(store, "root must be an object");
+  if (value.version !== 1) {
+    if (typeof value.version === "number" && value.version > 1) {
+      throw new UnsupportedManagedJsonVersionError(store, value.version);
+    }
+    throw new InvalidManagedJsonError(store, "schema version must be 1");
+  }
+  return value;
+}
+
+/** Move an invalid v1 store aside with its original bytes intact. */
+async function quarantineInvalid(
   file: string,
-  text: string,
-  isCorrupt: CorruptionCheck,
   logger: AppLog = nullLog,
   now: Date = new Date(),
-): Promise<string | null> {
-  if (!isCorrupt(text)) return null;
+): Promise<string> {
   const dir = path.dirname(file);
   const stem = path.parse(file).name;
   const quarantined = path.join(dir, `${stem}-${defaultSessionTimestamp(now)}.invalid`);
@@ -48,18 +64,6 @@ export async function quarantineIfCorrupt(
   return quarantined;
 }
 
-/**
- * How a store's loader treats a read that fails outright (not a corrupt-but-readable file):
- *
- * - `"default"` — an unreadable file degrades to the store's default value; the store's docstring
- *   promises "the defaults if there is no readable file". Fits the disposable preference stores
- *   (config.json, layout.json), where being unable to launch over a bad file is the worse failure.
- * - `"rethrow-non-enoent"` — an absent file (`ENOENT`) is the normal first-run case and yields the
- *   default, but any *other* read error propagates so the caller's session log records it instead of
- *   the store swallowing it. Fits the durable queue store, where a silent reset would lose real work.
- */
-export type ReadErrorPolicy = "default" | "rethrow-non-enoent";
-
 /** A load's parsed value plus where a corrupt original was set aside (null when the file was fine or
  *  absent). Each load reports its own outcome to its caller — there is no shared journal, so a
  *  reporting surface can never drain empty because it ran before the loads, and an unreported
@@ -67,32 +71,34 @@ export type ReadErrorPolicy = "default" | "rethrow-non-enoent";
 export interface ManagedJsonLoad<T> {
   value: T;
   quarantinedTo: string | null;
+  missing: boolean;
 }
 
 /** Load without ever returning defaults while corrupt bytes remain at the live path. */
 export async function loadManagedJson<T>(
   file: string,
-  isCorrupt: CorruptionCheck,
   parse: (text: string) => T,
   onDefault: () => T,
-  readError: ReadErrorPolicy,
   logger: AppLog = nullLog,
 ): Promise<ManagedJsonLoad<T>> {
   let text: string;
   try {
     text = await readFile(file, "utf8");
   } catch (err) {
-    if (readError === "default") return { value: onDefault(), quarantinedTo: null };
-    // "rethrow-non-enoent": an absent file is the normal first-run case; anything else propagates.
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { value: onDefault(), quarantinedTo: null };
+      return { value: onDefault(), quarantinedTo: null, missing: true };
     }
     throw err;
   }
-  // Quarantine sits OUTSIDE the read's catch: a rename failure here must propagate, not fall through
-  // to `onDefault()` while the corrupt bytes still sit at `file`.
-  const quarantinedTo = await quarantineIfCorrupt(file, text, isCorrupt, logger);
-  return { value: parse(text), quarantinedTo };
+  try {
+    return { value: parse(text), quarantinedTo: null, missing: false };
+  } catch (err) {
+    if (!(err instanceof InvalidManagedJsonError)) throw err;
+    // Quarantine is outside the read catch. Rename failure propagates and leaves
+    // the invalid live bytes untouched.
+    const quarantinedTo = await quarantineInvalid(file, logger);
+    return { value: onDefault(), quarantinedTo, missing: false };
+  }
 }
 
 /**

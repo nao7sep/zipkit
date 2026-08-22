@@ -13,12 +13,12 @@ import { app, BrowserWindow, dialog, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
-import { isSameOrigin, windowOpenHandler } from "./navigation.js";
+import { isLoopbackRendererUrl, isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
-import { registerQueueIpc, restoreQueue } from "./queue.js";
-import { ensureSettingsFile, loadSettings } from "./settings.js";
+import { flushQueue, registerQueueIpc, restoreQueue } from "./queue.js";
+import { loadSettings, saveSettings } from "./settings.js";
 import { errorInfo } from "./log.js";
-import { log, setMainWindow } from "./runtime.js";
+import { getMainWindow, log, setMainWindow } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { loadLayout } from "./layout.js";
 
@@ -63,6 +63,12 @@ function createWindow(): void {
   });
 
   setMainWindow(win);
+  win.on("closed", () => {
+    setMainWindow(null);
+    void flushQueue().catch((err) =>
+      log.error("failed to flush the queue after window close", { error: errorInfo(err) }),
+    );
+  });
   log.info("main window created");
 
   // Navigation guard (defense-in-depth alongside the CSP): the SPA stays on its
@@ -74,8 +80,11 @@ function createWindow(): void {
     if (!isSameOrigin(win.webContents.getURL(), url)) event.preventDefault();
   });
 
-  const devUrl = process.env.ELECTRON_RENDERER_URL;
+  const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
   if (devUrl) {
+    if (!isLoopbackRendererUrl(devUrl)) {
+      throw new Error("ELECTRON_RENDERER_URL must be an HTTP(S) loopback URL");
+    }
     void win.loadURL(devUrl);
   } else {
     // Production path only (run-built / rebuild): enforce the strict CSP via a
@@ -114,14 +123,6 @@ app.whenReady().then(async () => {
   // light title bar on a dark app is the window-chrome convention's prime example
   // of OS-default chrome fighting the app. Set before the window is created.
   nativeTheme.themeSource = "dark";
-  // Create config.json from the built-in defaults on first run so the settings file exists on disk
-  // immediately, not only after the first save (storage-path conventions). Create-if-absent, and
-  // before the window/renderer reads settings over IPC; a write failure is logged, not fatal.
-  try {
-    await ensureSettingsFile();
-  } catch (err) {
-    log.error("failed to create config.json on first run", { error: errorInfo(err) });
-  }
   // Just-in-case data backup (data-backup conventions): write-through, not a startup scan. Each managed
   // text save records the exact bytes into `~/.zipkit/backups.sqlite3` strictly after its atomic rename
   // lands (see managedJson.ts's writeManagedJson + the backup store). There is nothing to kick off here.
@@ -132,7 +133,11 @@ app.whenReady().then(async () => {
   // This also keeps failed quarantines on the startup error path. Each load
   // returns its own quarantine outcome; layout is disposable view state and its
   // recovery stays log-only.
-  const { quarantinedTo: settingsQuarantinedTo } = await loadSettings(log);
+  const settingsLoad = await loadSettings(log);
+  const { quarantinedTo: settingsQuarantinedTo } = settingsLoad;
+  // A missing or quarantined config is materialized immediately through the one
+  // serializer/backup path before the renderer can observe or save settings.
+  if (settingsLoad.missing || settingsQuarantinedTo) await saveSettings(settingsLoad.value);
   await loadLayout(log);
 
   createWindow();
@@ -147,12 +152,34 @@ app.whenReady().then(async () => {
   });
 }).catch(reportStartupHalt);
 
+app.on("second-instance", () => {
+  const win = getMainWindow();
+  if (!win) {
+    if (app.isReady()) createWindow();
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
+
 app.on("window-all-closed", () => {
   const quitting = process.platform !== "darwin";
   log.info("all windows closed", { quitting });
   if (quitting) app.quit();
 });
 
-app.on("before-quit", () => {
-  log.info("app quitting");
+let queueFlushedForQuit = false;
+app.on("before-quit", (event) => {
+  if (queueFlushedForQuit) return;
+  event.preventDefault();
+  void flushQueue().then(() => {
+    queueFlushedForQuit = true;
+    log.info("app quitting");
+    app.quit();
+  }).catch((err) => {
+    log.error("failed to flush the queue before quit", { error: errorInfo(err) });
+    queueFlushedForQuit = true;
+    app.quit();
+  });
 });

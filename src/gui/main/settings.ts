@@ -3,10 +3,9 @@
  * UI font), saved so they are configured once rather than every session. The file
  * lives at `config.json` under zipkit's storage root (`ZIPKIT_HOME` or `~/.zipkit`,
  * resolved in one place by the SDK's {@link storageRoot}, beside the queue and logs).
- * Parsing is pure and defensive (fills missing fields from the built-in defaults,
- * never throws) so a stale or corrupt file — or one written before a field existed —
- * degrades to the shipped defaults rather than crashing; the file I/O is the
- * best-effort edge and its failures are logged by the caller.
+ * Parsing fills absent known fields but rejects wrong shapes. Invalid v1 bytes
+ * are quarantined, future versions are preserved live, and non-absence I/O
+ * failures propagate rather than being mistaken for first run.
  */
 
 import { access } from "node:fs/promises";
@@ -14,7 +13,7 @@ import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { nullLog, type AppLog } from "./log.js";
-import { isInvalidJson, loadManagedJson, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** The settings file under the resolved storage root. Computed lazily (not frozen
  *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
@@ -28,23 +27,34 @@ function freshSettings(): GuiSettings {
   return { defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "" };
 }
 
-/** Parse settings-file text into the GUI settings: fill any missing option field
- *  from the built-in defaults, and a missing/non-string UI font from blank. Pure;
- *  never throws. */
-export function parseSettings(text: string): GuiSettings {
-  let doc: unknown;
-  try {
-    doc = JSON.parse(text);
-  } catch {
-    return freshSettings();
+/** Parse settings-file text: fill absent fields and reject wrong known shapes. */
+export function parseGuiOptions(raw: unknown, store: string): GuiOptions {
+  if (raw === undefined) raw = {};
+  if (!isPlainObject(raw)) throw new InvalidManagedJsonError(store, "options must be an object");
+  const checks: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
+    ["junk", (v) => typeof v === "boolean"], ["strict", (v) => typeof v === "boolean"],
+    ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
+    ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
+    ["emptyDirs", (v) => v === "keep" || v === "prune"], ["metadata", (v) => typeof v === "boolean"],
+    ["hash", (v) => typeof v === "boolean"], ["comment", (v) => typeof v === "string"],
+    ["outputDir", (v) => typeof v === "string"], ["fileName", (v) => typeof v === "string"],
+    ["overwrite", (v) => typeof v === "boolean"],
+  ];
+  for (const [key, valid] of checks) {
+    if (raw[key] !== undefined && !valid(raw[key])) {
+      throw new InvalidManagedJsonError(store, `options.${key} has the wrong type or value`);
+    }
   }
-  const root = doc as { defaults?: unknown; uiFontFamily?: unknown } | null;
-  const rawDefaults = root?.defaults;
-  const defaults =
-    rawDefaults !== null && typeof rawDefaults === "object"
-      ? { ...DEFAULT_OPTIONS, ...(rawDefaults as Partial<GuiOptions>) }
-      : { ...DEFAULT_OPTIONS };
-  const uiFontFamily = typeof root?.uiFontFamily === "string" ? root.uiFontFamily : "";
+  return { ...DEFAULT_OPTIONS, ...raw } as GuiOptions;
+}
+
+export function parseSettings(text: string): GuiSettings {
+  const root = parseManagedObject(text, "config.json");
+  const defaults = parseGuiOptions(root.defaults, "config.json");
+  if (root.uiFontFamily !== undefined && typeof root.uiFontFamily !== "string") {
+    throw new InvalidManagedJsonError("config.json", "uiFontFamily must be a string");
+  }
+  const uiFontFamily = typeof root.uiFontFamily === "string" ? root.uiFontFamily : "";
   return { defaults, uiFontFamily };
 }
 
@@ -57,14 +67,10 @@ export function serializeSettings(settings: GuiSettings): string {
   );
 }
 
-/** Load the persisted settings; the built-in defaults if there is no readable file. A present-but-
- *  corrupt file (invalid JSON) is quarantined aside — never silently reset in place — before the
- *  defaults are returned, and the outcome rides in the result so the caller can report it; a
- *  quarantine-rename failure propagates rather than degrading to defaults over the corrupt bytes.
- *  The shared {@link loadManagedJson} owns that quarantine-outside-the-catch shape, identical to
- *  layout.json and queue.json. */
+/** Load settings. Absence yields defaults; invalid v1 content is quarantined;
+ * future versions and real read/preservation failures propagate. */
 export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJsonLoad<GuiSettings>> {
-  return loadManagedJson(settingsFile(), isInvalidJson, parseSettings, freshSettings, "default", logger);
+  return loadManagedJson(settingsFile(), parseSettings, freshSettings, logger);
 }
 
 /** Persist the GUI settings through the shared managed-text atomic write (temp file + rename), so a
@@ -85,7 +91,8 @@ export async function ensureSettingsFile(): Promise<boolean> {
   try {
     await access(settingsFile());
     return false;
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     await saveSettings(freshSettings());
     return true;
   }
