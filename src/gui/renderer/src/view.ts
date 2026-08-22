@@ -132,6 +132,17 @@ export function severityLabel(severity: Finding["severity"]): string {
   }
 }
 
+/** A standalone user-facing message starts as a sentence, while a leading
+ * technical id (`output.exists:`) stays byte-exact and only its explanation is
+ * sentence-cased. Paths and other non-letter-led payloads are left alone. */
+export function humanSentence(message: string): string {
+  const technical = /^([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+):(\s*)(.*)$/s.exec(message);
+  if (technical) {
+    return `${technical[1]}:${technical[2]}${humanSentence(technical[3] ?? "")}`;
+  }
+  return message.replace(/^[a-z]/, (first) => first.toUpperCase());
+}
+
 /** A job's options/intent may be edited only before it runs and while not done. A
  *  `queued` job is committed to run (waiting its turn), so it is locked too —
  *  cancelling it returns it to an editable `ready`/`needs-attention` state. */
@@ -235,7 +246,7 @@ const ERROR_GUIDANCE: Record<string, string> = {
  *  or ready (with what the archive will carry / what was auto-handled). */
 export function reportSummary(job: Job, plan: PlanData | null): ReportLine | null {
   if (job.state === "failed") {
-    return { level: "error", text: job.message ?? "The archive could not be created." };
+    return { level: "error", text: job.message ? humanSentence(job.message) : "The archive could not be created." };
   }
   // A blocked job must ALWAYS explain itself, even when the plan threw and left no
   // structured data (plan === null) — the captured message is the only explanation
@@ -251,7 +262,7 @@ export function reportSummary(job: Job, plan: PlanData | null): ReportLine | nul
         text: `${n} blocking issue${n === 1 ? "" : "s"} must be resolved before this can be archived.`,
       };
     }
-    return { level: "error", text: job.message ?? "This job can't be archived yet." };
+    return { level: "error", text: job.message ? humanSentence(job.message) : "This job can't be archived yet." };
   }
   if (!plan) return null; // planning — nothing to report yet
   const s = plan.summary;
@@ -328,7 +339,36 @@ function formatLocalTime(iso: string): string {
 
 /** One Progress-log line, with the time shown in local (not raw UTC) form. */
 export function formatEventLine(event: LogEvent): string {
-  return `${formatLocalTime(event.time)}  ${event.level}  ${event.message}`;
+  return `${formatLocalTime(event.time)}  ${logLevelLabel(event.level)}  ${progressMessage(event)}`;
+}
+
+/** Human labels for the machine-readable logging levels. */
+export function logLevelLabel(level: LogEvent["level"]): string {
+  switch (level) {
+    case "debug":
+      return "Debug";
+    case "info":
+      return "Info";
+    case "warn":
+      return "Warning";
+    case "error":
+      return "Error";
+  }
+}
+
+/** Presentation-only cleanup for the typed event stream. The structured event,
+ * its JSONL message, and its wire literals remain untouched. */
+export function progressMessage(event: LogEvent): string {
+  switch (event.event) {
+    case "session.start":
+      return humanSentence(event.message).replace(/^Zipkit\b/, "ZipKit");
+    case "write.done":
+      return humanSentence(event.message).replace(/\bzip64\b/g, "ZIP64");
+    case "entry.flagged":
+      return `Finding ${event.rule} at ${event.path}`;
+    default:
+      return humanSentence(event.message);
+  }
 }
 
 /** The target archive's file name (basename of the planned output path): the

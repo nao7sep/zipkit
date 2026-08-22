@@ -10,18 +10,21 @@ import {
   COLOR,
   containingDir,
   formatEventLine,
+  humanSentence,
   intentLabel,
   isCancelable,
   isEditable,
   isTerminal,
   jobCommands,
   label,
+  logLevelLabel,
   jobAdvisories,
   manifestRequiredButMissing,
   orderedEntries,
   originalsPresent,
   outputPreview,
   planReport,
+  progressMessage,
   reportSummary,
   severityColor,
   severityLabel,
@@ -257,7 +260,7 @@ describe("reportSummary", () => {
     } as unknown as PlanData;
   };
   it("speaks to the job's actual state, never a vague 'safe' claim", () => {
-    expect(reportSummary(job({ state: "failed", message: "disk full" }), null)?.text).toBe("disk full");
+    expect(reportSummary(job({ state: "failed", message: "disk full" }), null)?.text).toBe("Disk full");
     expect(reportSummary(job({ state: "done" }), planOf({ writable: true, included: 3 }))).toEqual({
       level: "info",
       text: "Archived 3 items.",
@@ -289,7 +292,7 @@ describe("reportSummary", () => {
       ),
     ).toEqual({
       level: "error",
-      text: "cannot infer the output path; pass an explicit output",
+      text: "Cannot infer the output path; pass an explicit output",
     });
   });
   it("prefers friendly guidance keyed on the SDK error code over the raw message", () => {
@@ -309,7 +312,7 @@ describe("reportSummary", () => {
     expect(
       reportSummary(job({ state: "needs-attention", errorCode: "write.failed", message: "disk is full" }), null)
         ?.text,
-    ).toBe("disk is full");
+    ).toBe("Disk is full");
   });
   it("returns null only while planning (nothing to report yet)", () => {
     expect(reportSummary(job({ state: "planning" }), null)).toBeNull();
@@ -374,15 +377,76 @@ describe("planReport", () => {
 });
 
 describe("formatEventLine", () => {
-  it("renders a local ISO-ish time, then level and message", () => {
+  it("renders a local ISO-ish time, then a human level and sentence-cased message", () => {
     // The time is rendered in the viewer's local zone, so assert the shape
     // (yyyy-mm-dd hh:mm:ss) rather than an exact value that would vary by zone.
     const e = { time: "2026-06-14T05:00:00.000Z", level: "info", message: "hi" } as unknown as LogEvent;
-    expect(formatEventLine(e)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  info  hi$/);
+    expect(formatEventLine(e)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  Info  Hi$/);
   });
   it("falls back to the raw value when the time cannot be parsed", () => {
     const e = { time: "not-a-time", level: "warn", message: "x" } as unknown as LogEvent;
-    expect(formatEventLine(e)).toBe("not-a-time  warn  x");
+    expect(formatEventLine(e)).toBe("not-a-time  Warning  X");
+  });
+});
+
+describe("progress presentation", () => {
+  it("labels every machine log level without leaking raw values", () => {
+    expect((["debug", "info", "warn", "error"] as LogEvent["level"][]).map(logLevelLabel)).toEqual([
+      "Debug",
+      "Info",
+      "Warning",
+      "Error",
+    ]);
+  });
+
+  it("proper-cases ZipKit and ZIP64 without mutating the event message", () => {
+    const start = {
+      time: "2026-06-14T05:00:00.000Z",
+      level: "info",
+      event: "session.start",
+      version: "0.1.0",
+      concurrency: 2,
+      chunkSize: 1024,
+      message: "zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)",
+    } as LogEvent;
+    const written = {
+      time: start.time,
+      level: "info",
+      event: "write.done",
+      bytes: 12,
+      zip64: true,
+      message: "archive written: 12 bytes (zip64)",
+    } as LogEvent;
+
+    expect(progressMessage(start)).toBe("ZipKit 0.1.0 (concurrency 2, chunk 1024 bytes)");
+    expect(progressMessage(written)).toBe("Archive written: 12 bytes (ZIP64)");
+    expect(start.message).toBe("zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)");
+    expect(written.message).toBe("archive written: 12 bytes (zip64)");
+  });
+
+  it("uses the typed finding fields instead of exposing a raw severity prefix", () => {
+    const event = {
+      time: "2026-06-14T05:00:00.000Z",
+      level: "warn",
+      event: "entry.flagged",
+      rule: "name.reserved",
+      path: "CON.txt",
+      severity: "warning",
+      message: "warning: name.reserved at CON.txt",
+    } as LogEvent;
+    expect(progressMessage(event)).toBe("Finding name.reserved at CON.txt");
+    expect(event.message).toBe("warning: name.reserved at CON.txt");
+  });
+});
+
+describe("humanSentence", () => {
+  it("sentence-cases prose while preserving technical ids, paths, and fragments", () => {
+    expect(humanSentence("saved and verified")).toBe("Saved and verified");
+    expect(humanSentence("output.exists: destination already exists")).toBe(
+      "output.exists: Destination already exists",
+    );
+    expect(humanSentence("/tmp/lowercase-name.zip")).toBe("/tmp/lowercase-name.zip");
+    expect(humanSentence("(automatic)")).toBe("(automatic)");
   });
 });
 

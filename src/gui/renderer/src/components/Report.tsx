@@ -13,6 +13,7 @@ import type { CSSProperties } from "react";
 import type { ExtractData, Job, PlanData } from "../../../shared/api";
 import {
   jobAdvisories,
+  humanSentence,
   planReport,
   reportSummary,
   severityColor,
@@ -59,7 +60,7 @@ export function Report({
   return (
     <div>
       {summary && <p style={{ ...S.summary, color: severityColor(summary.level) }}>{summary.text}</p>}
-      {job.state === "done" && job.message && <p style={S.note}>{job.message}</p>}
+      {job.state === "done" && job.message && <p style={S.note}>{humanSentence(job.message)}</p>}
       {plan && lines.length === 0 && plan.writable && (
         <p style={S.note}>Everything is clean — nothing needed fixing.</p>
       )}

@@ -20,7 +20,7 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { Job } from "../../../shared/api";
-import { intentLabel, isCancelable, label, stateTint } from "../view";
+import { humanSentence, intentLabel, isCancelable, label, stateTint } from "../view";
 import { navIndex, recoverIndex, typeaheadIndex } from "../listbox-nav";
 import { isComposing } from "../composition";
 import { StateBadge } from "./StateBadge";
@@ -243,7 +243,9 @@ export function JobListbox({
 /** The dim sub-line beside the state badge: the noteworthy intent tag (nothing
  *  for the default save) and the job message, whichever are present. */
 function metaText(job: Job): string {
-  return [intentLabel(job.intent), job.message].filter(Boolean).join(" · ");
+  return [intentLabel(job.intent), job.message ? humanSentence(job.message) : ""]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function optionEl(list: HTMLUListElement | null, id: string | null): HTMLElement | null {

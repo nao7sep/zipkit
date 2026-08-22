@@ -114,4 +114,11 @@ describe("JobListbox", () => {
     expect(screen.getByTitle("Cancel (Escape)").tabIndex).toBe(-1);
     expect(screen.getByTitle("Remove (Delete)").tabIndex).toBe(-1);
   });
+
+  it("shows an internal job result as a sentence without changing the stored message", () => {
+    const saved = { ...job("a", "done"), message: "saved and verified" };
+    renderListbox({ jobs: [saved], selectedId: "a" });
+    expect(screen.getByText("Saved and verified")).toBeTruthy();
+    expect(saved.message).toBe("saved and verified");
+  });
 });

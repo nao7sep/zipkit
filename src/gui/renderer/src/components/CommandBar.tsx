@@ -10,7 +10,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { Job } from "../../../shared/api";
-import { jobCommands, type JobCommand } from "../view";
+import { humanSentence, jobCommands, type JobCommand } from "../view";
 
 const LABEL: Record<JobCommand, string> = {
   create: "Create archive",
@@ -73,7 +73,9 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
     // shows only a hint with no button to land on); it never becomes a tab stop.
     <div ref={barRef} tabIndex={-1} style={S.bar}>
       {commands.length === 0 ? (
-        <span style={S.hint}>{job.message ?? "Resolve the blocking issues to create this archive."}</span>
+        <span style={S.hint}>
+          {job.message ? humanSentence(job.message) : "Resolve the blocking issues to create this archive."}
+        </span>
       ) : (
         commands.map((c, i) => (
           <button

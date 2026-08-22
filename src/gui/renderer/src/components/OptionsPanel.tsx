@@ -64,9 +64,9 @@ export function OptionsPanel({
             value={options.symlinks}
             onChange={(e) => set("symlinks", e.target.value as GuiOptions["symlinks"])}
           >
-            <option value="ignore">ignore</option>
-            <option value="preserve">preserve</option>
-            <option value="follow">follow</option>
+            <option value="ignore">Ignore</option>
+            <option value="preserve">Preserve</option>
+            <option value="follow">Follow</option>
           </select>
         </Field>
         <Field label="Empty directories">
@@ -74,8 +74,8 @@ export function OptionsPanel({
             value={options.emptyDirs}
             onChange={(e) => set("emptyDirs", e.target.value as GuiOptions["emptyDirs"])}
           >
-            <option value="keep">keep</option>
-            <option value="prune">prune</option>
+            <option value="keep">Keep</option>
+            <option value="prune">Prune</option>
           </select>
         </Field>
       </Section>

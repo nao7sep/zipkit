@@ -56,6 +56,26 @@ describe("SettingsDialog footer order", () => {
 });
 
 describe("SettingsDialog reset", () => {
+  it("shows human labels while preserving the option values saved to settings", () => {
+    const onSave = renderDialog();
+    const symlinks = screen.getByLabelText("Symlinks") as HTMLSelectElement;
+    const emptyDirs = screen.getByLabelText("Empty directories") as HTMLSelectElement;
+
+    expect((screen.getByRole("option", { name: "Ignore" }) as HTMLOptionElement).value).toBe("ignore");
+    expect((screen.getByRole("option", { name: "Preserve" }) as HTMLOptionElement).value).toBe("preserve");
+    expect((screen.getByRole("option", { name: "Follow" }) as HTMLOptionElement).value).toBe("follow");
+    expect((screen.getByRole("option", { name: "Keep" }) as HTMLOptionElement).value).toBe("keep");
+    expect((screen.getByRole("option", { name: "Prune" }) as HTMLOptionElement).value).toBe("prune");
+
+    fireEvent.change(symlinks, { target: { value: "follow" } });
+    fireEvent.change(emptyDirs, { target: { value: "prune" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith({
+      defaults: { ...CUSTOM.defaults, symlinks: "follow", emptyDirs: "prune" },
+      uiFontFamily: CUSTOM.uiFontFamily,
+    });
+  });
+
   it("labels the control for exactly what it resets", () => {
     renderDialog();
     expect(reset()).toBeTruthy();
