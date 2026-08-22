@@ -603,7 +603,7 @@ export class ZipWriter {
     if (this.#options.overwrite === true) {
       await renameAsync(this.#tempPath, this.#output);
     } else {
-      await publishNoOverwrite(this.#tempPath, this.#output);
+      await publishNoOverwrite(this.#tempPath, this.#output, signal);
     }
     return { zip64: needZip64, bytes };
   }

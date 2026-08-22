@@ -215,6 +215,7 @@ async function commitFile(
   tempPath: string,
   target: string,
   options: WriteOptions,
+  signal: AbortSignal | undefined,
 ): Promise<CommitOutcome> {
   if (!(await ensureRealDirs(dest, parentSegments))) {
     await rm(tempPath, { force: true });
@@ -228,7 +229,7 @@ async function commitFile(
     await rename(tempPath, target);
   } else {
     try {
-      await publishNoOverwrite(tempPath, target);
+      await publishNoOverwrite(tempPath, target, signal);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") {
         await rm(tempPath, { force: true });
@@ -444,6 +445,7 @@ export async function extractArchive(
               verified.tempPath as string,
               target,
               writeOptions,
+              signal,
             );
           }
         } catch (err) {
