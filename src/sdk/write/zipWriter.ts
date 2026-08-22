@@ -4,8 +4,8 @@
  * as a streaming writer. The archive is one ordered byte stream, so entries are
  * written sequentially through a single seekable file descriptor: a temp file
  * in the output's directory and fsync'd; publication either atomically replaces
- * the destination (authorized overwrite) or exclusively links the completed
- * inode into an absent destination (no overwrite). The
+ * the destination (authorized overwrite) or claims an absent destination with
+ * an exclusive hard-link/copy operation (no overwrite). The
  * clean-byte contract is encoded here:
  *
  * - The general-purpose flag has bit 11 set (names are UTF-8).
@@ -37,12 +37,13 @@
  * the bytes match what a same-archive reader and `unzip` expect.
  */
 
-import { close, fsync, link, open, rename, unlink, write as fsWrite } from "node:fs";
+import { close, fsync, open, rename, write as fsWrite } from "node:fs";
 import { dirname, join, parse } from "node:path";
 import { promisify } from "node:util";
 import { nanoid } from "nanoid";
 import { throwIfAborted } from "../errors.js";
 import { wallClockInZone } from "../internal/timeZone.js";
+import { publishNoOverwrite } from "../internal/noClobberPublish.js";
 import { deflateBound } from "../plan/zip64.js";
 import { EntryCompressor, type ChunkSink } from "./deflate.js";
 
@@ -50,8 +51,6 @@ const openAsync = promisify(open);
 const closeAsync = promisify(close);
 const fsyncAsync = promisify(fsync);
 const renameAsync = promisify(rename);
-const linkAsync = promisify(link);
-const unlinkAsync = promisify(unlink);
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
@@ -604,17 +603,7 @@ export class ZipWriter {
     if (this.#options.overwrite === true) {
       await renameAsync(this.#tempPath, this.#output);
     } else {
-      // A hard link makes the already-complete temp inode visible only if the
-      // destination name is still absent. Unlike check-then-rename, this is one
-      // atomic no-clobber claim across processes. Unlinking the temp afterward
-      // leaves the published name as the inode's sole directory entry.
-      await linkAsync(this.#tempPath, this.#output);
-      try {
-        await unlinkAsync(this.#tempPath);
-      } catch {
-        // The target is already fully published. Temp cleanup is best-effort and
-        // cannot turn that committed success into a reported write failure.
-      }
+      await publishNoOverwrite(this.#tempPath, this.#output);
     }
     return { zip64: needZip64, bytes };
   }

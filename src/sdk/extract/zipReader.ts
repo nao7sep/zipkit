@@ -26,9 +26,10 @@ const CENTRAL_SIG = 0x02014b50;
 const LOCAL_SIG = 0x04034b50;
 const U16 = 0xffff;
 const U32 = 0xffffffff;
-// The largest tail we ever need to scan for the EOCD: the 22-byte record plus
-// the maximum 65535-byte trailing comment, plus the 20-byte Zip64 locator that
-// can precede it.
+// The largest tail needed to locate the classic EOCD and, when present, its
+// immediately preceding Zip64 locator. The Zip64 EOCD itself is read from the
+// locator's absolute offset, so even a maximum comment cannot push it out of the
+// in-memory search window.
 const MAX_EOCD_SEARCH = EOCD_MIN + U16 + 20;
 
 const readFd = promisify(
@@ -125,34 +126,45 @@ function findEocdInTail(tail: Buffer): number {
   throw new ReadError("read.not-zip", "end-of-central-directory record not found");
 }
 
-function locateCentralDir(tail: Buffer, tailStart: number, eocdInTail: number): {
+async function locateCentralDir(
+  fd: number,
+  tail: Buffer,
+  tailStart: number,
+  eocdInTail: number,
+): Promise<{
   count: number;
   cdOffset: number;
+  cdEnd: number;
   zip64: boolean;
-} {
+}> {
   let count = tail.readUInt16LE(eocdInTail + 10);
+  const cdSize = tail.readUInt32LE(eocdInTail + 12);
   let cdOffset = tail.readUInt32LE(eocdInTail + 16);
-  if (count !== U16 && cdOffset !== U32) return { count, cdOffset, zip64: false };
+  const eocdOffset = tailStart + eocdInTail;
+  if (count !== U16 && cdSize !== U32 && cdOffset !== U32) {
+    return { count, cdOffset, cdEnd: eocdOffset, zip64: false };
+  }
 
   // A sentinel means the real values live in the Zip64 records. The locator sits
   // immediately before the EOCD and points at the Zip64 EOCD.
   const locInTail = eocdInTail - 20;
   if (locInTail >= 0 && tail.readUInt32LE(locInTail) === ZIP64_LOCATOR_SIG) {
     const z64 = safeNumber(tail.readBigUInt64LE(locInTail + 8), "Zip64 directory offset");
-    const z64InTail = z64 - tailStart;
-    if (
-      z64InTail >= 0 &&
-      z64InTail + 56 <= tail.length &&
-      tail.readUInt32LE(z64InTail) === ZIP64_EOCD_SIG
-    ) {
-      const recordSize = safeNumber(tail.readBigUInt64LE(z64InTail + 4), "Zip64 end-record length");
-      const recordEnd = safeAdd(z64InTail, 12 + recordSize, "Zip64 end-record range");
-      if (recordSize < 44 || recordEnd > locInTail) {
+    const locatorOffset = tailStart + locInTail;
+    const minimumRecordEnd = safeAdd(z64, 56, "Zip64 end-record range");
+    if (z64 >= 0 && minimumRecordEnd <= locatorOffset) {
+      const record = await readExact(fd, z64, 56);
+      if (record.readUInt32LE(0) !== ZIP64_EOCD_SIG) {
+        throw new ReadError("read.malformed", "Zip64 end-of-central-directory not found");
+      }
+      const recordSize = safeNumber(record.readBigUInt64LE(4), "Zip64 end-record length");
+      const recordEnd = safeAdd(z64, 12 + recordSize, "Zip64 end-record range");
+      if (recordSize < 44 || recordEnd !== locatorOffset) {
         throw new ReadError("read.malformed", "invalid Zip64 end-of-central-directory length");
       }
-      count = safeNumber(tail.readBigUInt64LE(z64InTail + 32), "Zip64 entry count");
-      cdOffset = safeNumber(tail.readBigUInt64LE(z64InTail + 48), "Zip64 central-directory offset");
-      return { count, cdOffset, zip64: true };
+      count = safeNumber(record.readBigUInt64LE(32), "Zip64 entry count");
+      cdOffset = safeNumber(record.readBigUInt64LE(48), "Zip64 central-directory offset");
+      return { count, cdOffset, cdEnd: z64, zip64: true };
     }
   }
   throw new ReadError("read.malformed", "Zip64 end-of-central-directory not found");
@@ -242,11 +254,15 @@ export async function parseZip(fd: number, fileSize: number): Promise<ParsedZip>
   const tailStart = fileSize - tailLen;
   const tail = await readExact(fd, tailStart, tailLen);
   const eocdInTail = findEocdInTail(tail);
-  const { count, cdOffset, zip64 } = locateCentralDir(tail, tailStart, eocdInTail);
+  const { count, cdOffset, cdEnd, zip64 } = await locateCentralDir(
+    fd,
+    tail,
+    tailStart,
+    eocdInTail,
+  );
 
-  // The central directory ends where its EOCD (or Zip64 EOCD) begins; read just
+  // The central directory ends where its classic or Zip64 EOCD begins; read just
   // that region rather than the whole file.
-  const cdEnd = tailStart + (zip64 ? eocdInTail - 20 : eocdInTail);
   const cdLen = cdEnd - cdOffset;
   if (
     !Number.isSafeInteger(count) ||

@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { close, open, stat as fsStat } from "node:fs";
-import { link, lstat, mkdir, rename, rm, symlink, unlink, utimes } from "node:fs/promises";
+import { lstat, mkdir, rename, rm, symlink, utimes } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -30,15 +30,18 @@ import type { Unlogged } from "../internal/types.js";
 import { reportFindings } from "../log/findings.js";
 import type { Logger } from "../log/logger.js";
 import { awaitDrain } from "../internal/drain.js";
+import { publishNoOverwrite } from "../internal/noClobberPublish.js";
 import { finding } from "../registry.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
+import { findTargetCollision } from "./targetCollision.js";
 import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipReader.js";
 
 const openAsync = promisify(open);
 const closeAsync = promisify(close);
 const statAsync = promisify(fsStat);
 const MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
+const MAX_SYMLINK_TARGET_BYTES = 64 * 1024;
 
 export interface ExtractDeps {
   limit: <T>(fn: () => Promise<T>) => Promise<T>;
@@ -111,35 +114,6 @@ async function ensureRealDirs(dest: string, segments: string[]): Promise<boolean
   return true;
 }
 
-/**
- * The first pair of entries that resolve to the same effective target, or put a
- * file/symlink where another entry needs a directory. Paths are normalized with
- * the same segment resolver as `safeJoin`, then NFC/case-folded for the strict
- * cross-platform contract. This runs before dry-run or write work begins.
- */
-function findTargetCollision(entries: readonly ReadEntry[]): [string, string] | null {
-  const seen = new Map<string, ReadEntry>();
-  for (const entry of entries) {
-    const resolved = resolveSegments(toForwardSlash(entry.archivePath));
-    if (resolved.escaped || resolved.segments.length === 0) continue;
-    const key = resolved.segments.join("/").normalize("NFC").toLowerCase();
-    const exact = seen.get(key);
-    if (exact) return [exact.archivePath, entry.archivePath];
-
-    const segments = key.split("/");
-    for (let i = 1; i < segments.length; i++) {
-      const ancestor = seen.get(segments.slice(0, i).join("/"));
-      if (ancestor && ancestor.type !== "dir") return [ancestor.archivePath, entry.archivePath];
-    }
-    if (entry.type !== "dir") {
-      const descendant = [...seen.entries()].find(([prior]) => prior.startsWith(`${key}/`));
-      if (descendant) return [descendant[1].archivePath, entry.archivePath];
-    }
-    seen.set(key, entry);
-  }
-  return null;
-}
-
 interface ManifestRecord {
   archivePath?: unknown;
   sha256?: unknown;
@@ -174,6 +148,12 @@ async function verifyEntry(
 ): Promise<VerifyResult> {
   if (entry.type === "dir") {
     return { crcOk: true, sha: checkSha ? (storedSha ? "ok" : "absent") : undefined };
+  }
+  if (captureLink && entry.uncompSize > MAX_SYMLINK_TARGET_BYTES) {
+    throw new ReadError(
+      "read.entry-too-large",
+      `${entry.archivePath} exceeds the symlink target size limit`,
+    );
   }
 
   const hasher = checkSha ? createHash("sha256") : null;
@@ -210,6 +190,7 @@ async function verifyEntry(
   }
 
   const crcOk = crc32 === (entry.crc32 >>> 0);
+  if (!crcOk && stageTo) await rm(stageTo, { force: true });
   const result: VerifyResult = { crcOk };
   if (checkSha) {
     if (storedSha === null) result.sha = "absent";
@@ -247,18 +228,13 @@ async function commitFile(
     await rename(tempPath, target);
   } else {
     try {
-      await link(tempPath, target);
+      await publishNoOverwrite(tempPath, target);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") {
         await rm(tempPath, { force: true });
         return "exists";
       }
       throw err;
-    }
-    try {
-      await unlink(tempPath);
-    } catch {
-      // The target is already fully published; cleanup cannot undo that commit.
     }
   }
   if (options.restore) {

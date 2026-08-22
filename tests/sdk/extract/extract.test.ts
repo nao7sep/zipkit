@@ -341,6 +341,21 @@ describe("path safety and exclusion", () => {
     expect(left.some((f) => f.startsWith(".zk-"))).toBe(false);
   });
 
+  it("removes a staged temp file when the entry fails CRC verification", async () => {
+    const archive = await writeArchive([fileEntry("bad.txt", "CORRUPTME")]);
+    const bytes = await readFile(archive);
+    const content = bytes.indexOf(Buffer.from("CORRUPTME"));
+    expect(content).toBeGreaterThanOrEqual(0);
+    bytes[content] = bytes[content]! ^ 0xff;
+    await writeFile(archive, bytes);
+    const dest = path.join(dir, "crc-out");
+
+    const report = await new ZipKit().extract({ archive, dest });
+
+    expect(report.entries[0]).toMatchObject({ crc: "fail", written: false, skipped: "crc-fail" });
+    expect((await readdir(dest)).some((name) => name.startsWith(".zk-"))).toBe(false);
+  });
+
   it("does not write a literally-excluded entry", async () => {
     const archive = await writeArchive([fileEntry("keep.txt", "k"), fileEntry("_metadata.json", "{}")]);
     const dest = path.join(dir, "out");
@@ -404,6 +419,14 @@ describe("symlinks and zip64", () => {
     expect(await readlink(path.join(dir, "keep", "link"))).toBe("target.txt");
   });
 
+  it("rejects an oversized symlink target before buffering its decompressed bytes", async () => {
+    const archive = await writeArchive([symlinkEntry("huge-link", "x".repeat(70 * 1024))]);
+
+    await expect(new ZipKit().extract({ archive, dryRun: true })).rejects.toMatchObject({
+      code: "read.entry-too-large",
+    });
+  });
+
   it("round-trips a zero-byte file (no compressed bytes to stream)", async () => {
     const archive = await writeArchive([fileEntry("empty.txt", ""), fileEntry("a.txt", "x")]);
     const dest = path.join(dir, "empties");
@@ -443,6 +466,26 @@ describe("EOCD-locator robustness", () => {
     const report = await new ZipKit().extract({ archive, dryRun: true });
     expect(report.reportOk).toBe(true);
     expect(report.entries.find((e) => e.archivePath === "a.txt")?.crc).toBe("ok");
+  });
+
+  it("reads Zip64 metadata even when a maximum-length comment pushes it beyond the EOCD tail", async () => {
+    const archive = await writeArchive([fileEntry("z.txt", "zip64")], {
+      zip64: true,
+      comment: "x".repeat(0xffff),
+    });
+    const bytes = await readFile(archive);
+    const eocd = bytes.length - 0xffff - 22;
+    // Force the classic record to defer directory identity to Zip64. The writer
+    // emits real small values when Zip64 was test-forced, so without these
+    // sentinels a reader is allowed to ignore the Zip64 records entirely.
+    bytes.writeUInt16LE(0xffff, eocd + 8);
+    bytes.writeUInt16LE(0xffff, eocd + 10);
+    bytes.writeUInt32LE(0xffffffff, eocd + 16);
+    await writeFile(archive, bytes);
+
+    const report = await new ZipKit().extract({ archive, dryRun: true });
+    expect(report.reportOk).toBe(true);
+    expect(report.entries[0]).toMatchObject({ archivePath: "z.txt", crc: "ok" });
   });
 });
 

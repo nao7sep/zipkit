@@ -18,7 +18,7 @@ import { registerIpc } from "./ipc.js";
 import { flushQueue, registerQueueIpc, restoreQueue } from "./queue.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { errorInfo } from "./log.js";
-import { getMainWindow, log, setMainWindow } from "./runtime.js";
+import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { loadLayout } from "./layout.js";
 
@@ -31,8 +31,8 @@ process.on("unhandledRejection", (reason) => {
   log.error("unhandled rejection", { error: errorInfo(reason) });
 });
 
-function createWindow(): void {
-  const win = new BrowserWindow({
+function createWindow(): BrowserWindow {
+  const owned = ensureMainWindow(() => new BrowserWindow({
     // Opening size: comfortable for the default layout — the dense center Archive
     // pane (inputs + the options grid + operation + report all stack here) gets
     // ~550px wide and the body ~710px tall, so the common case opens roomy without
@@ -60,11 +60,12 @@ function createWindow(): void {
       // renderer walled off from Node; the bridge is the sole crossing.
       sandbox: false,
     },
-  });
+  }));
+  const win = owned.window;
+  if (!owned.created) return win;
 
-  setMainWindow(win);
   win.on("closed", () => {
-    setMainWindow(null);
+    clearMainWindow(win);
     void flushQueue().catch((err) =>
       log.error("failed to flush the queue after window close", { error: errorInfo(err) }),
     );
@@ -93,6 +94,29 @@ function createWindow(): void {
     installContentSecurityPolicy();
     void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
   }
+  return win;
+}
+
+let windowCreationReady = false;
+let activationPending = false;
+
+function focusWindow(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function activateMainWindow(): void {
+  const current = getMainWindow();
+  if (current) {
+    focusWindow(current);
+    return;
+  }
+  if (!windowCreationReady) {
+    activationPending = true;
+    return;
+  }
+  focusWindow(createWindow());
 }
 
 // Any startup failure reaches the user and halts. Managed-store loaders include
@@ -140,7 +164,12 @@ app.whenReady().then(async () => {
   if (settingsLoad.missing || settingsQuarantinedTo) await saveSettings(settingsLoad.value);
   await loadLayout(log);
 
-  createWindow();
+  windowCreationReady = true;
+  const initialWindow = createWindow();
+  if (activationPending) {
+    activationPending = false;
+    focusWindow(initialWindow);
+  }
   // Queue recovery is material, so wait for it before reporting.
   const queueQuarantinedTo = await restoreQueue();
 
@@ -148,19 +177,12 @@ app.whenReady().then(async () => {
     dialog.showErrorBox(recoveryDialog.title, recoveryDialog.message);
   }
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    activateMainWindow();
   });
 }).catch(reportStartupHalt);
 
 app.on("second-instance", () => {
-  const win = getMainWindow();
-  if (!win) {
-    if (app.isReady()) createWindow();
-    return;
-  }
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
+  activateMainWindow();
 });
 
 app.on("window-all-closed", () => {

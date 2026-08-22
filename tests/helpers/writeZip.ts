@@ -34,6 +34,7 @@ export interface BuiltZip {
  */
 export interface BuildOptions extends ZipWriterOptions {
   zip64?: boolean;
+  comment?: string;
 }
 
 /**
@@ -45,7 +46,7 @@ export async function buildZipFile(
   entries: EntryWithData[],
   options: BuildOptions,
 ): Promise<BuiltZip> {
-  const { zip64: forceZip64 = false, ...writerOptions } = options;
+  const { zip64: forceZip64 = false, comment, ...writerOptions } = options;
   const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-"));
   const output = path.join(dir, "a.zip");
   const writer = new ZipWriter(output, writerOptions);
@@ -62,7 +63,7 @@ export async function buildZipFile(
         return compressor.finish();
       });
     }
-    const { zip64, bytes } = await writer.finalize(forceZip64);
+    const { zip64, bytes } = await writer.finalize(forceZip64, comment);
     return { path: output, zip64, bytes };
   } catch (err) {
     await writer.abort();

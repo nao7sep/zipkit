@@ -82,4 +82,44 @@ describe("restoreQueue", () => {
     await Promise.all([firstFlush, secondFlush]);
     expect(mocks.saveQueue.mock.calls.map(([jobs]) => jobs)).toEqual([first, second]);
   });
+
+  it("an empty overlapping flush still joins the in-flight durable save", async () => {
+    let release!: () => void;
+    mocks.saveQueue.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+    mocks.deps!.emit([{ id: "closing" }]);
+
+    const closeFlush = flushQueue();
+    const quitFlush = flushQueue();
+    let quitFinished = false;
+    void quitFlush.then(() => { quitFinished = true; });
+    await vi.waitFor(() => expect(mocks.saveQueue).toHaveBeenCalledTimes(1));
+    expect(quitFinished).toBe(false);
+
+    release();
+    await Promise.all([closeFlush, quitFlush]);
+    expect(quitFinished).toBe(true);
+  });
+
+  it("an overlapping flush follows a newer save consumed by the first flusher", async () => {
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    mocks.saveQueue
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { releaseFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { releaseSecond = resolve; }));
+    mocks.deps!.emit([{ id: "first" }]);
+    const firstFlush = flushQueue();
+    const quitFlush = flushQueue();
+    let quitFinished = false;
+    void quitFlush.then(() => { quitFinished = true; });
+    await vi.waitFor(() => expect(mocks.saveQueue).toHaveBeenCalledTimes(1));
+    mocks.deps!.emit([{ id: "newest" }]);
+
+    releaseFirst();
+    await vi.waitFor(() => expect(mocks.saveQueue).toHaveBeenCalledTimes(2));
+    expect(quitFinished).toBe(false);
+
+    releaseSecond();
+    await Promise.all([firstFlush, quitFlush]);
+    expect(quitFinished).toBe(true);
+  });
 });

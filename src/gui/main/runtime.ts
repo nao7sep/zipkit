@@ -20,6 +20,22 @@ let win: BrowserWindow | null = null;
 export function setMainWindow(w: BrowserWindow | null): void {
   win = w;
 }
+/** Return the live owner or create and install it exactly once. */
+export function ensureMainWindow(create: () => BrowserWindow): {
+  window: BrowserWindow;
+  created: boolean;
+} {
+  const current = getMainWindow();
+  if (current) return { window: current, created: false };
+  const created = create();
+  win = created;
+  return { window: created, created: true };
+}
+/** Clear only the window that actually closed; a stale close callback must not
+ * erase a replacement window installed after it. */
+export function clearMainWindow(closed: BrowserWindow): void {
+  if (win === closed) win = null;
+}
 export function getMainWindow(): BrowserWindow | null {
   return win && !win.isDestroyed() ? win : null;
 }

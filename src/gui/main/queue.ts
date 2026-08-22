@@ -76,20 +76,36 @@ const engine = createQueueEngine({
  * every window/process shutdown path so an immediately closed window loses no
  * queue mutation. */
 export async function flushQueue(): Promise<void> {
-  clearTimeout(saveTimer);
-  saveTimer = undefined;
-  const jobs = pendingJobs;
-  if (!jobs) return;
-  pendingJobs = undefined;
-  const save = saveChain.catch(() => {}).then(() => saveQueue(jobs));
-  saveChain = save;
-  try {
-    await save;
-  } catch (err) {
-    // Keep a newer emitted snapshot if one arrived while this write was in
-    // flight; otherwise retain this failed snapshot for the next flush attempt.
-    pendingJobs ??= jobs;
-    throw err;
+  for (;;) {
+    clearTimeout(saveTimer);
+    saveTimer = undefined;
+    const jobs = pendingJobs;
+    let joined: Promise<void>;
+    if (jobs) {
+      pendingJobs = undefined;
+      const save = saveChain.catch(() => {}).then(() => saveQueue(jobs));
+      saveChain = save;
+      joined = save;
+      try {
+        await save;
+      } catch (err) {
+        // Keep a newer emitted snapshot if one arrived while this write was in
+        // flight; otherwise retain this failed snapshot for the next flush attempt.
+        pendingJobs ??= jobs;
+        throw err;
+      }
+    } else {
+      // A window-close flush may already have consumed pendingJobs while its
+      // durable write is still running. Quit must join that same write rather
+      // than treating the empty pending slot as proof that persistence finished.
+      joined = saveChain;
+      await joined;
+    }
+
+    // If another emission arrived while the joined save was in flight, fold it
+    // into this flush too. Another concurrent flush may have consumed that
+    // emission and extended saveChain already, so join the changed chain as well.
+    if (!pendingJobs && saveChain === joined) return;
   }
 }
 
