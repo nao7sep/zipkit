@@ -32,6 +32,7 @@ function memoryOperations(
     }),
     sync: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
+    identity: vi.fn().mockResolvedValue("claim"),
   };
   return {
     published,
@@ -40,6 +41,7 @@ function memoryOperations(
       link: vi.fn().mockResolvedValue(undefined),
       openRead: vi.fn().mockResolvedValue(source),
       openExclusive: vi.fn().mockResolvedValue(destination),
+      pathIdentity: vi.fn().mockResolvedValue("claim"),
       unlink: vi.fn().mockResolvedValue(undefined),
       ...overrides,
     },
@@ -159,5 +161,37 @@ describe("portable no-overwrite publication", () => {
       publishNoOverwrite("temp", "out", undefined, fixture.operations),
     ).rejects.toBe(io);
     expect(fixture.operations.openExclusive).not.toHaveBeenCalled();
+  });
+
+  it("rejects success when an authorized overwrite replaces the claimed pathname", async () => {
+    const fixture = memoryOperations(Buffer.from("complete bytes"), {
+      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
+      pathIdentity: vi.fn().mockResolvedValue("winner"),
+    });
+
+    await expect(
+      publishNoOverwrite("temp", "out", undefined, fixture.operations),
+    ).rejects.toMatchObject({ code: "EEXIST" });
+    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
+    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
+  });
+
+  it("preserves a replacement winner when cancellation follows its rename", async () => {
+    const controller = new AbortController();
+    const fixture = memoryOperations(Buffer.from("complete bytes"), {
+      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
+      pathIdentity: vi.fn().mockResolvedValue("winner"),
+    });
+    const destination = await fixture.operations.openExclusive("unused");
+    vi.mocked(fixture.operations.openExclusive).mockResolvedValue({
+      ...destination,
+      sync: vi.fn(async () => { controller.abort(); }),
+    });
+
+    await expect(
+      publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
+    ).rejects.toMatchObject({ code: "EEXIST" });
+    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
+    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
   });
 });

@@ -1,6 +1,6 @@
 /** Portable no-clobber publication for a completed same-directory temp file. */
 
-import { link, open, unlink } from "node:fs/promises";
+import { link, lstat, open, unlink } from "node:fs/promises";
 
 const LINK_UNSUPPORTED = new Set(["EACCES", "EMLINK", "ENOSYS", "ENOTSUP", "EOPNOTSUPP", "EPERM"]);
 
@@ -13,19 +13,41 @@ export interface PublishDestination {
   write(buffer: Buffer, offset: number, length: number, position: null): Promise<{ bytesWritten: number }>;
   sync(): Promise<void>;
   close(): Promise<void>;
+  identity(): Promise<string>;
 }
 
 export interface PublishOperations {
   link(tempPath: string, output: string): Promise<void>;
   openRead(path: string): Promise<PublishSource>;
   openExclusive(path: string): Promise<PublishDestination>;
+  pathIdentity(path: string): Promise<string | null>;
   unlink(tempPath: string): Promise<void>;
 }
 
 const realOperations: PublishOperations = {
   link,
   openRead: (path) => open(path, "r"),
-  openExclusive: (path) => open(path, "wx"),
+  openExclusive: async (path) => {
+    const handle = await open(path, "wx");
+    return {
+      write: (buffer, offset, length, position) => handle.write(buffer, offset, length, position),
+      sync: () => handle.sync(),
+      close: () => handle.close(),
+      identity: async () => {
+        const stat = await handle.stat({ bigint: true });
+        return `${stat.dev}:${stat.ino}`;
+      },
+    };
+  },
+  pathIdentity: async (path) => {
+    try {
+      const stat = await lstat(path, { bigint: true });
+      return `${stat.dev}:${stat.ino}`;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  },
   unlink,
 };
 
@@ -40,12 +62,12 @@ async function copyExclusive(
   signal?.throwIfAborted();
   const source = await operations.openRead(tempPath);
   let destination: PublishDestination | null = null;
-  let claimed = false;
+  let claimIdentity: string | null = null;
   let committed = false;
   try {
     signal?.throwIfAborted();
     destination = await operations.openExclusive(output);
-    claimed = true;
+    claimIdentity = await destination.identity();
     const buffer = Buffer.allocUnsafe(COPY_CHUNK_BYTES);
     let readPosition = 0;
     for (;;) {
@@ -68,14 +90,29 @@ async function copyExclusive(
     await destination.close();
     destination = null;
     signal?.throwIfAborted();
+    if (await operations.pathIdentity(output) !== claimIdentity) throw destinationChanged(output);
     committed = true;
   } catch (err) {
     if (destination) await destination.close().catch(() => {});
-    if (claimed && !committed) await operations.unlink(output).catch(() => {});
-    throw err;
+    let failure = err;
+    if (claimIdentity !== null && !committed) {
+      const currentIdentity = await operations.pathIdentity(output).catch(() => null);
+      if (currentIdentity === claimIdentity) {
+        await operations.unlink(output).catch(() => {});
+      } else if (currentIdentity !== null) {
+        failure = destinationChanged(output);
+      }
+    }
+    throw failure;
   } finally {
     await source.close().catch(() => {});
   }
+}
+
+function destinationChanged(output: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(`Destination changed during exclusive publication: ${output}`), {
+    code: "EEXIST",
+  });
 }
 
 /**
