@@ -12,6 +12,7 @@
  * and the per-entry Zip64 extra (`0x0001`) for sentinel sizes/offsets.
  */
 
+import { constants as bufferConstants } from "node:buffer";
 import { createReadStream, read as fsRead } from "node:fs";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
@@ -38,6 +39,15 @@ const readFd = promisify(
 
 /** Read exactly `length` bytes at `position`, erroring on a short read. */
 async function readExact(fd: number, position: number, length: number): Promise<Buffer> {
+  if (
+    !Number.isSafeInteger(position) ||
+    position < 0 ||
+    !Number.isSafeInteger(length) ||
+    length < 0 ||
+    length > bufferConstants.MAX_LENGTH
+  ) {
+    throw new ReadError("read.malformed", "archive byte range is not safely addressable");
+  }
   const buf = Buffer.alloc(length);
   let got = 0;
   while (got < length) {
@@ -46,6 +56,21 @@ async function readExact(fd: number, position: number, length: number): Promise<
     got += n;
   }
   return buf;
+}
+
+function safeNumber(value: bigint, field: string): number {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new ReadError("read.malformed", `${field} exceeds the safe integer range`);
+  }
+  return Number(value);
+}
+
+function safeAdd(left: number, right: number, field: string): number {
+  const sum = left + right;
+  if (!Number.isSafeInteger(sum) || sum < 0) {
+    throw new ReadError("read.malformed", `${field} exceeds the safe integer range`);
+  }
+  return sum;
 }
 
 export interface ReadEntry {
@@ -113,15 +138,20 @@ function locateCentralDir(tail: Buffer, tailStart: number, eocdInTail: number): 
   // immediately before the EOCD and points at the Zip64 EOCD.
   const locInTail = eocdInTail - 20;
   if (locInTail >= 0 && tail.readUInt32LE(locInTail) === ZIP64_LOCATOR_SIG) {
-    const z64 = Number(tail.readBigUInt64LE(locInTail + 8));
+    const z64 = safeNumber(tail.readBigUInt64LE(locInTail + 8), "Zip64 directory offset");
     const z64InTail = z64 - tailStart;
     if (
       z64InTail >= 0 &&
       z64InTail + 56 <= tail.length &&
       tail.readUInt32LE(z64InTail) === ZIP64_EOCD_SIG
     ) {
-      count = Number(tail.readBigUInt64LE(z64InTail + 32));
-      cdOffset = Number(tail.readBigUInt64LE(z64InTail + 48));
+      const recordSize = safeNumber(tail.readBigUInt64LE(z64InTail + 4), "Zip64 end-record length");
+      const recordEnd = safeAdd(z64InTail, 12 + recordSize, "Zip64 end-record range");
+      if (recordSize < 44 || recordEnd > locInTail) {
+        throw new ReadError("read.malformed", "invalid Zip64 end-of-central-directory length");
+      }
+      count = safeNumber(tail.readBigUInt64LE(z64InTail + 32), "Zip64 entry count");
+      cdOffset = safeNumber(tail.readBigUInt64LE(z64InTail + 48), "Zip64 central-directory offset");
       return { count, cdOffset, zip64: true };
     }
   }
@@ -147,16 +177,33 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
     const commentLen = cd.readUInt16LE(p + 32);
     const externalAttr = cd.readUInt32LE(p + 38);
     let localOffset = cd.readUInt32LE(p + 42);
+    const recordEnd = p + 46 + nameLen + extraLen + commentLen;
+    if (!Number.isSafeInteger(recordEnd) || recordEnd > cd.length) {
+      throw new ReadError("read.malformed", `truncated central-directory record at offset ${p}`);
+    }
     const rawName = cd.toString("utf8", p + 46, p + 46 + nameLen);
     const extra = cd.subarray(p + 46 + nameLen, p + 46 + nameLen + extraLen);
 
     if (compSize === U32 || uncompSize === U32 || localOffset === U32) {
       const z = findExtra(extra, 0x0001);
-      if (z) {
-        let off = 0;
-        if (uncompSize === U32) (uncompSize = Number(z.readBigUInt64LE(off))), (off += 8);
-        if (compSize === U32) (compSize = Number(z.readBigUInt64LE(off))), (off += 8);
-        if (localOffset === U32) localOffset = Number(z.readBigUInt64LE(off));
+      const required =
+        (uncompSize === U32 ? 8 : 0) +
+        (compSize === U32 ? 8 : 0) +
+        (localOffset === U32 ? 8 : 0);
+      if (!z || z.length < required) {
+        throw new ReadError("read.malformed", `missing or truncated Zip64 extra for ${rawName}`);
+      }
+      let off = 0;
+      if (uncompSize === U32) {
+        uncompSize = safeNumber(z.readBigUInt64LE(off), `uncompressed size for ${rawName}`);
+        off += 8;
+      }
+      if (compSize === U32) {
+        compSize = safeNumber(z.readBigUInt64LE(off), `compressed size for ${rawName}`);
+        off += 8;
+      }
+      if (localOffset === U32) {
+        localOffset = safeNumber(z.readBigUInt64LE(off), `local-header offset for ${rawName}`);
       }
     }
 
@@ -179,7 +226,7 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
       dosTime,
       extra,
     });
-    p += 46 + nameLen + extraLen + commentLen;
+    p = recordEnd;
   }
   return entries;
 }
@@ -201,7 +248,15 @@ export async function parseZip(fd: number, fileSize: number): Promise<ParsedZip>
   // that region rather than the whole file.
   const cdEnd = tailStart + (zip64 ? eocdInTail - 20 : eocdInTail);
   const cdLen = cdEnd - cdOffset;
-  if (cdOffset < 0 || cdLen < 0 || cdEnd > fileSize) {
+  if (
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    !Number.isSafeInteger(cdOffset) ||
+    cdOffset < 0 ||
+    !Number.isSafeInteger(cdLen) ||
+    cdLen < 0 ||
+    cdEnd > fileSize
+  ) {
     throw new ReadError("read.malformed", "central directory location is out of range");
   }
   const cd = await readExact(fd, cdOffset, cdLen);
@@ -216,7 +271,7 @@ async function entryDataOffset(fd: number, entry: ReadEntry): Promise<number> {
   }
   const nameLen = header.readUInt16LE(26);
   const extraLen = header.readUInt16LE(28);
-  return entry.localOffset + 30 + nameLen + extraLen;
+  return safeAdd(entry.localOffset, 30 + nameLen + extraLen, `data offset for ${entry.archivePath}`);
 }
 
 /** A sink for an entry's decompressed output chunks, in stream order. */
@@ -251,13 +306,22 @@ export async function readEntryData(
   // A zero-length entry (an empty file, or a deflate stream with no payload) has
   // no compressed bytes to read; a read stream with `end < start` is invalid, so
   // short-circuit. CRC-32 over no bytes is 0, which matches the stored value.
-  if (entry.compSize === 0) return { crc32: 0, uncompressedSize: 0 };
+  if (entry.compSize === 0) {
+    if (entry.uncompSize !== 0) {
+      throw new ReadError(
+        "read.size-mismatch",
+        `uncompressed size does not match the declared size for ${entry.archivePath}`,
+      );
+    }
+    return { crc32: 0, uncompressedSize: 0 };
+  }
   const start = await entryDataOffset(fd, entry);
+  const endExclusive = safeAdd(start, entry.compSize, `compressed data range for ${entry.archivePath}`);
   const reader = createReadStream("", {
     fd,
     autoClose: false,
     start,
-    end: start + entry.compSize - 1,
+    end: endExclusive - 1,
     highWaterMark: chunkSize,
   });
 
@@ -266,11 +330,23 @@ export async function readEntryData(
   const consume = async (chunk: Buffer): Promise<void> => {
     crc = zlib.crc32(chunk, crc);
     uncompressedSize += chunk.length;
+    if (!Number.isSafeInteger(uncompressedSize) || uncompressedSize > entry.uncompSize) {
+      throw new ReadError(
+        "read.size-mismatch",
+        `uncompressed size exceeds the declared size for ${entry.archivePath}`,
+      );
+    }
     await sink(chunk);
   };
 
   if (entry.method === 0) {
     for await (const chunk of reader) await consume(chunk as Buffer);
+    if (uncompressedSize !== entry.uncompSize) {
+      throw new ReadError(
+        "read.size-mismatch",
+        `uncompressed size does not match the declared size for ${entry.archivePath}`,
+      );
+    }
     return { crc32: crc >>> 0, uncompressedSize };
   }
 
@@ -318,6 +394,12 @@ export async function readEntryData(
       cause: err,
     });
   }
+  if (uncompressedSize !== entry.uncompSize) {
+    throw new ReadError(
+      "read.size-mismatch",
+      `uncompressed size does not match the declared size for ${entry.archivePath}`,
+    );
+  }
   return { crc32: crc >>> 0, uncompressedSize };
 }
 
@@ -326,8 +408,23 @@ export async function readEntryData(
  * structural entries — the embedded manifest — where the content must be parsed
  * whole; the extraction path streams instead so it never buffers an entry.
  */
-export async function readEntryBuffer(fd: number, entry: ReadEntry): Promise<Buffer> {
+export async function readEntryBuffer(fd: number, entry: ReadEntry, maxBytes: number): Promise<Buffer> {
+  if (entry.uncompSize > maxBytes) {
+    throw new ReadError("read.entry-too-large", `${entry.archivePath} exceeds the in-memory size limit`);
+  }
   const chunks: Buffer[] = [];
-  await readEntryData(fd, entry, async (chunk) => void chunks.push(chunk), 65536);
+  let bytes = 0;
+  await readEntryData(
+    fd,
+    entry,
+    async (chunk) => {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        throw new ReadError("read.entry-too-large", `${entry.archivePath} exceeds the in-memory size limit`);
+      }
+      chunks.push(chunk);
+    },
+    65536,
+  );
   return Buffer.concat(chunks);
 }

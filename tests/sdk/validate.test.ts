@@ -35,6 +35,11 @@ describe("validateSpec", () => {
     expect(() => validateSpec({ inputs: [] })).toThrow(PolicyError);
   });
 
+  it("rejects an exact-empty input without trimming legal path names", () => {
+    expect(() => validateSpec({ inputs: [""] })).toThrow(PolicyError);
+    expect(validateSpec({ inputs: [" "] }).inputs).toEqual([" "]);
+  });
+
   it("rejects an unknown top-level key", () => {
     expect(() => validateSpec({ inputs: ["a"], bogus: 1 } as never)).toThrow(PolicyError);
   });

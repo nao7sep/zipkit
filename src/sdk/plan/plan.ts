@@ -103,6 +103,6 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
     findings,
     entries,
   };
-  attachInternals(plan, { writeEntries, policy, comment: scan.comment });
+  attachInternals(plan, { writeEntries, policy, overwrite: scan.overwrite, comment: scan.comment });
   return plan;
 }

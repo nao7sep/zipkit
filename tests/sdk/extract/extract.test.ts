@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -99,6 +99,19 @@ describe("extract round-trip", () => {
     const force = await new ZipKit().extract({ archive, dest, overwrite: true });
     expect(force.entries[0]?.written).toBe(true);
     expect((await readFile(path.join(dest, "a.txt"))).toString()).toBe("new");
+  });
+
+  it("publishes one winner without clobber when two no-overwrite extracts race", async () => {
+    const archive = await writeArchive([fileEntry("a.txt", "content")]);
+    const dest = path.join(dir, "race-out");
+    const [a, b] = await Promise.all([
+      new ZipKit().extract({ archive, dest }),
+      new ZipKit().extract({ archive, dest }),
+    ]);
+    const outcomes = [a.entries[0], b.entries[0]];
+    expect(outcomes.filter((entry) => entry?.written)).toHaveLength(1);
+    expect(outcomes.filter((entry) => entry?.skipped === "exists")).toHaveLength(1);
+    expect(await readFile(path.join(dest, "a.txt"), "utf8")).toBe("content");
   });
 });
 
@@ -211,7 +224,7 @@ describe("path safety and exclusion", () => {
       fileEntry("a/file.txt", "two"),
     ]);
     const dest = path.join(dir, "out");
-    await expect(new ZipKit().extract({ archive, dest })).rejects.toThrow(/differ only by case/i);
+    await expect(new ZipKit().extract({ archive, dest })).rejects.toThrow(/colliding extraction targets/i);
     // Nothing was written for the colliding pair.
     await expect(stat(path.join(dest, "a", "File.txt"))).rejects.toThrow();
   });
@@ -225,9 +238,34 @@ describe("path safety and exclusion", () => {
       fileEntry("a/File.txt", "one"),
       fileEntry("a/file.txt", "two"),
     ]);
-    await expect(new ZipKit().extract({ archive, dryRun: true })).rejects.toThrow(
-      /differ only by case/i,
-    );
+    await expect(new ZipKit().extract({ archive, dryRun: true })).rejects.toThrow(/colliding extraction targets/i);
+  });
+
+  it.each([
+    ["exact duplicate", [fileEntry("same.txt", "one"), fileEntry("same.txt", "two")]],
+    ["normalized alias", [fileEntry("./same.txt", "one"), fileEntry("dir/../same.txt", "two")]],
+    ["file ancestor", [fileEntry("a", "file"), fileEntry("a/b.txt", "child")]],
+  ] as const)("rejects a %s target collision before writing", async (_label, entries) => {
+    const archive = await writeArchive([...entries]);
+    const dest = path.join(dir, "collision-out");
+
+    await expect(new ZipKit().extract({ archive, dest })).rejects.toMatchObject({
+      code: "read.target-collision",
+    });
+    await expect(stat(dest)).rejects.toThrow();
+  });
+
+  it("rejects a stream whose actual size differs from the central-directory declaration", async () => {
+    const archive = await writeArchive([fileEntry("short.txt", "abc")]);
+    const bytes = await readFile(archive);
+    const central = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    expect(central).toBeGreaterThanOrEqual(0);
+    bytes.writeUInt32LE(999, central + 24);
+    await writeFile(archive, bytes);
+
+    await expect(new ZipKit().extract({ archive, dryRun: true })).rejects.toMatchObject({
+      code: "read.size-mismatch",
+    });
   });
 
   it("never writes through a symlink whose target escapes the destination (symlink zip-slip)", async () => {
@@ -242,19 +280,11 @@ describe("path safety and exclusion", () => {
     ]);
     const dest = path.join(dir, "out");
 
-    const report = await new ZipKit({ concurrency: 1 }).extract({ archive, dest });
-
-    // Nothing landed outside the destination.
+    await expect(new ZipKit({ concurrency: 1 }).extract({ archive, dest })).rejects.toMatchObject({
+      code: "read.target-collision",
+    });
     await expect(stat(path.join(outside, "pwned.txt"))).rejects.toThrow();
-    // The escaping symlink was refused, not materialized: `link` is a real
-    // directory (created by the file's parent chain), never the escaping symlink.
-    expect(report.entries.find((e) => e.archivePath === "link")?.skipped).toBe("unsafe");
-    const linkStat = await lstat(path.join(dest, "link"));
-    expect(linkStat.isSymbolicLink()).toBe(false);
-    expect(linkStat.isDirectory()).toBe(true);
-    // ...and the file was contained inside the destination instead of escaping.
-    expect((await readFile(path.join(dest, "link", "pwned.txt"))).toString()).toBe("PWNED");
-    expect(report.reportOk).toBe(false);
+    await expect(stat(dest)).rejects.toThrow();
   });
 
   it("refuses to write through a symlinked directory even when the link stays inside dest", async () => {
@@ -267,12 +297,10 @@ describe("path safety and exclusion", () => {
     ]);
     const dest = path.join(dir, "out");
 
-    const report = await new ZipKit({ concurrency: 1 }).extract({ archive, dest });
-
-    expect((await lstat(path.join(dest, "ln"))).isSymbolicLink()).toBe(true); // the link was restored
-    expect(report.entries.find((e) => e.archivePath === "ln/secret.txt")?.skipped).toBe("unsafe");
-    await expect(stat(path.join(dest, "real", "secret.txt"))).rejects.toThrow(); // not written through it
-    expect(report.reportOk).toBe(false);
+    await expect(new ZipKit({ concurrency: 1 }).extract({ archive, dest })).rejects.toMatchObject({
+      code: "read.target-collision",
+    });
+    await expect(stat(dest)).rejects.toThrow();
   });
 
   it("aborts on a symlink-traversal entry when onUnsafe is abort", async () => {
@@ -288,7 +316,7 @@ describe("path safety and exclusion", () => {
         dest: path.join(dir, "out"),
         onUnsafe: "abort",
       }),
-    ).rejects.toThrow(/escapes/i);
+    ).rejects.toMatchObject({ code: "read.target-collision" });
   });
 
   it("leaves no temp stragglers when a write error aborts the pool mid-stream", async () => {

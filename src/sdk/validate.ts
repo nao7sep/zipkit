@@ -121,7 +121,7 @@ const partialPolicySchema = z.strictObject({
 });
 
 const specSchema = z.strictObject({
-  inputs: z.array(z.string()).min(1),
+  inputs: z.array(z.string().refine((input) => input !== "", { error: "input paths must not be empty" })).min(1),
   output: z.string().optional(),
   overwrite: z.boolean().optional(),
   // The ZIP EOCD comment-length field is 16-bit, so the UTF-8 encoding must fit

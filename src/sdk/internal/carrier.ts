@@ -17,6 +17,8 @@ export interface PlanInternals {
   writeEntries: WriteEntry[];
   /** The resolved policy governing selection, naming, compression, and metadata. */
   policy: ArchivePolicy;
+  /** Whether replacing an output that exists at publication time was authorized. */
+  overwrite: boolean;
   /** The archive comment from the spec, written to the EOCD and the metadata. */
   comment?: string;
 }

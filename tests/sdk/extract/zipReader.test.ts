@@ -9,7 +9,7 @@ import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseZip, readEntryData, type ReadEntry } from "../../../src/sdk/extract/zipReader.js";
+import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "../../../src/sdk/extract/zipReader.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -37,8 +37,10 @@ function central(opts: {
   compSize?: number;
   uncompSize?: number;
   localOffset?: number;
+  extra?: Buffer;
 }): Buffer {
   const nb = Buffer.from(opts.name, "utf8");
+  const extra = opts.extra ?? Buffer.alloc(0);
   const c = Buffer.alloc(46);
   c.writeUInt32LE(0x02014b50, 0);
   c.writeUInt16LE(20, 4); // version made by
@@ -47,8 +49,9 @@ function central(opts: {
   c.writeUInt32LE(opts.compSize ?? 0, 20);
   c.writeUInt32LE(opts.uncompSize ?? 0, 24);
   c.writeUInt16LE(nb.length, 28);
+  c.writeUInt16LE(extra.length, 30);
   c.writeUInt32LE(opts.localOffset ?? 0, 42);
-  return Buffer.concat([c, nb]);
+  return Buffer.concat([c, nb, extra]);
 }
 
 async function parse(bytes: Buffer) {
@@ -81,6 +84,37 @@ describe("parseZip rejects malformed archives", () => {
     const fakeCd = Buffer.alloc(10); // no central signature
     const bytes = Buffer.concat([fakeCd, eocd({ count: 1, cdSize: fakeCd.length, cdOffset: 0 })]);
     await expect(parse(bytes)).rejects.toMatchObject({ code: "read.malformed" });
+  });
+
+  it("a Zip64 sentinel with a missing required extra value", async () => {
+    const cd = central({ name: "x", uncompSize: 0xffffffff });
+    const bytes = Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0 })]);
+    await expect(parse(bytes)).rejects.toMatchObject({ code: "read.malformed" });
+  });
+
+  it("a Zip64 value outside JavaScript's safe integer range", async () => {
+    const payload = Buffer.alloc(8);
+    payload.writeBigUInt64LE(BigInt(Number.MAX_SAFE_INTEGER) + 1n);
+    const extra = Buffer.alloc(4 + payload.length);
+    extra.writeUInt16LE(0x0001, 0);
+    extra.writeUInt16LE(payload.length, 2);
+    payload.copy(extra, 4);
+    const cd = central({ name: "x", uncompSize: 0xffffffff, extra });
+    const bytes = Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0 })]);
+    await expect(parse(bytes)).rejects.toMatchObject({ code: "read.malformed" });
+  });
+
+  it("a Zip64 end record with a truncated declared structure", async () => {
+    const z64 = Buffer.alloc(56);
+    z64.writeUInt32LE(0x06064b50, 0);
+    z64.writeBigUInt64LE(1n, 4); // must be at least 44 bytes after the size field
+    const locator = Buffer.alloc(20);
+    locator.writeUInt32LE(0x07064b50, 0);
+    locator.writeBigUInt64LE(0n, 8);
+    const end = eocd({ count: 0xffff, cdSize: 0, cdOffset: 0xffffffff });
+    await expect(parse(Buffer.concat([z64, locator, end]))).rejects.toMatchObject({
+      code: "read.malformed",
+    });
   });
 });
 
@@ -123,6 +157,36 @@ describe("readEntryData rejects unreadable entries", () => {
       });
     } finally {
       await close();
+    }
+  });
+
+  it("bounds entries read into memory", async () => {
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    const data = Buffer.from("12345");
+    const file = path.join(dir, "bounded.zip");
+    await writeFile(file, Buffer.concat([local, data]));
+    const fh = await open(file, "r");
+    const entry: ReadEntry = {
+      archivePath: "_metadata.json",
+      type: "file",
+      method: 0,
+      crc32: 0,
+      compSize: data.length,
+      uncompSize: data.length,
+      localOffset: 0,
+      gpFlag: 0,
+      externalAttr: 0,
+      dosDate: 0,
+      dosTime: 0,
+      extra: Buffer.alloc(0),
+    };
+    try {
+      await expect(readEntryBuffer(fh.fd, entry, 4)).rejects.toMatchObject({
+        code: "read.entry-too-large",
+      });
+    } finally {
+      await fh.close();
     }
   });
 });

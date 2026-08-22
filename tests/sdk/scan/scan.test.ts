@@ -174,4 +174,17 @@ describe("scan over a real tree", () => {
     expect(names(result)).toEqual(["a.txt", "out.zip.20240604", "out.zip.notes"]);
     expect(result.outputExists).toBe(true);
   });
+
+  it("excludes an existing output reached through a followed symlink alias", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj, { recursive: true });
+    const output = path.join(dir, "out.zip");
+    await writeFile(output, "existing archive");
+    await symlink(output, path.join(proj, "archive-alias"));
+    await writeFile(path.join(proj, "keep.txt"), "keep");
+
+    const result = await runScan({ inputs: [proj], output }, { symlinks: "follow", followExternal: true });
+
+    expect(names(result)).toEqual(["keep.txt"]);
+  });
 });

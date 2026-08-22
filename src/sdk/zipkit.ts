@@ -12,8 +12,8 @@
  * there; each result's `log` field names the file. `logDir` defaults to
  * `ZIPKIT_LOG_DIR`, else `<ZIPKIT_HOME or ~/.zipkit>/logs`. Lines are appended synchronously, so
  * there is no descriptor to close and nothing to flush. The SDK writes nothing
- * to stdout or stderr — progress goes only to a per-call `onProgress` hook —
- * except the console fallback the log uses if its file becomes unwritable.
+ * to stdout or stderr — progress goes only to a per-call `onProgress` hook.
+ * A log-sink failure is deliberately silent so logging cannot break a verb.
  *
  * The session spans the instance's lifetime: a caller that builds one `ZipKit`
  * per run gets a log that is exactly that run. A long-lived or shared instance

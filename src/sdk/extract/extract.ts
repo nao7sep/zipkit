@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import { close, open, stat as fsStat } from "node:fs";
-import { lstat, mkdir, rename, rm, symlink, utimes } from "node:fs/promises";
+import { link, lstat, mkdir, rename, rm, symlink, unlink, utimes } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -38,6 +38,7 @@ import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipR
 const openAsync = promisify(open);
 const closeAsync = promisify(close);
 const statAsync = promisify(fsStat);
+const MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
 
 export interface ExtractDeps {
   limit: <T>(fn: () => Promise<T>) => Promise<T>;
@@ -110,34 +111,31 @@ async function ensureRealDirs(dest: string, segments: string[]): Promise<boolean
   return true;
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await lstat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
- * The first pair of distinct entry paths that fold together case-insensitively,
- * or null when none collide. Mirrors the creation side's collision check
- * (`plan/collision.ts`): case-folded paths are grouped, and a group holding two
- * distinct paths would clobber itself on a macOS/Windows (case-insensitive)
- * destination — so on extraction we refuse rather than let one silently
- * overwrite the other. The check runs on the raw entry paths, before path
- * resolution, so it holds regardless of the destination filesystem.
+ * The first pair of entries that resolve to the same effective target, or put a
+ * file/symlink where another entry needs a directory. Paths are normalized with
+ * the same segment resolver as `safeJoin`, then NFC/case-folded for the strict
+ * cross-platform contract. This runs before dry-run or write work begins.
  */
-function findCaseCollision(archivePaths: readonly string[]): [string, string] | null {
-  const seen = new Map<string, string>();
-  for (const p of archivePaths) {
-    const key = p.toLowerCase();
-    const prior = seen.get(key);
-    if (prior !== undefined) {
-      if (prior !== p) return [prior, p];
-    } else {
-      seen.set(key, p);
+function findTargetCollision(entries: readonly ReadEntry[]): [string, string] | null {
+  const seen = new Map<string, ReadEntry>();
+  for (const entry of entries) {
+    const resolved = resolveSegments(toForwardSlash(entry.archivePath));
+    if (resolved.escaped || resolved.segments.length === 0) continue;
+    const key = resolved.segments.join("/").normalize("NFC").toLowerCase();
+    const exact = seen.get(key);
+    if (exact) return [exact.archivePath, entry.archivePath];
+
+    const segments = key.split("/");
+    for (let i = 1; i < segments.length; i++) {
+      const ancestor = seen.get(segments.slice(0, i).join("/"));
+      if (ancestor && ancestor.type !== "dir") return [ancestor.archivePath, entry.archivePath];
     }
+    if (entry.type !== "dir") {
+      const descendant = [...seen.entries()].find(([prior]) => prior.startsWith(`${key}/`));
+      if (descendant) return [descendant[1].archivePath, entry.archivePath];
+    }
+    seen.set(key, entry);
   }
   return null;
 }
@@ -241,15 +239,28 @@ async function commitFile(
     await rm(tempPath, { force: true });
     return "unsafe";
   }
-  if (!options.overwrite && (await pathExists(target))) {
-    await rm(tempPath, { force: true });
-    return "exists";
-  }
   // not recorded: this is extracted archive content written to the user's chosen destination — output
   // (arbitrary, often binary) the app writes for the user and then forgets, not managed state the app
   // reloads. It lives outside `~/.zipkit/` and is not captured by the data-backup layer (data-backup
   // conventions). The SDK is also a separate layer with no dependency on the GUI's backup store.
-  await rename(tempPath, target);
+  if (options.overwrite) {
+    await rename(tempPath, target);
+  } else {
+    try {
+      await link(tempPath, target);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+        await rm(tempPath, { force: true });
+        return "exists";
+      }
+      throw err;
+    }
+    try {
+      await unlink(tempPath);
+    } catch {
+      // The target is already fully published; cleanup cannot undo that commit.
+    }
+  }
   if (options.restore) {
     const t = restoreTimes(entry, options.timeZone);
     // Best-effort: a filesystem that rejects the times must not fail the write.
@@ -309,6 +320,14 @@ export async function extractArchive(
       write,
     });
 
+    const collision = findTargetCollision(parsed.entries);
+    if (collision) {
+      throw new ReadError(
+        "read.target-collision",
+        `entries '${collision[0]}' and '${collision[1]}' resolve to colliding extraction targets`,
+      );
+    }
+
     // Manifest resolution (heavy mode): the manifest is the entry embedded in
     // the archive, read via positioned reads. Requested-but-absent is a hard
     // failure.
@@ -327,7 +346,7 @@ export async function extractArchive(
       manifestEntryPath = inside.archivePath;
       let doc: { entries?: unknown };
       try {
-        doc = JSON.parse((await readEntryBuffer(fd, inside)).toString("utf8"));
+        doc = JSON.parse((await readEntryBuffer(fd, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
       } catch (err) {
         throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
           cause: err,
@@ -338,25 +357,6 @@ export async function extractArchive(
       for (const m of docEntries) {
         if (typeof m.archivePath === "string") manifestMap.set(m.archivePath, m);
       }
-    }
-
-    // Case-collision guard — runs on BOTH dry-run and write. Two entries whose
-    // paths differ only in case would resolve to one file on a case-insensitive
-    // (macOS/Windows) destination and silently clobber each other. This is a
-    // structural property of the archive's entry set, independent of the
-    // destination, so it must not be gated on `write`: zipkit's GUI validates
-    // input with a dry-run and then extracts, and a dry-run that passes MUST
-    // guarantee the real run won't fail — the two runs cannot disagree. The
-    // creation side already refuses to produce such a pair (`plan/collision.ts`);
-    // zipkit treats a Windows-incompatible archive as invalid and never
-    // auto-fixes (no disambiguation), so a corrupt/hostile archive carrying the
-    // pair is rejected here — before anything is written or validated OK.
-    const collision = findCaseCollision(parsed.entries.map((e) => e.archivePath));
-    if (collision) {
-      throw new ReadError(
-        "read.case-collision",
-        `entries '${collision[0]}' and '${collision[1]}' differ only by case and collide on case-insensitive filesystems`,
-      );
     }
 
     if (write && dest !== undefined) await mkdir(dest, { recursive: true });
@@ -631,9 +631,13 @@ async function commitSymlink(
   const resolved = path.resolve(path.dirname(target), linkTarget);
   if (escapesDest(dest, resolved)) return "unsafe";
   if (!(await ensureRealDirs(dest, parentSegments))) return "unsafe";
-  if (!options.overwrite && (await pathExists(target))) return "exists";
   if (options.overwrite) await rm(target, { force: true });
-  await symlink(linkTarget, target);
+  try {
+    await symlink(linkTarget, target);
+  } catch (err) {
+    if (!options.overwrite && (err as NodeJS.ErrnoException).code === "EEXIST") return "exists";
+    throw err;
+  }
   return "written"; // link times are not restored: no portable lutimes guarantee
 }
 

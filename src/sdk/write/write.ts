@@ -126,7 +126,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     );
   }
 
-  const { policy, writeEntries, comment } = internals;
+  const { policy, writeEntries, overwrite, comment } = internals;
   const level = policy.compression.level;
   // The zone the DOS local-time field is rendered in: the explicit policy zone,
   // or the host's. Resolved once and recorded in the metadata so the local
@@ -150,6 +150,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   const writer = new ZipWriter(plan.output, {
     timeZone: effectiveTimeZone,
     chunkSize: deps.chunkSize,
+    overwrite,
   });
 
   let zip64 = false;

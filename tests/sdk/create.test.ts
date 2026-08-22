@@ -5,7 +5,7 @@
  * overwrite gate, deterministic output, and content round-trip.
  */
 
-import { mkdtemp, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -242,6 +242,38 @@ describe("overwrite gate", () => {
       new ZipKit().create({ inputs: [proj], output, overwrite: true }),
     ).resolves.toMatchObject({ output });
   });
+
+  it("preserves an output created after planning when overwrite was not authorized", async () => {
+    const proj = await makeTree();
+    const output = path.join(dir, "late.zip");
+    const zip = new ZipKit();
+    const plan = await zip.plan({ inputs: [proj], output });
+    await writeFile(output, "another process won");
+
+    await expect(zip.write(plan)).rejects.toBeInstanceOf(WriteError);
+    expect(await readFile(output, "utf8")).toBe("another process won");
+  });
+
+  it("rejects an output that is the same physical file as an input", async () => {
+    const source = path.join(dir, "source.zip");
+    await writeFile(source, "only copy");
+
+    await expect(
+      new ZipKit().create({ inputs: [source], output: source, overwrite: true }),
+    ).rejects.toMatchObject({ code: "scan.output-is-input" });
+    expect(await readFile(source, "utf8")).toBe("only copy");
+  });
+
+  it("rejects a hard-link alias of an input as the output", async () => {
+    const source = path.join(dir, "source.bin");
+    const output = path.join(dir, "alias.zip");
+    await writeFile(source, "only copy");
+    await link(source, output);
+    await expect(
+      new ZipKit().create({ inputs: [source], output, overwrite: true }),
+    ).rejects.toMatchObject({ code: "scan.output-is-input" });
+    expect(await readFile(source, "utf8")).toBe("only copy");
+  });
 });
 
 describe("symlink preservation and empty directories", () => {
@@ -272,4 +304,3 @@ describe("symlink preservation and empty directories", () => {
     expect(report.reportOk).toBe(true);
   });
 });
-

@@ -3,7 +3,9 @@
  * directory, the end-of-central-directory record, and Zip64 structures — driven
  * as a streaming writer. The archive is one ordered byte stream, so entries are
  * written sequentially through a single seekable file descriptor: a temp file
- * in the output's directory, fsync'd and atomically renamed into place. The
+ * in the output's directory and fsync'd; publication either atomically replaces
+ * the destination (authorized overwrite) or exclusively links the completed
+ * inode into an absent destination (no overwrite). The
  * clean-byte contract is encoded here:
  *
  * - The general-purpose flag has bit 11 set (names are UTF-8).
@@ -35,7 +37,7 @@
  * the bytes match what a same-archive reader and `unzip` expect.
  */
 
-import { close, fsync, open, rename, write as fsWrite } from "node:fs";
+import { close, fsync, link, open, rename, unlink, write as fsWrite } from "node:fs";
 import { dirname, join, parse } from "node:path";
 import { promisify } from "node:util";
 import { nanoid } from "nanoid";
@@ -48,6 +50,8 @@ const openAsync = promisify(open);
 const closeAsync = promisify(close);
 const fsyncAsync = promisify(fsync);
 const renameAsync = promisify(rename);
+const linkAsync = promisify(link);
+const unlinkAsync = promisify(unlink);
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
@@ -94,6 +98,8 @@ export interface ZipWriterOptions {
   timeZone: string;
   /** highWaterMark for the temp-file writes and the deflate stream. */
   chunkSize: number;
+  /** Whether publication may replace a destination that exists at that instant. */
+  overwrite?: boolean;
 }
 
 /** The result an entry's data source must produce when fully consumed. */
@@ -586,7 +592,7 @@ export class ZipWriter {
     await fsyncAsync(this.#fd);
     await closeAsync(this.#fd);
     this.#fd = -1;
-    // The rename is the publish point: a cancellation that arrived during the
+    // Publication is the commit point: a cancellation that arrived during the
     // central-directory write or fsync must stop here, before the archive
     // becomes visible. The fd is already closed, so the caller's writer.abort()
     // removes the orphaned temp file.
@@ -595,7 +601,21 @@ export class ZipWriter {
     // to the user's chosen destination, not managed state under `~/.zipkit/`. It is out of scope for the
     // data-backup layer (data-backup conventions: binary output is never recorded), and the SDK has no
     // dependency on the GUI's backup store.
-    await renameAsync(this.#tempPath, this.#output);
+    if (this.#options.overwrite === true) {
+      await renameAsync(this.#tempPath, this.#output);
+    } else {
+      // A hard link makes the already-complete temp inode visible only if the
+      // destination name is still absent. Unlike check-then-rename, this is one
+      // atomic no-clobber claim across processes. Unlinking the temp afterward
+      // leaves the published name as the inode's sole directory entry.
+      await linkAsync(this.#tempPath, this.#output);
+      try {
+        await unlinkAsync(this.#tempPath);
+      } catch {
+        // The target is already fully published. Temp cleanup is best-effort and
+        // cannot turn that committed success into a reported write failure.
+      }
+    }
     return { zip64: needZip64, bytes };
   }
 

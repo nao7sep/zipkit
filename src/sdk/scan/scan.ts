@@ -167,6 +167,10 @@ async function handleSymlink(
   } catch {
     return;
   }
+  // A followed symlink carries the target's bytes, so self-exclusion must compare
+  // the resolved target identity too (the link inode itself is necessarily
+  // different from the output inode).
+  if (ctx.artifactIds.has(fileId(resolved))) return;
 
   if (resolved.isDirectory()) {
     // Check and claim with no await in between, so concurrent symlinks to the
@@ -269,6 +273,7 @@ export async function scan(
 
   const isDir: boolean[] = [];
   const realInputPaths: string[] = [];
+  const inputStats: BigIntStats[] = [];
   for (const input of inputs) {
     let link: BigIntStats;
     try {
@@ -297,9 +302,11 @@ export async function scan(
       }
       isDir.push(resolved.isDirectory());
       realInputPaths.push(real);
+      inputStats.push(resolved);
     } else {
       isDir.push(link.isDirectory());
       realInputPaths.push(input.path);
+      inputStats.push(link);
     }
   }
 
@@ -312,9 +319,25 @@ export async function scan(
   const artifactIds = new Set<string>();
   let outputExists = false;
   try {
-    artifactIds.add(fileId(await statBig(output)));
+    const outputLink = await lstatBig(output);
     outputExists = true;
-  } catch {
+    const outputStats = outputLink.isSymbolicLink() ? await statBig(output) : outputLink;
+    const outputId = fileId(outputStats);
+    const sameInput = inputStats.findIndex((input) => fileId(input) === outputId);
+    if (sameInput !== -1) {
+      throw new ScanError(
+        "scan.output-is-input",
+        `output archive is the same physical file as input: ${inputs[sameInput]?.path ?? output}`,
+      );
+    }
+    artifactIds.add(outputId);
+  } catch (err) {
+    if (err instanceof ScanError) throw err;
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new ScanError("scan.output-stat-failed", `cannot inspect output path: ${output}`, {
+        cause: err,
+      });
+    }
     outputExists = false;
   }
 
