@@ -64,8 +64,10 @@ async function copyExclusive(
     }
     signal?.throwIfAborted();
     await destination.sync();
+    signal?.throwIfAborted();
     await destination.close();
     destination = null;
+    signal?.throwIfAborted();
     committed = true;
   } catch (err) {
     if (destination) await destination.close().catch(() => {});

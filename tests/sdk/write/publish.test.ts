@@ -113,6 +113,42 @@ describe("portable no-overwrite publication", () => {
     expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
   });
 
+  it("removes its exclusive output when cancellation arrives during destination sync", async () => {
+    const controller = new AbortController();
+    const fixture = memoryOperations(Buffer.from("complete bytes"), {
+      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
+    });
+    const destination = await fixture.operations.openExclusive("unused");
+    vi.mocked(fixture.operations.openExclusive).mockResolvedValue({
+      ...destination,
+      sync: vi.fn(async () => { controller.abort(); }),
+    });
+
+    await expect(
+      publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
+    ).rejects.toHaveProperty("name", "AbortError");
+    expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
+    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
+  });
+
+  it("removes its exclusive output when cancellation arrives during destination close", async () => {
+    const controller = new AbortController();
+    const fixture = memoryOperations(Buffer.from("complete bytes"), {
+      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
+    });
+    const destination = await fixture.operations.openExclusive("unused");
+    vi.mocked(fixture.operations.openExclusive).mockResolvedValue({
+      ...destination,
+      close: vi.fn(async () => { controller.abort(); }),
+    });
+
+    await expect(
+      publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
+    ).rejects.toHaveProperty("name", "AbortError");
+    expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
+    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
+  });
+
   it("does not mask a real hard-link I/O failure with a copy attempt", async () => {
     const io = failure("EIO");
     const fixture = memoryOperations(Buffer.from("content"), {
