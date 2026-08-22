@@ -207,7 +207,7 @@ export function JobListbox({
                 <button
                   className="icon"
                   tabIndex={-1}
-                  title="Cancel (Esc)"
+                  title="Cancel (Escape)"
                   onClick={(e) => {
                     e.stopPropagation();
                     onCancel(job.id);
@@ -221,7 +221,7 @@ export function JobListbox({
                 <button
                   className="icon"
                   tabIndex={-1}
-                  title="Remove (Del)"
+                  title="Remove (Delete)"
                   aria-label="Remove"
                   onClick={(e) => {
                     e.stopPropagation();

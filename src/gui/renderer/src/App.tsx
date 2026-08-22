@@ -21,6 +21,7 @@ import {
   ARCHIVE_MIN_WIDTH,
   BODY_PADDING,
   DEFAULT_LAYOUT,
+  LAYOUT_BOUNDS,
   SPLITTER_WIDTH,
   clampLayout,
   clampLayoutToWidth,
@@ -167,7 +168,7 @@ export function App() {
 
   // App-level accelerators (all Cmd/Ctrl combos; the plain navigation/edit keys
   // belong to the listbox and the fields): N adds a job, Enter creates the selected
-  // job's archive, Comma opens Settings, Slash opens Shortcuts. Kept in step with
+  // job's archive, Comma opens Settings, Question opens Shortcuts. Kept in step with
   // the catalog the Shortcuts dialog renders (shortcuts.ts). Suppressed while any
   // modal is open and inert during IME composition (text-input-and-IME conventions).
   useEffect(() => {
@@ -184,7 +185,7 @@ export function App() {
       if (e.key === ",") {
         e.preventDefault();
         setDialog("settings");
-      } else if (e.key === "/") {
+      } else if (e.key === "/" || e.key === "?") {
         e.preventDefault();
         setDialog("shortcuts");
       } else if (e.key === "Enter") {
@@ -206,10 +207,10 @@ export function App() {
 
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
-  function saveSettings(next: GuiSettings) {
+  async function saveSettings(next: GuiSettings): Promise<void> {
+    await window.zipkit.setSettings(next);
     setDefaults(next.defaults);
     setUiFontFamily(next.uiFontFamily);
-    void window.zipkit.setSettings(next);
   }
 
   async function addJob() {
@@ -253,15 +254,29 @@ export function App() {
   // persists it on release.
   const jobsSplitter = (
     <Splitter
+      label="Resize Jobs pane"
+      value={intent.jobsWidth}
+      min={LAYOUT_BOUNDS.jobsWidth.min}
+      max={LAYOUT_BOUNDS.jobsWidth.max}
       onDragStart={() => (dragBase.current = intentRef.current)}
       onDragDelta={(dx) =>
         setIntent(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
       }
       onDragEnd={persistLayout}
+      onKeyboardDelta={(dx) => {
+        const next = clampLayout({ ...intentRef.current, jobsWidth: intentRef.current.jobsWidth + dx });
+        setIntent(next);
+        void window.zipkit.setLayout(next);
+      }}
     />
   );
   const progressSplitter = (
     <Splitter
+      label="Resize Progress pane"
+      value={intent.progressWidth}
+      min={LAYOUT_BOUNDS.progressWidth.min}
+      max={LAYOUT_BOUNDS.progressWidth.max}
+      direction={-1}
       onDragStart={() => (dragBase.current = intentRef.current)}
       onDragDelta={(dx) =>
         setIntent(
@@ -269,6 +284,11 @@ export function App() {
         )
       }
       onDragEnd={persistLayout}
+      onKeyboardDelta={(dx) => {
+        const next = clampLayout({ ...intentRef.current, progressWidth: intentRef.current.progressWidth - dx });
+        setIntent(next);
+        void window.zipkit.setLayout(next);
+      }}
     />
   );
 

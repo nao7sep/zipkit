@@ -1,14 +1,8 @@
 # ZipKit
 
-ZipKit is a cross-platform **ZIP archiver and portability linter/fixer** — a TypeScript SDK with a desktop app built on it, for developers who hand off ZIP archives across macOS and Windows and need them to arrive clean. It produces archives that carry nothing a recipient on another OS will trip over, and it reads them back — `extract` verifies an archive's CRC integrity (and, against an embedded manifest, its completeness and per-file content identity), then unpacks it.
+ZipKit is a cross-platform **ZIP archiver and portability linter/fixer** for macOS and Windows, with a TypeScript SDK underneath. It produces archives that carry nothing a recipient on another OS will trip over, and it reads them back — `extract` verifies an archive's CRC integrity (and, against an embedded manifest, its completeness and per-file content identity), then unpacks it.
 
-The compression is the small part; the value is the **portability checks and the policy** that decides each one — NFD-decomposed names, Windows-illegal characters, reserved device names, OS junk files, Unix-only attributes, unknown extra fields — each fixed, warned, or made a hard build-failing error per your settings. It's SDK-first: the planning core is pure (a dry run is faithful to the real write by construction), and the desktop app is a thin wrapper over it. Out of scope: repairing existing archives, encryption, compression methods beyond Store and Deflate, and split/multi-volume archives. The project is at 0.x.
-
-## Requirements
-
-- Node.js **22.12+** (ESM). The SDK is consumed directly from its TypeScript source — there is no build step; run your scripts with [`tsx`](https://tsx.is) (`npx tsx your-script.ts`).
-- The desktop app is **Electron** (macOS/Windows) and is still in active development.
-- No keys, services, or network — everything runs locally.
+The compression is the small part; the value is the **portability checks and the policy** that decides each one — NFD-decomposed names, Windows-illegal characters, reserved device names, OS junk files, and Unix-only attributes — each fixed, warned, or made a hard build-failing error per your settings. The planning core is pure (a dry run is faithful to the real write by construction), and the desktop app drives that same SDK. Out of scope: repairing existing archives, encryption, compression methods beyond Store and Deflate, and split/multi-volume archives. The project is at 0.x.
 
 ## Download
 
@@ -17,7 +11,16 @@ Prebuilt installers and portable builds of the desktop app for macOS (Apple Sili
 - **macOS** — right-click the app and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/ZipKit.app`).
 - **Windows** — on the SmartScreen prompt, click **More info → Run anyway**.
 
-## Getting started
+## Run the desktop app from source
+
+Install Node.js **22.12+**, run `npm install`, then choose one path:
+
+- Development: `npm run dev`, or the `scripts/run-dev.*` launcher.
+- Packaged behavior: run `scripts/rebuild.*` once, then use `scripts/run-built.*` for instant later launches. Rebuild again after source changes.
+
+The app uses no keys, services, or network; archive work stays local.
+
+## Use the SDK
 
 Drive the SDK with a `plan → inspect → write` flow:
 
@@ -29,9 +32,7 @@ const plan = await zip.plan({ inputs: ["./my-project"], output: "out.zip" });
 if (plan.writable) await zip.write(plan); // or: zip.create({ inputs, output })
 ```
 
-Run it with `npx tsx your-script.ts`; `import "zipkit"` resolves to the TypeScript source, so there's no build to keep in sync.
-
-The desktop app (in development) runs with `npm install` then `npm run dev`, or the `scripts/run-dev.*` launchers.
+The SDK is ESM and consumed directly from TypeScript source. Run the script with [`tsx`](https://tsx.is), for example `npx tsx your-script.ts`; there is no SDK build to keep in sync.
 
 ## License
 

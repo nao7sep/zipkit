@@ -40,18 +40,28 @@ export function SettingsDialog({
   onClose,
 }: {
   settings: GuiSettings;
-  onSave: (s: GuiSettings) => void;
+  onSave: (s: GuiSettings) => Promise<void>;
   onClose: () => void;
 }) {
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dirty = !settingsEqual(draft, settings);
   const canSave = dirty && isValid(draft.defaults);
 
-  function save() {
-    onSave(draft);
-    onClose();
+  async function save() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave(draft);
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Named for exactly what it resets, so the label and the code agree
@@ -98,8 +108,8 @@ export function SettingsDialog({
           <button style={S.resetDefaultParameters} onClick={resetDefaultParameters}>
             Reset default parameters
           </button>
-          <button className="accent" disabled={!canSave} onClick={save}>
-            Save
+          <button className="accent" disabled={!canSave || saving} onClick={() => void save()}>
+            {saving ? "Saving…" : "Save"}
           </button>
         </>
       }
@@ -122,6 +132,7 @@ export function SettingsDialog({
         onChange={(o) => setDraft({ ...draft, defaults: o })}
         disabled={false}
       />
+      {saveError && <p role="alert" style={S.error}>Settings were not saved: {saveError}</p>}
     </ModalShell>
   );
 }
@@ -134,4 +145,5 @@ const S: Record<string, CSSProperties> = {
   fontField: { display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "1rem" },
   fontLabel: { fontWeight: 600 },
   fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
+  error: { color: "var(--danger)", marginBottom: 0 },
 };

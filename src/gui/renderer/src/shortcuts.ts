@@ -75,7 +75,7 @@ export function buildShortcuts(mod: string): ShortcutGroup[] {
       items: [
         { keys: `${mod}+N`, description: "Add a job" },
         { keys: `${mod}+Comma`, description: "Open Settings" },
-        { keys: `${mod}+Slash`, description: "Show keyboard shortcuts" },
+        { keys: `${mod}+Question`, description: "Show keyboard shortcuts" },
       ],
     },
     {
@@ -91,7 +91,7 @@ export function buildShortcuts(mod: string): ShortcutGroup[] {
       title: "Act on the selected job",
       items: [
         { keys: `${mod}+Enter`, description: "Create the selected job's archive" },
-        { keys: "Delete", description: "Remove the job from the queue" },
+        { keys: "Delete/Backspace", description: "Remove the job from the queue" },
         { keys: "Escape", description: "Cancel a planning, queued, or running job" },
       ],
     },

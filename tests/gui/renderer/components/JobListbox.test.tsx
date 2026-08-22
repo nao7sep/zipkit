@@ -71,6 +71,13 @@ describe("JobListbox", () => {
     expect(onRemove).toHaveBeenCalledWith("a");
   });
 
+  it("Backspace uses the same removal binding as Delete", () => {
+    const onRemove = vi.fn();
+    renderListbox({ jobs: [job("a")], selectedId: "a", onRemove });
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Backspace" });
+    expect(onRemove).toHaveBeenCalled();
+  });
+
   it("Esc cancels a running active row; Delete is ignored on it", () => {
     const onCancel = vi.fn();
     const onRemove = vi.fn();
@@ -104,7 +111,7 @@ describe("JobListbox", () => {
 
   it("keeps the row action buttons out of the tab order", () => {
     renderListbox({ jobs: [job("a", "planning")], selectedId: "a" });
-    expect(screen.getByTitle("Cancel (Esc)").tabIndex).toBe(-1);
-    expect(screen.getByTitle("Remove (Del)").tabIndex).toBe(-1);
+    expect(screen.getByTitle("Cancel (Escape)").tabIndex).toBe(-1);
+    expect(screen.getByTitle("Remove (Delete)").tabIndex).toBe(-1);
   });
 });

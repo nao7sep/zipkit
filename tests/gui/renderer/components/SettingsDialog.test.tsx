@@ -13,7 +13,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SettingsDialog } from "../../../../src/gui/renderer/src/components/SettingsDialog";
 import { DEFAULT_OPTIONS, type GuiSettings } from "../../../../src/gui/shared/spec";
 
@@ -97,5 +97,15 @@ describe("SettingsDialog reset", () => {
     expect(fontInput().value).toBe("Menlo");
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledWith({ defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo" });
+  });
+
+  it("keeps the dialog open and reports a failed durable save", async () => {
+    const onClose = vi.fn();
+    const onSave = vi.fn().mockRejectedValue(new Error("disk full"));
+    render(<SettingsDialog settings={CUSTOM} onSave={onSave} onClose={onClose} />);
+    fireEvent.change(fontInput(), { target: { value: "Menlo" } });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("disk full"));
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
