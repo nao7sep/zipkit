@@ -29,6 +29,28 @@ const KIND_LABEL: Record<PathKind, string> = {
   other: "Other",
 };
 
+export type InputDragOffer = "rejected" | "delivery-only" | "accepted";
+
+export function inspectInputDragOffer(
+  dataTransfer: Pick<DataTransfer, "types" | "items" | "files">,
+): InputDragOffer {
+  const items = Array.from(dataTransfer.items);
+  if (!Array.from(dataTransfer.types).includes("Files") && !items.some((item) => item.kind === "file")) {
+    return "rejected";
+  }
+  if (dataTransfer.files.length > 0) return "accepted";
+  if (items.length === 0) return "delivery-only";
+  for (const item of items) {
+    if (item.kind !== "file") continue;
+    try {
+      if (item.getAsFile()) return "accepted";
+    } catch {
+      // Protected file details stay delivery-only until drop.
+    }
+  }
+  return "delivery-only";
+}
+
 function kindColor(kind: PathKind): string {
   if (kind === "nonexistent") return COLOR.bad;
   if (kind === "other") return COLOR.warn;
@@ -54,16 +76,23 @@ export function InputList({
   const canRemove = editable && job.inputs.length > 1;
 
   function onDragOver(e: ReactDragEvent) {
-    if (!editable) return;
-    e.preventDefault(); // required for the drop to fire
+    e.preventDefault(); // required even for a protected Files offer to reach drop
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "none";
+    if (!editable || inspectInputDragOffer(e.dataTransfer) !== "accepted") return;
     e.dataTransfer.dropEffect = "copy";
   }
   function onDrop(e: ReactDragEvent) {
     e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "none";
     if (!editable) return;
     try {
       const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) onDropFiles(files);
+      if (files.length > 0) {
+        e.dataTransfer.dropEffect = "copy";
+        onDropFiles(files);
+      }
     } catch {
       // An unsupported item must never throw out of the handler.
     }

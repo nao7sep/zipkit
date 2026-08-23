@@ -263,6 +263,7 @@ export function App() {
         setIntent(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
       }
       onDragEnd={persistLayout}
+      onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
         const next = clampLayout({ ...intentRef.current, jobsWidth: intentRef.current.jobsWidth + dx });
         setIntent(next);
@@ -284,6 +285,7 @@ export function App() {
         )
       }
       onDragEnd={persistLayout}
+      onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
         const next = clampLayout({ ...intentRef.current, progressWidth: intentRef.current.progressWidth - dx });
         setIntent(next);

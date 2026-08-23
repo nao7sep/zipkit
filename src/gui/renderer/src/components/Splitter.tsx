@@ -7,12 +7,13 @@
  * width authority.
  */
 
-import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 
 export function Splitter({
   onDragStart,
   onDragDelta,
   onDragEnd,
+  onDragCancel,
   onKeyboardDelta,
   value,
   min,
@@ -23,6 +24,7 @@ export function Splitter({
   onDragStart: () => void;
   onDragDelta: (dx: number) => void;
   onDragEnd: () => void;
+  onDragCancel: () => void;
   onKeyboardDelta: (dx: number) => void;
   value: number;
   min: number;
@@ -31,20 +33,50 @@ export function Splitter({
   /** How physical rightward movement changes the represented pane width. */
   direction?: 1 | -1;
 }) {
+  const clearGestureRef = useRef<((commit: boolean, notify: boolean) => void) | null>(null);
+
+  useEffect(
+    () => () => {
+      clearGestureRef.current?.(false, false);
+    },
+    [],
+  );
+
   function onMouseDown(e: ReactMouseEvent) {
     e.preventDefault();
+    clearGestureRef.current?.(false, true);
     const startX = e.clientX;
     onDragStart();
     const move = (ev: MouseEvent) => onDragDelta(ev.clientX - startX);
-    const up = () => {
+    const finish = (commit: boolean, notify = true) => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
+      window.removeEventListener("blur", cancel);
+      window.removeEventListener("keydown", keydown);
+      document.removeEventListener("visibilitychange", visibility);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      onDragEnd();
+      clearGestureRef.current = null;
+      if (notify) (commit ? onDragEnd : onDragCancel)();
     };
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const keydown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        cancel();
+      }
+    };
+    const visibility = () => {
+      if (document.hidden) cancel();
+    };
+    clearGestureRef.current = finish;
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
+    window.addEventListener("blur", cancel);
+    window.addEventListener("keydown", keydown);
+    document.addEventListener("visibilitychange", visibility);
     // While dragging, keep the resize cursor and stop text selection everywhere.
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
