@@ -6,7 +6,7 @@
  * as a top-level input, and the output-artifact self-exclusion.
  */
 
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -15,6 +15,7 @@ import { createLogger } from "../../../src/sdk/log/logger.js";
 import { resolvePolicy } from "../../../src/sdk/policy.js";
 import { scan } from "../../../src/sdk/scan/scan.js";
 import type { ArchivePolicy, ArchiveSpec } from "../../../src/sdk/types.js";
+import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 let dir: string;
 
@@ -70,11 +71,11 @@ describe("scan over a real tree", () => {
     expect(result.prunedDirs.map((d) => d.archivePath)).toContain("__MACOSX");
   });
 
-  it("surfaces a symlink as a symlink entry under the default ignore policy", async () => {
+  it.runIf(fileSymlinksSupported)("surfaces a symlink as a symlink entry under the default ignore policy", async () => {
     const proj = path.join(dir, "proj");
     await mkdir(proj, { recursive: true });
     await writeFile(path.join(proj, "real.txt"), "real");
-    await symlink("real.txt", path.join(proj, "link"));
+    await createFileLink("real.txt", path.join(proj, "link"));
 
     const result = await runScan({ inputs: [proj] });
 
@@ -87,7 +88,7 @@ describe("scan over a real tree", () => {
     const proj = path.join(dir, "proj");
     await mkdir(path.join(proj, "data"), { recursive: true });
     await writeFile(path.join(proj, "data", "f.txt"), "f");
-    await symlink("data", path.join(proj, "mirror"));
+    await createDirectoryLink("data", path.join(proj, "mirror"));
 
     const result = await runScan({ inputs: [proj] }, { symlinks: "follow" });
 
@@ -102,7 +103,7 @@ describe("scan over a real tree", () => {
     await mkdir(path.join(proj, "child"), { recursive: true });
     await writeFile(path.join(proj, "child", "f.txt"), "f");
     // A symlink pointing back at its own parent directory.
-    await symlink("../child", path.join(proj, "child", "self"));
+    await createDirectoryLink("../child", path.join(proj, "child", "self"));
 
     // The guard's contract is that this terminates rather than recursing
     // forever; a hang would fail the test by timeout.
@@ -120,7 +121,7 @@ describe("scan over a real tree", () => {
     await mkdir(proj, { recursive: true });
     await mkdir(outside, { recursive: true });
     await writeFile(path.join(outside, "secret.txt"), "secret");
-    await symlink("../outside", path.join(proj, "escape"));
+    await createDirectoryLink("../outside", path.join(proj, "escape"));
 
     const blocked = await runScan({ inputs: [proj] }, { symlinks: "follow" });
     expect(names(blocked)).not.toContain("escape/secret.txt");
@@ -132,11 +133,11 @@ describe("scan over a real tree", () => {
     expect(names(allowed)).toContain("escape/secret.txt");
   });
 
-  it("drops a broken symlink under follow", async () => {
+  it.runIf(fileSymlinksSupported)("drops a broken symlink under follow", async () => {
     const proj = path.join(dir, "proj");
     await mkdir(proj, { recursive: true });
     await writeFile(path.join(proj, "real.txt"), "real");
-    await symlink("does-not-exist", path.join(proj, "dangling"));
+    await createFileLink("does-not-exist", path.join(proj, "dangling"));
 
     const result = await runScan({ inputs: [proj] }, { symlinks: "follow" });
 
@@ -148,7 +149,7 @@ describe("scan over a real tree", () => {
     await mkdir(realdir, { recursive: true });
     await writeFile(path.join(realdir, "f.txt"), "f");
     const linkdir = path.join(dir, "linkdir");
-    await symlink("realdir", linkdir);
+    await createDirectoryLink("realdir", linkdir);
 
     // Default policy is "ignore", but an explicit symlink input is always
     // followed because it was named by the caller.
@@ -175,12 +176,12 @@ describe("scan over a real tree", () => {
     expect(result.outputExists).toBe(true);
   });
 
-  it("excludes an existing output reached through a followed symlink alias", async () => {
+  it.runIf(fileSymlinksSupported)("excludes an existing output reached through a followed symlink alias", async () => {
     const proj = path.join(dir, "proj");
     await mkdir(proj, { recursive: true });
     const output = path.join(dir, "out.zip");
     await writeFile(output, "existing archive");
-    await symlink(output, path.join(proj, "archive-alias"));
+    await createFileLink(output, path.join(proj, "archive-alias"));
     await writeFile(path.join(proj, "keep.txt"), "keep");
 
     const result = await runScan({ inputs: [proj], output }, { symlinks: "follow", followExternal: true });

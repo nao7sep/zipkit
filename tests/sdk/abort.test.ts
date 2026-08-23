@@ -148,7 +148,7 @@ describe("abort propagation", () => {
       clearInterval(watcher);
     }
     expect(existsSync(path.join(dest, "big.bin"))).toBe(false);
-  });
+  }, 30_000);
 });
 
 describe("abort boundaries (unit)", () => {

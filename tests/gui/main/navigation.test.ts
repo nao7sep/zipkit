@@ -8,6 +8,8 @@
  */
 
 import { describe, expect, it } from "vitest";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { isLoopbackRendererUrl, isSameOrigin, windowOpenHandler } from "../../../src/gui/main/navigation.js";
 
 describe("windowOpenHandler", () => {
@@ -18,18 +20,21 @@ describe("windowOpenHandler", () => {
 });
 
 describe("isSameOrigin", () => {
-  const app = "file:///Applications/ZipKit.app/Contents/renderer/index.html";
+  const rendererDir = path.join(path.parse(path.resolve(".")).root, "Applications", "ZipKit", "renderer");
+  const app = pathToFileURL(path.join(rendererDir, "index.html")).href;
 
   it("allows same-origin navigation (reload / in-app routing)", () => {
     // The exact packaged document may reload or change its fragment.
-    expect(isSameOrigin(app, "file:///Applications/ZipKit.app/Contents/renderer/index.html#x")).toBe(true);
+    const target = new URL(app);
+    target.hash = "x";
+    expect(isSameOrigin(app, target.href)).toBe(true);
     const dev = "http://localhost:5173/index.html";
     expect(isSameOrigin(dev, "http://localhost:5173/")).toBe(true);
   });
 
   it("treats a different origin as foreign (the guard will prevent it)", () => {
     expect(isSameOrigin(app, "https://evil.example.com/")).toBe(false);
-    expect(isSameOrigin(app, "file:///Applications/ZipKit.app/Contents/renderer/other.html")).toBe(false);
+    expect(isSameOrigin(app, pathToFileURL(path.join(rendererDir, "other.html")).href)).toBe(false);
     expect(isSameOrigin(app, "http://localhost:5173/")).toBe(false);
     expect(isSameOrigin("http://localhost:5173/index.html", "http://localhost:6006/")).toBe(false);
   });

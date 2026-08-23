@@ -5,11 +5,12 @@
  * archive, so the boundary cases are pinned.
  */
 
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { outputInsideInputs } from "../../../src/gui/main/safety.js";
+import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 async function fixture(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "zipkit-safety-"));
@@ -41,17 +42,25 @@ describe("outputInsideInputs", () => {
     await expect(outputInsideInputs(output, [input])).resolves.toBe(false);
   });
 
-  it("uses physical identity for input and output symlink aliases", async () => {
+  it("uses physical identity for an input directory link", async () => {
     const root = await fixture();
     const input = path.join(root, "real");
     const inputAlias = path.join(root, "input-alias");
+    await mkdir(input);
+    const output = path.join(input, "out.zip");
+    await writeFile(output, "zip");
+    await createDirectoryLink(input, inputAlias);
+    await expect(outputInsideInputs(output, [inputAlias])).resolves.toBe(true);
+  });
+
+  it.runIf(fileSymlinksSupported)("uses physical identity for an output file symlink", async () => {
+    const root = await fixture();
+    const input = path.join(root, "real");
     const outputAlias = path.join(root, "output-alias.zip");
     await mkdir(input);
     const output = path.join(input, "out.zip");
     await writeFile(output, "zip");
-    await symlink(input, inputAlias);
-    await symlink(output, outputAlias);
-    await expect(outputInsideInputs(output, [inputAlias])).resolves.toBe(true);
+    await createFileLink(output, outputAlias);
     await expect(outputInsideInputs(outputAlias, [input])).resolves.toBe(true);
   });
 });

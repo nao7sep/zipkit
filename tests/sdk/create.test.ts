@@ -5,7 +5,7 @@
  * overwrite gate, deterministic output, and content round-trip.
  */
 
-import { link, mkdtemp, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -13,6 +13,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PolicyError, WriteError, ZipKit } from "../../src/sdk/index.js";
 import { readZip } from "../helpers/readZip.js";
+import { createFileLink, fileSymlinksSupported } from "../helpers/symlink.js";
 
 let dir: string;
 
@@ -277,11 +278,11 @@ describe("overwrite gate", () => {
 });
 
 describe("symlink preservation and empty directories", () => {
-  it("writes a preserved symlink entry and a kept empty directory through create", async () => {
+  it.runIf(fileSymlinksSupported)("writes a preserved symlink entry and a kept empty directory through create", async () => {
     const proj = path.join(dir, "tree");
     await mkdir(path.join(proj, "emptydir"), { recursive: true });
     await writeFile(path.join(proj, "real.txt"), "content");
-    await symlink("real.txt", path.join(proj, "link.txt"));
+    await createFileLink("real.txt", path.join(proj, "link.txt"));
 
     const output = path.join(dir, "tree.zip");
     const result = await new ZipKit().create({

@@ -12,7 +12,10 @@ import { describe, expect, it } from "vitest";
 import path from "node:path";
 import { storageRoot, StorageRootError } from "../../src/sdk/storage.js";
 
-const HOME = "/home/tester";
+const ROOT = path.parse(path.resolve(".")).root;
+const HOME = path.join(ROOT, "home", "tester");
+const DATA_ROOT = path.join(ROOT, "data");
+const ABSOLUTE_OVERRIDE = path.join(ROOT, "mnt", "data", "zipkit");
 
 describe("storageRoot", () => {
   it("defaults to <home>/.zipkit when ZIPKIT_HOME is unset", () => {
@@ -25,7 +28,7 @@ describe("storageRoot", () => {
   });
 
   it("uses an absolute ZIPKIT_HOME verbatim", () => {
-    expect(storageRoot({ ZIPKIT_HOME: "/mnt/data/zipkit" }, HOME)).toBe("/mnt/data/zipkit");
+    expect(storageRoot({ ZIPKIT_HOME: ABSOLUTE_OVERRIDE }, HOME)).toBe(ABSOLUTE_OVERRIDE);
   });
 
   it("expands a leading ~ against the home directory", () => {
@@ -36,9 +39,9 @@ describe("storageRoot", () => {
   });
 
   it("expands $VAR and ${VAR} references", () => {
-    const env = { ZIPKIT_HOME: "$ROOT/zk", ROOT: "/data" };
-    expect(storageRoot(env, HOME)).toBe("/data/zk");
-    expect(storageRoot({ ZIPKIT_HOME: "${ROOT}/zk", ROOT: "/data" }, HOME)).toBe("/data/zk");
+    const env = { ZIPKIT_HOME: "$ROOT/zk", ROOT: DATA_ROOT };
+    expect(storageRoot(env, HOME)).toBe(path.join(DATA_ROOT, "zk"));
+    expect(storageRoot({ ZIPKIT_HOME: "${ROOT}/zk", ROOT: DATA_ROOT }, HOME)).toBe(path.join(DATA_ROOT, "zk"));
   });
 
   it("resolves a relative ZIPKIT_HOME against the home directory, never the cwd", () => {

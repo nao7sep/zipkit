@@ -59,7 +59,7 @@ describe("portable no-overwrite publication", () => {
     expect(Buffer.concat(fixture.published)).toEqual(bytes);
     expect(Math.max(...fixture.readLengths)).toBeLessThanOrEqual(256 * 1024);
     expect(fixture.operations.unlink).toHaveBeenCalledWith("temp");
-  });
+  }, 30_000);
 
   it("preserves a concurrent destination winner in the fallback path", async () => {
     const exists = failure("EEXIST");

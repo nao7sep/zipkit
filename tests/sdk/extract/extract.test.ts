@@ -12,6 +12,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
+import { fileSymlinksSupported } from "../../helpers/symlink.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 const Y2020_MS = 1_577_836_800_000;
@@ -397,7 +398,7 @@ describe("path safety and exclusion", () => {
 });
 
 describe("symlinks and zip64", () => {
-  it("restores a symlink entry, or skips it under symlinks: skip", async () => {
+  it("restores a symlink entry when supported and always honors symlinks: skip", async () => {
     const link: EntryWithData = {
       name: "link",
       type: "symlink",
@@ -414,7 +415,12 @@ describe("symlinks and zip64", () => {
     const skip = await new ZipKit().extract({ archive, dest: path.join(dir, "skip"), symlinks: "skip" });
     expect(skip.entries[0]?.skipped).toBe("symlink-skip");
 
-    const restored = await new ZipKit().extract({ archive, dest: path.join(dir, "keep") });
+    const restore = new ZipKit().extract({ archive, dest: path.join(dir, "keep") });
+    if (!fileSymlinksSupported) {
+      await expect(restore).rejects.toMatchObject({ code: "read.write-failed" });
+      return;
+    }
+    const restored = await restore;
     expect(restored.entries[0]?.written).toBe(true);
     expect(await readlink(path.join(dir, "keep", "link"))).toBe("target.txt");
   });

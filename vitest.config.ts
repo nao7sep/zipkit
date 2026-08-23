@@ -11,6 +11,8 @@ export default defineConfig({
     // tests/setup.ts). Every ZipKit instance now opens a session log, so this
     // keeps the suite from writing into the developer's home directory.
     setupFiles: ["./tests/setup.ts"],
+    // Keep filesystem and jsdom tests responsive on resource-constrained hosts.
+    maxWorkers: 1,
     coverage: {
       // V8's native coverage — already the installed provider, no instrumentation
       // step. `include` lists every source file (not just the ones a test happens

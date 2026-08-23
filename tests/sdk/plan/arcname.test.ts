@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import { PolicyError } from "../../../src/sdk/errors.js";
 import {
   checkAnchorCollisions,
@@ -15,9 +16,10 @@ import {
 
 describe("normalizeInputs", () => {
   it("resolves string inputs against the cwd", () => {
-    const inputs = normalizeInputs(["a", "sub/b"], "/work");
-    expect(inputs[0]).toEqual({ path: "/work/a" });
-    expect(inputs[1]).toEqual({ path: "/work/sub/b" });
+    const cwd = path.join(path.parse(path.resolve(".")).root, "work");
+    const inputs = normalizeInputs(["a", "sub/b"], cwd);
+    expect(inputs[0]).toEqual({ path: path.join(cwd, "a") });
+    expect(inputs[1]).toEqual({ path: path.join(cwd, "sub", "b") });
   });
 });
 
