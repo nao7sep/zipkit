@@ -662,7 +662,7 @@ const S: Record<string, CSSProperties> = {
     borderTop: "1px solid var(--border)",
   },
   sectionTitle: {
-    fontSize: "0.7rem",
+    fontSize: "0.75rem",
     fontWeight: 700,
     letterSpacing: "0.06em",
     textTransform: "uppercase",

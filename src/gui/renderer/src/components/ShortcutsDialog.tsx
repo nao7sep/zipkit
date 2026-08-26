@@ -42,7 +42,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
 const S: Record<string, CSSProperties> = {
   groups: { display: "grid", gap: "1.25rem" },
   groupTitle: {
-    fontSize: "0.7rem",
+    fontSize: "0.75rem",
     fontWeight: 700,
     letterSpacing: "0.06em",
     textTransform: "uppercase",

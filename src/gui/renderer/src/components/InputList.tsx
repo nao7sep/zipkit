@@ -146,7 +146,7 @@ const S: Record<string, CSSProperties> = {
     gap: "0.75rem",
     marginBottom: "0.5rem",
   },
-  title: { fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
+  title: { fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
   list: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.1rem" },
   row: {
     display: "flex",

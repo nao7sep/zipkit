@@ -161,7 +161,7 @@ const S: Record<string, CSSProperties> = {
   section: { display: "grid", gap: "0.4rem", minWidth: 0 },
   sectionWide: { display: "grid", gap: "0.4rem", minWidth: 0, gridColumn: "1 / -1" },
   sectionTitle: {
-    fontSize: "0.7rem",
+    fontSize: "0.75rem",
     fontWeight: 700,
     letterSpacing: "0.06em",
     textTransform: "uppercase",
