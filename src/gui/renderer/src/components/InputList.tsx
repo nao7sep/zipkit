@@ -8,19 +8,25 @@
  * removed — a job must archive something. Hovering a row highlights it, so on a
  * wide window it stays clear which input the far-right remove icon will remove.
  *
- * The drop area is marked by a permanent, plain border — NOT a drag-state
- * highlight. A highlight driven by drag events can get stuck (an external drag
- * cancelled over the window fires no drop/leave/dragend in the renderer), so there
- * is no drag state to strand: the border is always there, the OS shows the copy
- * cursor while dragging, and the list updating is the drop's confirmation. The
- * window blocks accidental file-to-page navigation globally (see App). Processing a
- * drop is wrapped so an unsupported item can't throw out of the handler.
+ * The Inputs block itself is the receiver. It highlights locally during file
+ * delivery, clears stale presentation if the native drag omits its terminal event,
+ * and reports every committed non-success beside the list. The window's separate
+ * denial boundary only prevents navigation outside owned receivers.
  */
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
+import {
+  droppedFileOperationKey,
+  inspectExternalFileOffer,
+  reportableError,
+  type ReceiverOutcome,
+  type ReceiverResult,
+} from "../externalDropBoundary";
 import { COLOR, orderedEntries } from "../view";
 import { CloseIcon } from "./Icon";
+import { ReceiverResultNotice } from "./ReceiverResultNotice";
 
 const KIND_LABEL: Record<PathKind, string> = {
   directory: "Directory",
@@ -28,28 +34,6 @@ const KIND_LABEL: Record<PathKind, string> = {
   nonexistent: "Missing",
   other: "Other",
 };
-
-export type InputDragOffer = "rejected" | "delivery-only" | "accepted";
-
-export function inspectInputDragOffer(
-  dataTransfer: Pick<DataTransfer, "types" | "items" | "files">,
-): InputDragOffer {
-  const items = Array.from(dataTransfer.items);
-  if (!Array.from(dataTransfer.types).includes("Files") && !items.some((item) => item.kind === "file")) {
-    return "rejected";
-  }
-  if (dataTransfer.files.length > 0) return "accepted";
-  if (items.length === 0) return "delivery-only";
-  for (const item of items) {
-    if (item.kind !== "file") continue;
-    try {
-      if (item.getAsFile()) return "accepted";
-    } catch {
-      // Protected file details stay delivery-only until drop.
-    }
-  }
-  return "delivery-only";
-}
 
 function kindColor(kind: PathKind): string {
   if (kind === "nonexistent") return COLOR.bad;
@@ -63,46 +47,142 @@ export function InputList({
   onAdd,
   onRemove,
   onDropFiles,
+  result,
+  onResult,
 }: {
   job: Job;
   editable: boolean;
-  onAdd: () => void;
+  onAdd: () => Promise<ReceiverOutcome | null>;
   onRemove: (path: string) => void;
-  onDropFiles: (files: File[]) => void;
+  onDropFiles: (files: File[]) => Promise<ReceiverOutcome>;
+  result: ReceiverResult | null;
+  onResult: (outcome: ReceiverOutcome) => void;
 }) {
+  const [dragActive, setDragActive] = useState(false);
+  const cleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rows: { path: string; kind?: PathKind }[] = job.entries
     ? orderedEntries(job.entries)
     : job.inputs.map((path) => ({ path }));
   const canRemove = editable && job.inputs.length > 1;
 
+  const clearDrag = useCallback(() => {
+    if (cleanupTimer.current !== null) clearTimeout(cleanupTimer.current);
+    cleanupTimer.current = null;
+    setDragActive(false);
+  }, []);
+
+  const showDrag = useCallback(() => {
+    if (cleanupTimer.current !== null) clearTimeout(cleanupTimer.current);
+    setDragActive(true);
+    cleanupTimer.current = setTimeout(clearDrag, 1_000);
+  }, [clearDrag]);
+
+  useEffect(() => {
+    window.addEventListener("blur", clearDrag);
+    window.addEventListener("dragend", clearDrag);
+    return () => {
+      window.removeEventListener("blur", clearDrag);
+      window.removeEventListener("dragend", clearDrag);
+      if (cleanupTimer.current !== null) clearTimeout(cleanupTimer.current);
+    };
+  }, [clearDrag]);
+
   function onDragOver(e: ReactDragEvent) {
-    e.preventDefault(); // required even for a protected Files offer to reach drop
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "none";
-    if (!editable || inspectInputDragOffer(e.dataTransfer) !== "accepted") return;
-    e.dataTransfer.dropEffect = "copy";
-  }
-  function onDrop(e: ReactDragEvent) {
+    if (inspectExternalFileOffer(e.dataTransfer) === "rejected") return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "none";
-    if (!editable) return;
+    if (!editable) {
+      clearDrag();
+      return;
+    }
+    e.dataTransfer.dropEffect = "copy";
+    showDrag();
+  }
+
+  async function onDrop(e: ReactDragEvent) {
+    const offer = inspectExternalFileOffer(e.dataTransfer);
+    const files = Array.from(e.dataTransfer.files);
+    const entryKey = `inputs:${job.id}:drop`;
+    const operationKey = files.length > 0
+      ? droppedFileOperationKey(`inputs:${job.id}`, files)
+      : entryKey;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "none";
+    clearDrag();
+    if (offer === "rejected") {
+      onResult({
+        operationKey: `inputs:${job.id}:unsupported-drop`,
+        entryKey,
+        result: { message: "Drop files or folders to add inputs to this job.", severity: "warning" },
+      });
+      return;
+    }
+    if (!editable) {
+      onResult({
+        operationKey,
+        entryKey,
+        result: { message: "Inputs cannot be changed in the current job state.", severity: "warning" },
+      });
+      return;
+    }
     try {
-      const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) {
-        e.dataTransfer.dropEffect = "copy";
-        onDropFiles(files);
+      if (files.length === 0) {
+        onResult({
+          operationKey,
+          entryKey,
+          result: {
+            message: "The dropped items could not be accessed as local files or folders.",
+            severity: "warning",
+          },
+        });
+        return;
       }
-    } catch {
-      // An unsupported item must never throw out of the handler.
+      e.dataTransfer.dropEffect = "copy";
+      const next = await onDropFiles(files);
+      onResult(next);
+    } catch (error) {
+      window.zipkit.reportError("commit dropped existing-job inputs", reportableError(error));
+      onResult({
+        operationKey,
+        entryKey,
+        result: {
+          message: `Could not add the dropped inputs: ${errorMessage(error)}`,
+          severity: "error",
+        },
+      });
+    }
+  }
+
+  async function onAddClick() {
+    try {
+      const next = await onAdd();
+      if (next) onResult(next);
+    } catch (error) {
+      window.zipkit.reportError("choose existing-job inputs", reportableError(error));
+      onResult({
+        operationKey: `inputs:${job.id}:picker`,
+        entryKey: `inputs:${job.id}:picker`,
+        result: { message: `Could not add inputs: ${errorMessage(error)}`, severity: "error" },
+      });
     }
   }
 
   return (
-    <div style={S.zone} onDragOver={onDragOver} onDrop={onDrop}>
+    <div
+      data-drop-receiver="inputs"
+      style={{ ...S.zone, ...(dragActive ? S.zoneActive : null) }}
+      onDragOver={onDragOver}
+      onDragLeave={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !event.currentTarget.contains(next)) clearDrag();
+      }}
+      onDrop={(event) => void onDrop(event)}
+    >
       <div style={S.head}>
         <span style={S.title}>Inputs</span>
-        <button onClick={onAdd} disabled={!editable}>
+        <button onClick={() => void onAddClick()} disabled={!editable}>
           Add
         </button>
       </div>
@@ -125,19 +205,34 @@ export function InputList({
           </li>
         ))}
       </ul>
+      {result && (
+        <ReceiverResultNotice
+          result={result}
+          onDismiss={() => onResult({
+            operationKey: result.operationKey,
+            entryKey: result.operationKey,
+            result: null,
+          })}
+        />
+      )}
     </div>
   );
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 const S: Record<string, CSSProperties> = {
-  // The whole inputs block is the drop zone, marked by a permanent, plain border
-  // (no drag-state highlight that could get stuck). An inset box with comfortable
-  // padding so it reads as "the inputs / drop here" area.
   zone: {
     border: "1px solid var(--border)",
     borderRadius: 8,
     padding: "0.6rem",
     margin: "0 0 0.75rem",
+  },
+  zoneActive: {
+    boxShadow: "inset 0 0 0 2px var(--accent)",
+    background: "color-mix(in srgb, var(--accent) 10%, transparent)",
   },
   head: {
     display: "flex",

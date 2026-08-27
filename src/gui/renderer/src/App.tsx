@@ -31,6 +31,20 @@ import { AboutDialog } from "./components/AboutDialog";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
 import { isComposing } from "./composition";
+import {
+  denyUnhandledExternalDrop,
+  droppedFileOperationKey,
+  inspectExternalFileOffer,
+  receiverOperationKey,
+  reportableError,
+  settleReceiverResult,
+  type ReceiverCommit,
+  type ReceiverOutcome,
+  type ReceiverResult,
+  resolveDroppedFiles,
+  summarizeDroppedFiles,
+} from "./externalDropBoundary";
+import { planInputAdmission } from "./inputAdmission";
 import { hasMod, isEditableTarget, shadowsMacTextBinding } from "./shortcuts";
 import { useConfirm, type ConfirmOptions } from "./components/DialogHost";
 import { InputList } from "./components/InputList";
@@ -38,6 +52,7 @@ import { JobListbox } from "./components/JobListbox";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { Pane } from "./components/Pane";
 import { ProgressLog } from "./components/ProgressLog";
+import { ReceiverResultNotice } from "./components/ReceiverResultNotice";
 import { Report } from "./components/Report";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
@@ -77,6 +92,10 @@ function runConfirmation(job: Job): ConfirmOptions | null {
   };
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -108,6 +127,28 @@ export function App() {
   // persisted, so resizing the window leaves the saved layout untouched.
   const bodyRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [jobsDropActive, setJobsDropActive] = useState(false);
+  const [jobsResult, setJobsResult] = useState<ReceiverResult | null>(null);
+  const [inputResults, setInputResults] = useState<Record<string, ReceiverResult>>({});
+  const jobsDropTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelJobsDropTimer = useCallback(() => {
+    if (jobsDropTimer.current !== null) clearTimeout(jobsDropTimer.current);
+    jobsDropTimer.current = null;
+  }, []);
+
+  const clearJobsDrop = useCallback(() => {
+    cancelJobsDropTimer();
+    setJobsDropActive(false);
+  }, [cancelJobsDropTimer]);
+
+  const showJobsDrop = useCallback(() => {
+    if (jobsDropTimer.current !== null) clearTimeout(jobsDropTimer.current);
+    setJobsDropActive(true);
+    // Finder/Explorer can omit the final leave/end event. This timer only clears
+    // stale presentation; the Jobs receiver remains usable at drop time.
+    jobsDropTimer.current = setTimeout(clearJobsDrop, 1_000);
+  }, [clearJobsDrop]);
 
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
@@ -152,17 +193,26 @@ export function App() {
     [],
   );
 
-  // Block the renderer's default file-drop behavior window-wide: without this, a
-  // file dropped anywhere OUTSIDE the inputs drop zone makes Chromium navigate the
-  // window to that file:// URL — replacing the whole app. The inputs zone's own
-  // onDrop still runs (and adds the file); every other drop is just swallowed.
   useEffect(() => {
-    const prevent = (e: DragEvent) => e.preventDefault();
-    window.addEventListener("dragover", prevent);
-    window.addEventListener("drop", prevent);
+    window.addEventListener("blur", clearJobsDrop);
+    window.addEventListener("dragend", clearJobsDrop);
     return () => {
-      window.removeEventListener("dragover", prevent);
-      window.removeEventListener("drop", prevent);
+      window.removeEventListener("blur", clearJobsDrop);
+      window.removeEventListener("dragend", clearJobsDrop);
+      cancelJobsDropTimer();
+    };
+  }, [cancelJobsDropTimer, clearJobsDrop]);
+
+  // Block the renderer's default drop behavior window-wide: without this, a file
+  // dropped outside Jobs or Inputs can navigate Chromium to a file:// URL and
+  // replace the app. Owned receivers consume their events first; this boundary is
+  // silent and never turns dead space into another operation.
+  useEffect(() => {
+    window.addEventListener("dragover", denyUnhandledExternalDrop);
+    window.addEventListener("drop", denyUnhandledExternalDrop);
+    return () => {
+      window.removeEventListener("dragover", denyUnhandledExternalDrop);
+      window.removeEventListener("drop", denyUnhandledExternalDrop);
     };
   }, []);
 
@@ -213,12 +263,106 @@ export function App() {
     setUiFontFamily(next.uiFontFamily);
   }
 
+  async function createJob(inputs: string[]): Promise<ReceiverCommit> {
+    const admission = planInputAdmission([], inputs);
+    if (admission.accepted.length === 0) return { changed: false, accepted: 0, result: null };
+    try {
+      const id = await window.zipkit.addJob(admission.accepted, defaults, "save");
+      setSelectedId(id);
+      setPullFocusId(id); // focus the new row once it renders (focus/selection policy)
+      return {
+        changed: true,
+        accepted: admission.accepted.length,
+        result: admission.duplicates > 0
+          ? {
+              message: `Created the job with ${admission.accepted.length} ${admission.accepted.length === 1 ? "input" : "inputs"}; ${admission.duplicates} ${admission.duplicates === 1 ? "duplicate input was" : "duplicate inputs were"} already included.`,
+              severity: "information",
+            }
+          : null,
+      };
+    } catch (error) {
+      window.zipkit.reportError("create job", reportableError(error));
+      return {
+        changed: false,
+        accepted: 0,
+        result: { message: `Could not create the job: ${errorMessage(error)}`, severity: "error" },
+      };
+    }
+  }
+
   async function addJob() {
-    const inputs = await window.zipkit.chooseInputs();
-    if (inputs.length === 0) return;
-    const id = await window.zipkit.addJob(inputs, defaults, "save");
-    setSelectedId(id);
-    setPullFocusId(id); // focus the new row once it renders (focus/selection policy)
+    try {
+      const inputs = await window.zipkit.chooseInputs();
+      if (inputs.length === 0) return;
+      const outcome = {
+        operationKey: receiverOperationKey("jobs", inputs),
+        entryKey: "jobs:picker",
+        result: (await createJob(inputs)).result,
+      };
+      setJobsResult((current) => settleReceiverResult(current, outcome));
+    } catch (error) {
+      window.zipkit.reportError("choose new-job inputs", reportableError(error));
+      setJobsResult((current) => settleReceiverResult(current, {
+        operationKey: "jobs:picker",
+        entryKey: "jobs:picker",
+        result: { message: `Could not choose inputs: ${errorMessage(error)}`, severity: "error" },
+      }));
+    }
+  }
+
+  function onJobsDragOver(event: React.DragEvent<HTMLDivElement>) {
+    if (inspectExternalFileOffer(event.dataTransfer) === "rejected" || dialog !== null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    showJobsDrop();
+  }
+
+  async function onJobsDrop(event: React.DragEvent<HTMLDivElement>) {
+    const offer = inspectExternalFileOffer(event.dataTransfer);
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "none";
+    clearJobsDrop();
+    if (dialog !== null) return;
+    if (offer === "rejected") {
+      setJobsResult((current) => settleReceiverResult(current, {
+        operationKey: "jobs:unsupported-drop",
+        entryKey: "jobs:drop",
+        result: {
+          message: "Drop files or folders on Jobs to create a new archive job.",
+          severity: "warning",
+        },
+      }));
+      return;
+    }
+    const files = Array.from(event.dataTransfer.files);
+    const operationKey = files.length > 0
+      ? droppedFileOperationKey("jobs", files)
+      : "jobs:drop";
+    const resolved = resolveDroppedFiles(files, window.zipkit.pathForFile);
+    for (const error of resolved.errors) {
+      window.zipkit.reportError("resolve dropped new-job input", error);
+    }
+    if (resolved.paths.length === 0) {
+      setJobsResult((current) => settleReceiverResult(current, {
+        operationKey,
+        entryKey: "jobs:drop",
+        result: {
+          message: "The dropped items could not be accessed as local files or folders.",
+          severity: resolved.errors.length > 0 ? "error" : "warning",
+        },
+      }));
+      return;
+    }
+    event.dataTransfer.dropEffect = "copy";
+    const commit = await createJob(resolved.paths);
+    const result = summarizeDroppedFiles("Created the job with", resolved, commit);
+    setJobsResult((current) => settleReceiverResult(current, {
+      operationKey,
+      entryKey: "jobs:drop",
+      result,
+    }));
   }
 
   // The keyboard accelerator for "create the selected job's archive". Mirrors the
@@ -328,16 +472,31 @@ export function App() {
             </button>
           }
           bodyStyle={S.listBody}
+          rootStyle={GROW}
         >
-          <JobListbox
-            jobs={jobsNewestFirst}
-            selectedId={selectedId}
-            pullFocusId={pullFocusId}
-            onFocusPulled={clearPullFocus}
-            onSelect={setSelectedId}
-            onRemove={(id) => void window.zipkit.removeJob(id)}
-            onCancel={(id) => void window.zipkit.cancelJob(id)}
-          />
+          <div
+            data-drop-receiver="jobs"
+            style={{ ...S.jobsReceiver, ...(jobsDropActive ? S.jobsReceiverActive : null) }}
+            onDragOver={onJobsDragOver}
+            onDragLeave={(event) => {
+              const next = event.relatedTarget;
+              if (!(next instanceof Node) || !event.currentTarget.contains(next)) clearJobsDrop();
+            }}
+            onDrop={(event) => void onJobsDrop(event)}
+          >
+            <JobListbox
+              jobs={jobsNewestFirst}
+              selectedId={selectedId}
+              pullFocusId={pullFocusId}
+              onFocusPulled={clearPullFocus}
+              onSelect={setSelectedId}
+              onRemove={(id) => void window.zipkit.removeJob(id)}
+              onCancel={(id) => void window.zipkit.cancelJob(id)}
+            />
+            {jobsResult && (
+              <ReceiverResultNotice result={jobsResult} onDismiss={() => setJobsResult(null)} />
+            )}
+          </div>
         </Pane>
 
         {jobsSplitter}
@@ -349,6 +508,16 @@ export function App() {
             defaults={defaults}
             events={events}
             splitter={progressSplitter}
+            inputResult={inputResults[selected.id] ?? null}
+            onInputResult={(outcome) =>
+              setInputResults((current) => {
+                const result = settleReceiverResult(current[selected.id] ?? null, outcome);
+                if (result !== null) return { ...current, [selected.id]: result };
+                const next = { ...current };
+                delete next[selected.id];
+                return next;
+              })
+            }
           />
         ) : (
           <>
@@ -381,11 +550,15 @@ function JobView({
   defaults,
   events,
   splitter,
+  inputResult,
+  onInputResult,
 }: {
   job: Job;
   defaults: GuiOptions;
   events: GuiLogEvent[];
   splitter: ReactNode;
+  inputResult: ReceiverResult | null;
+  onInputResult: (outcome: ReceiverOutcome) => void;
 }) {
   // Keyed by job id in the parent, so this remounts per job: local option draft and
   // verify state start fresh, no manual re-sync.
@@ -445,16 +618,75 @@ function JobView({
 
   // Input CRUD: add appends paths (from the picker or a drop), skipping ones
   // already in the job; remove drops one. Both re-plan + re-classify in the engine.
-  function addPaths(paths: string[]) {
-    const next = [...job.inputs, ...paths.filter((p) => p && !job.inputs.includes(p))];
-    if (next.length === job.inputs.length) return; // nothing new
-    void window.zipkit.updateJob(job.id, { inputs: next });
+  async function addPaths(paths: string[]): Promise<ReceiverCommit> {
+    const admission = planInputAdmission(job.inputs, paths);
+    if (admission.accepted.length === 0) {
+      return {
+        changed: false,
+        accepted: 0,
+        result: admission.duplicates > 0
+          ? {
+              message: `${admission.duplicates === 1 ? "That input is" : "Those inputs are"} already in this job.`,
+              severity: "information",
+            }
+          : null,
+      };
+    }
+    try {
+      await window.zipkit.updateJob(job.id, { inputs: [...job.inputs, ...admission.accepted] });
+    } catch (error) {
+      window.zipkit.reportError("add inputs to job", reportableError(error));
+      return {
+        changed: false,
+        accepted: 0,
+        result: { message: `Could not add inputs: ${errorMessage(error)}`, severity: "error" },
+      };
+    }
+    return {
+      changed: true,
+      accepted: admission.accepted.length,
+      result: admission.duplicates > 0
+        ? {
+            message: `Added ${admission.accepted.length} new ${admission.accepted.length === 1 ? "input" : "inputs"}; ${admission.duplicates} ${admission.duplicates === 1 ? "input was" : "inputs were"} already in this job.`,
+            severity: "information",
+          }
+        : null,
+    };
   }
-  async function addInputs() {
-    addPaths(await window.zipkit.chooseInputs());
+  async function addInputs(): Promise<ReceiverOutcome | null> {
+    const paths = await window.zipkit.chooseInputs();
+    if (paths.length === 0) return null;
+    return {
+      operationKey: receiverOperationKey(`inputs:${job.id}`, paths),
+      entryKey: `inputs:${job.id}:picker`,
+      result: (await addPaths(paths)).result,
+    };
   }
-  function onDropFiles(files: File[]) {
-    addPaths(files.map((f) => window.zipkit.pathForFile(f)));
+  async function onDropFiles(files: File[]): Promise<ReceiverOutcome> {
+    const resolved = resolveDroppedFiles(files, window.zipkit.pathForFile);
+    const entryKey = `inputs:${job.id}:drop`;
+    const operationKey = files.length > 0
+      ? droppedFileOperationKey(`inputs:${job.id}`, files)
+      : entryKey;
+    for (const error of resolved.errors) {
+      window.zipkit.reportError("resolve dropped existing-job input", error);
+    }
+    if (resolved.paths.length === 0) {
+      return {
+        operationKey,
+        entryKey,
+        result: {
+          message: "The dropped items could not be accessed as local files or folders.",
+          severity: resolved.errors.length > 0 ? "error" : "warning",
+        },
+      };
+    }
+    const commit = await addPaths(resolved.paths);
+    return {
+      operationKey,
+      entryKey,
+      result: summarizeDroppedFiles("Added", resolved, commit),
+    };
   }
   function removeInput(path: string) {
     if (job.inputs.length <= 1) return; // a job must archive something
@@ -528,9 +760,11 @@ function JobView({
         <InputList
           job={job}
           editable={editable}
-          onAdd={() => void addInputs()}
+          onAdd={addInputs}
           onRemove={removeInput}
           onDropFiles={onDropFiles}
+          result={inputResult}
+          onResult={onInputResult}
         />
 
         {/* Parameters: the archive knobs, with the use-defaults toggle in the
@@ -631,9 +865,21 @@ const S: Record<string, CSSProperties> = {
     // the splitter tracks provide the inter-pane spacing, so there is no grid gap.
     gap: 0,
   },
-  listBody: { display: "flex", padding: "0.5rem", overflow: "hidden" },
+  listBody: { display: "flex", flexDirection: "column", padding: "0.5rem", overflow: "hidden" },
   progressBody: { display: "flex", flexDirection: "column", padding: "0.6rem", overflow: "hidden" },
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
+  jobsReceiver: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    minHeight: 0,
+    borderRadius: 6,
+  },
+  jobsReceiverActive: {
+    boxShadow: "0 0 0 2px var(--accent)",
+    background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+  },
   // The destination checkpoint above Create: a "Will save" lead, then "in <dir>"
   // and "as <name>" on their own lines so where and what-name read as the two
   // separate concerns they still are. Plain text (no box); values selectable and

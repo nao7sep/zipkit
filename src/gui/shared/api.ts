@@ -51,6 +51,14 @@ export interface GuiError {
   message: string;
 }
 
+/** A renderer-side exception serialized before it crosses contextBridge. */
+export interface GuiReportedError {
+  name: string;
+  message: string;
+  stack?: string;
+  cause?: GuiReportedError;
+}
+
 export type VerifyResult = { ok: true; data: ExtractData } | { ok: false; error: GuiError };
 
 /** App identity for the About dialog (the renderer can't read package.json). */
@@ -118,4 +126,6 @@ export interface ZipKitGuiApi {
   appInfo(): Promise<AppInfo>;
   /** Open an http(s) URL in the OS browser (never navigates the renderer window). */
   openExternal(url: string): void;
+  /** Preserve an unexpected renderer-side failure in the main-process session log. */
+  reportError(context: string, error: GuiReportedError): void;
 }

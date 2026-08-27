@@ -14,6 +14,10 @@ import { loadLayout, saveLayout } from "./layout.js";
 import { isHttpUrl } from "./url.js";
 
 export function registerIpc(): void {
+  ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {
+    log.error("renderer operation failed", { context, error });
+  });
+
   // A mid-session quarantine here is already warned to the session log by the
   // loader; the startup report in bootstrap covers the material case.
   ipcMain.handle("zipkit:getSettings", async (): Promise<GuiSettings> => (await loadSettings(log)).value);

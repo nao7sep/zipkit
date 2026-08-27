@@ -8,7 +8,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
-import type { AppInfo, GuiLogEvent, Job, JobIntent, PlanData, VerifyResult, ZipKitGuiApi } from "../shared/api.js";
+import type { AppInfo, GuiLogEvent, GuiReportedError, Job, JobIntent, PlanData, VerifyResult, ZipKitGuiApi } from "../shared/api.js";
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
@@ -59,6 +59,9 @@ const api = {
   appInfo: (): Promise<AppInfo> => ipcRenderer.invoke("zipkit:appInfo"),
   openExternal: (url: string): void => {
     void ipcRenderer.invoke("zipkit:openExternal", url);
+  },
+  reportError: (context: string, error: GuiReportedError): void => {
+    ipcRenderer.send("zipkit:reportError", context, error);
   },
 } satisfies ZipKitGuiApi;
 

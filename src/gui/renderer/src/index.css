@@ -25,6 +25,8 @@
   --accent-ink: #211a03;
   --danger: #b93650;
   --danger-hover: #c24152;
+  --status-error: #ff6b7a;
+  --status-warning: #ffb454;
   --utility: #2d3124;
   --utility-hover: #383d2c;
   --radius: 8px;
@@ -117,6 +119,41 @@ button.danger {
 button.danger:hover:not(:disabled) {
   background: var(--danger-hover);
 }
+
+/* A committed receiver result must not read like low-priority helper text, and
+ * its palette must match its meaning instead of making information look failed. */
+.receiver-result {
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0.55rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.receiver-result--information {
+  background: color-mix(in srgb, var(--text-2) 7%, var(--surface-2));
+  border-color: var(--text-2);
+}
+.receiver-result--warning {
+  background: color-mix(in srgb, var(--status-warning) 10%, var(--surface-2));
+  border-color: var(--status-warning);
+}
+.receiver-result--error {
+  background: color-mix(in srgb, var(--status-error) 10%, var(--surface-2));
+  border-color: var(--status-error);
+}
+.receiver-result .receiver-result__dismiss {
+  margin: -0.25rem -0.3rem -0.25rem 0;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
 /* Bare icon/affordance buttons (hamburger, row actions): no filled chrome. */
 button.icon {
   background: transparent;
