@@ -33,6 +33,7 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+      - run: npm install --global npm@12.0.2
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -50,6 +51,7 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
+      - run: npm install --global npm@12.0.2
       - run: npm ci
 
       # One command: electron-vite build + electron-builder for the host OS.
