@@ -16,7 +16,7 @@ class ResizeObserverStub {
   disconnect(): void {}
 }
 
-function fileEvent(type: "dragover" | "drop", files: File[]): Event {
+function fileEvent(type: "dragover" | "dragleave" | "drop", files: File[]): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperty(event, "dataTransfer", {
     value: {
@@ -86,6 +86,9 @@ describe("App Jobs file-drop receiver", () => {
     expect((over as Event & { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect).toBe("copy");
     expect(jobs.style.boxShadow).toContain("var(--accent)");
     expect(container.textContent).not.toContain("Drop to check files and folders");
+    await act(async () => jobs.dispatchEvent(fileEvent("dragleave", [])));
+    expect(jobs.style.boxShadow).toBe("");
+    await act(async () => jobs.dispatchEvent(fileEvent("dragover", [])));
 
     const folder = new File([], "ZIPKIT-DRAG-ME");
     const drop = fileEvent("drop", [folder]);

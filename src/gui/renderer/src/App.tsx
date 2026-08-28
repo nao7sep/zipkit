@@ -130,25 +130,10 @@ export function App() {
   const [jobsDropActive, setJobsDropActive] = useState(false);
   const [jobsResult, setJobsResult] = useState<ReceiverResult | null>(null);
   const [inputResults, setInputResults] = useState<Record<string, ReceiverResult>>({});
-  const jobsDropTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelJobsDropTimer = useCallback(() => {
-    if (jobsDropTimer.current !== null) clearTimeout(jobsDropTimer.current);
-    jobsDropTimer.current = null;
-  }, []);
 
   const clearJobsDrop = useCallback(() => {
-    cancelJobsDropTimer();
     setJobsDropActive(false);
-  }, [cancelJobsDropTimer]);
-
-  const showJobsDrop = useCallback(() => {
-    if (jobsDropTimer.current !== null) clearTimeout(jobsDropTimer.current);
-    setJobsDropActive(true);
-    // Finder/Explorer can omit the final leave/end event. This timer only clears
-    // stale presentation; the Jobs receiver remains usable at drop time.
-    jobsDropTimer.current = setTimeout(clearJobsDrop, 1_000);
-  }, [clearJobsDrop]);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.zipkit.onQueue(setJobs);
@@ -199,9 +184,8 @@ export function App() {
     return () => {
       window.removeEventListener("blur", clearJobsDrop);
       window.removeEventListener("dragend", clearJobsDrop);
-      cancelJobsDropTimer();
     };
-  }, [cancelJobsDropTimer, clearJobsDrop]);
+  }, [clearJobsDrop]);
 
   // Block the renderer's default drop behavior window-wide: without this, a file
   // dropped outside Jobs or Inputs can navigate Chromium to a file:// URL and
@@ -315,7 +299,7 @@ export function App() {
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
-    showJobsDrop();
+    setJobsDropActive(true);
   }
 
   async function onJobsDrop(event: React.DragEvent<HTMLDivElement>) {

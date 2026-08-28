@@ -64,6 +64,9 @@ describe("InputList external-drop receiver", () => {
 
     fireEvent.dragOver(receiver, { dataTransfer });
     expect(receiver.style.boxShadow).toContain("var(--accent)");
+    fireEvent.dragLeave(receiver, { dataTransfer });
+    expect(receiver.style.boxShadow).toBe("");
+    fireEvent.dragOver(receiver, { dataTransfer });
 
     fireEvent.drop(receiver, { dataTransfer });
     await waitFor(() => expect(onDropFiles).toHaveBeenCalledWith([file]));

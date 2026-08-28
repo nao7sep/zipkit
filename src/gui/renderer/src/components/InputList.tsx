@@ -9,12 +9,12 @@
  * wide window it stays clear which input the far-right remove icon will remove.
  *
  * The Inputs block itself is the receiver. It highlights locally during file
- * delivery, clears stale presentation if the native drag omits its terminal event,
- * and reports every committed non-success beside the list. The window's separate
+ * delivery, clears presentation on receiver/window terminal events, and reports
+ * every committed non-success beside the list. The window's separate
  * denial boundary only prevents navigation outside owned receivers.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
 import {
@@ -59,23 +59,14 @@ export function InputList({
   onResult: (outcome: ReceiverOutcome) => void;
 }) {
   const [dragActive, setDragActive] = useState(false);
-  const cleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rows: { path: string; kind?: PathKind }[] = job.entries
     ? orderedEntries(job.entries)
     : job.inputs.map((path) => ({ path }));
   const canRemove = editable && job.inputs.length > 1;
 
   const clearDrag = useCallback(() => {
-    if (cleanupTimer.current !== null) clearTimeout(cleanupTimer.current);
-    cleanupTimer.current = null;
     setDragActive(false);
   }, []);
-
-  const showDrag = useCallback(() => {
-    if (cleanupTimer.current !== null) clearTimeout(cleanupTimer.current);
-    setDragActive(true);
-    cleanupTimer.current = setTimeout(clearDrag, 1_000);
-  }, [clearDrag]);
 
   useEffect(() => {
     window.addEventListener("blur", clearDrag);
@@ -83,7 +74,6 @@ export function InputList({
     return () => {
       window.removeEventListener("blur", clearDrag);
       window.removeEventListener("dragend", clearDrag);
-      if (cleanupTimer.current !== null) clearTimeout(cleanupTimer.current);
     };
   }, [clearDrag]);
 
@@ -97,7 +87,7 @@ export function InputList({
       return;
     }
     e.dataTransfer.dropEffect = "copy";
-    showDrag();
+    setDragActive(true);
   }
 
   async function onDrop(e: ReactDragEvent) {
