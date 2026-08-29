@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
+import type { Job } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 
@@ -31,27 +32,33 @@ function fileEvent(type: "dragover" | "dragleave" | "drop", files: File[]): Even
   return event;
 }
 
-describe("App Jobs file-drop receiver", () => {
+describe("App file-drop receivers", () => {
   let root: Root | null = null;
   let container: HTMLDivElement;
   const addJob = vi.fn(async () => "job-from-drop");
   const chooseInputs = vi.fn<() => Promise<string[]>>();
+  const getQueue = vi.fn<() => Promise<Job[]>>();
+  const updateJob = vi.fn(async () => {});
 
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     addJob.mockReset().mockResolvedValue("job-from-drop");
     chooseInputs.mockReset().mockResolvedValue([]);
+    getQueue.mockReset().mockResolvedValue([]);
+    updateJob.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(window, "zipkit", {
       configurable: true,
       value: {
         onQueue: () => () => {},
-        getQueue: async () => [],
+        getQueue,
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,
+        getPlan: async () => null,
         onEvent: () => () => {},
         pathForFile: () => "/tmp/ZIPKIT-DRAG-ME",
         chooseInputs,
         addJob,
+        updateJob,
         reportError: vi.fn(),
       },
     });
@@ -101,6 +108,37 @@ describe("App Jobs file-drop receiver", () => {
     const deadSpaceDrop = fileEvent("drop", [folder]);
     await act(async () => shell.dispatchEvent(deadSpaceDrop));
     expect(deadSpaceDrop.defaultPrevented).toBe(true);
+    expect(addJob).not.toHaveBeenCalled();
+  });
+
+  it("adds a dropped file to the selected job only when it lands on Inputs", async () => {
+    getQueue.mockResolvedValue([{
+      id: "job-1",
+      inputs: ["/tmp/existing.txt"],
+      entries: [{ path: "/tmp/existing.txt", kind: "file" }],
+      options: DEFAULT_OPTIONS,
+      intent: "save",
+      state: "ready",
+    }]);
+    await act(async () => {
+      root?.render(
+        <DialogHost>
+          <App />
+        </DialogHost>,
+      );
+    });
+
+    const job = container.querySelector<HTMLElement>('[data-job-id="job-1"]')!;
+    await act(async () => job.click());
+    const inputs = container.querySelector<HTMLElement>('[data-drop-receiver="inputs"]')!;
+    expect(inputs).not.toBeNull();
+
+    const dropped = new File([], "ZIPKIT-DRAG-ME");
+    await act(async () => inputs.dispatchEvent(fileEvent("drop", [dropped])));
+
+    expect(updateJob).toHaveBeenCalledWith("job-1", {
+      inputs: ["/tmp/existing.txt", "/tmp/ZIPKIT-DRAG-ME"],
+    });
     expect(addJob).not.toHaveBeenCalled();
   });
 
