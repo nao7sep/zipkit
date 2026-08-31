@@ -10,7 +10,7 @@ export function ReceiverResultNotice({
 }) {
   return (
     <div
-      role="status"
+      role={result.severity === "error" ? "alert" : "status"}
       aria-atomic="true"
       className={`receiver-result receiver-result--${result.severity}`}
     >

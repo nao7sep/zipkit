@@ -156,15 +156,15 @@ describe("App file-drop receivers", () => {
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [
       new File([], "first.txt", { lastModified: 41 }),
     ])));
-    const status = container.querySelector<HTMLElement>('[role="status"]')!;
-    expect(status.textContent).toContain("first input failed");
-    expect(status.classList.contains("receiver-result--error")).toBe(true);
+    const alert = container.querySelector<HTMLElement>('[role="alert"]')!;
+    expect(alert.textContent).toContain("first input failed");
+    expect(alert.classList.contains("receiver-result--error")).toBe(true);
 
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [
       new File([], "other.txt", { lastModified: 42 }),
     ])));
     expect(addJob).toHaveBeenCalledTimes(2);
-    expect(container.querySelector<HTMLElement>('[role="status"]')?.textContent)
+    expect(container.querySelector<HTMLElement>('[role="alert"]')?.textContent)
       .toContain("first input failed");
   });
 
@@ -181,9 +181,9 @@ describe("App file-drop receivers", () => {
     const input = new File([], "new.txt", { lastModified: 42 });
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [input])));
 
-    const status = container.querySelector<HTMLElement>('[role="status"]')!;
-    expect(status.textContent).toContain("Could not create the job");
-    expect(status.classList.contains("receiver-result--error")).toBe(true);
+    const alert = container.querySelector<HTMLElement>('[role="alert"]')!;
+    expect(alert.textContent).toContain("Could not create the job");
+    expect(alert.classList.contains("receiver-result--error")).toBe(true);
   });
 
   it("clears a failed creation result when the same dropped input succeeds on retry", async () => {
@@ -198,13 +198,13 @@ describe("App file-drop receivers", () => {
     const jobs = container.querySelector<HTMLElement>('[data-drop-receiver="jobs"]')!;
     const input = new File([], "new.txt", { lastModified: 42 });
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [input])));
-    expect(container.querySelector<HTMLElement>('[role="status"]')?.textContent)
+    expect(container.querySelector<HTMLElement>('[role="alert"]')?.textContent)
       .toContain("Could not create the job");
 
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [input])));
 
     expect(addJob).toHaveBeenCalledTimes(2);
-    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("clears a picker-boundary failure when the picker next succeeds", async () => {
@@ -227,7 +227,7 @@ describe("App file-drop receivers", () => {
       await Promise.resolve();
     });
     expect(chooseInputs).toHaveBeenCalledTimes(1);
-    expect(container.querySelector<HTMLElement>('[role="status"]')?.textContent)
+    expect(container.querySelector<HTMLElement>('[role="alert"]')?.textContent)
       .toContain("picker unavailable");
 
     await act(async () => {
@@ -236,6 +236,6 @@ describe("App file-drop receivers", () => {
       await Promise.resolve();
     });
     expect(addJob).toHaveBeenCalledWith(["/tmp/new.txt"], DEFAULT_OPTIONS, "save");
-    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 });
