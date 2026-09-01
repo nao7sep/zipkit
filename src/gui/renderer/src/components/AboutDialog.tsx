@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { ModalShell } from "./ModalShell";
 
 const REPO = "https://github.com/nao7sep/zipkit";
+export const ABOUT_COPYRIGHT = "© 2026 Yoshinao Inoguchi · MIT License";
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const [info, setInfo] = useState<{ name: string; version: string } | null>(null);
@@ -29,7 +30,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
         <button onClick={() => window.zipkit.openExternal(REPO)}>Repository</button>{" "}
         <button onClick={() => window.zipkit.openExternal(`${REPO}/issues`)}>Issues</button>
       </p>
-      <p style={{ opacity: 0.7 }}>© {new Date().getFullYear()} Yoshinao Inoguchi · MIT License</p>
+      <p style={{ opacity: 0.7 }}>{ABOUT_COPYRIGHT}</p>
     </ModalShell>
   );
 }
