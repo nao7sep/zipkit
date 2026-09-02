@@ -7,6 +7,16 @@ export interface AppMessageDialogOptions {
   buttonLabel: "OK" | "Quit";
 }
 
+const MESSAGE_DIALOG_MIN_HEIGHT = 220;
+const MESSAGE_DIALOG_MAX_HEIGHT = 640;
+
+export function boundedMessageDialogHeight(contentHeight: number, frameHeight: number): number {
+  return Math.min(
+    MESSAGE_DIALOG_MAX_HEIGHT,
+    Math.max(MESSAGE_DIALOG_MIN_HEIGHT, Math.ceil(contentHeight + frameHeight)),
+  );
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -27,9 +37,9 @@ export async function showAppMessageDialog({
     width: 520,
     height: 280,
     minWidth: 420,
-    minHeight: 220,
+    minHeight: MESSAGE_DIALOG_MIN_HEIGHT,
     maxWidth: 760,
-    maxHeight: 640,
+    maxHeight: MESSAGE_DIALOG_MAX_HEIGHT,
     parent: owner,
     modal: owner !== undefined,
     show: false,
@@ -53,6 +63,29 @@ button{min-width:76px;border:1px solid #666;border-radius:7px;padding:7px 16px;b
 </style></head><body><h1>${escapeHtml(title)}</h1><div class="body">${escapeHtml(message)}</div><div class="footer"><button autofocus onclick="window.close()">${buttonLabel}</button></div></body></html>`;
 
   await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  try {
+    const naturalContentHeight = Number(await win.webContents.executeJavaScript(`(() => {
+      const html = document.documentElement;
+      const body = document.body;
+      const previousHtmlHeight = html.style.height;
+      const previousBodyHeight = body.style.height;
+      html.style.height = "auto";
+      body.style.height = "auto";
+      const height = Math.ceil(body.scrollHeight);
+      html.style.height = previousHtmlHeight;
+      body.style.height = previousBodyHeight;
+      return height;
+    })()`));
+    const size = win.getSize();
+    const contentSize = win.getContentSize();
+    const width = size[0] ?? 520;
+    const frameHeight = Math.max(0, (size[1] ?? 280) - (contentSize[1] ?? 280));
+    if (Number.isFinite(naturalContentHeight)) {
+      win.setSize(width, boundedMessageDialogHeight(naturalContentHeight, frameHeight), false);
+    }
+  } catch (error) {
+    console.error("failed to size app message dialog", error);
+  }
   win.show();
   await new Promise<void>((resolve) => win.once("closed", resolve));
 }
