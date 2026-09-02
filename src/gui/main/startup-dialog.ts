@@ -29,6 +29,7 @@ export async function showAppMessageDialog({
     minWidth: 420,
     minHeight: 220,
     maxWidth: 760,
+    maxHeight: 640,
     parent: owner,
     modal: owner !== undefined,
     show: false,

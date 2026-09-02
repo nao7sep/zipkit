@@ -121,7 +121,7 @@ function activateMainWindow(): void {
 }
 
 // Any startup failure reaches the user and halts. The diagnostic stays in the
-// log; the native box carries stable recovery guidance only.
+// log; the app-authored dialog carries stable recovery guidance only.
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
   await notifyStartupFailure(
