@@ -26,11 +26,14 @@ if (!app.requestSingleInstanceLock()) {
         ? err.message
         : `failed to resolve the storage root: ${err instanceof Error ? err.message : String(err)}`;
     process.stderr.write(`zipkit: ${message}\n`);
-    app.whenReady().then(async () => {
+    void app.whenReady().then(async () => {
       const { notifyStartupFailure } = await import("./startup-dialog.js");
       await notifyStartupFailure(
         "ZipKit could not open its data folder. Restore access to the configured folder, then start ZipKit again.",
       );
+      app.exit(1);
+    }).catch((dialogError) => {
+      process.stderr.write(`zipkit: startup failure dialog could not open: ${String(dialogError)}\n`);
       app.exit(1);
     });
   }

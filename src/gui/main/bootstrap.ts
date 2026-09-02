@@ -65,8 +65,10 @@ function createWindow(): BrowserWindow {
   const win = owned.window;
   if (!owned.created) return win;
 
+  let flushQueueOnClose = true;
   win.on("closed", () => {
     clearMainWindow(win);
+    if (!flushQueueOnClose) return;
     void flushQueue().catch((err) =>
       log.error("failed to flush the queue after window close", { error: errorInfo(err) }),
     );
@@ -83,18 +85,29 @@ function createWindow(): BrowserWindow {
   });
 
   const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
+  let load: Promise<void>;
   if (devUrl) {
     if (!isLoopbackRendererUrl(devUrl)) {
       throw new Error("ELECTRON_RENDERER_URL must be an HTTP(S) loopback URL");
     }
-    void win.loadURL(devUrl);
+    load = win.loadURL(devUrl);
   } else {
     // Production path only (run-built / rebuild): enforce the strict CSP via a
     // response header before loading the file. Dev leaves the policy unset so
     // electron-vite's HMR keeps working.
     installContentSecurityPolicy();
-    void win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
+    load = win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
   }
+  void load.catch((error) => {
+    log.error("main window document failed to load", { error: errorInfo(error) });
+    // The queue has not necessarily hydrated yet. Closing this failed shell must
+    // not flush an empty in-memory queue over the saved one.
+    flushQueueOnClose = false;
+    if (!win.isDestroyed()) win.close();
+    void notifyStartupFailure(
+      "ZipKit could not load its window. Restart it. Your source files and archives are unchanged.",
+    ).catch((dialogError) => log.error("window load failure dialog failed", { error: errorInfo(dialogError) }));
+  });
   return win;
 }
 
