@@ -65,7 +65,7 @@ function createWindow(): BrowserWindow {
   }));
   const win = owned.window;
   if (!owned.created) return win;
-  configureWindowActivity(win);
+  configureWindowActivity(app, win);
 
   let flushQueueOnClose = true;
   win.on("closed", () => {
