@@ -44,11 +44,12 @@ export type { PaneLayout };
  *  show each job its own Progress stream. `jobId` is absent for any untagged event. */
 export type GuiLogEvent = LogEvent & { jobId?: string };
 
-/** A structured SDK fault surfaced to the renderer (mirrors `ZipKitError`'s shape). */
+/** A structured SDK fault surfaced to the renderer. `presentation` is authored
+ * by main; arbitrary exception prose has no field on this boundary. */
 export interface GuiError {
   type: string;
   code: string;
-  message: string;
+  presentation: string;
 }
 
 /** A renderer-side exception serialized before it crosses contextBridge. */

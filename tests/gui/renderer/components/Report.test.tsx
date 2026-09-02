@@ -104,12 +104,16 @@ describe("Report result announcements", () => {
         plan={currentPlan}
         verify={{
           ok: false,
-          error: { type: "IoError", code: "verify.failed", message: "archive unreadable" },
+          error: {
+            type: "IoError",
+            code: "verify.failed",
+            presentation: "The archive could not be read. Check that it is still available and is a valid ZIP file.",
+          },
         }}
       />,
     );
 
-    expect(live.textContent).toContain("Verification could not be completed");
-    expect(live.textContent).toContain("archive unreadable");
+    expect(live.textContent).toContain("The archive could not be read");
+    expect(live.textContent).not.toContain("archive unreadable");
   });
 });

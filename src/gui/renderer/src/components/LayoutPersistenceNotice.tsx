@@ -15,7 +15,7 @@ export function LayoutPersistenceNotice({ onDismiss }: { onDismiss: () => void }
       <button
         type="button"
         className="icon"
-        aria-label="Dismiss pane layout save error"
+        aria-label="Close pane layout save result"
         onClick={onDismiss}
         style={S.dismiss}
       >

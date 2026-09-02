@@ -62,7 +62,7 @@ export function Report({
         }
       : {
           level: "error" as const,
-          text: `Verification could not be completed: ${verify.error.message}`,
+          text: verify.error.presentation,
         }
     : null;
 

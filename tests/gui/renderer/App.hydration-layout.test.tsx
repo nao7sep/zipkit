@@ -164,7 +164,7 @@ describe("pane-layout persistence results", () => {
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
     await screen.findByRole("alert");
 
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss pane layout save error" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close pane layout save result" }));
 
     expect(screen.queryByRole("alert")).toBeNull();
     expect(splitter.getAttribute("aria-valuenow")).toBe("298");

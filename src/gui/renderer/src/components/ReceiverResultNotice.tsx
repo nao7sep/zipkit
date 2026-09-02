@@ -19,7 +19,7 @@ export function ReceiverResultNotice({
         type="button"
         className="icon receiver-result__dismiss"
         onClick={onDismiss}
-        aria-label="Dismiss result"
+        aria-label="Close result"
       >
         <CloseIcon />
       </button>
