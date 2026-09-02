@@ -16,8 +16,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   const { storageRoot, StorageRootError } = await import("../../sdk/storage.js");
+  let storageReady = false;
   try {
     storageRoot();
+    storageReady = true;
   } catch (err) {
     const message =
       err instanceof StorageRootError
@@ -31,9 +33,11 @@ if (!app.requestSingleInstanceLock()) {
       );
       app.exit(1);
     });
-    throw new StorageRootError(message);
   }
 
   // Transitive imports that resolve the storage root run only after validation.
-  await import("./bootstrap.js");
+  // Do not throw from the Electron entry module on the failure branch: Electron
+  // would project that exception into its own framework alert before the authored
+  // startup dialog can open, leaking the diagnostic and adding a severity icon.
+  if (storageReady) await import("./bootstrap.js");
 }
