@@ -22,6 +22,7 @@ import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { loadLayout } from "./layout.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
+import { configureWindowActivity } from "./windowActivity.js";
 
 // Last-resort hooks: record the failure before the process can die. The session
 // log appends synchronously, so the line is on disk by the time these return.
@@ -64,6 +65,7 @@ function createWindow(): BrowserWindow {
   }));
   const win = owned.window;
   if (!owned.created) return win;
+  configureWindowActivity(win);
 
   let flushQueueOnClose = true;
   win.on("closed", () => {

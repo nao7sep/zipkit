@@ -4,6 +4,9 @@ import "./index.css";
 import { App } from "./App";
 import { DialogHost } from "./components/DialogHost";
 import { RendererErrorBoundary } from "./components/RendererErrorBoundary";
+import { installWindowActivityState } from "./windowActivity";
+
+installWindowActivityState(window.zipkit.onWindowActivityChanged, document.documentElement);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

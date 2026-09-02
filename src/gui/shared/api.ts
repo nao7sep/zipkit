@@ -68,6 +68,9 @@ export interface AppInfo {
   version: string;
 }
 
+/** Main-to-renderer native BrowserWindow activation event. */
+export const WINDOW_ACTIVITY_CHANNEL = "zipkit:windowActivity";
+
 export interface ZipKitGuiApi {
   /** Open a native picker; returns chosen absolute paths (empty if cancelled). */
   chooseInputs(): Promise<string[]>;
@@ -78,6 +81,8 @@ export interface ZipKitGuiApi {
   /** The host OS platform (`process.platform`), so the renderer can show the
    *  running platform's modifier word — "Cmd" on macOS, "Ctrl" elsewhere. */
   platform: GuiPlatform;
+  /** Native window activation, distinct from DOM document focus on macOS. */
+  onWindowActivityChanged(callback: (active: boolean) => void): () => void;
 
   /** The persisted GUI settings — new-job defaults plus the UI font (built-in defaults if none saved). */
   getSettings(): Promise<GuiSettings>;

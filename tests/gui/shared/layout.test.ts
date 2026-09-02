@@ -148,4 +148,14 @@ describe("index.css scroll-bar styling", () => {
     // The pill-thumb recipe from the convention (transparent border + clip).
     expect(css).toContain("background-clip: padding-box");
   });
+
+  it("preserves the active focus accent and mutes retained focus while inactive", () => {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const css = readFileSync(
+      path.join(here, "../../../src/gui/renderer/src/index.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/button:focus-visible\s*\{[^}]*outline:\s*2px\s+solid\s+var\(--accent\)/);
+    expect(css).toMatch(/\[data-window-inactive\] button:focus-visible\s*\{[^}]*outline-color:\s*var\(--border\)/);
+  });
 });

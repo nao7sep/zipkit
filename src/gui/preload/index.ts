@@ -8,7 +8,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
-import type { AppInfo, GuiLogEvent, GuiReportedError, Job, JobIntent, PlanData, VerifyResult, ZipKitGuiApi } from "../shared/api.js";
+import { WINDOW_ACTIVITY_CHANNEL, type AppInfo, type GuiLogEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
@@ -19,6 +19,13 @@ const api = {
   // The host OS, read synchronously in preload (no IPC) so the renderer can
   // display the running platform's modifier word in the shortcuts dialog.
   platform: process.platform,
+  onWindowActivityChanged: (callback: (active: boolean) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, active: boolean): void => {
+      if (typeof active === "boolean") callback(active);
+    };
+    ipcRenderer.on(WINDOW_ACTIVITY_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(WINDOW_ACTIVITY_CHANNEL, handler);
+  },
   getSettings: (): Promise<GuiSettings> => ipcRenderer.invoke("zipkit:getSettings"),
   setSettings: (settings: GuiSettings): Promise<void> =>
     ipcRenderer.invoke("zipkit:setSettings", settings),

@@ -186,6 +186,12 @@ button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+[data-window-inactive] input:focus-visible,
+[data-window-inactive] select:focus-visible,
+[data-window-inactive] textarea:focus-visible,
+[data-window-inactive] button:focus-visible {
+  outline-color: var(--border);
+}
 input[type="checkbox"],
 input[type="number"] {
   accent-color: var(--accent);

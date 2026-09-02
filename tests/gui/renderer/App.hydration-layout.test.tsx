@@ -28,6 +28,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     chooseOutputDir: vi.fn(async () => ""),
     pathForFile: vi.fn(() => ""),
     platform: "darwin",
+    onWindowActivityChanged: vi.fn(() => () => {}),
     getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" })),
     setSettings: vi.fn(async () => {}),
     getLayout: vi.fn(async () => DEFAULT_LAYOUT),
