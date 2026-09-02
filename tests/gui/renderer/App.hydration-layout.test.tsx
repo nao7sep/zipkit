@@ -170,3 +170,46 @@ describe("pane-layout persistence results", () => {
     expect(splitter.getAttribute("aria-valuenow")).toBe("298");
   });
 });
+
+describe("selected-job IPC ownership", () => {
+  it("blocks a false empty report when plan hydration rejects and offers retry", async () => {
+    const getPlan = vi.fn<ZipKitGuiApi["getPlan"]>().mockRejectedValue(new Error("EACCES /private/tmp/ZIPKIT_PLAN_SENTINEL"));
+    const bridge = api({ getQueue: vi.fn(async () => [job("plan-job")]), getPlan });
+    renderApp(bridge);
+    fireEvent.click(await screen.findByRole("option"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("plan could not be loaded");
+    expect(alert.textContent).not.toContain("ZIPKIT_PLAN_SENTINEL");
+    expect(screen.getByRole("button", { name: "Retry plan" })).toBeTruthy();
+    expect(bridge.reportError).toHaveBeenCalledWith("load selected job plan", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_PLAN_SENTINEL") }));
+  });
+
+  it("retains a job-local authored result when run rejects", async () => {
+    const runJob = vi.fn<ZipKitGuiApi["runJob"]>().mockRejectedValue(new Error("EACCES /private/tmp/ZIPKIT_RUN_SENTINEL"));
+    const bridge = api({ getQueue: vi.fn(async () => [job("run-job")]), runJob });
+    renderApp(bridge);
+    fireEvent.click(await screen.findByRole("option"));
+    fireEvent.click(await screen.findByRole("button", { name: "Create archive" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("archive could not be started");
+    expect(alert.textContent).not.toContain("ZIPKIT_RUN_SENTINEL");
+    expect(bridge.reportError).toHaveBeenCalledWith("run job", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_RUN_SENTINEL") }));
+  });
+
+  it("keeps the previous intent and retains authored copy when the mutation rejects", async () => {
+    const updateJob = vi.fn<ZipKitGuiApi["updateJob"]>().mockRejectedValue(new Error("EACCES /private/tmp/ZIPKIT_INTENT_SENTINEL"));
+    const bridge = api({ getQueue: vi.fn(async () => [job("intent-job")]), updateJob });
+    renderApp(bridge);
+    fireEvent.click(await screen.findByRole("option"));
+    const intent = await screen.findByRole("combobox", { name: "Intent" });
+    fireEvent.change(intent, { target: { value: "archive-and-trash" } });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("previous intent is still active");
+    expect(alert.textContent).not.toContain("ZIPKIT_INTENT_SENTINEL");
+    expect((intent as HTMLSelectElement).value).toBe("save");
+    expect(bridge.reportError).toHaveBeenCalledWith("update job intent", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_INTENT_SENTINEL") }));
+  });
+});

@@ -46,9 +46,7 @@ const api = {
   },
   verify: (jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> =>
     ipcRenderer.invoke("zipkit:verify", jobId, archive, checkMetadata),
-  reveal: (path: string): void => {
-    void ipcRenderer.invoke("zipkit:reveal", path);
-  },
+  reveal: (path: string): Promise<void> => ipcRenderer.invoke("zipkit:reveal", path),
   onEvent: (callback: (event: GuiLogEvent) => void): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, event: GuiLogEvent): void => callback(event);
     ipcRenderer.on("zipkit:event", handler);
@@ -57,9 +55,7 @@ const api = {
     };
   },
   appInfo: (): Promise<AppInfo> => ipcRenderer.invoke("zipkit:appInfo"),
-  openExternal: (url: string): void => {
-    void ipcRenderer.invoke("zipkit:openExternal", url);
-  },
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke("zipkit:openExternal", url),
   reportError: (context: string, error: GuiReportedError): void => {
     ipcRenderer.send("zipkit:reportError", context, error);
   },

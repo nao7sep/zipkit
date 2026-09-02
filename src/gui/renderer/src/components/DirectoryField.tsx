@@ -9,6 +9,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { reportableError } from "../externalDropBoundary";
+import { ReceiverResultNotice } from "./ReceiverResultNotice";
 
 export function DirectoryField({
   label,
@@ -24,6 +26,7 @@ export function DirectoryField({
   placeholder?: string;
 }) {
   const [draft, setDraft] = useState(value);
+  const [pickerError, setPickerError] = useState(false);
   // Resync the draft only when the value changes from outside (picker, restore
   // defaults) — not echoing back our own committed edits.
   const committed = useRef(value);
@@ -38,6 +41,17 @@ export function DirectoryField({
     committed.current = next;
     setDraft(next);
     onChange(next);
+  }
+
+  async function chooseDirectory() {
+    setPickerError(false);
+    try {
+      const dir = await window.zipkit.chooseOutputDir();
+      if (dir) commit(dir);
+    } catch (error) {
+      window.zipkit.reportError("choose output directory", reportableError(error));
+      setPickerError(true);
+    }
   }
 
   return (
@@ -55,11 +69,12 @@ export function DirectoryField({
         />
         <button
           disabled={disabled}
-          onClick={() => void window.zipkit.chooseOutputDir().then((dir) => dir && commit(dir))}
+          onClick={() => void chooseDirectory()}
         >
           Choose
         </button>
       </span>
+      {pickerError && <ReceiverResultNotice result={{ message: "The output folder picker could not be opened. The current path is unchanged; try again.", severity: "error" }} onDismiss={() => setPickerError(false)} />}
     </label>
   );
 }

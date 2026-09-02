@@ -43,6 +43,7 @@ import {
   type ReceiverCommit,
   type ReceiverOutcome,
   type ReceiverResult,
+  type ReceiverResultDetails,
   resolveDroppedFiles,
   summarizeDroppedFiles,
 } from "./externalDropBoundary";
@@ -129,6 +130,7 @@ export function App() {
   const [jobsDropActive, setJobsDropActive] = useState(false);
   const [jobsResult, setJobsResult] = useState<ReceiverResult | null>(null);
   const [inputResults, setInputResults] = useState<Record<string, ReceiverResult>>({});
+  const [jobResults, setJobResults] = useState<Record<string, ReceiverResultDetails>>({});
   const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [layoutSaveFailed, setLayoutSaveFailed] = useState(false);
@@ -398,7 +400,13 @@ export function App() {
     (document.activeElement as HTMLElement | null)?.blur?.();
     const ask = runConfirmation(selected);
     if (ask && !(await confirm(ask))) return;
-    void window.zipkit.runJob(selected.id);
+    try {
+      await window.zipkit.runJob(selected.id);
+      setJobResults((current) => { const next = { ...current }; delete next[selected.id]; return next; });
+    } catch (error) {
+      window.zipkit.reportError("run selected job", reportableError(error));
+      setJobResults((current) => ({ ...current, [selected.id]: { message: "The archive could not be started. The job is unchanged; try again.", severity: "error" } }));
+    }
   }
 
   // Latest-ref so the window-level key handler (subscribed once) always invokes the
@@ -423,9 +431,10 @@ export function App() {
     try {
       await save;
       if (layoutSaveAttempt.current === attempt) setLayoutSaveFailed(false);
-    } catch {
-      // Main owns and logs the full error. The renderer owns only the concise,
-      // persistent consequence beside the panes; the in-memory layout stays put.
+    } catch (error) {
+      window.zipkit.reportError("persist pane layout", reportableError(error));
+      // The renderer owns the concise, persistent consequence beside the panes;
+      // the in-memory layout stays put.
       if (layoutSaveAttempt.current === attempt) setLayoutSaveFailed(true);
     }
   }
@@ -544,8 +553,14 @@ export function App() {
               pullFocusId={pullFocusId}
               onFocusPulled={clearPullFocus}
               onSelect={setSelectedId}
-              onRemove={(id) => void window.zipkit.removeJob(id)}
-              onCancel={(id) => void window.zipkit.cancelJob(id)}
+              onRemove={(id) => { void window.zipkit.removeJob(id).catch((error) => {
+                window.zipkit.reportError("remove job", reportableError(error));
+                setJobsResult({ operationKey: `remove:${id}`, message: "The job could not be removed. It remains in the queue; try again.", severity: "error" });
+              }); }}
+              onCancel={(id) => { void window.zipkit.cancelJob(id).catch((error) => {
+                window.zipkit.reportError("cancel job from list", reportableError(error));
+                setJobsResult({ operationKey: `cancel:${id}`, message: "The job could not be cancelled. It may still be running; try again.", severity: "error" });
+              }); }}
             />
             {jobsResult && (
               <ReceiverResultNotice result={jobsResult} onDismiss={() => setJobsResult(null)} />
@@ -563,6 +578,11 @@ export function App() {
             events={events}
             splitter={progressSplitter}
             inputResult={inputResults[selected.id] ?? null}
+            operationResult={jobResults[selected.id] ?? null}
+            onOperationResult={(result) => setJobResults((current) => {
+              if (result) return { ...current, [selected.id]: result };
+              const next = { ...current }; delete next[selected.id]; return next;
+            })}
             onInputResult={(outcome) =>
               setInputResults((current) => {
                 const result = settleReceiverResult(current[selected.id] ?? null, outcome);
@@ -607,6 +627,8 @@ function JobView({
   splitter,
   inputResult,
   onInputResult,
+  operationResult,
+  onOperationResult,
 }: {
   job: Job;
   defaults: GuiOptions;
@@ -614,12 +636,16 @@ function JobView({
   splitter: ReactNode;
   inputResult: ReceiverResult | null;
   onInputResult: (outcome: ReceiverOutcome) => void;
+  operationResult: ReceiverResultDetails | null;
+  onOperationResult: (result: ReceiverResultDetails | null) => void;
 }) {
   // Keyed by job id in the parent, so this remounts per job: local option draft and
   // verify state start fresh, no manual re-sync.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
+  const [planLoadFailed, setPlanLoadFailed] = useState(false);
+  const [planAttempt, setPlanAttempt] = useState(0);
   const confirm = useConfirm();
   // "Use default parameters" is DERIVED from whether the job's options still equal
   // the defaults — not a free-floating flag that could claim "defaults" while the
@@ -627,16 +653,38 @@ function JobView({
   // the defaults (see toggleUseDefaults).
   const [useDefaults, setUseDefaults] = useState(() => optionsEqual(job.options, defaults));
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
 
   useEffect(() => {
     let live = true;
     void window.zipkit.getPlan(job.id).then((p) => {
-      if (live) setPlan(p);
+      if (live) { setPlan(p); setPlanLoadFailed(false); }
+    }).catch((error) => {
+      if (!live) return;
+      window.zipkit.reportError("load selected job plan", reportableError(error));
+      setPlan(null);
+      setPlanLoadFailed(true);
     });
     return () => {
       live = false;
     };
-  }, [job.id, job.state, job.summary]);
+  }, [job.id, job.state, job.summary, planAttempt]);
+
+  function failOperation(context: string, message: string, error: unknown) {
+    window.zipkit.reportError(context, reportableError(error));
+    onOperationResult({ message, severity: "error" });
+  }
+
+  async function persistOptions(next: GuiOptions) {
+    try {
+      await window.zipkit.updateJob(job.id, { options: next });
+      onOperationResult(null);
+    } catch (error) {
+      setOpts(job.options);
+      setUseDefaults(optionsEqual(job.options, defaults));
+      failOperation("update job options", "The parameter change could not be saved. The previous values were restored; try again.", error);
+    }
+  }
 
   // Clear a stale verify result whenever the job leaves "done" (re-planned, or its
   // archive removed) — a "Verified" line must never linger past the archive it
@@ -648,14 +696,14 @@ function JobView({
   function changeOptions(next: GuiOptions) {
     setOpts(next);
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => void window.zipkit.updateJob(job.id, { options: next }), 250);
+    timer.current = setTimeout(() => void persistOptions(next), 250);
   }
   // Commit immediately (used by text fields on blur, so typing doesn't re-plan
   // per keystroke — the engine only re-plans when a plan-affecting option lands).
   function commitOptions(next: GuiOptions) {
     setOpts(next);
     clearTimeout(timer.current);
-    void window.zipkit.updateJob(job.id, { options: next });
+    void persistOptions(next);
   }
   // Unchecking enables editing (options unchanged until the user edits); re-checking
   // actually restores the defaults, so the box can never claim "defaults" falsely.
@@ -668,7 +716,9 @@ function JobView({
   // moved or deleted until the job actually runs, and the move-to-Trash
   // consequence is surfaced on that run path, not on this selection.
   function changeIntent(intent: JobIntent) {
-    void window.zipkit.updateJob(job.id, { intent });
+    void window.zipkit.updateJob(job.id, { intent })
+      .then(() => onOperationResult(null))
+      .catch((error) => failOperation("update job intent", "The intent could not be changed. The previous intent is still active; try again.", error));
   }
 
   // Input CRUD: add appends paths (from the picker or a drop), skipping ones
@@ -745,7 +795,9 @@ function JobView({
   }
   function removeInput(path: string) {
     if (job.inputs.length <= 1) return; // a job must archive something
-    void window.zipkit.updateJob(job.id, { inputs: job.inputs.filter((p) => p !== path) });
+    void window.zipkit.updateJob(job.id, { inputs: job.inputs.filter((p) => p !== path) })
+      .then(() => onOperationResult(null))
+      .catch((error) => failOperation("remove input from job", "The input could not be removed. It remains in this job; try again.", error));
   }
 
   async function onCommand(c: JobCommand) {
@@ -757,20 +809,22 @@ function JobView({
         // archive-and-trash run and null for a plain save.
         const ask = runConfirmation(job);
         if (ask && !(await confirm(ask))) break;
-        void window.zipkit.runJob(job.id);
+        try { await window.zipkit.runJob(job.id); onOperationResult(null); }
+        catch (error) { failOperation("run job", "The archive could not be started. The job is unchanged; try again.", error); }
         break;
       }
       case "cancel":
-        void window.zipkit.cancelJob(job.id);
+        try { await window.zipkit.cancelJob(job.id); onOperationResult(null); }
+        catch (error) { failOperation("cancel job", "The job could not be cancelled. It may still be running; try again.", error); }
         break;
       case "verify":
         if (job.output)
-          void window.zipkit
-            .verify(job.id, job.output, job.options.metadata)
-            .then(setVerify);
+          try { setVerify(await window.zipkit.verify(job.id, job.output, job.options.metadata)); onOperationResult(null); }
+          catch (error) { failOperation("verify archive", "The archive could not be verified. It was not changed; try again.", error); }
         break;
       case "reveal":
-        if (job.output) window.zipkit.reveal(job.output);
+        if (job.output) try { await window.zipkit.reveal(job.output); onOperationResult(null); }
+        catch (error) { failOperation("reveal archive", "The archive could not be revealed. Check that it is still available.", error); }
         break;
       case "trash-originals":
         // Destructive and not part of the normal run path, so confirm explicitly.
@@ -783,7 +837,8 @@ function JobView({
             danger: true,
           })
         )
-          void window.zipkit.trashOriginals(job.id);
+          try { await window.zipkit.trashOriginals(job.id); onOperationResult(null); }
+          catch (error) { failOperation("trash job originals", "The originals could not be moved to the Trash. They remain in place; try again.", error); }
         break;
       case "remove-archive":
         // Deletes the user's archive (to the Trash), so confirm explicitly. The
@@ -797,7 +852,8 @@ function JobView({
             danger: true,
           })
         )
-          void window.zipkit.removeArchive(job.id);
+          try { await window.zipkit.removeArchive(job.id); onOperationResult(null); }
+          catch (error) { failOperation("remove job archive", "The archive could not be moved to the Trash. It remains in place; try again.", error); }
         break;
     }
   }
@@ -891,13 +947,19 @@ function JobView({
           </p>
         )}
         <CommandBar job={job} onCommand={onCommand} />
+        {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
 
         {/* Report: a context-aware, natural-language log of what the archive does
             for the user, integrated into the same pane. */}
         <div style={S.sectionHead}>
           <span style={S.sectionTitle}>Report</span>
         </div>
-        <Report job={job} plan={plan} verify={verify} />
+        {planLoadFailed ? (
+          <div style={S.planRecovery}>
+            <p role="alert">This job’s plan could not be loaded. The job is unchanged; try again.</p>
+            <button onClick={() => setPlanAttempt((value) => value + 1)}>Retry plan</button>
+          </div>
+        ) : <Report job={job} plan={plan} verify={verify} />}
       </Pane>
 
       {splitter}
@@ -971,4 +1033,5 @@ const S: Record<string, CSSProperties> = {
     color: "var(--text-2)",
   },
   defaultsToggle: { display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.85rem" },
+  planRecovery: { display: "grid", gap: "0.5rem", justifyItems: "start" },
 };

@@ -119,14 +119,14 @@ export interface ZipKitGuiApi {
    *  The job id tags the verify's progress events to that job's Progress stream. */
   verify(jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult>;
   /** Reveal a file in the OS file manager (Finder / Explorer). */
-  reveal(path: string): void;
+  reveal(path: string): Promise<void>;
   /** Subscribe to the live, job-tagged SDK event stream; returns an unsubscribe fn. */
   onEvent(callback: (event: GuiLogEvent) => void): () => void;
 
   /** App name + version for the About dialog. */
   appInfo(): Promise<AppInfo>;
   /** Open an http(s) URL in the OS browser (never navigates the renderer window). */
-  openExternal(url: string): void;
+  openExternal(url: string): Promise<void>;
   /** Preserve an unexpected renderer-side failure in the main-process session log. */
   reportError(context: string, error: GuiReportedError): void;
 }

@@ -1,11 +1,11 @@
-import type { ReceiverResult } from "../externalDropBoundary";
+import type { ReceiverResult, ReceiverResultDetails } from "../externalDropBoundary";
 import { CloseIcon } from "./Icon";
 
 export function ReceiverResultNotice({
   result,
   onDismiss,
 }: {
-  result: ReceiverResult;
+  result: ReceiverResultDetails & Partial<Pick<ReceiverResult, "operationKey">>;
   onDismiss: () => void;
 }) {
   return (
