@@ -27,6 +27,8 @@ export function DirectoryField({
 }) {
   const [draft, setDraft] = useState(value);
   const [pickerError, setPickerError] = useState(false);
+  const [isPicking, setIsPicking] = useState(false);
+  const pickerPending = useRef(false);
   // Resync the draft only when the value changes from outside (picker, restore
   // defaults) — not echoing back our own committed edits.
   const committed = useRef(value);
@@ -44,6 +46,9 @@ export function DirectoryField({
   }
 
   async function chooseDirectory() {
+    if (pickerPending.current) return;
+    pickerPending.current = true;
+    setIsPicking(true);
     setPickerError(false);
     try {
       const dir = await window.zipkit.chooseOutputDir();
@@ -51,6 +56,9 @@ export function DirectoryField({
     } catch (error) {
       window.zipkit.reportError("choose output directory", reportableError(error));
       setPickerError(true);
+    } finally {
+      pickerPending.current = false;
+      setIsPicking(false);
     }
   }
 
@@ -68,7 +76,7 @@ export function DirectoryField({
           style={S.input}
         />
         <button
-          disabled={disabled}
+          disabled={disabled || isPicking}
           onClick={() => void chooseDirectory()}
         >
           Choose

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DirectoryField } from "../../../../src/gui/renderer/src/components/DirectoryField";
 
@@ -22,5 +22,24 @@ describe("DirectoryField picker failure", () => {
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("/kept/path");
     expect(onChange).not.toHaveBeenCalled();
     expect(reportError).toHaveBeenCalledWith("choose output directory", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_PICKER_SENTINEL") }));
+  });
+
+  it("allows only one native picker request at a time", async () => {
+    let finish!: (value: string) => void;
+    const chooseOutputDir = vi.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
+    Object.defineProperty(window, "zipkit", { configurable: true, value: {
+      chooseOutputDir,
+      reportError: vi.fn(),
+    } });
+    render(<DirectoryField label="Output" value="/kept/path" onChange={vi.fn()} />);
+
+    const choose = screen.getByRole("button", { name: "Choose" });
+    fireEvent.click(choose);
+    fireEvent.click(choose);
+
+    expect(chooseOutputDir).toHaveBeenCalledOnce();
+    expect((choose as HTMLButtonElement).disabled).toBe(true);
+    finish("");
+    await waitFor(() => expect((choose as HTMLButtonElement).disabled).toBe(false));
   });
 });

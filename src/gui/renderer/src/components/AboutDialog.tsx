@@ -5,7 +5,7 @@
  * OS browser via the bridge, never by navigating the renderer window.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ModalShell } from "./ModalShell";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
 import { reportableError } from "../externalDropBoundary";
@@ -16,7 +16,11 @@ export const ABOUT_COPYRIGHT = "© 2026 Yoshinao Inoguchi · MIT License";
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const [info, setInfo] = useState<{ name: string; version: string } | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [linkError, setLinkError] = useState(false);
+  const [linkErrors, setLinkErrors] = useState<Record<"repository" | "issues", boolean>>({
+    repository: false,
+    issues: false,
+  });
+  const linkAttempts = useRef<Record<"repository" | "issues", number>>({ repository: 0, issues: 0 });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
@@ -29,12 +33,16 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
     return () => { live = false; };
   }, [attempt]);
 
-  async function openLink(url: string) {
-    setLinkError(false);
-    try { await window.zipkit.openExternal(url); }
+  async function openLink(owner: "repository" | "issues", url: string) {
+    const currentAttempt = ++linkAttempts.current[owner];
+    setLinkErrors((current) => ({ ...current, [owner]: false }));
+    try {
+      await window.zipkit.openExternal(url);
+    }
     catch (error) {
       window.zipkit.reportError("open About link", reportableError(error));
-      setLinkError(true);
+      if (linkAttempts.current[owner] !== currentAttempt) return;
+      setLinkErrors((current) => ({ ...current, [owner]: true }));
     }
   }
 
@@ -48,10 +56,11 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
       {loadFailed ? <><p role="alert">App information could not be loaded. Try again.</p><button onClick={() => setAttempt((value) => value + 1)}>Retry</button></> : <p>Version {info?.version ?? "Loading…"}</p>}
       <p id="about-description">Clean, portable ZIP archives for macOS and Windows.</p>
       <p>
-        <button disabled={!info} onClick={() => void openLink(REPO)}>Repository</button>{" "}
-        <button disabled={!info} onClick={() => void openLink(`${REPO}/issues`)}>Issues</button>
+        <button disabled={!info} onClick={() => void openLink("repository", REPO)}>Repository</button>{" "}
+        <button disabled={!info} onClick={() => void openLink("issues", `${REPO}/issues`)}>Issues</button>
       </p>
-      {linkError && <ReceiverResultNotice result={{ message: "The link could not be opened in your browser. Try again.", severity: "error" }} onDismiss={() => setLinkError(false)} />}
+      {linkErrors.repository && <ReceiverResultNotice result={{ message: "The repository link could not be opened in your browser. Try again.", severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, repository: false }))} />}
+      {linkErrors.issues && <ReceiverResultNotice result={{ message: "The issues link could not be opened in your browser. Try again.", severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, issues: false }))} />}
       <p style={{ opacity: 0.7 }}>{ABOUT_COPYRIGHT}</p>
     </ModalShell>
   );

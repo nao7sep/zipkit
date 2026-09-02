@@ -653,6 +653,7 @@ function JobView({
   // the defaults (see toggleUseDefaults).
   const [useDefaults, setUseDefaults] = useState(() => optionsEqual(job.options, defaults));
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const operationAttempt = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
 
   useEffect(() => {
@@ -670,19 +671,39 @@ function JobView({
     };
   }, [job.id, job.state, job.summary, planAttempt]);
 
-  function failOperation(context: string, message: string, error: unknown) {
+  function beginOperation(): number {
+    const attempt = ++operationAttempt.current;
+    onOperationResult(null);
+    return attempt;
+  }
+
+  function finishOperation(attempt: number): void {
+    if (operationAttempt.current === attempt) onOperationResult(null);
+  }
+
+  function failOperation(attempt: number, context: string, message: string, error: unknown, recover?: () => void) {
     window.zipkit.reportError(context, reportableError(error));
+    if (operationAttempt.current !== attempt) return;
+    recover?.();
     onOperationResult({ message, severity: "error" });
   }
 
   async function persistOptions(next: GuiOptions) {
+    const attempt = beginOperation();
     try {
       await window.zipkit.updateJob(job.id, { options: next });
-      onOperationResult(null);
+      finishOperation(attempt);
     } catch (error) {
-      setOpts(job.options);
-      setUseDefaults(optionsEqual(job.options, defaults));
-      failOperation("update job options", "The parameter change could not be saved. The previous values were restored; try again.", error);
+      failOperation(
+        attempt,
+        "update job options",
+        "The parameter change could not be saved. The previous values were restored; try again.",
+        error,
+        () => {
+          setOpts(job.options);
+          setUseDefaults(optionsEqual(job.options, defaults));
+        },
+      );
     }
   }
 
@@ -716,9 +737,10 @@ function JobView({
   // moved or deleted until the job actually runs, and the move-to-Trash
   // consequence is surfaced on that run path, not on this selection.
   function changeIntent(intent: JobIntent) {
+    const attempt = beginOperation();
     void window.zipkit.updateJob(job.id, { intent })
-      .then(() => onOperationResult(null))
-      .catch((error) => failOperation("update job intent", "The intent could not be changed. The previous intent is still active; try again.", error));
+      .then(() => finishOperation(attempt))
+      .catch((error) => failOperation(attempt, "update job intent", "The intent could not be changed. The previous intent is still active; try again.", error));
   }
 
   // Input CRUD: add appends paths (from the picker or a drop), skipping ones
@@ -795,9 +817,10 @@ function JobView({
   }
   function removeInput(path: string) {
     if (job.inputs.length <= 1) return; // a job must archive something
+    const attempt = beginOperation();
     void window.zipkit.updateJob(job.id, { inputs: job.inputs.filter((p) => p !== path) })
-      .then(() => onOperationResult(null))
-      .catch((error) => failOperation("remove input from job", "The input could not be removed. It remains in this job; try again.", error));
+      .then(() => finishOperation(attempt))
+      .catch((error) => failOperation(attempt, "remove input from job", "The input could not be removed. It remains in this job; try again.", error));
   }
 
   async function onCommand(c: JobCommand) {
@@ -809,23 +832,37 @@ function JobView({
         // archive-and-trash run and null for a plain save.
         const ask = runConfirmation(job);
         if (ask && !(await confirm(ask))) break;
-        try { await window.zipkit.runJob(job.id); onOperationResult(null); }
-        catch (error) { failOperation("run job", "The archive could not be started. The job is unchanged; try again.", error); }
+        const attempt = beginOperation();
+        try { await window.zipkit.runJob(job.id); finishOperation(attempt); }
+        catch (error) { failOperation(attempt, "run job", "The archive could not be started. The job is unchanged; try again.", error); }
         break;
       }
-      case "cancel":
-        try { await window.zipkit.cancelJob(job.id); onOperationResult(null); }
-        catch (error) { failOperation("cancel job", "The job could not be cancelled. It may still be running; try again.", error); }
+      case "cancel": {
+        const attempt = beginOperation();
+        try { await window.zipkit.cancelJob(job.id); finishOperation(attempt); }
+        catch (error) { failOperation(attempt, "cancel job", "The job could not be cancelled. It may still be running; try again.", error); }
         break;
-      case "verify":
-        if (job.output)
-          try { setVerify(await window.zipkit.verify(job.id, job.output, job.options.metadata)); onOperationResult(null); }
-          catch (error) { failOperation("verify archive", "The archive could not be verified. It was not changed; try again.", error); }
+      }
+      case "verify": {
+        if (job.output) {
+          const attempt = beginOperation();
+          try {
+            const result = await window.zipkit.verify(job.id, job.output, job.options.metadata);
+            if (operationAttempt.current === attempt) setVerify(result);
+            finishOperation(attempt);
+          }
+          catch (error) { failOperation(attempt, "verify archive", "The archive could not be verified. It was not changed; try again.", error); }
+        }
         break;
-      case "reveal":
-        if (job.output) try { await window.zipkit.reveal(job.output); onOperationResult(null); }
-        catch (error) { failOperation("reveal archive", "The archive could not be revealed. Check that it is still available.", error); }
+      }
+      case "reveal": {
+        if (job.output) {
+          const attempt = beginOperation();
+          try { await window.zipkit.reveal(job.output); finishOperation(attempt); }
+          catch (error) { failOperation(attempt, "reveal archive", "The archive could not be revealed. Check that it is still available.", error); }
+        }
         break;
+      }
       case "trash-originals":
         // Destructive and not part of the normal run path, so confirm explicitly.
         if (
@@ -836,9 +873,11 @@ function JobView({
             confirmLabel: "Move to Trash",
             danger: true,
           })
-        )
-          try { await window.zipkit.trashOriginals(job.id); onOperationResult(null); }
-          catch (error) { failOperation("trash job originals", "The originals could not be moved to the Trash. They remain in place; try again.", error); }
+        ) {
+          const attempt = beginOperation();
+          try { await window.zipkit.trashOriginals(job.id); finishOperation(attempt); }
+          catch (error) { failOperation(attempt, "trash job originals", "The originals could not be moved to the Trash. They remain in place; try again.", error); }
+        }
         break;
       case "remove-archive":
         // Deletes the user's archive (to the Trash), so confirm explicitly. The
@@ -851,9 +890,11 @@ function JobView({
             confirmLabel: "Move to Trash",
             danger: true,
           })
-        )
-          try { await window.zipkit.removeArchive(job.id); onOperationResult(null); }
-          catch (error) { failOperation("remove job archive", "The archive could not be moved to the Trash. It remains in place; try again.", error); }
+        ) {
+          const attempt = beginOperation();
+          try { await window.zipkit.removeArchive(job.id); finishOperation(attempt); }
+          catch (error) { failOperation(attempt, "remove job archive", "The archive could not be moved to the Trash. It remains in place; try again.", error); }
+        }
         break;
     }
   }

@@ -172,6 +172,16 @@ describe("pane-layout persistence results", () => {
 });
 
 describe("selected-job IPC ownership", () => {
+  function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+  }
+
   it("blocks a false empty report when plan hydration rejects and offers retry", async () => {
     const getPlan = vi.fn<ZipKitGuiApi["getPlan"]>().mockRejectedValue(new Error("EACCES /private/tmp/ZIPKIT_PLAN_SENTINEL"));
     const bridge = api({ getQueue: vi.fn(async () => [job("plan-job")]), getPlan });
@@ -211,5 +221,48 @@ describe("selected-job IPC ownership", () => {
     expect(alert.textContent).not.toContain("ZIPKIT_INTENT_SENTINEL");
     expect((intent as HTMLSelectElement).value).toBe("save");
     expect(bridge.reportError).toHaveBeenCalledWith("update job intent", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_INTENT_SENTINEL") }));
+  });
+
+  it("does not let an older direct-action failure replace a newer success", async () => {
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const reveal = vi.fn<ZipKitGuiApi["reveal"]>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const selected = { ...job("reveal-job"), state: "done" as const, output: "/out/archive.zip" };
+    const bridge = api({ getQueue: vi.fn(async () => [selected]), reveal });
+    renderApp(bridge);
+    fireEvent.click(await screen.findByRole("option"));
+    const button = await screen.findByRole("button", { name: "Reveal in file manager" });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    second.resolve();
+    first.reject(new Error("EACCES /private/tmp/STALE-ZIPKIT-REVEAL"));
+
+    await waitFor(() => expect(bridge.reportError).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("retains a newer direct-action failure after an older success", async () => {
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const reveal = vi.fn<ZipKitGuiApi["reveal"]>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const selected = { ...job("reveal-job"), state: "done" as const, output: "/out/archive.zip" };
+    const bridge = api({ getQueue: vi.fn(async () => [selected]), reveal });
+    renderApp(bridge);
+    fireEvent.click(await screen.findByRole("option"));
+    const button = await screen.findByRole("button", { name: "Reveal in file manager" });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    second.reject(new Error("EACCES /private/tmp/LATEST-ZIPKIT-REVEAL"));
+    first.resolve();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("archive could not be revealed");
+    expect(alert.textContent).not.toContain("LATEST-ZIPKIT-REVEAL");
   });
 });

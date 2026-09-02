@@ -10,6 +10,16 @@ import {
 afterEach(cleanup);
 
 describe("AboutDialog", () => {
+  function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+  }
+
   it("keeps the project's creation-year copyright line stable", () => {
     Object.defineProperty(window, "zipkit", {
       configurable: true,
@@ -44,6 +54,37 @@ describe("AboutDialog", () => {
     const linkAlert = await screen.findByRole("alert");
     expect(linkAlert.textContent).toContain("could not be opened in your browser");
     expect(linkAlert.textContent).not.toContain("ZIPKIT_LINK_SENTINEL");
+    expect(reportError).toHaveBeenCalledTimes(2);
+  });
+
+  it("owns each link independently and ignores an older settlement", async () => {
+    const firstRepository = deferred<void>();
+    const latestRepository = deferred<void>();
+    const issues = deferred<void>();
+    const openExternal = vi.fn()
+      .mockReturnValueOnce(firstRepository.promise)
+      .mockReturnValueOnce(latestRepository.promise)
+      .mockReturnValueOnce(issues.promise);
+    const reportError = vi.fn();
+    Object.defineProperty(window, "zipkit", { configurable: true, value: {
+      appInfo: vi.fn(async () => ({ name: "ZipKit", version: "0.1.0" })),
+      openExternal,
+      reportError,
+    } });
+    render(<AboutDialog onClose={() => {}} />);
+    const repository = await screen.findByRole("button", { name: "Repository" });
+    const issuesButton = screen.getByRole("button", { name: "Issues" });
+
+    fireEvent.click(repository);
+    fireEvent.click(repository);
+    fireEvent.click(issuesButton);
+    latestRepository.resolve();
+    firstRepository.reject(new Error("EACCES /private/tmp/STALE-ZIPKIT-REPOSITORY"));
+    issues.reject(new Error("EACCES /private/tmp/ZIPKIT-ISSUES"));
+
+    expect(await screen.findByText(/issues link could not be opened/)).toBeTruthy();
+    expect(screen.queryByText(/repository link could not be opened/)).toBeNull();
+    expect(document.body.textContent).not.toContain("STALE-ZIPKIT-REPOSITORY");
     expect(reportError).toHaveBeenCalledTimes(2);
   });
 });
