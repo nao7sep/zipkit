@@ -8,7 +8,6 @@ import { CloseIcon } from "./Icon";
 export function LayoutPersistenceNotice({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div role="alert" aria-atomic="true" style={S.root}>
-      <strong style={S.severity}>Error</strong>
       <span style={S.message}>
         The pane layout wasn’t saved. Your current layout is still in use; resize a pane to try
         saving it again.
@@ -39,7 +38,6 @@ const S: Record<string, CSSProperties> = {
     borderRadius: 6,
     fontSize: "0.85rem",
   },
-  severity: { color: "var(--status-error)", flexShrink: 0 },
   message: { flex: 1, minWidth: 0 },
   dismiss: { flexShrink: 0, margin: "-0.25rem -0.35rem -0.25rem 0", padding: 4 },
 };

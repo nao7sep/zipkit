@@ -19,6 +19,11 @@ import { DEFAULT_OPTIONS, type GuiSettings } from "../../../../src/gui/shared/sp
 
 afterEach(cleanup);
 
+Object.defineProperty(window, "zipkit", {
+  configurable: true,
+  value: { reportError: vi.fn() },
+});
+
 /** Settings that differ from the built-ins on both axes: edited option defaults
  *  AND a chosen UI font — so a reset's reach is visible on each. */
 const CUSTOM: GuiSettings = {
@@ -121,11 +126,12 @@ describe("SettingsDialog reset", () => {
 
   it("keeps the dialog open and reports a failed durable save", async () => {
     const onClose = vi.fn();
-    const onSave = vi.fn().mockRejectedValue(new Error("disk full"));
+    const onSave = vi.fn().mockRejectedValue(new Error("TypeError EACCES /private/tmp/HOSTILE-SENTINEL IPC wrapper"));
     render(<SettingsDialog settings={CUSTOM} onSave={onSave} onClose={onClose} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("disk full"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Settings were not saved"));
+    expect(screen.getByRole("alert").textContent).not.toContain("HOSTILE-SENTINEL");
     expect(onClose).not.toHaveBeenCalled();
   });
 });

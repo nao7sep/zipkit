@@ -17,6 +17,7 @@ import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
 import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../../../shared/spec";
+import { reportableError } from "../externalDropBoundary";
 
 /** Two option sets are equal when every visible field matches — the draft's
  *  dirty check (flat record, so a key-wise compare is exact). */
@@ -58,7 +59,8 @@ export function SettingsDialog({
       await onSave(draft);
       onClose();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      window.zipkit.reportError("save settings", reportableError(err));
+      setSaveError("Settings were not saved. Your changes are still open; try saving again.");
     } finally {
       setSaving(false);
     }
@@ -132,7 +134,7 @@ export function SettingsDialog({
         onChange={(o) => setDraft({ ...draft, defaults: o })}
         disabled={false}
       />
-      {saveError && <p role="alert" style={S.error}>Settings were not saved: {saveError}</p>}
+      {saveError && <p role="alert" style={S.error}>{saveError}</p>}
     </ModalShell>
   );
 }

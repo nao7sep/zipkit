@@ -18,7 +18,6 @@ import {
   planReport,
   reportSummary,
   severityColor,
-  severityLabel,
   verifySummary,
   type ReportLine,
 } from "../view";
@@ -136,7 +135,6 @@ export function Report({
       {job.state === "done" && job.message && <p style={S.note}>{humanSentence(job.message)}</p>}
       {job.actionResult && (
         <p style={{ ...S.note, color: severityColor(job.actionResult.severity) }}>
-          <strong>{severityLabel(job.actionResult.severity)}: </strong>
           {job.actionResult.message}
         </p>
       )}
@@ -173,8 +171,7 @@ export function Report({
 
 function LogRow({ line }: { line: ReportLine }) {
   return (
-    <li style={S.row}>
-      <span style={{ ...S.tag, color: severityColor(line.level) }}>{severityLabel(line.level)}</span>
+    <li style={{ ...S.row, borderColor: severityColor(line.level) }}>
       <span style={S.text}>
         {line.text}
         {line.path && <span style={S.path}> {line.path}</span>}
@@ -188,9 +185,13 @@ const S: Record<string, CSSProperties> = {
   summary: { margin: "0 0 0.5rem", fontSize: "0.95rem", fontWeight: 600 },
   note: { color: "var(--text-2)", margin: "0 0 0.5rem", fontSize: "0.85rem" },
   log: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.3rem" },
-  row: { display: "flex", gap: "0.6rem", alignItems: "baseline", minWidth: 0 },
-  // Fixed-width colored level tag so the messages line up into a scannable column.
-  tag: { flexShrink: 0, width: "4rem", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase" },
+  row: {
+    display: "flex",
+    alignItems: "baseline",
+    minWidth: 0,
+    borderLeft: "2px solid",
+    paddingLeft: "0.55rem",
+  },
   text: { flex: 1, minWidth: 0, fontSize: "0.85rem", wordBreak: "break-word" },
   path: { color: "var(--text-2)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.8rem" },
   srOnly: {

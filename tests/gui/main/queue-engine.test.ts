@@ -111,7 +111,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
-      expect(j?.message).toBe("scan boom");
+      expect(j?.message).toContain("could not be prepared");
       expect(j?.errorCode).toBeUndefined(); // a plain Error carries no SDK code
     });
   });
@@ -383,7 +383,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
-      expect(j?.message).toContain("write failed");
+      expect(j?.message).toContain("could not be written");
     });
   });
 
@@ -434,7 +434,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.trashOriginals(id);
     await vi.waitFor(() =>
-      expect(engine.snapshot()[0]?.actionResult?.message).toContain("Could not move the originals"),
+      expect(engine.snapshot()[0]?.actionResult?.message).toContain("could not be moved to Trash"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
@@ -452,7 +452,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
-    expect(engine.snapshot()[0]?.message).toContain("1 moved to recoverable Trash, 1 kept");
+    expect(engine.snapshot()[0]?.message).toContain("1 original was moved to recoverable Trash; 1 was kept");
   });
 
   it("does not offer a planned output as removable after its write fails", async () => {
@@ -482,7 +482,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeArchive(id);
     await vi.waitFor(() =>
-      expect(engine.snapshot()[0]?.actionResult?.message).toContain("Could not remove the archive"),
+      expect(engine.snapshot()[0]?.actionResult?.message).toContain("archive could not be moved to Trash"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
@@ -606,7 +606,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
-      expect(j?.message).toBe("aborted");
+      expect(j?.message).toContain("could not be prepared");
     });
   });
 });

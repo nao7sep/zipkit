@@ -27,7 +27,6 @@ import {
   progressMessage,
   reportSummary,
   severityColor,
-  severityLabel,
   stateColor,
   stateLabel,
   verifySummary,
@@ -228,14 +227,6 @@ describe("stateLabel", () => {
       "Done",
       "Failed",
     ]);
-  });
-});
-
-describe("severityLabel", () => {
-  it("proper-cases each severity", () => {
-    expect(severityLabel("error")).toBe("Error");
-    expect(severityLabel("warning")).toBe("Warning");
-    expect(severityLabel("info")).toBe("Info");
   });
 });
 

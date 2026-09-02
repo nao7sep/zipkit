@@ -120,18 +120,6 @@ export function stateLabel(state: Job["state"]): string {
   }
 }
 
-/** The human label for a finding severity — proper-cased for UI. */
-export function severityLabel(severity: Finding["severity"]): string {
-  switch (severity) {
-    case "error":
-      return "Error";
-    case "warning":
-      return "Warning";
-    case "info":
-      return "Info";
-  }
-}
-
 /** A standalone user-facing message starts as a sentence, while a leading
  * technical id (`output.exists:`) stays byte-exact and only its explanation is
  * sentence-cased. Paths and other non-letter-led payloads are left alone. */

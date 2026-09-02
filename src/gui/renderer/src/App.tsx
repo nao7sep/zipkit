@@ -95,10 +95,6 @@ function runConfirmation(job: Job): ConfirmOptions | null {
   };
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -310,7 +306,7 @@ export function App() {
       return {
         changed: false,
         accepted: 0,
-        result: { message: `Could not create the job: ${errorMessage(error)}`, severity: "error" },
+        result: { message: "The job could not be created. Check that the inputs are still available, then try again.", severity: "error" },
       };
     }
   }
@@ -330,7 +326,7 @@ export function App() {
       setJobsResult((current) => settleReceiverResult(current, {
         operationKey: "jobs:picker",
         entryKey: "jobs:picker",
-        result: { message: `Could not choose inputs: ${errorMessage(error)}`, severity: "error" },
+        result: { message: "The input picker could not be opened. Try again.", severity: "error" },
       }));
     }
   }
@@ -698,7 +694,7 @@ function JobView({
       return {
         changed: false,
         accepted: 0,
-        result: { message: `Could not add inputs: ${errorMessage(error)}`, severity: "error" },
+        result: { message: "Inputs could not be added. Check that they are still available, then try again.", severity: "error" },
       };
     }
     return {

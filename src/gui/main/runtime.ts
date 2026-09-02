@@ -57,7 +57,14 @@ export function sendQueue(jobs: Job[]): void {
 
 export function toGuiError(err: unknown): GuiError {
   if (err instanceof ZipKitError) {
-    return { type: err.errorType, code: err.code, message: err.message };
+    return { type: err.errorType, code: err.code, message: guiErrorMessage(err.errorType) };
   }
-  return { type: "unknown", code: "unknown", message: err instanceof Error ? err.message : String(err) };
+  return { type: "unknown", code: "unknown", message: guiErrorMessage("unknown") };
+}
+
+function guiErrorMessage(type: string): string {
+  if (type === "read") {
+    return "The archive could not be read. Check that it is still available and is a valid ZIP file.";
+  }
+  return "Verification could not be completed. Check that the archive is still available, then try again.";
 }

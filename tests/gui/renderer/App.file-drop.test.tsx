@@ -157,7 +157,8 @@ describe("App file-drop receivers", () => {
       new File([], "first.txt", { lastModified: 41 }),
     ])));
     const alert = container.querySelector<HTMLElement>('[role="alert"]')!;
-    expect(alert.textContent).toContain("first input failed");
+    expect(alert.textContent).toContain("The job could not be created");
+    expect(alert.textContent).not.toContain("first input failed");
     expect(alert.classList.contains("receiver-result--error")).toBe(true);
 
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [
@@ -165,7 +166,7 @@ describe("App file-drop receivers", () => {
     ])));
     expect(addJob).toHaveBeenCalledTimes(2);
     expect(container.querySelector<HTMLElement>('[role="alert"]')?.textContent)
-      .toContain("first input failed");
+      .toContain("The job could not be created");
   });
 
   it("renders a failed job creation as an error rather than information", async () => {
@@ -182,7 +183,7 @@ describe("App file-drop receivers", () => {
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [input])));
 
     const alert = container.querySelector<HTMLElement>('[role="alert"]')!;
-    expect(alert.textContent).toContain("Could not create the job");
+    expect(alert.textContent).toContain("The job could not be created");
     expect(alert.classList.contains("receiver-result--error")).toBe(true);
   });
 
@@ -199,7 +200,7 @@ describe("App file-drop receivers", () => {
     const input = new File([], "new.txt", { lastModified: 42 });
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [input])));
     expect(container.querySelector<HTMLElement>('[role="alert"]')?.textContent)
-      .toContain("Could not create the job");
+      .toContain("The job could not be created");
 
     await act(async () => jobs.dispatchEvent(fileEvent("drop", [input])));
 
@@ -228,7 +229,7 @@ describe("App file-drop receivers", () => {
     });
     expect(chooseInputs).toHaveBeenCalledTimes(1);
     expect(container.querySelector<HTMLElement>('[role="alert"]')?.textContent)
-      .toContain("picker unavailable");
+      .toContain("The input picker could not be opened");
 
     await act(async () => {
       add.click();

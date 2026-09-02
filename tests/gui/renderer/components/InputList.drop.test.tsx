@@ -208,7 +208,7 @@ describe("InputList external-drop receiver", () => {
       operationKey: "inputs:job-1:picker",
       entryKey: "inputs:job-1:picker",
       result: {
-        message: "Could not add inputs: picker unavailable",
+        message: "Inputs could not be added. Check that they are still available, then try again.",
         severity: "error",
       },
     }));

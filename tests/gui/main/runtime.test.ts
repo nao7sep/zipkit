@@ -12,6 +12,7 @@ import {
   ensureMainWindow,
   getMainWindow,
   setMainWindow,
+  toGuiError,
 } from "../../../src/gui/main/runtime.js";
 
 function fakeWindow() {
@@ -46,5 +47,23 @@ describe("main-window ownership", () => {
     clearMainWindow(first as never);
 
     expect(getMainWindow()).toBe(replacement);
+  });
+});
+
+describe("GUI error presentation", () => {
+  it("keeps arbitrary diagnostic text out of the renderer result", () => {
+    const result = toGuiError(
+      Object.assign(
+        new TypeError("EACCES /private/tmp/HOSTILE-SENTINEL Error invoking remote method"),
+        { code: "EACCES" },
+      ),
+    );
+
+    expect(result).toEqual({
+      type: "unknown",
+      code: "unknown",
+      message: "Verification could not be completed. Check that the archive is still available, then try again.",
+    });
+    expect(result.message).not.toContain("HOSTILE-SENTINEL");
   });
 });

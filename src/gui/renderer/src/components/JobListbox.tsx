@@ -25,7 +25,6 @@ import {
   intentLabel,
   isCancelable,
   label,
-  severityLabel,
   stateLabel,
   stateTint,
 } from "../view";
@@ -293,7 +292,7 @@ function metaText(job: Job): string {
   return [
     intentLabel(job.intent),
     job.actionResult
-      ? `${severityLabel(job.actionResult.severity)}: ${job.actionResult.message}`
+      ? job.actionResult.message
       : job.message
         ? humanSentence(job.message)
         : "",

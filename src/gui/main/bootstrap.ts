@@ -9,7 +9,7 @@
  * only once the root is known good.
  */
 
-import { app, BrowserWindow, dialog, nativeTheme } from "electron";
+import { app, BrowserWindow, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
@@ -21,6 +21,7 @@ import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { loadLayout } from "./layout.js";
+import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 
 // Last-resort hooks: record the failure before the process can die. The session
 // log appends synchronously, so the line is on disk by the time these return.
@@ -119,16 +120,12 @@ function activateMainWindow(): void {
   focusWindow(createWindow());
 }
 
-// Any startup failure reaches the user and halts. Managed-store loaders include
-// the affected path in their own error when recovery cannot preserve the bytes.
-function reportStartupHalt(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
+// Any startup failure reaches the user and halts. The diagnostic stays in the
+// log; the native box carries stable recovery guidance only.
+async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
-  dialog.showErrorBox(
-    "ZipKit could not start",
-    message +
-      "\n\nZipKit stopped before opening its window. Correct the reported problem, then start it again. " +
-      "Your archive files on disk are not affected.",
+  await notifyStartupFailure(
+    "ZipKit stopped before opening its window. Restart it. If the problem continues, check the ZipKit log for the diagnostic. Your archive files on disk are not affected.",
   );
   app.exit(1);
 }
@@ -174,7 +171,12 @@ app.whenReady().then(async () => {
   const queueQuarantinedTo = await restoreQueue();
 
   for (const recoveryDialog of buildRecoveryDialogs({ settingsQuarantinedTo, queueQuarantinedTo })) {
-    dialog.showErrorBox(recoveryDialog.title, recoveryDialog.message);
+    await showAppMessageDialog({
+      owner: initialWindow,
+      title: recoveryDialog.title,
+      message: recoveryDialog.message,
+      buttonLabel: "OK",
+    });
   }
   app.on("activate", () => {
     activateMainWindow();

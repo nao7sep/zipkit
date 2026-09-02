@@ -138,7 +138,7 @@ export function InputList({
         operationKey,
         entryKey,
         result: {
-          message: `Could not add the dropped inputs: ${errorMessage(error)}`,
+          message: "The dropped inputs could not be added. Check that they are still available, then try again.",
           severity: "error",
         },
       });
@@ -154,7 +154,7 @@ export function InputList({
       onResult({
         operationKey: `inputs:${job.id}:picker`,
         entryKey: `inputs:${job.id}:picker`,
-        result: { message: `Could not add inputs: ${errorMessage(error)}`, severity: "error" },
+        result: { message: "Inputs could not be added. Check that they are still available, then try again.", severity: "error" },
       });
     }
   }
@@ -209,9 +209,6 @@ export function InputList({
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 const S: Record<string, CSSProperties> = {
   zone: {
