@@ -18,9 +18,8 @@ export function buildRecoveryDialogs(quarantines: StartupQuarantines): RecoveryD
     dialogs.push({
       title: "Settings were reset",
       message:
-        "An unreadable settings file was set aside here:\n\n" +
-        quarantines.settingsQuarantinedTo +
-        "\n\nZipKit started with default settings. Your archive files on disk are untouched.",
+        "An unreadable settings file was preserved. ZipKit started with default settings. " +
+        "Check the ZipKit log for the saved-copy location. Your archive files on disk are untouched.",
     });
   }
 
@@ -28,9 +27,9 @@ export function buildRecoveryDialogs(quarantines: StartupQuarantines): RecoveryD
     dialogs.push({
       title: "Saved queue was reset",
       message:
-        "ZipKit could not read its saved pending jobs. The queue file was set aside here:\n\n" +
-        quarantines.queueQuarantinedTo +
-        "\n\nZipKit started with an empty queue. The file above still contains the original queue data; your archive files on disk are untouched.",
+        "ZipKit could not read its saved pending jobs. The queue file was preserved for recovery, " +
+        "and ZipKit started with an empty queue. Check the ZipKit log for the saved-copy location. " +
+        "Your archive files on disk are untouched.",
     });
   }
 
