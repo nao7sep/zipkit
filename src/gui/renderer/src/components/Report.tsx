@@ -9,8 +9,9 @@
  * times, so the report never shows a result that no longer holds.
  */
 
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { ExtractData, Job, PlanData } from "../../../shared/api";
+import type { Job, PlanData, VerifyResult } from "../../../shared/api";
 import {
   jobAdvisories,
   humanSentence,
@@ -29,7 +30,7 @@ export function Report({
 }: {
   job: Job;
   plan: PlanData | null;
-  verify: ExtractData | null;
+  verify: VerifyResult | null;
 }) {
   const summary = reportSummary(job, plan);
   // GUI advisories about the inputs (e.g. re-zipping a .zip) lead the log — they
@@ -38,29 +39,112 @@ export function Report({
   const advisories = jobAdvisories(job);
   const lines = plan ? planReport(plan) : [];
 
-  if (!plan && !summary && advisories.length === 0) return <p style={S.muted}>No report yet.</p>;
+  const noReport = !plan && !summary && advisories.length === 0;
 
-  const verifyLines: ReportLine[] = verify
+  const verifyData = verify?.ok ? verify.data : null;
+  const verifyLines: ReportLine[] = verifyData
     ? [
-        {
-          level: verify.reportOk ? "info" : "error",
-          text: verify.reportOk
-            ? `Verified — ${verifySummary(verify)}`
-            : `Verification failed — ${verifySummary(verify)}`,
-        },
-        ...(verify.missing.length > 0
-          ? [{ level: "error" as const, text: `Missing from the archive: ${verify.missing.join(", ")}` }]
+        ...(verifyData.missing.length > 0
+          ? [{ level: "error" as const, text: `Missing from the archive: ${verifyData.missing.join(", ")}` }]
           : []),
-        ...(verify.extra.length > 0
-          ? [{ level: "warning" as const, text: `Unexpected extra entries: ${verify.extra.join(", ")}` }]
+        ...(verifyData.extra.length > 0
+          ? [{ level: "warning" as const, text: `Unexpected extra entries: ${verifyData.extra.join(", ")}` }]
           : []),
       ]
     : [];
 
+  const verificationResult = verify
+    ? verify.ok
+      ? {
+          level: verify.data.reportOk ? "info" as const : "error" as const,
+          text: verify.data.reportOk
+            ? `Verified — ${verifySummary(verify.data)}`
+            : `Verification failed — ${verifySummary(verify.data)}`,
+        }
+      : {
+          level: "error" as const,
+          text: `Verification could not be completed: ${verify.error.message}`,
+        }
+    : null;
+
+  const priorResults = useRef<{ summary: string; action: string; verification: string } | null>(null);
+  const [assertiveAnnouncement, setAssertiveAnnouncement] = useState("");
+  const [politeAnnouncement, setPoliteAnnouncement] = useState("");
+  const summarySignature = summary ? `${summary.level}|${summary.text}` : "";
+  const actionSignature = job.actionResult
+    ? `${job.actionResult.severity}|${job.actionResult.message}`
+    : "";
+  const verificationSignature = verificationResult
+    ? `${verificationResult.level}|${verificationResult.text}`
+    : "";
+  const summaryAnnouncement = summary
+    ? { level: summary.level, text: summary.text }
+    : null;
+  const actionAnnouncement = job.actionResult
+    ? { level: job.actionResult.severity, text: job.actionResult.message }
+    : null;
+
+  // The Report remounts when selection changes, so its first render establishes
+  // a silent baseline. Only later result transitions announce; selecting a job,
+  // restoring existing results, and ordinary report rows remain quiet.
+  useEffect(() => {
+    const current = {
+      summary: summarySignature,
+      action: actionSignature,
+      verification: verificationSignature,
+    };
+    const previous = priorResults.current;
+    priorResults.current = current;
+    if (!previous) return;
+
+    const changed = [
+      { before: previous.summary, after: current.summary, result: summaryAnnouncement },
+      { before: previous.action, after: current.action, result: actionAnnouncement },
+      { before: previous.verification, after: current.verification, result: verificationResult },
+    ];
+    if (!changed.some(({ before, after }) => before !== after)) return;
+
+    let candidate: { level: ReportLine["level"]; text: string } | null = null;
+    for (const item of changed) {
+      if (item.before !== item.after && item.result) {
+        if (!candidate || item.result.level === "error" || candidate.level !== "error") {
+          candidate = item.result;
+        }
+      }
+    }
+
+    if (!candidate) {
+      setAssertiveAnnouncement("");
+      setPoliteAnnouncement("");
+    } else if (candidate.level === "error") {
+      setPoliteAnnouncement("");
+      setAssertiveAnnouncement(candidate.text);
+    } else {
+      setAssertiveAnnouncement("");
+      setPoliteAnnouncement(candidate.text);
+    }
+  }, [actionSignature, summarySignature, verificationSignature]);
+
   return (
     <div>
-      {summary && <p style={{ ...S.summary, color: severityColor(summary.level) }}>{summary.text}</p>}
+      {noReport && <p style={S.muted}>No report yet.</p>}
+      {summary && (
+        <p style={{ ...S.summary, color: severityColor(summary.level) }}>
+          {summary.text}
+        </p>
+      )}
       {job.state === "done" && job.message && <p style={S.note}>{humanSentence(job.message)}</p>}
+      {job.actionResult && (
+        <p style={{ ...S.note, color: severityColor(job.actionResult.severity) }}>
+          <strong>{severityLabel(job.actionResult.severity)}: </strong>
+          {job.actionResult.message}
+        </p>
+      )}
+      {verificationResult && (
+        <p style={{ ...S.note, color: severityColor(verificationResult.level) }}>
+          {verificationResult.text}
+        </p>
+      )}
       {plan && lines.length === 0 && plan.writable && (
         <p style={S.note}>Everything is clean — nothing needed fixing.</p>
       )}
@@ -77,6 +161,12 @@ export function Report({
           ))}
         </ul>
       )}
+      <span aria-live="assertive" aria-atomic="true" style={S.srOnly}>
+        {assertiveAnnouncement}
+      </span>
+      <span aria-live="polite" aria-atomic="true" style={S.srOnly}>
+        {politeAnnouncement}
+      </span>
     </div>
   );
 }
@@ -103,4 +193,15 @@ const S: Record<string, CSSProperties> = {
   tag: { flexShrink: 0, width: "4rem", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase" },
   text: { flex: 1, minWidth: 0, fontSize: "0.85rem", wordBreak: "break-word" },
   path: { color: "var(--text-2)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.8rem" },
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)",
+    whiteSpace: "nowrap",
+    border: 0,
+  },
 };

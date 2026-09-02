@@ -17,10 +17,18 @@
  *   focus, scroll, and aria-selected are projections of it.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { Job } from "../../../shared/api";
-import { humanSentence, intentLabel, isCancelable, label, stateTint } from "../view";
+import {
+  humanSentence,
+  intentLabel,
+  isCancelable,
+  label,
+  severityLabel,
+  stateLabel,
+  stateTint,
+} from "../view";
 import { navIndex, recoverIndex, typeaheadIndex } from "../listbox-nav";
 import { isComposing } from "../composition";
 import { StateBadge } from "./StateBadge";
@@ -50,8 +58,42 @@ export function JobListbox({
   const listRef = useRef<HTMLUListElement>(null);
   const taBuffer = useRef("");
   const taTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const previousResults = useRef<Map<string, string> | null>(null);
+  const [backgroundFailureAnnouncement, setBackgroundFailureAnnouncement] = useState("");
 
   const activeIndex = jobs.findIndex((j) => j.id === selectedId);
+
+  // A selected job's Report is its live result authority. When a background job
+  // newly becomes actionable, announce that row once without making selection
+  // changes or restored initial rows live. The always-mounted live node changes
+  // text only on a real result transition, so progress/ordinary renders stay
+  // silent and deselecting an already-failed job does not announce it again.
+  useEffect(() => {
+    const next = new Map<string, string>();
+    let announcement = "";
+    for (const job of jobs) {
+      const signature = [
+        job.state,
+        job.message ?? "",
+        job.actionResult?.severity ?? "",
+        job.actionResult?.message ?? "",
+      ].join("|");
+      next.set(job.id, signature);
+      const previous = previousResults.current?.get(job.id);
+      const isFailure =
+        job.state === "failed" ||
+        job.state === "needs-attention" ||
+        job.actionResult?.severity === "error";
+      if (previous !== undefined && previous !== signature && job.id !== selectedId && isFailure) {
+        const result =
+          job.actionResult?.message ??
+          (job.message ? humanSentence(job.message) : stateLabel(job.state));
+        announcement = `${label(job)}: ${result}`;
+      }
+    }
+    previousResults.current = next;
+    setBackgroundFailureAnnouncement(announcement);
+  }, [jobs, selectedId]);
 
   // Keep the active option in view and focused when selection changes — but only
   // when focus already lives in the listbox, so selection never steals focus.
@@ -164,7 +206,8 @@ export function JobListbox({
   }
 
   return (
-    <ul
+    <>
+      <ul
       ref={listRef}
       role="listbox"
       aria-label="Job queue"
@@ -236,14 +279,25 @@ export function JobListbox({
           );
         })
       )}
-    </ul>
+      </ul>
+      <span aria-live="assertive" aria-atomic="true" style={S.srOnly}>
+        {backgroundFailureAnnouncement}
+      </span>
+    </>
   );
 }
 
 /** The dim sub-line beside the state badge: the noteworthy intent tag (nothing
  *  for the default save) and the job message, whichever are present. */
 function metaText(job: Job): string {
-  return [intentLabel(job.intent), job.message ? humanSentence(job.message) : ""]
+  return [
+    intentLabel(job.intent),
+    job.actionResult
+      ? `${severityLabel(job.actionResult.severity)}: ${job.actionResult.message}`
+      : job.message
+        ? humanSentence(job.message)
+        : "",
+  ]
     .filter(Boolean)
     .join(" · ");
 }
@@ -296,4 +350,15 @@ const S: Record<string, CSSProperties> = {
   dim: { color: "var(--text-2)", fontSize: "0.8rem" },
   rowAction: { flexShrink: 0, marginTop: "-0.1rem" },
   empty: { padding: "0.75rem", color: "var(--text-2)", fontSize: "0.85rem", cursor: "default" },
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)",
+    whiteSpace: "nowrap",
+    border: 0,
+  },
 };

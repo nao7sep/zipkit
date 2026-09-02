@@ -121,4 +121,45 @@ describe("JobListbox", () => {
     expect(screen.getByText("Saved and verified")).toBeTruthy();
     expect(saved.message).toBe("saved and verified");
   });
+
+  it("announces only actionable job states assertively", () => {
+    const { rerender } = renderListbox({ jobs: [job("a")], selectedId: "a" });
+    const live = document.querySelector<HTMLElement>("[aria-live='assertive']")!;
+    expect(live.textContent).toBe("");
+
+    rerender(
+      <JobListbox
+        jobs={[{ ...job("a", "failed"), message: "write failed" }]}
+        selectedId={null}
+        pullFocusId={null}
+        onFocusPulled={noop}
+        onSelect={noop}
+        onRemove={noop}
+        onCancel={noop}
+      />,
+    );
+
+    expect(live.textContent).toContain("a");
+    expect(live.textContent).toContain("Write failed");
+  });
+
+  it("does not re-announce a restored failure or an existing failure on selection change", () => {
+    const failed = { ...job("a", "failed"), message: "write failed" };
+    const { rerender } = renderListbox({ jobs: [failed], selectedId: "a" });
+    const live = document.querySelector<HTMLElement>("[aria-live='assertive']")!;
+    expect(live.textContent).toBe("");
+
+    rerender(
+      <JobListbox
+        jobs={[failed]}
+        selectedId={null}
+        pullFocusId={null}
+        onFocusPulled={noop}
+        onSelect={noop}
+        onRemove={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(live.textContent).toBe("");
+  });
 });

@@ -417,7 +417,8 @@ describe("queue engine", () => {
     engine.trashOriginals(id);
     await tick();
     expect(calls.trash).toEqual([]); // refused — never trashed
-    expect(engine.snapshot()[0]?.message).toContain("inside an original");
+    expect(engine.snapshot()[0]?.actionResult?.message).toContain("inside an original");
+    expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
   });
 
   it("trashOriginals surfaces a Trash failure instead of claiming success", async () => {
@@ -433,8 +434,9 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.trashOriginals(id);
     await vi.waitFor(() =>
-      expect(engine.snapshot()[0]?.message).toContain("could not move the originals"),
+      expect(engine.snapshot()[0]?.actionResult?.message).toContain("Could not move the originals"),
     );
+    expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
   });
 
@@ -480,8 +482,9 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeArchive(id);
     await vi.waitFor(() =>
-      expect(engine.snapshot()[0]?.message).toContain("could not remove the archive"),
+      expect(engine.snapshot()[0]?.actionResult?.message).toContain("Could not remove the archive"),
     );
+    expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
   });
 

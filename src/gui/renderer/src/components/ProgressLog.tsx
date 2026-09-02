@@ -41,7 +41,14 @@ export function ProgressLog({ events }: { events: LogEvent[] }) {
 
   if (events.length === 0) return <p style={S.empty}>Nothing to show yet.</p>;
   return (
-    <pre ref={ref} style={S.log} onScroll={onScroll}>
+    <pre
+      ref={ref}
+      role="region"
+      aria-label="Progress log"
+      aria-live="off"
+      style={S.log}
+      onScroll={onScroll}
+    >
       {events.map(formatEventLine).join("\n")}
     </pre>
   );

@@ -15,10 +15,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { ExtractData, GuiLogEvent, Job, JobIntent, PlanData } from "../../shared/api";
+import type { GuiLogEvent, Job, JobIntent, PlanData, VerifyResult } from "../../shared/api";
 import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
+  BODY_MIN_HEIGHT,
   BODY_PADDING,
   DEFAULT_LAYOUT,
   LAYOUT_BOUNDS,
@@ -28,6 +29,7 @@ import {
   type PaneLayout,
 } from "../../shared/layout";
 import { AboutDialog } from "./components/AboutDialog";
+import { AppLoadGate } from "./components/AppLoadGate";
 import { AppHeader } from "./components/AppHeader";
 import { CommandBar } from "./components/CommandBar";
 import { isComposing } from "./composition";
@@ -49,6 +51,7 @@ import { hasMod, isEditableTarget, shadowsMacTextBinding } from "./shortcuts";
 import { useConfirm, type ConfirmOptions } from "./components/DialogHost";
 import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
+import { LayoutPersistenceNotice } from "./components/LayoutPersistenceNotice";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { Pane } from "./components/Pane";
 import { ProgressLog } from "./components/ProgressLog";
@@ -130,25 +133,62 @@ export function App() {
   const [jobsDropActive, setJobsDropActive] = useState(false);
   const [jobsResult, setJobsResult] = useState<ReceiverResult | null>(null);
   const [inputResults, setInputResults] = useState<Record<string, ReceiverResult>>({});
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [layoutSaveFailed, setLayoutSaveFailed] = useState(false);
+  const layoutSaveAttempt = useRef(0);
+  const layoutSaveChain = useRef<Promise<void>>(Promise.resolve());
 
   const clearJobsDrop = useCallback(() => {
     setJobsDropActive(false);
   }, []);
 
   useEffect(() => {
-    const unsubscribe = window.zipkit.onQueue(setJobs);
-    void window.zipkit.getQueue().then(setJobs); // initial list (incl. restored jobs)
-    void window.zipkit.getSettings().then((s) => {
-      setDefaults(s.defaults); // persisted defaults for new jobs
-      setUiFontFamily(s.uiFontFamily);
+    let live = true;
+    let loaded = false;
+    let latestQueue: Job[] | null = null;
+    let unsubscribe = () => {};
+
+    try {
+      // Subscribe before the snapshot read so an update that lands during
+      // hydration cannot be overwritten by an older getQueue response.
+      unsubscribe = window.zipkit.onQueue((next) => {
+        latestQueue = next;
+        if (live && loaded) setJobs(next);
+      });
+    } catch (error) {
+      window.zipkit.reportError("subscribe to queue during app load", reportableError(error));
+      setLoadState("failed");
+      return () => {
+        live = false;
+      };
+    }
+
+    void Promise.all([
+      window.zipkit.getQueue(),
+      window.zipkit.getSettings(),
+      window.zipkit.getLayout(),
+    ]).then(([initialJobs, settings, layout]) => {
+      if (!live) return;
+      loaded = true;
+      setJobs(latestQueue ?? initialJobs);
+      setDefaults(settings.defaults);
+      setUiFontFamily(settings.uiFontFamily);
+      // Persisted pane widths are the intent. Live-width clamping below affects
+      // display only and never rewrites what the user dragged.
+      setIntent(clampLayout(layout));
+      setLoadState("ready");
+    }).catch((error) => {
+      if (!live) return;
+      window.zipkit.reportError("load required application state", reportableError(error));
+      setLoadState("failed");
     });
-    // Persisted pane widths ARE the intent. Display-time clamping against the live
-    // body width (below) keeps the center pane usable on a smaller window without
-    // mutating the intent. (A stale fr value from the old conversion reads as tiny
-    // px → clampLayout floors it to the column minimum, which is acceptable.)
-    void window.zipkit.getLayout().then((loaded) => setIntent(clampLayout(loaded)));
-    return unsubscribe;
-  }, []);
+
+    return () => {
+      live = false;
+      unsubscribe();
+    };
+  }, [loadAttempt]);
 
   // Apply the configured UI font by overriding the `--font-ui` CSS variable on :root; blank reverts
   // to the index.css default. The string is handed to CSS verbatim (system fonts only — the CSP
@@ -172,7 +212,7 @@ export function App() {
     observer.observe(el);
     setContainerWidth(el.clientWidth);
     return () => observer.disconnect();
-  }, []);
+  }, [loadState]);
   useEffect(
     () => window.zipkit.onEvent((e) => setEvents((prev) => [...prev.slice(-999), e])),
     [],
@@ -209,6 +249,7 @@ export function App() {
     function onKey(e: KeyboardEvent) {
       if (isComposing(e)) return;
       if (!hasMod(e)) return;
+      if (document.querySelector("[data-app-load-gate]")) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (
         isEditableTarget(e.target) &&
@@ -374,7 +415,24 @@ export function App() {
 
   // The persisted value is the INTENT — and persistence happens ONLY here, in the
   // drag-release handler, never on a window resize.
-  const persistLayout = () => void window.zipkit.setLayout(intentRef.current);
+  async function persistLayout(layout: PaneLayout): Promise<void> {
+    const attempt = ++layoutSaveAttempt.current;
+    // Keep durable writes in gesture order. A rapid keyboard resize may enqueue
+    // another intent before the previous disk write finishes; serializing here
+    // ensures the newest successful intent is also the bytes left on disk.
+    const save = layoutSaveChain.current
+      .catch(() => {})
+      .then(() => window.zipkit.setLayout(layout));
+    layoutSaveChain.current = save;
+    try {
+      await save;
+      if (layoutSaveAttempt.current === attempt) setLayoutSaveFailed(false);
+    } catch {
+      // Main owns and logs the full error. The renderer owns only the concise,
+      // persistent consequence beside the panes; the in-memory layout stays put.
+      if (layoutSaveAttempt.current === attempt) setLayoutSaveFailed(true);
+    }
+  }
   // The Jobs|Archive handle: drag right widens Jobs. The Archive|Progress handle
   // (rendered inside the middle column) drags right to widen Archive (narrow
   // Progress). A drag sets the user's intent (clamped only into the per-column
@@ -390,12 +448,12 @@ export function App() {
       onDragDelta={(dx) =>
         setIntent(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
       }
-      onDragEnd={persistLayout}
+      onDragEnd={() => void persistLayout(intentRef.current)}
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
         const next = clampLayout({ ...intentRef.current, jobsWidth: intentRef.current.jobsWidth + dx });
         setIntent(next);
-        void window.zipkit.setLayout(next);
+        void persistLayout(next);
       }}
     />
   );
@@ -412,12 +470,12 @@ export function App() {
           clampLayout({ ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx }),
         )
       }
-      onDragEnd={persistLayout}
+      onDragEnd={() => void persistLayout(intentRef.current)}
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
         const next = clampLayout({ ...intentRef.current, progressWidth: intentRef.current.progressWidth - dx });
         setIntent(next);
-        void window.zipkit.setLayout(next);
+        void persistLayout(next);
       }}
     />
   );
@@ -429,6 +487,18 @@ export function App() {
     () => clampLayoutToWidth(intent, containerWidth),
     [intent, containerWidth],
   );
+
+  if (loadState !== "ready") {
+    return (
+      <AppLoadGate
+        failed={loadState === "failed"}
+        onRetry={() => {
+          setLoadState("loading");
+          setLoadAttempt((attempt) => attempt + 1);
+        }}
+      />
+    );
+  }
 
   // Five tracks: Jobs | handle | Archive (flex) | handle | Progress. The center
   // track carries a real minimum (ARCHIVE_MIN_WIDTH) so the primary pane can
@@ -447,7 +517,11 @@ export function App() {
         onOpenShortcuts={() => setDialog("shortcuts")}
         onOpenAbout={() => setDialog("about")}
       />
-      <div ref={bodyRef} style={bodyStyle}>
+      {layoutSaveFailed && (
+        <LayoutPersistenceNotice onDismiss={() => setLayoutSaveFailed(false)} />
+      )}
+      <div data-app-content-viewport style={S.contentViewport}>
+        <div data-app-pane-grid ref={bodyRef} style={bodyStyle}>
         <Pane
           title="Jobs"
           actions={
@@ -514,6 +588,7 @@ export function App() {
             </Pane>
           </>
         )}
+        </div>
       </div>
 
       {dialog === "settings" && (
@@ -548,7 +623,7 @@ function JobView({
   // verify state start fresh, no manual re-sync.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanData | null>(null);
-  const [verify, setVerify] = useState<ExtractData | null>(null);
+  const [verify, setVerify] = useState<VerifyResult | null>(null);
   const confirm = useConfirm();
   // "Use default parameters" is DERIVED from whether the job's options still equal
   // the defaults — not a free-floating flag that could claim "defaults" while the
@@ -696,7 +771,7 @@ function JobView({
         if (job.output)
           void window.zipkit
             .verify(job.id, job.output, job.options.metadata)
-            .then((r) => r.ok && setVerify(r.data));
+            .then(setVerify);
         break;
       case "reveal":
         if (job.output) window.zipkit.reveal(job.output);
@@ -840,9 +915,10 @@ function JobView({
 
 const S: Record<string, CSSProperties> = {
   shell: { height: "100%", display: "flex", flexDirection: "column" },
+  contentViewport: { flex: 1, minHeight: 0, overflow: "auto" },
   body: {
-    flex: 1,
-    minHeight: 0,
+    height: "100%",
+    minHeight: BODY_MIN_HEIGHT,
     display: "grid",
     // gridTemplateColumns AND padding are set inline from the layout/constants
     // (so the body padding matches BODY_PADDING in the derived window minimum);

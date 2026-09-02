@@ -85,7 +85,7 @@ export interface ZipKitGuiApi {
 
   /** The persisted pane layout (the default layout if none saved). */
   getLayout(): Promise<PaneLayout>;
-  /** Persist the pane layout (best-effort; never rejects). */
+  /** Persist the pane layout; rejects so the renderer can retain and present a failed save. */
   setLayout(layout: PaneLayout): Promise<void>;
 
   /** Enqueue a job (planned in the background); returns its id. Non-blocking — it

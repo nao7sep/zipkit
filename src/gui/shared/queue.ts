@@ -5,7 +5,7 @@
  * renderer fetches for the selected job via `getPlan`.
  */
 
-import type { PlanSummary } from "../../sdk/types.js";
+import type { PlanSummary, Severity } from "../../sdk/types.js";
 import type { GuiOptions } from "./spec.js";
 
 /** What a job does when run: just write, or write-verify-then-Trash the originals. */
@@ -60,6 +60,10 @@ export interface Job {
   writable?: boolean;
   /** A short status line for needs-attention / failed / done. */
   message?: string;
+  /** Result of a follow-up action performed on a terminal job, such as moving
+   * the archive or originals to Trash. Kept separate from lifecycle `message`
+   * so its severity and recovery are explicit rather than parsed from prose. */
+  actionResult?: { severity: Severity; message: string };
   /** The SDK error code (e.g. `output.ambiguous`) when a fault produced the
    *  current state, so the renderer can show stable, friendly guidance keyed on
    *  the code rather than parsing `message`. Absent when there is no fault. */

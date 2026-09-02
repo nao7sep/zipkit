@@ -37,8 +37,10 @@ export function registerIpc(): void {
     try {
       await saveLayout(layout);
     } catch (err) {
-      // Best-effort and non-fatal: a write failure is logged, never thrown back.
       log.error("failed to persist layout", { error: errorInfo(err) });
+      // The in-memory layout remains valid and usable, but the renderer owns the
+      // persistent user-facing result for this user gesture.
+      throw err;
     }
   });
 

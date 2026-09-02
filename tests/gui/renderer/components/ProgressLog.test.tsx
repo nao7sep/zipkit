@@ -37,5 +37,8 @@ describe("ProgressLog", () => {
     expect(log).not.toContain("  debug  ");
     expect(log).not.toContain("warning: name.reserved");
     expect(events[0]!.message).toBe("zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)");
+    const region = screen.getByRole("region", { name: "Progress log" });
+    expect(region.getAttribute("aria-live")).toBe("off");
+    expect(screen.queryByRole("log")).toBeNull();
   });
 });

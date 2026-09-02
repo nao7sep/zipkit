@@ -144,7 +144,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     const aborter = new AbortController();
     rec.aborter = aborter;
     const current = (): boolean => recs.get(id) === rec && rec.aborter === aborter;
-    set(rec, { state: "planning", message: undefined, errorCode: undefined });
+    set(rec, { state: "planning", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
     try {
       const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id));
@@ -187,7 +187,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.aborter = new AbortController();
     const signal = rec.aborter.signal;
     const onProgress = progressFor(id);
-    set(rec, { state: "running", message: undefined, errorCode: undefined });
+    set(rec, { state: "running", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
     deps.log.info("job run started", { jobId: id, intent: rec.job.intent });
     try {
@@ -303,7 +303,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
    *  caller has already placed the id in `pending`. */
   function startOrQueue(rec: Rec): void {
     if (draining) {
-      set(rec, { state: "queued", message: undefined, errorCode: undefined });
+      set(rec, { state: "queued", message: undefined, actionResult: undefined, errorCode: undefined });
       emit();
     }
     void drain();
@@ -435,14 +435,25 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           const result = await deps.trash([output]);
           if (result.failed.length > 0) throw new Error(trashFailureMessage(result));
         } catch (err) {
-          set(rec, { message: `could not remove the archive: ${errMsg(err)}` });
+          set(rec, {
+            actionResult: {
+              severity: "error",
+              message: `Could not remove the archive: ${errMsg(err)}`,
+            },
+          });
           deps.log.error("remove archive failed", { jobId: id, error: errorInfo(err) });
           emit();
           return;
         }
         // Back to an editable, re-planned job so options can be adjusted and the
         // archive created again.
-        set(rec, { output: undefined, summary: undefined, writable: undefined, message: undefined });
+        set(rec, {
+          output: undefined,
+          summary: undefined,
+          writable: undefined,
+          message: undefined,
+          actionResult: undefined,
+        });
         rec.publishedOutput = null;
         emit();
         void planJob(id);
@@ -462,7 +473,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           const result = await deps.trash(inputs);
           if (result.failed.length > 0) {
             set(rec, {
-              message: `${result.moved.length} moved to recoverable Trash; ${result.failed.length} kept (${trashFailureMessage(result)})`,
+              actionResult: {
+                severity: "error",
+                message: `${result.moved.length} moved to recoverable Trash; ${result.failed.length} kept (${trashFailureMessage(result)})`,
+              },
             });
             deps.log.error("trash originals partially failed", { jobId: id, moved: result.moved, failed: result.failed });
             emit();
@@ -470,12 +484,19 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             return;
           }
         } catch (err) {
-          set(rec, { message: `could not move the originals to Trash: ${errMsg(err)}` });
+          set(rec, {
+            actionResult: {
+              severity: "error",
+              message: `Could not move the originals to Trash: ${errMsg(err)}`,
+            },
+          });
           deps.log.error("trash originals failed", { jobId: id, error: errorInfo(err) });
           emit();
           return;
         }
-        set(rec, { message: `${inputs.length} moved to Trash` });
+        set(rec, {
+          actionResult: { severity: "info", message: `${inputs.length} moved to Trash.` },
+        });
         deps.log.info("originals trashed", { jobId: id, count: inputs.length });
         emit();
         // Re-classify so the now-missing originals read as such and the command hides.
