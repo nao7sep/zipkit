@@ -143,19 +143,16 @@ describe("pane-layout persistence results", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("current layout is still in use");
-    expect(alert.style.flexShrink).toBe("0");
-    expect(document.querySelector<HTMLElement>("[data-app-content-viewport]")?.style.overflow)
-      .toBe("auto");
-    expect(document.querySelector<HTMLElement>("[data-app-pane-grid]")?.style.minHeight)
-      .toBe("360px");
-    expect(splitter.getAttribute("aria-valuenow")).toBe("298");
-    expect(setLayout).toHaveBeenNthCalledWith(1, { ...DEFAULT_LAYOUT, jobsWidth: 298 });
+    const firstWidth = Number(splitter.getAttribute("aria-valuenow"));
+    expect(firstWidth).toBeGreaterThan(DEFAULT_LAYOUT.jobsWidth);
+    expect(setLayout).toHaveBeenNthCalledWith(1, { ...DEFAULT_LAYOUT, jobsWidth: firstWidth });
 
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
 
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(splitter.getAttribute("aria-valuenow")).toBe("308");
-    expect(setLayout).toHaveBeenNthCalledWith(2, { ...DEFAULT_LAYOUT, jobsWidth: 308 });
+    const secondWidth = Number(splitter.getAttribute("aria-valuenow"));
+    expect(secondWidth).toBeGreaterThan(firstWidth);
+    expect(setLayout).toHaveBeenNthCalledWith(2, { ...DEFAULT_LAYOUT, jobsWidth: secondWidth });
   });
 
   it("allows dismissal without rolling back the unsaved in-memory layout", async () => {

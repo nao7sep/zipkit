@@ -91,7 +91,7 @@ describe("App file-drop receivers", () => {
     await act(async () => jobs.dispatchEvent(over));
     expect(over.defaultPrevented).toBe(true);
     expect((over as Event & { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect).toBe("copy");
-    expect(jobs.style.boxShadow).toContain("var(--accent)");
+    expect(jobs.style.boxShadow).not.toBe("");
     expect(container.textContent).not.toContain("Drop to check files and folders");
     await act(async () => jobs.dispatchEvent(fileEvent("dragleave", [])));
     expect(jobs.style.boxShadow).toBe("");

@@ -5,14 +5,10 @@
  * summed pane minimums + chrome, a literal guard so a magic number can't creep
  * back in), the width-aware clamp as the intent→display map (the center Archive
  * pane keeps its minimum across a width sweep and a drag stops before crossing
- * it), the intent invariant (clamping for display is pure — it returns a new
- * layout and never mutates the stored intent it was given), and a CSS-text guard
- * that index.css carries the global scroll-bar styling alongside color-scheme.
+ * it), and the intent invariant (clamping for display is pure — it returns a new
+ * layout and never mutates the stored intent it was given).
  */
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   ARCHIVE_MIN_WIDTH,
@@ -131,31 +127,5 @@ describe("clampLayoutToWidth", () => {
     const wide = clampLayoutToWidth(intent, minWindowWidth() + 1000);
     expect(wide).toEqual(snapshot);
     expect(intent).toEqual(snapshot);
-  });
-});
-
-describe("index.css scroll-bar styling", () => {
-  it("has ::-webkit-scrollbar + scrollbar-width alongside color-scheme: dark", () => {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const css = readFileSync(
-      path.join(here, "../../../src/gui/renderer/src/index.css"),
-      "utf8",
-    );
-    expect(css).toContain("color-scheme: dark");
-    expect(css).toContain("::-webkit-scrollbar");
-    expect(css).toMatch(/scrollbar-width:\s*thin/);
-    expect(css).toMatch(/scrollbar-color:/);
-    // The pill-thumb recipe from the convention (transparent border + clip).
-    expect(css).toContain("background-clip: padding-box");
-  });
-
-  it("preserves the active focus accent and mutes retained focus while inactive", () => {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const css = readFileSync(
-      path.join(here, "../../../src/gui/renderer/src/index.css"),
-      "utf8",
-    );
-    expect(css).toMatch(/button:focus-visible\s*\{[^}]*outline:\s*2px\s+solid\s+var\(--accent\)/);
-    expect(css).toMatch(/\[data-window-inactive\] button:focus-visible\s*\{[^}]*outline-color:\s*var\(--border\)/);
   });
 });

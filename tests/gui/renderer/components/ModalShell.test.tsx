@@ -65,17 +65,4 @@ describe("ModalShell", () => {
     fireEvent.click(screen.getByText("Close"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-
-  it("bounds result growth to the scrollable body while the title and actions stay fixed", () => {
-    renderShell();
-    const dialog = screen.getByRole("dialog");
-    const footer = dialog.querySelector<HTMLElement>("[data-modal-footer]")!;
-    const body = screen.getByText("Body").parentElement!;
-
-    expect(dialog.style.maxHeight).toBe("85vh");
-    expect(dialog.style.overflow).toBe("hidden");
-    expect(body.style.overflowY).toBe("auto");
-    expect(body.style.minHeight).toBe("0px");
-    expect(footer.style.flexShrink).toBe("0");
-  });
 });

@@ -39,6 +39,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:test",
     "test": "vitest run",
     "check": "npm run typecheck && npm test",
+    "check:release-tag": "node scripts/check-release-tag.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
@@ -70,7 +71,8 @@
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "^2.9.0"
   },
   "allowScripts": {
     "electron-winstaller@5.4.0": true,

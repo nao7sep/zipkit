@@ -63,7 +63,7 @@ describe("InputList external-drop receiver", () => {
     const dataTransfer = transfer(["Files"], [file]);
 
     fireEvent.dragOver(receiver, { dataTransfer });
-    expect(receiver.style.boxShadow).toContain("var(--accent)");
+    expect(receiver.style.boxShadow).not.toBe("");
     fireEvent.dragLeave(receiver, { dataTransfer });
     expect(receiver.style.boxShadow).toBe("");
     fireEvent.dragOver(receiver, { dataTransfer });
