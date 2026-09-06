@@ -11,7 +11,7 @@ import { ReceiverResultNotice } from "./ReceiverResultNotice";
 import { reportableError } from "../externalDropBoundary";
 
 const REPO = "https://github.com/nao7sep/zipkit";
-export const ABOUT_COPYRIGHT = "© 2026 Yoshinao Inoguchi · MIT License";
+export const ABOUT_COPYRIGHT = "© 2026 Yoshinao Inoguchi · GNU GPL v3 or later";
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const [info, setInfo] = useState<{ name: string; version: string } | null>(null);

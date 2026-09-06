@@ -36,7 +36,7 @@ The SDK is ESM and consumed directly from TypeScript source. Run the script with
 
 ## License
 
-MIT © 2026 Yoshinao Inoguchi
+[GNU GPL v3 or later](LICENSE) © 2026 Yoshinao Inoguchi
 
 ## Contact
 

@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "npm@12.0.2",
   "description": "Cross-platform ZIP archiver and portability linter/fixer: a desktop app and the SDK engine it is built on.",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "author": {
     "name": "Yoshinao Inoguchi",
     "email": "yoshinao@inoguchi.com",

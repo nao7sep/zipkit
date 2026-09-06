@@ -31,7 +31,7 @@ describe("AboutDialog", () => {
 
     render(<AboutDialog onClose={() => {}} />);
 
-    expect(ABOUT_COPYRIGHT).toBe("© 2026 Yoshinao Inoguchi · MIT License");
+    expect(ABOUT_COPYRIGHT).toBe("© 2026 Yoshinao Inoguchi · GNU GPL v3 or later");
     expect(screen.getByText(ABOUT_COPYRIGHT)).toBeTruthy();
   });
 
