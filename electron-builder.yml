@@ -17,6 +17,9 @@ directories:
 files:
   - out/**
   - "!**/*.map"
+  - "!**/*.d.ts"
+  - "!**/*.d.mts"
+  - "!**/*.d.cts"
 
 # Tahoe "Liquid Glass" icon: ship the pre-compiled asset catalog (committed in
 # company/assets, deployed here by the liquid-glass-icon tool) into Contents/Resources.
@@ -54,7 +57,7 @@ win:
     - zip
 
 # Clean, predictable installer filename (electron-builder's default is
-# "ZipKit Setup 0.1.0.exe", with a space). Portable zips keep their defaults.
+# "ZipKit Setup X.Y.Z.exe", with a space). Portable zips keep their defaults.
 nsis:
   oneClick: false
   perMachine: false

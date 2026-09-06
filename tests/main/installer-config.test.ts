@@ -4,7 +4,21 @@ import { parse } from "yaml";
 
 const config = parse(
   readFileSync(new URL("../../electron-builder.yml", import.meta.url), "utf8"),
-) as { nsis?: Record<string, unknown> };
+) as {
+  files?: string[];
+  nsis?: Record<string, unknown>;
+};
+
+describe("packaged development metadata", () => {
+  it("excludes source maps and TypeScript declarations", () => {
+    expect(config.files).toEqual(expect.arrayContaining([
+      "!**/*.map",
+      "!**/*.d.ts",
+      "!**/*.d.mts",
+      "!**/*.d.cts",
+    ]));
+  });
+});
 
 describe("Windows installer configuration", () => {
   it("uses the assisted dual-scope NSIS contract", () => {
