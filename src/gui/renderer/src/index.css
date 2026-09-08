@@ -20,6 +20,8 @@
   --border: #3a3f2e;
   --text: #f0f2e6;
   --text-2: #a5ad94;
+  --scrollbar-thumb: #737b68;
+  --scrollbar-thumb-active: var(--text-2);
   --accent: #f0b429;
   --accent-hover: #f8c94e;
   --accent-ink: #211a03;
@@ -42,31 +44,42 @@
  * container — Pane bodies, the ActivityLog <pre>, ModalShell, the job listbox.
  * `color-scheme: dark` (above) alone leaves the platform's default bar in place,
  * which on some platforms stays thick and square even in dark mode, so the bar is
- * styled explicitly: a slim ~12px gutter, a fully rounded pill thumb inset from
+ * styled explicitly: a reachable 16px gutter, a fully rounded 10px thumb inset from
  * the gutter edges (a transparent 3px border with the background clipped to the
  * padding box gives the thumb breathing room rather than filling the gutter edge
  * to edge), a transparent track, and a thumb that brightens on hover. Firefox
- * gets the same slim/themed bar via the standard scrollbar-* properties. All
+ * gets the same themed bar via the standard scrollbar-* properties. All
  * colors come from the existing palette tokens, so the bar matches the theme. */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 *::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: var(--border);
+  background-color: var(--scrollbar-thumb);
   background-clip: padding-box;
   border: 3px solid transparent;
   border-radius: 999px;
 }
-*::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-2);
+*::-webkit-scrollbar-thumb:hover,
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-active);
+}
+*:hover,
+*:focus-within {
+  scrollbar-color: var(--scrollbar-thumb-active) transparent;
+}
+[role="region"][tabindex="0"],
+[role="listbox"],
+[role="grid"] {
+  scrollbar-gutter: stable;
 }
 *::-webkit-scrollbar-corner {
   background: transparent;

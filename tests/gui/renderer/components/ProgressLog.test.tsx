@@ -39,6 +39,7 @@ describe("ProgressLog", () => {
     expect(events[0]!.message).toBe("zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)");
     const region = screen.getByRole("region", { name: "Progress log" });
     expect(region.getAttribute("aria-live")).toBe("off");
+    expect(region.getAttribute("tabindex")).toBe("0");
     expect(screen.queryByRole("log")).toBeNull();
   });
 });

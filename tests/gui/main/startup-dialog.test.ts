@@ -19,7 +19,9 @@ describe("app message dialog document", () => {
   it("pins header and footer while only the body can scroll", () => {
     const html = buildAppMessageDialogDocument("Could not start", "line\n".repeat(1_000), "Quit");
 
-    expect(html.indexOf('<div class="body">')).toBeLessThan(html.indexOf('<div class="footer">'));
+    expect(html.indexOf('<div class="body"')).toBeLessThan(html.indexOf('<div class="footer">'));
+    expect(html).toContain('role="region" aria-label="Could not start details" tabindex="0"');
+    expect(html).toContain("*::-webkit-scrollbar{width:16px;height:16px}");
     expect(html).toContain(">Quit</button>");
   });
 

@@ -46,6 +46,7 @@ export function ProgressLog({ events }: { events: LogEvent[] }) {
       role="region"
       aria-label="Progress log"
       aria-live="off"
+      tabIndex={0}
       style={S.log}
       onScroll={onScroll}
     >
