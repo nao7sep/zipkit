@@ -24,6 +24,7 @@ import { getWindowPlacement, loadLayout, saveWindowPlacement } from "./layout.js
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
 import { applyRestoredBounds, configureWindowPlacement, resolveWindowRestoration } from "./windowPlacement.js";
+import { flushThenExit } from "./quit.js";
 
 let flushMainWindowPlacement: (() => Promise<void>) | null = null;
 
@@ -266,13 +267,16 @@ let queueFlushedForQuit = false;
 app.on("before-quit", (event) => {
   if (queueFlushedForQuit) return;
   event.preventDefault();
-  void Promise.all([flushQueue(), flushMainWindowPlacement?.()]).then(() => {
-    queueFlushedForQuit = true;
-    log.info("app quitting");
-    app.quit();
-  }).catch((err) => {
-    log.error("failed to flush the queue before quit", { error: errorInfo(err) });
-    queueFlushedForQuit = true;
-    app.quit();
-  });
+  void flushThenExit(
+    [flushQueue(), flushMainWindowPlacement?.()],
+    () => {
+      queueFlushedForQuit = true;
+      log.info("app quitting");
+    },
+    (err) => {
+      queueFlushedForQuit = true;
+      log.error("failed to flush the queue before quit", { error: errorInfo(err) });
+    },
+    (code) => app.exit(code),
+  );
 });
