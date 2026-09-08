@@ -26,12 +26,18 @@ function Write-Step {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoDir = Split-Path -Parent $scriptDir
+$runtimeHelper = Join-Path $scriptDir "launcher-runtime.mjs"
+$runtimeToken = [guid]::NewGuid().ToString("N")
 $appName = "ZipKit"
 $outDir = "release"
 $exePath = Join-Path $repoDir "$outDir/win-unpacked/$appName.exe"
 
 try {
     Set-Utf8Console
+
+    if (-not (Get-Command "node" -ErrorAction SilentlyContinue)) {
+        throw "Missing required command: node"
+    }
 
     Set-Location $repoDir
 
@@ -43,11 +49,16 @@ try {
     }
 
     $builtAt = (Get-Item $exePath).LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+    & node $runtimeHelper claim $runtimeToken
+    & node $runtimeHelper stop electron "ZipKit" "ZipKit"
+    if ($LASTEXITCODE -ne 0) { throw "Could not replace the existing ZipKit runtime." }
     Write-Step "Launching the existing packaged app (built: $builtAt)"
     Write-Host "If you changed source since then, run rebuild instead."
 
     # GUI app: launch non-blocking via Start-Process.
-    Start-Process -FilePath $exePath
+    Start-Process -FilePath $exePath | Out-Null
+    & node $runtimeHelper wait-process $exePath 30000
+    if ($LASTEXITCODE -ne 0) { throw "ZipKit did not start." }
 }
 catch {
     Write-Host ""

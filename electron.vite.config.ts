@@ -30,6 +30,11 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(import.meta.dirname, "src/gui/renderer"),
+    server: {
+      host: "127.0.0.1",
+      port: 29819,
+      strictPort: true,
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(import.meta.dirname, "src/gui/renderer/index.html") },
