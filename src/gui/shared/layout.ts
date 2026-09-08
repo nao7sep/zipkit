@@ -1,8 +1,8 @@
 /**
  * The persisted pane layout: the user-adjustable widths of the side columns
  * (Jobs on the left, Progress on the right); the middle Archive column flexes to
- * fill the rest. This is GUI layout state — distinct from window position/size,
- * which is deliberately NOT persisted. Pure here (shared by the renderer's drag
+ * fill the rest. This is GUI layout state; window placement is persisted beside
+ * it but remains an independent field owned by the main process. Pure here (shared by the renderer's drag
  * logic and the main-process store); the file I/O lives in main/layout.ts.
  *
  * SINGLE SOURCE OF TRUTH FOR SIZING. The pane minimums declared here
@@ -20,6 +20,13 @@ export interface PaneLayout {
   jobsWidth: number;
   /** Width of the Progress column, in CSS pixels. */
   progressWidth: number;
+}
+
+export type WindowPlacementMode = "normal" | "maximized";
+export interface WindowBounds { x: number; y: number; width: number; height: number }
+export interface WindowPlacementRecord {
+  normalBounds: WindowBounds | null;
+  mode: WindowPlacementMode;
 }
 
 /** Min/max for each user-resizable side column, so a drag (or a stale file)

@@ -10,7 +10,13 @@
 
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
-import { DEFAULT_LAYOUT, clampLayout, type PaneLayout } from "../shared/layout.js";
+import {
+  DEFAULT_LAYOUT,
+  clampLayout,
+  type PaneLayout,
+  type WindowBounds,
+  type WindowPlacementRecord,
+} from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
@@ -27,8 +33,15 @@ function freshLayout(): PaneLayout {
   return { ...DEFAULT_LAYOUT };
 }
 
-/** Parse and validate layout-file text into a clamped {@link PaneLayout}. */
-export function parseLayout(text: string): PaneLayout {
+interface LayoutDocument {
+  layout: PaneLayout;
+  windowPlacements: { main: WindowPlacementRecord | null };
+}
+
+let cache: LayoutDocument = { layout: freshLayout(), windowPlacements: { main: null } };
+let writeQueue: Promise<void> = Promise.resolve();
+
+function parseDocument(text: string): LayoutDocument {
   const root = parseManagedObject(text, "layout.json");
   const layout = root.layout;
   if (!isPlainObject(layout)) throw new InvalidManagedJsonError("layout.json", "layout must be an object");
@@ -37,12 +50,24 @@ export function parseLayout(text: string): PaneLayout {
       throw new InvalidManagedJsonError("layout.json", `layout.${key} must be a number`);
     }
   }
-  return clampLayout({ ...DEFAULT_LAYOUT, ...(layout as Partial<PaneLayout>) });
+  return {
+    layout: clampLayout({ ...DEFAULT_LAYOUT, ...(layout as Partial<PaneLayout>) }),
+    windowPlacements: normalizeWindowPlacements(root.windowPlacements),
+  };
+}
+
+/** Parse and validate layout-file text into a clamped {@link PaneLayout}. */
+export function parseLayout(text: string): PaneLayout {
+  return parseDocument(text).layout;
 }
 
 /** Serialize a layout to file text. Pure. */
 export function serializeLayout(layout: PaneLayout): string {
-  return JSON.stringify({ version: 1, layout: clampLayout(layout) }, null, 2);
+  return serializeDocument({ ...cache, layout: clampLayout(layout) });
+}
+
+function serializeDocument(document: LayoutDocument): string {
+  return JSON.stringify({ version: 1, ...document }, null, 2);
 }
 
 /** Load the persisted layout; the default layout if there is no readable file. A present-but-corrupt
@@ -52,7 +77,14 @@ export function serializeLayout(layout: PaneLayout): string {
  *  shape, identical to config.json and queue.json. Layout is disposable view state, so callers leave
  *  its quarantine outcome log-only rather than raising a recovery dialog. */
 export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<PaneLayout>> {
-  return loadManagedJson(layoutFile(), parseLayout, freshLayout, logger);
+  const loaded = await loadManagedJson(
+    layoutFile(),
+    parseDocument,
+    () => ({ layout: freshLayout(), windowPlacements: { main: null } }),
+    logger,
+  );
+  cache = loaded.value;
+  return { ...loaded, value: loaded.value.layout };
 }
 
 /** Persist the layout through the shared managed-text atomic write (temp file + rename), recording the
@@ -62,5 +94,38 @@ export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonL
  *  saves (this is the new design, not the old "exclude volatile state" rule). Throws on write failure;
  *  the caller logs it. */
 export async function saveLayout(layout: PaneLayout): Promise<void> {
-  await writeManagedJson(layoutFile(), serializeLayout(layout));
+  cache = { ...cache, layout: clampLayout(layout) };
+  await persistCache();
+}
+
+export function getWindowPlacement(): WindowPlacementRecord | null {
+  const placement = cache.windowPlacements.main;
+  return placement ? structuredClone(placement) : null;
+}
+
+export async function saveWindowPlacement(placement: WindowPlacementRecord): Promise<void> {
+  cache = { ...cache, windowPlacements: { main: structuredClone(placement) } };
+  await persistCache();
+}
+
+function persistCache(): Promise<void> {
+  const write = writeQueue.then(async () => {
+    const snapshot = structuredClone(cache);
+    await writeManagedJson(layoutFile(), serializeDocument(snapshot));
+  });
+  writeQueue = write.catch(() => {});
+  return write;
+}
+
+function normalizeWindowPlacements(raw: unknown): LayoutDocument["windowPlacements"] {
+  if (!isPlainObject(raw) || !isPlainObject(raw.main)) return { main: null };
+  const mode = raw.main.mode === "normal" || raw.main.mode === "maximized" ? raw.main.mode : "normal";
+  return { main: { normalBounds: normalizeBounds(raw.main.normalBounds), mode } };
+}
+
+function normalizeBounds(raw: unknown): WindowBounds | null {
+  if (!isPlainObject(raw)) return null;
+  const values = [raw.x, raw.y, raw.width, raw.height];
+  if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) return null;
+  return { x: raw.x as number, y: raw.y as number, width: raw.width as number, height: raw.height as number };
 }

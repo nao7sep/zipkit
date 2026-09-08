@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } fro
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadLayout, parseLayout, saveLayout, serializeLayout } from "../../../src/gui/main/layout.js";
+import { getWindowPlacement, loadLayout, parseLayout, saveLayout, saveWindowPlacement, serializeLayout } from "../../../src/gui/main/layout.js";
 import type { AppLog } from "../../../src/gui/main/log.js";
 import {
   ARCHIVE_MIN_WIDTH,
@@ -44,6 +44,16 @@ describe("parseLayout", () => {
       jobsWidth: 320,
       progressWidth: DEFAULT_LAYOUT.progressWidth,
     });
+  });
+
+  it("defaults malformed placement without disturbing pane widths", async () => {
+    const root = process.env.ZIPKIT_HOME;
+    void root;
+    expect(parseLayout(JSON.stringify({
+      version: 1,
+      layout: { jobsWidth: 320, progressWidth: 360 },
+      windowPlacements: { main: { normalBounds: { x: 1, y: 2, width: "wide", height: 700 }, mode: "tilted" } },
+    }))).toEqual({ jobsWidth: 320, progressWidth: 360 });
   });
 
   it("rejects junk or a missing layout so the loader can preserve it", () => {
@@ -172,6 +182,16 @@ describe("layout file quarantine-then-reset", () => {
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(managedEntries(root).sort()).toEqual(["layout.json", quarantined].sort());
+  });
+
+  it("round-trips placement independently from pane layout", async () => {
+    await loadLayout();
+    await saveLayout({ jobsWidth: 300, progressWidth: 360 });
+    const placement = { normalBounds: { x: 20, y: 30, width: 1200, height: 780 }, mode: "normal" as const };
+    await saveWindowPlacement(placement);
+    expect(getWindowPlacement()).toEqual(placement);
+    expect((await loadLayout()).value).toEqual({ jobsWidth: 300, progressWidth: 360 });
+    expect(getWindowPlacement()).toEqual(placement);
   });
 
   it("quarantines wrong-shaped widths instead of silently rewriting them", async () => {
