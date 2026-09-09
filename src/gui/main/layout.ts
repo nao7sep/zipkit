@@ -1,3 +1,4 @@
+import { normalizeWindowsNormalBounds } from "../shared/windows-placement.js";
 /**
  * Pane-layout persistence: the user's adjusted column widths, saved so the panes
  * reopen as the user left them. The file lives at `layout.json` under zipkit's
@@ -120,7 +121,9 @@ function persistCache(): Promise<void> {
 function normalizeWindowPlacements(raw: unknown): LayoutDocument["windowPlacements"] {
   if (!isPlainObject(raw) || !isPlainObject(raw.main)) return { main: null };
   const mode = raw.main.mode === "normal" || raw.main.mode === "maximized" ? raw.main.mode : "normal";
-  return { main: { normalBounds: normalizeBounds(raw.main.normalBounds), mode } };
+  return { main: { normalBounds: normalizeBounds(raw.main.normalBounds), mode,
+    ...(raw.main.windowsNormalBounds === undefined ? {} : { windowsNormalBounds: normalizeWindowsNormalBounds(raw.main.windowsNormalBounds) }),
+  } };
 }
 
 function normalizeBounds(raw: unknown): WindowBounds | null {

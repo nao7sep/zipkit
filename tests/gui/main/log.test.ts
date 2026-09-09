@@ -92,4 +92,32 @@ describe("errorInfo", () => {
     expect(errorInfo("nope")).toEqual({ value: "nope" });
     expect(errorInfo(42)).toEqual({ value: "42" });
   });
+
+  it("preserves aggregate members and their causes through JSON serialization", () => {
+    const original = new TypeError("query failed", { cause: new Error("query cause") });
+    const fallback = Object.assign(new Error("fallback failed", { cause: new Error("Win32 1400") }), {
+      operation: "SetWindowPlacement", nativeCode: 1400, token: "sentinel-secret",
+    });
+    const info = JSON.parse(JSON.stringify(errorInfo(new AggregateError([original, fallback], "both failed", { cause: original }))));
+    expect(info).toMatchObject({ name: "AggregateError", cause: { message: "query failed" }, errors: [
+      { name: "TypeError", message: "query failed", stack: expect.any(String), cause: { message: "query cause" } },
+      { message: "fallback failed", stack: expect.any(String), cause: { message: "Win32 1400" },
+        operation: "SetWindowPlacement", nativeCode: 1400 },
+    ] });
+    const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
+    const log = createAppLog(dir);
+    log.error("placement failed", { error: info });
+    const line = readFileSync(log.path, "utf8");
+    expect(line).not.toContain("sentinel-secret");
+    expect(JSON.parse(line).error.errors[1]).toMatchObject({ nativeCode: 1400, token: "[redacted]" });
+  });
+
+  it("contains cycles through aggregate members and causes without losing other failures", () => {
+    const aggregate = new AggregateError([], "cyclic");
+    aggregate.errors.push(aggregate, new Error("retained", { cause: aggregate }));
+    expect(errorInfo(aggregate)).toMatchObject({ errors: [
+      { message: "cyclic", circular: true },
+      { message: "retained", cause: { message: "cyclic", circular: true } },
+    ] });
+  });
 });

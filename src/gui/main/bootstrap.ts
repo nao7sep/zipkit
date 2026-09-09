@@ -23,8 +23,9 @@ import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { getWindowPlacement, loadLayout, saveWindowPlacement } from "./layout.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
-import { applyRestoredBounds, configureWindowPlacement, resolveWindowRestoration } from "./windowPlacement.js";
+import { initializeWindowPlacement, configureWindowPlacement, resolveWindowRestoration } from "./windowPlacement.js";
 import { flushThenExit } from "./quit.js";
+import { configureWindowMinimum } from "./window-minimum.js";
 
 let flushMainWindowPlacement: (() => Promise<void>) | null = null;
 
@@ -75,20 +76,24 @@ function createWindow(): BrowserWindow {
   let workAreas: Electron.Rectangle[] = [];
   try { workAreas = screen.getAllDisplays().map((display) => display.workArea); }
   catch (error) { log.warn("display work areas unavailable; using opening window bounds", { error: errorInfo(error) }); }
+  const savedPlacement = getWindowPlacement();
+  const placementError = (error: unknown): void => {
+    log.warn("window placement operation failed", { error: errorInfo(error) });
+  };
   const restoration = resolveWindowRestoration(
-    getWindowPlacement(),
+    savedPlacement,
     { width: minWindowWidth(), height: minWindowHeight() },
     workAreas,
   );
-  if (restoration.normalBounds) {
-    applyRestoredBounds(win, restoration.normalBounds, (error) =>
-      log.warn("saved window bounds rejected; using opening bounds", { error: errorInfo(error) }));
-  }
+  configureWindowMinimum(win, () => ({ width: minWindowWidth(), height: minWindowHeight() }),
+    (error) => log.warn("window minimum could not be updated", { error: errorInfo(error) }));
+  const { initial, windows: windowsPlacement } = initializeWindowPlacement(win, savedPlacement, restoration, placementError);
   const placement = configureWindowPlacement(
     win,
-    { normalBounds: win.getBounds(), mode: restoration.mode },
+    initial,
     saveWindowPlacement,
-    (error) => log.warn("window placement operation failed", { error: errorInfo(error) }),
+    placementError,
+    windowsPlacement,
   );
   const flushThisPlacement = () => placement.flush();
   flushMainWindowPlacement = flushThisPlacement;
@@ -140,21 +145,16 @@ function createWindow(): BrowserWindow {
     load = win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
   }
   void load.then(() => {
-    if (restoration.mode === "maximized") {
-      try { win.maximize(); } catch (error) {
-        placement.setInitialMode("normal");
-        log.warn("window could not be maximized during restoration", { error: errorInfo(error) });
-      }
-    }
     win.show();
+    // Windows requires a native event-loop turn between show and maximize.
     setTimeout(() => {
       if (win.isDestroyed()) return;
-      if (restoration.mode === "maximized" && !win.isMaximized()) {
-        placement.setInitialMode("normal");
-        log.warn("window manager rejected maximized restoration");
-      }
       placement.start();
-    }, 500);
+      if (restoration.mode === "maximized") {
+        try { win.maximize(); }
+        catch (error) { log.warn("window could not be maximized during restoration", { error: errorInfo(error) }); }
+      }
+    }, 0);
   }).catch((error) => {
     log.error("main window document failed to load", { error: errorInfo(error) });
     // The queue has not necessarily hydrated yet. Closing this failed shell must

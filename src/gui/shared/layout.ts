@@ -1,3 +1,4 @@
+import type { WindowsNormalBounds } from "./windows-placement.js";
 /**
  * The persisted pane layout: the user-adjustable widths of the side columns
  * (Jobs on the left, Progress on the right); the middle Archive column flexes to
@@ -25,6 +26,7 @@ export interface PaneLayout {
 export type WindowPlacementMode = "normal" | "maximized";
 export interface WindowBounds { x: number; y: number; width: number; height: number }
 export interface WindowPlacementRecord {
+  windowsNormalBounds?: WindowsNormalBounds | null;
   normalBounds: WindowBounds | null;
   mode: WindowPlacementMode;
 }

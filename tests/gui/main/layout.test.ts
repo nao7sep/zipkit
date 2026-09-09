@@ -202,4 +202,31 @@ describe("layout file quarantine-then-reset", () => {
     expect(loaded.quarantinedTo).toMatch(/\.invalid$/);
     expect(existsSync(file)).toBe(false);
   });
+
+  it("round-trips native placement and protects the cached rectangle from caller mutation", async () => {
+    await loadLayout();
+    const windowsNormalBounds = { left: 111, top: 101, right: 1613, bottom: 1038 };
+    const placement = { normalBounds: { x: 89, y: 81, width: 1201, height: 749 }, windowsNormalBounds, mode: "maximized" as const };
+    await saveWindowPlacement(placement);
+    await loadLayout();
+    expect(getWindowPlacement()).toEqual(placement);
+    const copy = getWindowPlacement()!;
+    copy.windowsNormalBounds!.left = 0;
+    expect(getWindowPlacement()).toEqual(placement);
+    await saveLayout({ jobsWidth: 310, progressWidth: 370 });
+    await loadLayout();
+    expect(getWindowPlacement()).toEqual(placement);
+  });
+
+  it("discards malformed native data alone without quarantining valid layout or mode", async () => {
+    const normalBounds = { x: 89, y: 81, width: 1201, height: 749 };
+    writeFileSync(path.join(root, "layout.json"), JSON.stringify({ version: 1,
+      layout: { jobsWidth: 310, progressWidth: 370 },
+      windowPlacements: { main: { normalBounds, mode: "maximized", windowsNormalBounds: { left: 0 } } },
+    }));
+    const loaded = await loadLayout();
+    expect(loaded.quarantinedTo).toBeNull();
+    expect(loaded.value).toEqual({ jobsWidth: 310, progressWidth: 370 });
+    expect(getWindowPlacement()).toEqual({ normalBounds, mode: "maximized", windowsNormalBounds: null });
+  });
 });

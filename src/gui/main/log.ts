@@ -42,10 +42,18 @@ export const nullLog: AppLog = { debug() {}, info() {}, warn() {}, error() {} };
  * raw `Error` would stringify to `{}`.)
  */
 export function errorInfo(err: unknown): LogFields {
+  return errorInfoInner(err, new WeakSet());
+}
+
+function errorInfoInner(err: unknown, seen: WeakSet<Error>): LogFields {
   if (!(err instanceof Error)) return { value: String(err) };
-  const info: LogFields = { name: err.name, message: err.message };
+  if (seen.has(err)) return { name: err.name, message: err.message, circular: true };
+  seen.add(err);
+  const info: LogFields = { ...err, name: err.name, message: err.message };
   if (err.stack) info.stack = err.stack;
-  if (err.cause !== undefined) info.cause = errorInfo(err.cause);
+  if (err.cause !== undefined) info.cause = errorInfoInner(err.cause, seen);
+  if (err instanceof AggregateError) info.errors = err.errors.map((error) => errorInfoInner(error, seen));
+  seen.delete(err);
   return info;
 }
 
