@@ -10,7 +10,7 @@ export function fitNativeMinimum(required: Size, workArea: Size, frame: Size = {
   };
 }
 
-/** Prepare the new hidden window before placement restoration; later refreshes never recenter it. */
+/** Keep the native content floor current without assigning window position. */
 export function configureWindowMinimum(
   win: BrowserWindow,
   required: () => Size,
@@ -45,7 +45,6 @@ export function configureWindowMinimum(
     if (width > area.width || height > area.height) {
       win.setSize(Math.min(width, area.width), Math.min(height, area.height));
     }
-    win.center();
   } catch (error) { onError(error); }
   win.on("move", update);
   win.on("unmaximize", update);

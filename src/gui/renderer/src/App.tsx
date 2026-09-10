@@ -26,8 +26,6 @@ import {
   SPLITTER_WIDTH,
   clampLayout,
   clampLayoutToWidth,
-  minWindowWidth,
-  minWindowHeight,
   type PaneLayout,
 } from "../../shared/layout";
 import { AboutDialog } from "./components/AboutDialog";
@@ -518,7 +516,6 @@ export function App() {
   };
 
   return (
-    <div style={{ height: "100%", overflow: "auto" }}>
     <div style={S.shell}>
       <AppHeader
         onOpenSettings={() => setDialog("settings")}
@@ -619,7 +616,6 @@ export function App() {
       )}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {dialog === "about" && <AboutDialog onClose={() => setDialog(null)} />}
-    </div>
     </div>
   );
 }
@@ -1017,7 +1013,7 @@ function JobView({
 }
 
 const S: Record<string, CSSProperties> = {
-  shell: { height: "100%", minWidth: minWindowWidth(), minHeight: minWindowHeight(), display: "flex", flexDirection: "column" },
+  shell: { height: "100%", display: "flex", flexDirection: "column" },
   contentViewport: { flex: 1, minHeight: 0, overflow: "auto" },
   body: {
     height: "100%",

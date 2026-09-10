@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } fro
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { getWindowPlacement, loadLayout, parseLayout, saveLayout, saveWindowPlacement, serializeLayout } from "../../../src/gui/main/layout.js";
+import { loadLayout, parseLayout, saveLayout, serializeLayout } from "../../../src/gui/main/layout.js";
 import type { AppLog } from "../../../src/gui/main/log.js";
 import {
   ARCHIVE_MIN_WIDTH,
@@ -46,16 +46,6 @@ describe("parseLayout", () => {
     });
   });
 
-  it("defaults malformed placement without disturbing pane widths", async () => {
-    const root = process.env.ZIPKIT_HOME;
-    void root;
-    expect(parseLayout(JSON.stringify({
-      version: 1,
-      layout: { jobsWidth: 320, progressWidth: 360 },
-      windowPlacements: { main: { normalBounds: { x: 1, y: 2, width: "wide", height: 700 }, mode: "tilted" } },
-    }))).toEqual({ jobsWidth: 320, progressWidth: 360 });
-  });
-
   it("rejects junk or a missing layout so the loader can preserve it", () => {
     expect(() => parseLayout("not json")).toThrow(/invalid/);
     expect(() => parseLayout(JSON.stringify({ version: 1 }))).toThrow(/layout/);
@@ -88,7 +78,9 @@ describe("persisted bounds feed the derived window minimum", () => {
 describe("serializeLayout", () => {
   it("round-trips through parseLayout", () => {
     const layout = { jobsWidth: 260, progressWidth: 420 };
-    expect(parseLayout(serializeLayout(layout))).toEqual(layout);
+    const serialized = serializeLayout(layout);
+    expect(parseLayout(serialized)).toEqual(layout);
+    expect(JSON.parse(serialized)).toEqual({ version: 1, layout });
   });
 
   it("clamps on write too, so a bad value can never be persisted", () => {
@@ -184,16 +176,6 @@ describe("layout file quarantine-then-reset", () => {
     expect(managedEntries(root).sort()).toEqual(["layout.json", quarantined].sort());
   });
 
-  it("round-trips placement independently from pane layout", async () => {
-    await loadLayout();
-    await saveLayout({ jobsWidth: 300, progressWidth: 360 });
-    const placement = { normalBounds: { x: 20, y: 30, width: 1200, height: 780 }, mode: "normal" as const };
-    await saveWindowPlacement(placement);
-    expect(getWindowPlacement()).toEqual(placement);
-    expect((await loadLayout()).value).toEqual({ jobsWidth: 300, progressWidth: 360 });
-    expect(getWindowPlacement()).toEqual(placement);
-  });
-
   it("quarantines wrong-shaped widths instead of silently rewriting them", async () => {
     const file = path.join(root, "layout.json");
     writeFileSync(file, JSON.stringify({ version: 1, layout: { jobsWidth: "wide" } }));
@@ -203,30 +185,4 @@ describe("layout file quarantine-then-reset", () => {
     expect(existsSync(file)).toBe(false);
   });
 
-  it("round-trips native placement and protects the cached rectangle from caller mutation", async () => {
-    await loadLayout();
-    const windowsNormalBounds = { left: 111, top: 101, right: 1613, bottom: 1038 };
-    const placement = { normalBounds: { x: 89, y: 81, width: 1201, height: 749 }, windowsNormalBounds, mode: "maximized" as const };
-    await saveWindowPlacement(placement);
-    await loadLayout();
-    expect(getWindowPlacement()).toEqual(placement);
-    const copy = getWindowPlacement()!;
-    copy.windowsNormalBounds!.left = 0;
-    expect(getWindowPlacement()).toEqual(placement);
-    await saveLayout({ jobsWidth: 310, progressWidth: 370 });
-    await loadLayout();
-    expect(getWindowPlacement()).toEqual(placement);
-  });
-
-  it("discards malformed native data alone without quarantining valid layout or mode", async () => {
-    const normalBounds = { x: 89, y: 81, width: 1201, height: 749 };
-    writeFileSync(path.join(root, "layout.json"), JSON.stringify({ version: 1,
-      layout: { jobsWidth: 310, progressWidth: 370 },
-      windowPlacements: { main: { normalBounds, mode: "maximized", windowsNormalBounds: { left: 0 } } },
-    }));
-    const loaded = await loadLayout();
-    expect(loaded.quarantinedTo).toBeNull();
-    expect(loaded.value).toEqual({ jobsWidth: 310, progressWidth: 370 });
-    expect(getWindowPlacement()).toEqual({ normalBounds, mode: "maximized", windowsNormalBounds: null });
-  });
 });

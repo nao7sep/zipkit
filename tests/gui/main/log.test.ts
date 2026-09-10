@@ -93,23 +93,24 @@ describe("errorInfo", () => {
     expect(errorInfo(42)).toEqual({ value: "42" });
   });
 
-  it("preserves aggregate members and their causes through JSON serialization", () => {
-    const original = new TypeError("query failed", { cause: new Error("query cause") });
-    const fallback = Object.assign(new Error("fallback failed", { cause: new Error("Win32 1400") }), {
-      operation: "SetWindowPlacement", nativeCode: 1400, token: "sentinel-secret",
+  it("preserves aggregate diagnostics through JSON serialization", () => {
+    const first = new TypeError("query failed", { cause: new Error("query cause") });
+    const second = Object.assign(new Error("write failed"), {
+      code: "EACCES", path: "/tmp/result.zip", syscall: "rename", token: "sentinel-secret",
     });
-    const info = JSON.parse(JSON.stringify(errorInfo(new AggregateError([original, fallback], "both failed", { cause: original }))));
+    const aggregate = new AggregateError([first, second], "both failed", { cause: first });
+    const info = JSON.parse(JSON.stringify(errorInfo(aggregate)));
     expect(info).toMatchObject({ name: "AggregateError", cause: { message: "query failed" }, errors: [
       { name: "TypeError", message: "query failed", stack: expect.any(String), cause: { message: "query cause" } },
-      { message: "fallback failed", stack: expect.any(String), cause: { message: "Win32 1400" },
-        operation: "SetWindowPlacement", nativeCode: 1400 },
+      { message: "write failed", stack: expect.any(String), code: "EACCES", path: "/tmp/result.zip", syscall: "rename" },
     ] });
+
     const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
     const log = createAppLog(dir);
-    log.error("placement failed", { error: info });
+    log.error("operation failed", { error: info });
     const line = readFileSync(log.path, "utf8");
     expect(line).not.toContain("sentinel-secret");
-    expect(JSON.parse(line).error.errors[1]).toMatchObject({ nativeCode: 1400, token: "[redacted]" });
+    expect(JSON.parse(line).error.errors[1]).toMatchObject({ token: "[redacted]" });
   });
 
   it("contains cycles through aggregate members and causes without losing other failures", () => {

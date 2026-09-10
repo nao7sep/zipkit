@@ -9,7 +9,7 @@
  * only once the root is known good.
  */
 
-import { app, BrowserWindow, nativeTheme, screen } from "electron";
+import { app, BrowserWindow, nativeTheme } from "electron";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
@@ -20,14 +20,11 @@ import { loadSettings, saveSettings } from "./settings.js";
 import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
-import { getWindowPlacement, loadLayout, saveWindowPlacement } from "./layout.js";
+import { loadLayout } from "./layout.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
-import { initializeWindowPlacement, configureWindowPlacement, resolveWindowRestoration } from "./windowPlacement.js";
 import { flushThenExit } from "./quit.js";
 import { configureWindowMinimum } from "./window-minimum.js";
-
-let flushMainWindowPlacement: (() => Promise<void>) | null = null;
 
 // Last-resort hooks: record the failure before the process can die. The session
 // log appends synchronously, so the line is on disk by the time these return.
@@ -71,48 +68,12 @@ function createWindow(): BrowserWindow {
   }));
   const win = owned.window;
   if (!owned.created) return win;
-  configureWindowActivity(app, win);
-
-  let workAreas: Electron.Rectangle[] = [];
-  try { workAreas = screen.getAllDisplays().map((display) => display.workArea); }
-  catch (error) { log.warn("display work areas unavailable; using opening window bounds", { error: errorInfo(error) }); }
-  const savedPlacement = getWindowPlacement();
-  const placementError = (error: unknown): void => {
-    log.warn("window placement operation failed", { error: errorInfo(error) });
-  };
-  const restoration = resolveWindowRestoration(
-    savedPlacement,
-    { width: minWindowWidth(), height: minWindowHeight() },
-    workAreas,
-  );
   configureWindowMinimum(win, () => ({ width: minWindowWidth(), height: minWindowHeight() }),
     (error) => log.warn("window minimum could not be updated", { error: errorInfo(error) }));
-  const { initial, windows: windowsPlacement } = initializeWindowPlacement(win, savedPlacement, restoration, placementError);
-  const placement = configureWindowPlacement(
-    win,
-    initial,
-    saveWindowPlacement,
-    placementError,
-    windowsPlacement,
-  );
-  const flushThisPlacement = () => placement.flush();
-  flushMainWindowPlacement = flushThisPlacement;
-  let closeAllowed = false;
-  win.on("close", (event) => {
-    if (closeAllowed) return;
-    event.preventDefault();
-    void placement.flush().finally(() => {
-      if (win.isDestroyed()) return;
-      closeAllowed = true;
-      win.close();
-    });
-  });
-  win.on("session-end", () => { void placement.flush(); });
+  configureWindowActivity(app, win);
 
   let flushQueueOnClose = true;
   win.on("closed", () => {
-    placement.dispose();
-    if (flushMainWindowPlacement === flushThisPlacement) flushMainWindowPlacement = null;
     clearMainWindow(win);
     if (!flushQueueOnClose) return;
     void flushQueue().catch((err) =>
@@ -145,16 +106,7 @@ function createWindow(): BrowserWindow {
     load = win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
   }
   void load.then(() => {
-    win.show();
-    // Windows requires a native event-loop turn between show and maximize.
-    setTimeout(() => {
-      if (win.isDestroyed()) return;
-      placement.start();
-      if (restoration.mode === "maximized") {
-        try { win.maximize(); }
-        catch (error) { log.warn("window could not be maximized during restoration", { error: errorInfo(error) }); }
-      }
-    }, 0);
+    if (!win.isDestroyed()) win.show();
   }).catch((error) => {
     log.error("main window document failed to load", { error: errorInfo(error) });
     // The queue has not necessarily hydrated yet. Closing this failed shell must
@@ -268,7 +220,7 @@ app.on("before-quit", (event) => {
   if (queueFlushedForQuit) return;
   event.preventDefault();
   void flushThenExit(
-    [flushQueue(), flushMainWindowPlacement?.()],
+    flushQueue(),
     () => {
       queueFlushedForQuit = true;
       log.info("app quitting");

@@ -1,9 +1,6 @@
 appId: io.github.nao7sep.zipkit
 productName: ZipKit
 
-asarUnpack:
-  - node_modules/@koromix/koffi-*/**/*
-
 # The repository package is the source-consumed SDK, so its `main` points at the
 # SDK authority. Only packaged Electron metadata needs the compiled GUI entry.
 extraMetadata:
@@ -30,12 +27,6 @@ files:
 # CFBundleIconFile → build/icon.icns (mac.icon). Building does NOT need Xcode — the
 # Assets.car is prebuilt; only re-generating the icon does.
 extraResources:
-  - from: node_modules/koffi/LICENSE.txt
-    to: koffi/LICENSE.txt
-  - from: node_modules/koffi/vendor/node-addon-api/LICENSE.md
-    to: koffi/node-addon-api-LICENSE.md
-  - from: node_modules/koffi/vendor/node-api-headers/LICENSE
-    to: koffi/node-api-headers-LICENSE
   - from: build/Assets.car
     to: Assets.car
   - from: LICENSE
