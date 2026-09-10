@@ -6,7 +6,7 @@ The compression is the small part; the value is the **portability checks and the
 
 ## Download
 
-Prebuilt installers and portable builds of the desktop app for macOS (Apple Silicon) and Windows are on the [Releases](https://github.com/nao7sep/zipkit/releases/latest) page. These builds are **unsigned**, so the OS warns the first time you open one:
+Prebuilt installers and portable builds of the desktop app for macOS 13 or later (Apple Silicon) and Windows are on the [Releases](https://github.com/nao7sep/zipkit/releases/latest) page. These builds are **unsigned**, so the OS warns the first time you open one:
 
 - **macOS** — right-click the app and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/ZipKit.app`).
 - **Windows** — on the SmartScreen prompt, click **More info → Run anyway**.
