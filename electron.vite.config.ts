@@ -36,6 +36,7 @@ export default defineConfig({
       strictPort: true,
     },
     build: {
+      minify: true,
       rollupOptions: {
         input: { index: resolve(import.meta.dirname, "src/gui/renderer/index.html") },
       },

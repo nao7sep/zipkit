@@ -26,6 +26,7 @@ import { configureWindowActivity } from "./windowActivity.js";
 import { flushThenExit } from "./quit.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
+import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
 
 // Last-resort hooks: record the failure before the process can die. The session
 // log appends synchronously, so the line is on disk by the time these return.
@@ -37,9 +38,10 @@ process.on("unhandledRejection", (reason) => {
 });
 
 function createWindow(): BrowserWindow {
-  const owned = ensureMainWindow(() => new BrowserWindow(
-    mainWindowOptions(path.join(import.meta.dirname, "../preload/index.mjs")),
-  ));
+  const options = mainWindowOptions(path.join(import.meta.dirname, "../preload/index.mjs"));
+  const owned = ensureMainWindow(() =>
+    createWindowWithUsablePersistedBounds("main", () => new BrowserWindow(options)),
+  );
   const win = owned.window;
   if (!owned.created) return win;
   configureWindowMinimum(win, () => ({ width: minWindowWidth(), height: minWindowHeight() }),
