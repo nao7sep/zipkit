@@ -18,6 +18,18 @@ describe("launcher process identity", () => {
     expect(ownsProcess({
       pid: 11,
       parentPid: 1,
+      executablePath: `${REPO_ROOT}/release/mac-arm64/ZipKit.app/Contents/MacOS/ZipKit`,
+      commandLine: "",
+    }, identity)).toBe(true);
+    expect(ownsProcess({
+      pid: 12,
+      parentPid: 1,
+      executablePath: `${REPO_ROOT}\\release\\win-unpacked\\ZipKit.exe`,
+      commandLine: "",
+    }, identity)).toBe(true);
+    expect(ownsProcess({
+      pid: 13,
+      parentPid: 1,
       executablePath: "/another/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
       commandLine: "",
     }, identity)).toBe(false);
