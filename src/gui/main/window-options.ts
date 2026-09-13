@@ -9,7 +9,10 @@ import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 export function mainWindowOptions(preload: string): BrowserWindowConstructorOptions {
   return {
     name: "main",
-    windowStatePersistence: { bounds: true, displayMode: false },
+    windowStatePersistence: {
+      bounds: true,
+      displayMode: process.platform === "win32",
+    },
     // Opening size: comfortable for the default layout — the dense center Archive
     // pane (inputs + the options grid + operation + report all stack here) gets
     // ~550px wide and the body ~710px tall, so the common case opens roomy without

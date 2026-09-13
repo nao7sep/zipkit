@@ -7,7 +7,10 @@ describe("mainWindowOptions", () => {
 
   it("uses Electron-owned bounds persistence for the stable main window", () => {
     expect(options.name).toBe("main");
-    expect(options.windowStatePersistence).toEqual({ bounds: true, displayMode: false });
+    expect(options.windowStatePersistence).toEqual({
+      bounds: true,
+      displayMode: process.platform === "win32",
+    });
   });
 
   it("preserves the designed opening and derived minimum sizes", () => {
