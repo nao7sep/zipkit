@@ -256,10 +256,13 @@ button:focus-visible {
 [data-window-inactive] button:focus-visible {
   outline-color: var(--border);
 }
+/* Tinted with the accent's mark color, not the marigold fill: on a light
+ * background Chromium draws a light accent's selected radio as a filled disc
+ * around a large dark center, so it reads as a hollow circle, not a dot. */
 input[type="checkbox"],
 input[type="radio"],
 input[type="number"] {
-  accent-color: var(--accent);
+  accent-color: var(--accent-strong);
 }
 input[type="radio"] {
   margin: 0;
