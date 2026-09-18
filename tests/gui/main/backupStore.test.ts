@@ -249,7 +249,7 @@ describe("write-through: a real managed save records the exact bytes after the r
     const { saveSettings } = await import("../../../src/gui/main/settings.js");
     const { DEFAULT_OPTIONS } = await import("../../../src/gui/shared/spec.js");
 
-    await saveSettings({ defaults: { ...DEFAULT_OPTIONS, level: 7 }, uiFontFamily: "Iosevka" });
+    await saveSettings({ defaults: { ...DEFAULT_OPTIONS, level: 7 }, uiFontFamily: "Iosevka", theme: "system" });
 
     const file = path.join(root, "config.json");
     const onDisk = readFileSync(file); // the exact bytes the atomic write landed
@@ -267,7 +267,7 @@ describe("write-through: a real managed save records the exact bytes after the r
   it("a second saveSettings with identical settings is deduped (write-through respects the content skip)", async () => {
     const { saveSettings } = await import("../../../src/gui/main/settings.js");
     const { DEFAULT_OPTIONS } = await import("../../../src/gui/shared/spec.js");
-    const settings = { defaults: { ...DEFAULT_OPTIONS, level: 3 }, uiFontFamily: "" };
+    const settings = { defaults: { ...DEFAULT_OPTIONS, level: 3 }, uiFontFamily: "", theme: "system" as const };
 
     await saveSettings(settings);
     await saveSettings(settings); // identical serialized bytes -> deduped

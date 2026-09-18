@@ -9,20 +9,26 @@
 import type { ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
 import type { GuiOptions } from "../../shared/spec";
 
-/** The dark-theme status palette, in one place so every status reads one map. */
+/** The status palette, in one place so every status reads one map. Each entry is
+ *  a theme token (index.css), so inline styles follow the light or dark theme. */
 export const COLOR = {
-  ok: "#6fd08c",
-  bad: "#ff6b7a",
-  warn: "#ffb454",
-  info: "#a3d977",
-  busy: "#60a5fa",
+  ok: "var(--status-ok)",
+  bad: "var(--status-error)",
+  warn: "var(--status-warning)",
+  info: "var(--status-info)",
+  busy: "var(--status-busy)",
   // Waiting its turn: a muted, desaturated blue — kin to `busy` (it's about to
   // run) but calmer, so "queued" reads as pending rather than active. Picked to
   // sit in the golden-workbench palette; safe to retone alongside the rest.
-  queued: "#8aa0c0",
-  ready: "#f0b429",
-  idle: "#8c9381",
+  queued: "var(--status-queued)",
+  ready: "var(--status-ready)",
+  idle: "var(--status-idle)",
 } as const;
+
+/** A status color at a low strength over whatever is behind it. */
+function tint(color: string, percent: number): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+}
 
 function baseName(p: string): string {
   const norm = p.replace(/\\/g, "/");
@@ -406,17 +412,17 @@ export function stateTint(state: Job["state"]): string {
     case "planning":
       return "transparent";
     case "needs-attention":
-      return "rgba(255, 180, 84, 0.12)";
+      return tint(COLOR.warn, 12);
     case "ready":
-      return "rgba(240, 180, 41, 0.14)";
+      return tint(COLOR.ready, 14);
     case "queued":
-      return "rgba(138, 160, 192, 0.12)";
+      return tint(COLOR.queued, 12);
     case "running":
-      return "rgba(96, 165, 250, 0.12)";
+      return tint(COLOR.busy, 12);
     case "done":
-      return "rgba(111, 208, 140, 0.14)";
+      return tint(COLOR.ok, 14);
     case "failed":
-      return "rgba(255, 107, 122, 0.14)";
+      return tint(COLOR.bad, 14);
   }
 }
 

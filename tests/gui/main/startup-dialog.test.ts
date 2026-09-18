@@ -25,6 +25,13 @@ describe("app message dialog document", () => {
     expect(html).toContain(">Quit</button>");
   });
 
+  it("follows the resolved theme: light by default, dark under prefers-color-scheme", () => {
+    const html = buildAppMessageDialogDocument("Could not start", "message", "Quit");
+    expect(html).toContain('<meta name="color-scheme" content="light dark">');
+    expect(html).toContain("body{display:flex;flex-direction:column;background:#f3f2ea;");
+    expect(html).toContain("@media (prefers-color-scheme:dark){");
+  });
+
   it("escapes authored copy without changing the fixed shell", () => {
     const html = buildAppMessageDialogDocument("<Title>", "hostile </div><script>", "OK");
 

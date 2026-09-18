@@ -29,7 +29,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     pathForFile: vi.fn(() => ""),
     platform: "darwin",
     onWindowActivityChanged: vi.fn(() => () => {}),
-    getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" })),
+    getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const })),
     setSettings: vi.fn(async () => {}),
     getLayout: vi.fn(async () => DEFAULT_LAYOUT),
     setLayout: vi.fn(async () => {}),
@@ -76,7 +76,7 @@ describe("required app hydration", () => {
     const getSettings = vi
       .fn<ZipKitGuiApi["getSettings"]>()
       .mockRejectedValueOnce(new Error("settings unavailable"))
-      .mockResolvedValueOnce({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" });
+      .mockResolvedValueOnce({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" });
     const unsubscribes = [vi.fn(), vi.fn()];
     const onQueue = vi
       .fn<ZipKitGuiApi["onQueue"]>()

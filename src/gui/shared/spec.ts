@@ -45,6 +45,16 @@ export const DEFAULT_OPTIONS: GuiOptions = {
   overwrite: false,
 };
 
+/** The app theme (app-chrome conventions, Theme): System follows the OS
+ *  appearance; Light and Dark force a theme. */
+export const THEME_PREFERENCES = ["system", "light", "dark"] as const;
+export type ThemePreference = (typeof THEME_PREFERENCES)[number];
+
+/** A missing or unrecognized stored theme resolves to System. */
+export function normalizeThemePreference(value: unknown): ThemePreference {
+  return THEME_PREFERENCES.includes(value as ThemePreference) ? (value as ThemePreference) : "system";
+}
+
 /** The persisted GUI settings: the new-job option defaults plus app-level appearance. */
 export interface GuiSettings {
   /** Defaults applied to every new job. */
@@ -53,11 +63,14 @@ export interface GuiSettings {
    *  `--font-ui` variable). System fonts only — the renderer CSP forbids web fonts (`font-src 'self'`),
    *  and a free-text family naming installed fonts needs no `@font-face`. */
   uiFontFamily: string;
+  /** The app theme, applied by the main process to nativeTheme.themeSource. */
+  theme: ThemePreference;
 }
 
 export const DEFAULT_SETTINGS: GuiSettings = {
   defaults: DEFAULT_OPTIONS,
   uiFontFamily: "",
+  theme: "system",
 };
 
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields

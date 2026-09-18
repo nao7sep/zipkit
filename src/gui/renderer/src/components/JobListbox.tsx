@@ -332,7 +332,7 @@ const S: Record<string, CSSProperties> = {
   },
   // Selection reads as an accent ring on top of the state tint, so both the
   // status (background) and the selection are visible at once.
-  jobRowSel: { borderColor: "var(--accent)", boxShadow: "0 0 0 1px var(--accent)" },
+  jobRowSel: { borderColor: "var(--accent-strong)", boxShadow: "0 0 0 1px var(--accent-strong)" },
   name: {
     fontWeight: 600,
     overflow: "hidden",

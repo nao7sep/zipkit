@@ -10,6 +10,7 @@ import type { PaneLayout } from "../shared/layout.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log, sendEvent, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
+import { applyThemePreference } from "./theme.js";
 import { loadLayout, saveLayout } from "./layout.js";
 import { isHttpUrl } from "./url.js";
 
@@ -29,6 +30,8 @@ export function registerIpc(): void {
       log.error("failed to persist settings", { error: errorInfo(err) });
       throw err;
     }
+    // Settings apply on Save, the theme included (app-chrome conventions, Theme).
+    applyThemePreference(settings.theme);
   });
 
   ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => (await loadLayout(log)).value);

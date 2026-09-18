@@ -1,12 +1,19 @@
 import type { BrowserWindowConstructorOptions } from "electron";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 
+/** The renderer's --bg token (index.css) in each theme. The main process can't
+ *  read CSS vars, so these literals are the one place the theme bg is duplicated;
+ *  keep them in sync so the pre-paint/resize edge doesn't flash a stale color. */
+export function mainWindowBackground(dark: boolean): string {
+  return dark ? "#16170f" : "#f3f2ea";
+}
+
 /**
  * Build the durable main window's options without constructing a native window.
  * Electron owns bounds persistence for the stable window identity; the designed
  * opening size remains the fallback when no usable saved bounds exist.
  */
-export function mainWindowOptions(preload: string): BrowserWindowConstructorOptions {
+export function mainWindowOptions(preload: string, dark: boolean): BrowserWindowConstructorOptions {
   return {
     name: "main",
     windowStatePersistence: {
@@ -28,10 +35,8 @@ export function mainWindowOptions(preload: string): BrowserWindowConstructorOpti
     minWidth: minWindowWidth(),
     minHeight: minWindowHeight(),
     show: false,
-    // Must mirror the renderer's --bg token (index.css). The main process can't
-    // read CSS vars, so this literal is the one place the theme bg is duplicated;
-    // keep them in sync so the pre-paint/resize edge doesn't flash a stale color.
-    backgroundColor: "#16170f",
+    // The resolved theme's --bg, so the first frame matches the page.
+    backgroundColor: mainWindowBackground(dark),
     webPreferences: {
       preload,
       contextIsolation: true,

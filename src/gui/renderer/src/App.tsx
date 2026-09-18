@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { GuiLogEvent, Job, JobIntent, PlanData, VerifyResult } from "../../shared/api";
-import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings } from "../../shared/spec";
+import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_MIN_HEIGHT,
@@ -102,6 +102,9 @@ export function App() {
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
   // The UI (chrome) font family. Blank = the built-in default stack (the index.css --font-ui var).
   const [uiFontFamily, setUiFontFamily] = useState<string>("");
+  // The saved theme, kept only to seed the Settings draft: the main process
+  // applies it, and the page follows prefers-color-scheme.
+  const [theme, setTheme] = useState<ThemePreference>("system");
   const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
@@ -172,6 +175,7 @@ export function App() {
       setJobs(latestQueue ?? initialJobs);
       setDefaults(settings.defaults);
       setUiFontFamily(settings.uiFontFamily);
+      setTheme(settings.theme);
       // Persisted pane widths are the intent. Live-width clamping below affects
       // display only and never rewrites what the user dragged.
       setIntent(clampLayout(layout));
@@ -284,6 +288,7 @@ export function App() {
     await window.zipkit.setSettings(next);
     setDefaults(next.defaults);
     setUiFontFamily(next.uiFontFamily);
+    setTheme(next.theme);
   }
 
   async function createJob(inputs: string[]): Promise<ReceiverCommit> {
@@ -609,7 +614,7 @@ export function App() {
 
       {dialog === "settings" && (
         <SettingsDialog
-          settings={{ defaults, uiFontFamily }}
+          settings={{ defaults, uiFontFamily, theme }}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
         />
@@ -1036,7 +1041,7 @@ const S: Record<string, CSSProperties> = {
     borderRadius: 6,
   },
   jobsReceiverActive: {
-    boxShadow: "0 0 0 2px var(--accent)",
+    boxShadow: "0 0 0 2px var(--accent-strong)",
     background: "color-mix(in srgb, var(--accent) 10%, transparent)",
   },
   // The destination checkpoint above Create: a "Will save" lead, then "in <dir>"

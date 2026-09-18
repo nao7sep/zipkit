@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import { windowBackground } from "./theme.js";
 
 export interface AppMessageDialogOptions {
   owner?: BrowserWindow;
@@ -33,12 +34,13 @@ export function buildAppMessageDialogDocument(
   buttonLabel: "OK" | "Quit",
 ): string {
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="dark">
+<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <title>${escapeHtml(title)}</title><style>
-*{box-sizing:border-box;scrollbar-width:auto;scrollbar-color:#666 transparent}*::-webkit-scrollbar{width:16px;height:16px}*::-webkit-scrollbar-thumb{background:#666;background-clip:padding-box;border:3px solid transparent;border-radius:999px}html,body{height:100%;margin:0;overflow:hidden}body{display:flex;flex-direction:column;background:#171717;color:#f3f3f3;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-h1{flex:0 0 auto;margin:0;padding:22px 24px 12px;font-size:18px;line-height:1.3}.body{min-height:0;flex:1 1 auto;overflow:auto;padding:0 24px 20px;color:#d4d4d4;white-space:pre-wrap;overflow-wrap:anywhere}.footer{flex:0 0 auto;display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #373737;background:#1d1d1d}
-button{min-width:76px;border:1px solid #666;border-radius:7px;padding:7px 16px;background:#343434;color:#fff;font:inherit}button:hover{background:#414141}button:focus-visible{outline:2px solid #89b4fa;outline-offset:2px}
+*{box-sizing:border-box;scrollbar-width:auto;scrollbar-color:#7d826c transparent}*::-webkit-scrollbar{width:16px;height:16px}*::-webkit-scrollbar-thumb{background:#7d826c;background-clip:padding-box;border:3px solid transparent;border-radius:999px}html,body{height:100%;margin:0;overflow:hidden}body{display:flex;flex-direction:column;background:#f3f2ea;color:#1f2117;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+h1{flex:0 0 auto;margin:0;padding:22px 24px 12px;font-size:18px;line-height:1.3}.body{min-height:0;flex:1 1 auto;overflow:auto;padding:0 24px 20px;color:#3a3e30;white-space:pre-wrap;overflow-wrap:anywhere}.footer{flex:0 0 auto;display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #d3d4c3;background:#fbfaf5}
+button{min-width:76px;border:1px solid #7d826c;border-radius:7px;padding:7px 16px;background:#e4e3d6;color:#1f2117;font:inherit}button:hover{background:#d8d7c8}button:focus-visible{outline:2px solid #8f6400;outline-offset:2px}
+@media (prefers-color-scheme:dark){*{scrollbar-color:#666 transparent}*::-webkit-scrollbar-thumb{background:#666;background-clip:padding-box}body{background:#171717;color:#f3f3f3}.body{color:#d4d4d4}.footer{border-top-color:#373737;background:#1d1d1d}button{border-color:#666;background:#343434;color:#fff}button:hover{background:#414141}button:focus-visible{outline-color:#89b4fa}}
 </style></head><body><h1>${escapeHtml(title)}</h1><div class="body" role="region" aria-label="${escapeHtml(title)} details" tabindex="0">${escapeHtml(message)}</div><div class="footer"><button autofocus onclick="window.close()">${buttonLabel}</button></div></body></html>`;
 }
 
@@ -62,7 +64,9 @@ export async function showAppMessageDialog({
     resizable: true,
     autoHideMenuBar: true,
     title,
-    backgroundColor: "#171717",
+    // The page follows prefers-color-scheme, which follows nativeTheme.themeSource
+    // (the OS when startup halted before settings were read).
+    backgroundColor: windowBackground(),
     webPreferences: {
       contextIsolation: true,
       sandbox: true,

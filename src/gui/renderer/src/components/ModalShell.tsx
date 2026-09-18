@@ -116,7 +116,7 @@ const ST: Record<string, CSSProperties> = {
     maxWidth: "34rem",
     maxHeight: "85vh",
     overflow: "hidden",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+    boxShadow: "var(--modal-shadow)",
   },
   title: {
     flexShrink: 0,

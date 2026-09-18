@@ -175,7 +175,8 @@ describe("jobCommands", () => {
 describe("stateColor", () => {
   it("maps every job state to a distinct palette color", () => {
     const colors = ALL_STATES.map(stateColor);
-    expect(colors.every((c) => c.startsWith("#"))).toBe(true);
+    // Theme tokens (index.css), so each state follows the light or dark theme.
+    expect(colors.every((c) => c.startsWith("var(--status-"))).toBe(true);
     expect(new Set(colors).size).toBe(ALL_STATES.length);
   });
 });

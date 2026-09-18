@@ -10,6 +10,7 @@
  */
 
 import { app, BrowserWindow, nativeTheme } from "electron";
+import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
@@ -38,7 +39,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 function createWindow(): BrowserWindow {
-  const options = mainWindowOptions(path.join(import.meta.dirname, "../preload/index.mjs"));
+  const options = mainWindowOptions(path.join(import.meta.dirname, "../preload/index.mjs"), nativeTheme.shouldUseDarkColors);
   const owned = ensureMainWindow(() =>
     createWindowWithUsablePersistedBounds("main", () => new BrowserWindow(options)),
   );
@@ -137,11 +138,6 @@ app.whenReady().then(async () => {
     node: process.versions.node,
     logPath: log.path,
   });
-  // ZipKit is a dark app; force the OS chrome (the native title bar on macOS) to
-  // dark so it matches the UI rather than following the system appearance — a
-  // light title bar on a dark app is the window-chrome convention's prime example
-  // of OS-default chrome fighting the app. Set before the window is created.
-  nativeTheme.themeSource = "dark";
   // Just-in-case data backup (data-backup conventions): write-through, not a startup scan. Each managed
   // text save records the exact bytes into `~/.zipkit/backups.sqlite3` strictly after its atomic rename
   // lands (see managedJson.ts's writeManagedJson + the backup store). There is nothing to kick off here.
@@ -157,6 +153,11 @@ app.whenReady().then(async () => {
   // A missing or quarantined config is materialized immediately through the one
   // serializer/backup path before the renderer can observe or save settings.
   if (settingsLoad.missing || settingsQuarantinedTo) await saveSettings(settingsLoad.value);
+  // The saved theme reaches the title bar, the renderer's prefers-color-scheme,
+  // and the recovery dialogs before the window exists, so launch never shows the
+  // OS appearance and then switches. A halt before this point follows the OS.
+  applyThemePreference(settingsLoad.value.theme);
+  followOsThemeChanges();
   await loadLayout(log);
 
   windowCreationReady = true;

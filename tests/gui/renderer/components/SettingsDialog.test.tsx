@@ -24,11 +24,12 @@ Object.defineProperty(window, "zipkit", {
   value: { reportError: vi.fn() },
 });
 
-/** Settings that differ from the built-ins on both axes: edited option defaults
- *  AND a chosen UI font — so a reset's reach is visible on each. */
+/** Settings that differ from the built-ins on every axis: edited option defaults,
+ *  a chosen UI font, and a chosen theme — so a reset's reach is visible on each. */
 const CUSTOM: GuiSettings = {
   defaults: { ...DEFAULT_OPTIONS, level: 9, junk: false, comment: "mine" },
   uiFontFamily: "Iosevka, monospace",
+  theme: "dark",
 };
 
 function renderDialog(settings: GuiSettings = CUSTOM) {
@@ -50,6 +51,29 @@ const reset = () => screen.getByText("Reset default parameters");
 // since a reader will ask why Cancel is written first when it renders second)
 // would silently move the open-then-Enter target onto "Reset default
 // parameters". This asserts the DOM order that safety rides on.
+describe("SettingsDialog theme", () => {
+  it("offers System, Light, and Dark as one radio group, applied only by Save", () => {
+    const onSave = renderDialog();
+    const group = screen.getByRole("group", { name: "Theme" });
+    const radios = Array.from(group.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+    expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual(["System", "Light", "Dark"]);
+    expect(new Set(radios.map((radio) => radio.name)).size).toBe(1);
+    expect(radios.find((radio) => radio.checked)?.value).toBe("dark");
+
+    fireEvent.click(radios[1]!);
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, theme: "light" });
+  });
+
+  it("leaves the theme alone when the default parameters are reset", () => {
+    const onSave = renderDialog();
+    fireEvent.click(reset());
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark" }));
+  });
+});
+
 describe("SettingsDialog footer order", () => {
   it("puts Cancel first in the DOM so footer-first focus is the safe default", () => {
     renderDialog();
@@ -78,6 +102,7 @@ describe("SettingsDialog reset", () => {
     expect(onSave).toHaveBeenCalledWith({
       defaults: { ...CUSTOM.defaults, symlinks: "follow", emptyDirs: "prune" },
       uiFontFamily: CUSTOM.uiFontFamily,
+      theme: CUSTOM.theme,
     });
   });
 
@@ -111,6 +136,7 @@ describe("SettingsDialog reset", () => {
     expect(onSave).toHaveBeenCalledWith({
       defaults: DEFAULT_OPTIONS,
       uiFontFamily: "Iosevka, monospace",
+      theme: "dark",
     });
   });
 
@@ -121,7 +147,7 @@ describe("SettingsDialog reset", () => {
 
     expect(fontInput().value).toBe("Menlo");
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo" });
+    expect(onSave).toHaveBeenCalledWith({ defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo", theme: "dark" });
   });
 
   it("keeps the dialog open and reports a failed durable save", async () => {

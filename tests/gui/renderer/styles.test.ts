@@ -13,6 +13,7 @@ describe("renderer scrollbar contract", () => {
   });
 
   it("uses a readable owned token and strengthens the whole owner in use", () => {
+    expect(compact).toContain("--scrollbar-thumb:#7d826c");
     expect(compact).toContain("--scrollbar-thumb:#737b68");
     expect(compact).toContain("--scrollbar-thumb-active:var(--text-2)");
     expect(compact).toContain("*:hover::-webkit-scrollbar-thumb");

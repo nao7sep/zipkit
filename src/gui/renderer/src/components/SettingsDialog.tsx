@@ -16,7 +16,7 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
-import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../../../shared/spec";
+import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings, type ThemePreference } from "../../../shared/spec";
 import { reportableError } from "../externalDropBoundary";
 
 /** Two option sets are equal when every visible field matches — the draft's
@@ -25,10 +25,16 @@ function optionsEqual(a: GuiOptions, b: GuiOptions): boolean {
   return (Object.keys(DEFAULT_OPTIONS) as (keyof GuiOptions)[]).every((k) => a[k] === b[k]);
 }
 
-/** Settings are equal when the option defaults and the UI font both match. */
+/** Settings are equal when the option defaults, the UI font, and the theme all match. */
 function settingsEqual(a: GuiSettings, b: GuiSettings): boolean {
-  return a.uiFontFamily === b.uiFontFamily && optionsEqual(a.defaults, b.defaults);
+  return a.uiFontFamily === b.uiFontFamily && a.theme === b.theme && optionsEqual(a.defaults, b.defaults);
 }
+
+const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 /** The only field that can be made invalid from the UI: the compression level. */
 function isValid(o: GuiOptions): boolean {
@@ -71,9 +77,9 @@ export function SettingsDialog({
   // main window's per-job toggle uses for these knobs. It only rewrites the
   // unsaved draft — Save commits it, closing without saving keeps the current
   // settings — so the label is the whole warning and no confirmation is needed.
-  // The UI font is deliberately left alone: it is the user's own cosmetic
-  // preference, not a built-in that goes stale, so a reset must not drag it
-  // along.
+  // The UI font and the theme are deliberately left alone: they are the user's
+  // own cosmetic preferences, not built-ins that go stale, so a reset must not
+  // drag them along.
   function resetDefaultParameters() {
     setDraft({ ...draft, defaults: { ...DEFAULT_OPTIONS } });
   }
@@ -116,7 +122,27 @@ export function SettingsDialog({
         </>
       }
     >
-      {/* Appearance leads: the UI (chrome) font, set apart from the per-job archive knobs below. */}
+      {/* Appearance leads: the theme and the UI (chrome) font, set apart from the per-job
+          archive knobs below. The theme is a native radio group (one tab stop, arrow keys
+          move and select), staged in the draft and applied on Save like the rest. */}
+      <fieldset style={S.themeField}>
+        <legend style={S.themeLegend}>Theme</legend>
+        <div style={S.themeOptions}>
+          {THEME_OPTIONS.map(({ value, label }) => (
+            <label key={value} style={S.themeOption}>
+              <input
+                type="radio"
+                name="theme"
+                value={value}
+                checked={draft.theme === value}
+                onChange={() => setDraft({ ...draft, theme: value })}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <span style={S.fontHint}>System follows the OS appearance.</span>
+      </fieldset>
       <label style={S.fontField}>
         <span style={S.fontLabel}>UI font</span>
         <input
@@ -144,8 +170,12 @@ const S: Record<string, CSSProperties> = {
   // the auto margin pushes those two right, the order pulls it ahead of Cancel
   // (which stays first in DOM for the shell's footer-first focus).
   resetDefaultParameters: { order: -1, marginRight: "auto" },
+  themeField: { display: "flex", flexDirection: "column", gap: "0.35rem", margin: "0 0 1rem", padding: 0, border: "none", minWidth: 0 },
+  themeLegend: { fontWeight: 600, padding: 0, marginBottom: "0.35rem" },
+  themeOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem" },
+  themeOption: { display: "flex", alignItems: "center", gap: "0.4rem" },
   fontField: { display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "1rem" },
   fontLabel: { fontWeight: 600 },
   fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
-  error: { color: "var(--danger)", marginBottom: 0 },
+  error: { color: "var(--status-error)", marginBottom: 0 },
 };

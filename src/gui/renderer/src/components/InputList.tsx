@@ -218,7 +218,7 @@ const S: Record<string, CSSProperties> = {
     margin: "0 0 0.75rem",
   },
   zoneActive: {
-    boxShadow: "inset 0 0 0 2px var(--accent)",
+    boxShadow: "inset 0 0 0 2px var(--accent-strong)",
     background: "color-mix(in srgb, var(--accent) 10%, transparent)",
   },
   head: {

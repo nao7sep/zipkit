@@ -11,7 +11,7 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
-import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings } from "../shared/spec.js";
+import { DEFAULT_OPTIONS, normalizeThemePreference, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
@@ -24,7 +24,7 @@ export function settingsFile(): string {
 }
 
 function freshSettings(): GuiSettings {
-  return { defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "" };
+  return { defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "", theme: "system" };
 }
 
 /** Parse settings-file text: fill absent fields and reject wrong known shapes. */
@@ -55,13 +55,19 @@ export function parseSettings(text: string): GuiSettings {
     throw new InvalidManagedJsonError("config.json", "uiFontFamily must be a string");
   }
   const uiFontFamily = typeof root.uiFontFamily === "string" ? root.uiFontFamily : "";
-  return { defaults, uiFontFamily };
+  if (root.theme !== undefined && typeof root.theme !== "string") {
+    throw new InvalidManagedJsonError("config.json", "theme must be a string");
+  }
+  // An unrecognized theme name (a newer build's, a hand edit) resolves to System
+  // rather than setting the whole file aside.
+  const theme = normalizeThemePreference(root.theme);
+  return { defaults, uiFontFamily, theme };
 }
 
 /** Serialize the GUI settings to settings-file text. Pure. */
 export function serializeSettings(settings: GuiSettings): string {
   return JSON.stringify(
-    { version: 1, defaults: settings.defaults, uiFontFamily: settings.uiFontFamily },
+    { version: 1, defaults: settings.defaults, uiFontFamily: settings.uiFontFamily, theme: settings.theme },
     null,
     2,
   );

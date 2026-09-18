@@ -1,37 +1,88 @@
 /*
- * Base theme for the renderer. The golden-workbench palette uses olive-black
- * surfaces, a marigold accent, danger, and a neutral utility tone. Tokens live
- * here as CSS custom properties so inline
- * styles in components reference them via var(); interactive states (hover,
- * focus, menu highlight, disabled) live here too, since inline styles can't
- * express them. Layout stays in the components.
+ * Base theme for the renderer. The golden-workbench palette: olive surfaces, a
+ * marigold accent, danger, and a neutral utility tone — olive-black in dark,
+ * olive-cream paper in light. Tokens live here as CSS custom properties so
+ * inline styles in components (and view.ts's status colors) reference them via
+ * var(); light values sit in :root and dark values in the one
+ * prefers-color-scheme block, which Electron's nativeTheme.themeSource (the
+ * Settings Theme choice) decides. Interactive states (hover, focus, menu
+ * highlight, disabled) live here too, since inline styles can't express them.
+ * Layout stays in the components.
  */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   /* Fonts. --font-ui is the UI (chrome) font: the Settings "UI font" field overrides it at runtime
      with a verbatim family string; blank reverts to this default. System fonts only — the renderer
      CSP forbids web fonts. --font-mono is the read-only log/report face. Family only — no UI size knob. */
   --font-ui: system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --bg: #16170f;
-  --surface: #202218;
-  --surface-2: #292c20;
-  --border: #3a3f2e;
-  --text: #f0f2e6;
-  --text-2: #a5ad94;
-  --scrollbar-thumb: #737b68;
-  --scrollbar-thumb-active: var(--text-2);
-  --accent: #f0b429;
-  --accent-hover: #f8c94e;
-  --accent-ink: #211a03;
-  --danger: #b93650;
-  --danger-hover: #c24152;
-  --status-error: #ff6b7a;
-  --status-warning: #ffb454;
-  --utility: #2d3124;
-  --utility-hover: #383d2c;
   --radius: 8px;
+  --bg: #f3f2ea;
+  --surface: #fbfaf5;
+  --surface-2: #ecebe0;
+  --border: #d3d4c3;
+  /* A text field or select sits on a fill close to its surroundings, so its
+     outline alone identifies it and stays at 3:1 against both. */
+  --field-border: #7d826c;
+  --text: #1f2117;
+  --text-2: #555b47;
+  --scrollbar-thumb: #7d826c;
+  --scrollbar-thumb-active: var(--text-2);
+  /* The marigold fill (Primary buttons, under --accent-ink). */
+  --accent: #f0b429;
+  --accent-hover: #e3a41c;
+  --accent-ink: #211a03;
+  /* The accent as a mark on a surface: focus rings, the selected job, drop
+     targets. Marigold itself is too light for that on paper. */
+  --accent-strong: #8f6400;
+  --danger: #b93650;
+  --danger-hover: #a52d45;
+  /* Status colors (view.ts's COLOR map, notices), as text and marks. */
+  --status-error: #a11f34;
+  --status-warning: #804900;
+  --status-ok: #186331;
+  --status-info: #3c600f;
+  --status-busy: #1a54a9;
+  --status-queued: #455875;
+  --status-ready: #725000;
+  --status-idle: #535949;
+  --utility: #e4e3d6;
+  --utility-hover: #d8d7c8;
+  --menu-shadow: 0 8px 28px rgba(31, 33, 23, 0.18);
+  --modal-shadow: 0 8px 32px rgba(31, 33, 23, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #16170f;
+    --surface: #202218;
+    --surface-2: #292c20;
+    --border: #3a3f2e;
+    --field-border: #7a8268;
+    --text: #f0f2e6;
+    --text-2: #a5ad94;
+    --scrollbar-thumb: #737b68;
+    --accent: #f0b429;
+    --accent-hover: #f8c94e;
+    --accent-ink: #211a03;
+    --accent-strong: #f0b429;
+    --danger: #b93650;
+    --danger-hover: #c24152;
+    --status-error: #ff9ba6;
+    --status-warning: #ffb454;
+    --status-ok: #6fd08c;
+    --status-info: #a3d977;
+    --status-busy: #88bbfb;
+    --status-queued: #abbbd2;
+    --status-ready: #f0b429;
+    --status-idle: #b7bbb0;
+    --utility: #2d3124;
+    --utility-hover: #383d2c;
+    --menu-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+    --modal-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
 }
 
 *,
@@ -42,8 +93,8 @@
 
 /* Scroll bars (window-chrome convention): one GLOBAL rule for every overflow
  * container — Pane bodies, the ActivityLog <pre>, ModalShell, the job listbox.
- * `color-scheme: dark` (above) alone leaves the platform's default bar in place,
- * which on some platforms stays thick and square even in dark mode, so the bar is
+ * `color-scheme` (above) alone leaves the platform's default bar in place,
+ * which on some platforms stays thick and square, so the bar is
  * styled explicitly: a reachable 16px gutter, a fully rounded 10px thumb inset from
  * the gutter edges (a transparent 3px border with the background clipped to the
  * padding box gives the thumb breathing room rather than filling the gutter edge
@@ -181,14 +232,14 @@ button.icon:hover:not(:disabled) {
   color: var(--text);
 }
 
-/* Form controls — dark themed; checkboxes/number/select tinted to the accent. */
+/* Form controls — themed; checkboxes/number/select tinted to the accent. */
 input,
 select,
 textarea {
   font: inherit;
   color: var(--text);
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   border-radius: 4px;
   padding: 4px 6px;
 }
@@ -196,7 +247,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-strong);
   outline-offset: 1px;
 }
 [data-window-inactive] input:focus-visible,
@@ -206,8 +257,12 @@ button:focus-visible {
   outline-color: var(--border);
 }
 input[type="checkbox"],
+input[type="radio"],
 input[type="number"] {
   accent-color: var(--accent);
+}
+input[type="radio"] {
+  margin: 0;
 }
 input[type="checkbox"] {
   width: auto;
@@ -222,7 +277,7 @@ input[type="checkbox"] {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--menu-shadow);
   z-index: 900;
 }
 .menu-item {
