@@ -318,7 +318,8 @@ const S: Record<string, CSSProperties> = {
     listStyle: "none",
     display: "flex",
     flexDirection: "column",
-    gap: "0.25rem",
+    // Room between the bordered, state-tinted job cards so each reads as its own.
+    gap: "0.5rem",
     overflowY: "auto",
   },
   jobRow: {
