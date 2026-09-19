@@ -1,6 +1,6 @@
-// Decides which checks a change needs. `npm run check` passes the paths that
-// differ from HEAD; `npm run check:full` asks for everything. Kept pure so the
-// selection rules are tested directly; scripts/check.mjs gathers the inputs
+// Decides which lanes a change needs. `npm test` passes the paths that
+// differ from HEAD; `npm run test:full` asks for everything. Kept pure so the
+// selection rules are tested directly; scripts/test.mjs gathers the inputs
 // and runs the lanes.
 
 const TYPESCRIPT = /\.(ts|tsx)$/;
@@ -30,7 +30,7 @@ export function readsRepository(testSource) {
  * @param {boolean} input.full
  * @param {string[]} input.repositoryReaders test files for which readsRepository holds
  */
-export function planChecks({ changed, full, repositoryReaders }) {
+export function planTests({ changed, full, repositoryReaders }) {
   if (full) return { typecheck: true, vitest: "all" };
 
   const code = changed.filter((path) => !isDocumentation(path));
