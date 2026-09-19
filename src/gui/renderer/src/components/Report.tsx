@@ -193,7 +193,7 @@ const S: Record<string, CSSProperties> = {
     paddingLeft: "0.55rem",
   },
   text: { flex: 1, minWidth: 0, fontSize: "0.85rem", wordBreak: "break-word" },
-  path: { color: "var(--text-2)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.8rem" },
+  path: { color: "var(--text-2)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" },
   srOnly: {
     position: "absolute",
     width: 1,

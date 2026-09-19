@@ -15,8 +15,8 @@
   /* Fonts. --font-ui is the UI (chrome) font: the Settings "UI font" field overrides it at runtime
      with a verbatim family string; blank reverts to this default. System fonts only — the renderer
      CSP forbids web fonts. --font-mono is the read-only log/report face. Family only — no UI size knob. */
-  --font-ui: system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-ui: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Menlo", "Consolas", monospace;
   --radius: 8px;
   --bg: #f3f2ea;
   --surface: #fbfaf5;

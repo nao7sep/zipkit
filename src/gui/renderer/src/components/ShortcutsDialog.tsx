@@ -68,7 +68,7 @@ const S: Record<string, CSSProperties> = {
     border: "1px solid var(--border)",
     borderRadius: 4,
     padding: "0.1rem 0.45rem",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: "0.8rem",
   },
 };

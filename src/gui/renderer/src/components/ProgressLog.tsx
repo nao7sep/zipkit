@@ -64,7 +64,7 @@ const S: Record<string, CSSProperties> = {
     minHeight: 0,
     overflow: "auto",
     fontSize: "0.8rem",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontFamily: "var(--font-mono)",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
   },
