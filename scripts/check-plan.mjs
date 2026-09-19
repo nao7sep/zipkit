@@ -21,7 +21,7 @@ function unique(values) {
  * outside the TypeScript module graph runs every one of them.
  */
 export function readsRepository(testSource) {
-  return /from\s+"node:(fs|child_process)(\/promises)?"/.test(testSource);
+  return /(?:from\s+|import\s*\(\s*)["'](?:node:)?(?:fs|child_process)(?:\/promises)?["']/.test(testSource);
 }
 
 /**

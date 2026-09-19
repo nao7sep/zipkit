@@ -47,6 +47,10 @@ describe("repository readers", () => {
   it("are the tests that read files through Node", () => {
     expect(readsRepository('import { readFileSync } from "node:fs";')).toBe(true);
     expect(readsRepository('import { rm } from "node:fs/promises";')).toBe(true);
+    expect(readsRepository("import { readFileSync } from 'node:fs';")).toBe(true);
+    expect(readsRepository('import { existsSync } from "fs";')).toBe(true);
+    expect(readsRepository('const fs = await import("node:fs");')).toBe(true);
     expect(readsRepository('import path from "node:path";')).toBe(false);
+    expect(readsRepository('import { fsync } from "./fsync";')).toBe(false);
   });
 });
