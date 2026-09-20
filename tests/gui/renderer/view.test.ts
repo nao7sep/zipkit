@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   COLOR,
   containingDir,
-  formatEventLine,
+  eventLineParts,
   humanSentence,
   intentLabel,
   isCancelable,
@@ -17,6 +17,7 @@ import {
   isTerminal,
   jobCommands,
   label,
+  logLevelColor,
   logLevelLabel,
   jobAdvisories,
   manifestRequiredButMissing,
@@ -368,16 +369,26 @@ describe("planReport", () => {
   });
 });
 
-describe("formatEventLine", () => {
+describe("eventLineParts", () => {
   it("renders a local ISO-ish time, then a human level and sentence-cased message", () => {
     // The time is rendered in the viewer's local zone, so assert the shape
     // (yyyy-mm-dd hh:mm:ss) rather than an exact value that would vary by zone.
     const e = { time: "2026-06-14T05:00:00.000Z", level: "info", message: "hi" } as unknown as LogEvent;
-    expect(formatEventLine(e)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  Info  Hi$/);
+    expect(eventLineParts(e)).toEqual({
+      time: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+      level: "Info",
+      message: "Hi",
+    });
   });
   it("falls back to the raw value when the time cannot be parsed", () => {
     const e = { time: "not-a-time", level: "warn", message: "x" } as unknown as LogEvent;
-    expect(formatEventLine(e)).toBe("not-a-time  Warning  X");
+    expect(eventLineParts(e)).toEqual({ time: "not-a-time", level: "Warning", message: "X" });
+  });
+  it("paints only the levels worth stopping at, and keeps the rest quiet", () => {
+    expect(logLevelColor("error")).toBe("var(--status-error)");
+    expect(logLevelColor("warn")).toBe("var(--status-warning)");
+    expect(logLevelColor("info")).toBe("var(--text-2)");
+    expect(logLevelColor("debug")).toBe("var(--text-2)");
   });
 });
 

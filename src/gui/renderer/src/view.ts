@@ -331,9 +331,31 @@ function formatLocalTime(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-/** One Progress-log line, with the time shown in local (not raw UTC) form. */
-export function formatEventLine(event: LogEvent): string {
-  return `${formatLocalTime(event.time)}  ${logLevelLabel(event.level)}  ${progressMessage(event)}`;
+/** One Progress-log line, in the three parts the log paints separately: the time
+ *  in local (not raw UTC) form, the human level, and the message. They stay
+ *  apart rather than being joined here, because the log gives each its own
+ *  weight and colour. */
+export function eventLineParts(event: LogEvent): { time: string; level: string; message: string } {
+  return {
+    time: formatLocalTime(event.time),
+    level: logLevelLabel(event.level),
+    message: progressMessage(event),
+  };
+}
+
+/** The colour the Progress log paints a level in. A log is mostly routine, so
+ *  only the levels worth stopping at take a status colour; debug and info stay
+ *  in the secondary text colour and let the messages read as one column. */
+export function logLevelColor(level: LogEvent["level"]): string {
+  switch (level) {
+    case "error":
+      return COLOR.bad;
+    case "warn":
+      return COLOR.warn;
+    case "info":
+    case "debug":
+      return "var(--text-2)";
+  }
 }
 
 /** Human labels for the machine-readable logging levels. */
