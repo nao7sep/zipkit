@@ -78,7 +78,9 @@ function ConfirmDialog({ options, onResult }: { options: ConfirmOptions; onResul
               confirmation exists because something could go wrong, so the action a
               reflexive Enter reaches must be the one that costs nothing. */}
           <button data-modal-autofocus onClick={() => onResult(false)}>Cancel</button>
-          <button onClick={() => onResult(true)} className={options.danger ? "danger" : undefined}>
+          {/* The confirming button of the dialog that asks: the filled role, so a
+              solid red reads as the last step rather than as one more red control. */}
+          <button onClick={() => onResult(true)} className={options.danger ? "danger-confirm" : undefined}>
             {options.confirmLabel}
           </button>
         </>

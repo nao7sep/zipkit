@@ -187,21 +187,30 @@ button.accent {
 button.accent:hover:not(:disabled) {
   background: var(--accent-hover);
 }
-/* A destructive action states itself in red but does not sit on the surface as a
-   solid block of it: at rest it is red letters inside a red outline over a faint
-   tint, and it fills in — red ground, white letters — only under the pointer, at
-   the moment the click is about to happen. The resting colour is the per-theme
-   --status-error (the marigold-paper and olive-black surfaces need different
-   reds to stay legible); the fill is the one --danger. */
+/* Destructive actions come in two roles. `danger` OPENS a destructive path — the
+   Trash and Remove buttons in the command bar — and stays outlined: red letters
+   in a red outline over a faint tint, deepening that tint under the pointer.
+   `danger-confirm` COMMITS it, and is only ever the confirming button of the
+   dialog that asks; it is filled, so a solid red always means this is the last
+   step. The resting colour is the per-theme --status-error (the marigold-paper
+   and olive-black surfaces need different reds to stay legible as letters); the
+   fill is the one --danger, dark enough for white ink in both themes. */
 button.danger {
   color: var(--status-error);
   background: color-mix(in srgb, var(--status-error) 8%, transparent);
   border: 1px solid var(--status-error);
 }
 button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--status-error) 18%, transparent);
+}
+button.danger-confirm {
   color: #fff;
   background: var(--danger);
-  border-color: var(--danger);
+  border: 1px solid var(--danger);
+}
+button.danger-confirm:hover:not(:disabled) {
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
 }
 
 /* A committed receiver result must not read like low-priority helper text, and

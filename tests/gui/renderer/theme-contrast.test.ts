@@ -88,17 +88,21 @@ describe("theme token contrast", () => {
       }
     });
 
-    // A destructive button rests as --status-error letters and outline over its
-    // own 8% tint, and fills with --danger under white letters on hover, so both
-    // states are checked where they are actually drawn.
-    it("keeps the destructive button legible at rest and filled on hover", () => {
+    // Destructive buttons take two roles: the trigger rests as --status-error
+    // letters and outline over its own tint (8% at rest, 18% hovered), and the
+    // confirming button is filled with --danger under white letters. Both are
+    // checked where they are actually drawn.
+    it("keeps both destructive roles legible: the outlined trigger and the filled confirm", () => {
       const ink = hexOf(block, "--status-error");
       for (const surface of SURFACES) {
-        const tint = mix(ink, hexOf(block, surface), 0.08);
-        check(ink, tint, 4.5, `--status-error on its tint over ${surface}`);
+        for (const amount of [0.08, 0.18]) {
+          check(ink, mix(ink, hexOf(block, surface), amount), 4.5, `--status-error on its ${amount * 100}% tint over ${surface}`);
+        }
         check(ink, hexOf(block, surface), 3, `--status-error outline on ${surface}`);
       }
-      check([255, 255, 255], hexOf(block, "--danger"), 4.5, "white on the --danger hover fill");
+      for (const fill of ["--danger", "--danger-hover"]) {
+        check([255, 255, 255], hexOf(block, fill), 4.5, `white on the ${fill} confirm fill`);
+      }
     });
 
     it("keeps field outlines, the accent ring, and the scroll-bar thumb at 3:1 or more", () => {
