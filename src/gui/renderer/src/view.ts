@@ -137,13 +137,6 @@ export function humanSentence(message: string): string {
   return message.replace(/^[a-z]/, (first) => first.toUpperCase());
 }
 
-/** A job's options/intent may be edited only before it runs and while not done. A
- *  `queued` job is committed to run (waiting its turn), so it is locked too —
- *  cancelling it returns it to an editable `ready`/`needs-attention` state. */
-export function isEditable(state: Job["state"]): boolean {
-  return state !== "running" && state !== "done" && state !== "queued";
-}
-
 /** Terminal states carry a final result, not an editable plan. */
 export function isTerminal(state: Job["state"]): boolean {
   return state === "done" || state === "failed";

@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { GuiLogEvent, Job, JobIntent, PlanData, VerifyResult } from "../../shared/api";
+import { isEditable } from "../../shared/queue";
 import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
@@ -65,7 +66,6 @@ import { StateBadge } from "./components/StateBadge";
 import {
   archiveName,
   COLOR,
-  isEditable,
   jobCommands,
   type JobCommand,
   label,
@@ -661,6 +661,20 @@ function JobView({
   const operationAttempt = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  // The one rule the engine also enforces: what this pane disables is exactly what
+  // the engine refuses.
+  const editable = isEditable(job.state);
+  // A job that stops being editable takes its options back. The 250 ms commit debounce
+  // outlives the edit, so a change typed just before the job runs would land on a job
+  // that no longer accepts it: drop the pending commit and show what the job holds,
+  // rather than leaving a field displaying a value the job never took.
+  useEffect(() => {
+    if (editable) return;
+    clearTimeout(timer.current);
+    setOpts(job.options);
+    setUseDefaults(optionsEqual(job.options, defaults));
+  }, [editable, job.options, defaults]);
+
   useEffect(() => {
     let live = true;
     void window.zipkit.getPlan(job.id).then((p) => {
@@ -904,7 +918,6 @@ function JobView({
     }
   }
 
-  const editable = isEditable(job.state);
   // Destination preview (directory + file name), derived in one place — see view.ts.
   const { dir: destDir, name: target } = outputPreview(job, opts);
   const jobEvents = events.filter((e) => e.jobId === job.id);

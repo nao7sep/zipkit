@@ -44,6 +44,17 @@ export type JobState =
   | "done"
   | "failed";
 
+/** A job's options/intent/inputs may be edited only before it runs and while not
+ *  done. A `queued` job is committed to run (waiting its turn), so it is locked
+ *  too — cancelling it returns it to an editable `ready`/`needs-attention` state.
+ *  It lives here, beside the states, because the engine and the renderer must
+ *  lock the same set: the controls the renderer disables are exactly the writes
+ *  the engine refuses, and a second spelling of the rule is what let a finished
+ *  job keep taking writes. */
+export function isEditable(state: JobState): boolean {
+  return state !== "running" && state !== "done" && state !== "queued";
+}
+
 export interface Job {
   id: string;
   inputs: string[];

@@ -13,7 +13,6 @@ import {
   humanSentence,
   intentLabel,
   isCancelable,
-  isEditable,
   isTerminal,
   jobCommands,
   label,
@@ -190,11 +189,7 @@ describe("severityColor", () => {
   });
 });
 
-describe("isEditable / isTerminal / isCancelable", () => {
-  it("is editable until the job runs, is queued, or completes", () => {
-    // queued is locked (committed to run); cancelling it returns it to editable.
-    expect(ALL_STATES.filter(isEditable)).toEqual(["planning", "needs-attention", "ready", "failed"]);
-  });
+describe("isTerminal / isCancelable", () => {
   it("is terminal only when done or failed", () => {
     expect(ALL_STATES.filter(isTerminal)).toEqual(["done", "failed"]);
   });

@@ -16,7 +16,7 @@
  * forwarded, so the renderer can show each job its own Progress.
  */
 
-import type { InputEntry, Job, JobIntent, SavedJob } from "../shared/queue.js";
+import { isEditable, type InputEntry, type Job, type JobIntent, type SavedJob } from "../shared/queue.js";
 import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
@@ -331,11 +331,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     update(id, patch) {
       const rec = recs.get(id);
-      // No edits to a job that is committed to run: `running` (in flight) or
-      // `queued` (waiting its turn). Editing a queued job must go through cancel
-      // first (which un-queues + re-plans) — otherwise a store-only edit (e.g. an
-      // intent flip) would leave it queued and auto-run later under the new intent.
-      if (!rec || rec.job.state === "running" || rec.job.state === "queued") return;
+      // No edits to a job the shared rule locks: `running` (in flight), `queued`
+      // (committed to run — editing it must go through cancel first, which un-queues
+      // and re-plans, or a store-only edit such as an intent flip would leave it
+      // queued and auto-run later under the new intent), or `done` (its options are
+      // the record of the archive on disk). A late click or the pane's option
+      // debounce can still arrive after the job finishes; accepting it would drop
+      // the published output the Trash command needs and re-plan the result away.
+      if (!rec || !isEditable(rec.job.state)) return;
       rec.publishedOutput = null;
       let replan = false;
       if (patch.intent !== undefined) {

@@ -238,6 +238,33 @@ describe("queue engine", () => {
     expect(calls.trash).toEqual([]); // B ran as a plain save — nothing trashed
   });
 
+  it("ignores update() on a done job, so a late edit can't discard the finished result", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    const plansWhenDone = calls.plan;
+
+    // The pane's option debounce lands after the job finishes. A plan-affecting
+    // option re-planned the job out of `done` and threw the result away; any edit
+    // dropped the published output, leaving the archive's Trash command inert.
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } });
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1 } });
+    engine.update(id, { intent: "archive-and-trash" });
+    await tick();
+
+    const job = engine.snapshot()[0];
+    expect(job?.state).toBe("done");
+    expect(job?.intent).toBe("save");
+    expect(job?.options).toEqual(DEFAULT_OPTIONS);
+    expect(calls.plan).toBe(plansWhenDone);
+
+    engine.removeArchive(id); // the archive it published is still the one it knows
+    await vi.waitFor(() => expect(calls.trash).toEqual([["/tmp/out.zip"]]));
+  });
+
   it("honors a run requested while the job is still (re)planning, once the plan lands ready", async () => {
     let releasePlan!: () => void;
     const planGate = new Promise<void>((r) => (releasePlan = r));
