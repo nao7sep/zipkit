@@ -51,6 +51,9 @@
   --utility-hover: #d8d7c8;
   --menu-shadow: 0 8px 28px rgba(31, 33, 23, 0.18);
   --modal-shadow: 0 8px 32px rgba(31, 33, 23, 0.22);
+
+  /* One height for every one-line control, fields and buttons alike. */
+  --control-h: 32px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -243,6 +246,39 @@ textarea {
   border-radius: 4px;
   padding: 4px 6px;
 }
+
+/* Every one-line field stands at one height, so a text box, a number box and a
+   select in the same row line up, and a button beside one matches it. A
+   textarea is sized by its rows instead — it holds several lines. */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+button {
+  box-sizing: border-box;
+  height: var(--control-h);
+}
+
+/* A button centres its own label, and the trim measures that label from its
+   capitals to its baseline, so the letters sit in the middle rather than the
+   font's taller box. An icon button holds no text and is left alone. */
+button:not(.icon) {
+  text-box: trim-both cap alphabetic;
+}
+
+/* A select is the app's own field with its own chevron; the list it opens stays
+   the platform's. The mark is drawn with two gradients rather than an image:
+   the app's policy allows no data: images (see main/csp.ts), and this way the
+   mark takes the field's own colour in both themes. */
+select {
+  appearance: none;
+  padding-right: 26px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%, currentColor calc(50% + 1.5px), transparent calc(50% + 1.5px)),
+    linear-gradient(-45deg, transparent 50%, currentColor 50%, currentColor calc(50% + 1.5px), transparent calc(50% + 1.5px));
+  background-position: right 14px center, right 9.5px center;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
@@ -333,4 +369,18 @@ code {
   .options-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+}
+
+/* About opens with the app's name, its version tied to it. */
+.about-name {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.about-version {
+  margin: 2px 0 0;
+  color: var(--text-2);
 }

@@ -49,11 +49,13 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
   return (
     <ModalShell
       title={`About ${info?.name ?? "ZipKit"}`}
+      titleHidden
       onClose={onClose}
       describedById="about-description"
       footer={<button onClick={onClose}>Close</button>}
     >
-      {loadFailed ? <><p role="alert">App information could not be loaded. Try again.</p><button onClick={() => setAttempt((value) => value + 1)}>Retry</button></> : <p>Version {info?.version ?? "Loading…"}</p>}
+      <p className="about-name">{info?.name ?? "ZipKit"}</p>
+      {loadFailed ? <><p role="alert">App information could not be loaded. Try again.</p><button onClick={() => setAttempt((value) => value + 1)}>Retry</button></> : <p className="about-version">Version {info?.version ?? "Loading…"}</p>}
       <p id="about-description">Clean, portable ZIP archives for macOS and Windows.</p>
       <p>
         <button disabled={!info} onClick={() => void openLink("repository", REPO)}>Repository</button>{" "}

@@ -31,6 +31,7 @@ const FOCUSABLE =
 
 export function ModalShell({
   title,
+  titleHidden = false,
   onClose,
   children,
   footer,
@@ -38,6 +39,13 @@ export function ModalShell({
   maxWidth,
 }: {
   title: string;
+  /**
+   * Keeps the title as the dialog's spoken name but takes it off the screen,
+   * for a surface whose own content already says what it is (About). The band
+   * then holds only the close control and carries no line, since there is no
+   * title to divide from the content.
+   */
+  titleHidden?: boolean;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -77,7 +85,16 @@ export function ModalShell({
             if (isComposing(e)) e.preventDefault();
           }}
         >
-          <Dialog.Title style={ST.title}>{title}</Dialog.Title>
+          <div style={titleHidden ? ST.titleBarBare : ST.titleBar}>
+            <Dialog.Title style={titleHidden ? ST.titleHidden : ST.title}>{title}</Dialog.Title>
+            <Dialog.Close asChild>
+              <button type="button" style={ST.close} className="icon" aria-label="Close" title="Close">
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+                  <path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </button>
+            </Dialog.Close>
+          </div>
           <div style={ST.scroll}>{children}</div>
           {footer && (
             <div data-modal-footer style={ST.footer}>
@@ -118,12 +135,49 @@ const ST: Record<string, CSSProperties> = {
     overflow: "hidden",
     boxShadow: "var(--modal-shadow)",
   },
-  title: {
+  // Title and close control sit in one band, centred, closed by a line. With the
+  // title hidden the band keeps only the control — and its corner — and drops
+  // the line (modal-dialog conventions).
+  titleBar: {
     flexShrink: 0,
-    margin: 0,
-    padding: "1rem 1.25rem",
-    fontSize: "1.05rem",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "0.75rem",
+    padding: "0.7rem 1.25rem",
     borderBottom: "1px solid var(--border)",
+  },
+  titleBarBare: {
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    padding: "0.7rem 1.25rem 0",
+  },
+  title: {
+    margin: 0,
+    fontSize: "1.05rem",
+  },
+  titleHidden: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    margin: -1,
+    padding: 0,
+    border: 0,
+    overflow: "hidden",
+    clipPath: "inset(50%)",
+    whiteSpace: "nowrap",
+  },
+  close: {
+    display: "inline-grid",
+    placeItems: "center",
+    width: 28,
+    height: 28,
+    padding: 0,
+    borderRadius: 6,
+    background: "transparent",
+    color: "var(--text)",
   },
   scroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "1.25rem" },
   footer: {
