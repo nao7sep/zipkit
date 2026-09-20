@@ -68,5 +68,11 @@ const S: Record<string, CSSProperties> = {
   },
   // marginLeft:auto right-aligns it; flexShrink:0 keeps the pill at full size.
   actions: { marginLeft: "auto", flexShrink: 0, display: "flex", gap: "0.5rem", alignItems: "center" },
-  body: { flex: 1, minHeight: 0, overflow: "auto", padding: "0.85rem" },
+  // position:relative makes the scrolling body the containing block for any
+  // absolutely positioned descendant — notably the screen-reader-only spans in
+  // the job list and the report. Without it their containing block is the page
+  // itself, so the pane cannot clip them: each one sits at its static position
+  // deep inside the scrolled content and stretches the document, which then
+  // scrolls the whole window off-screen to a band of empty space.
+  body: { position: "relative", flex: 1, minHeight: 0, overflow: "auto", padding: "0.85rem" },
 };

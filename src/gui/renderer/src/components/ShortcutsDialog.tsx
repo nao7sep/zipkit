@@ -2,8 +2,10 @@
  * Shortcuts dialog (modal-dialog conventions): the app's keyboard model, grouped,
  * description on the left and keys on the right with every key spelled out. It
  * renders the one shortcut catalog (`shortcuts.ts`), so it can never list a
- * binding the app does not actually have. Rows are separated by a zebra fill
- * inside a rounded group card — no per-row rules.
+ * binding the app does not actually have. A reference list is read, not
+ * navigated, so the rows carry no chrome of their own: the group heading and
+ * the space between rows do the separating, and the only mark on the surface is
+ * the key itself.
  */
 
 import type { CSSProperties } from "react";
@@ -24,10 +26,10 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
         {groups.map((group) => (
           <section key={group.title}>
             <div style={S.groupTitle}>{group.title}</div>
-            <div style={S.card}>
-              {group.items.map((item, i) => (
-                <div key={item.keys} style={{ ...S.row, ...(i % 2 ? S.rowAlt : null) }}>
-                  <span>{item.description}</span>
+            <div style={S.list}>
+              {group.items.map((item) => (
+                <div key={item.keys} style={S.row}>
+                  <span style={S.description}>{item.description}</span>
                   <kbd style={S.keys}>{item.keys}</kbd>
                 </div>
               ))}
@@ -49,26 +51,26 @@ const S: Record<string, CSSProperties> = {
     color: "var(--text-2)",
     marginBottom: "0.4rem",
   },
-  card: {
-    border: "1px solid var(--border)",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
+  list: { display: "grid", gap: "2px" },
   row: {
-    display: "flex",
-    justifyContent: "space-between",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
     gap: "1rem",
-    padding: "0.4rem 0.7rem",
+    padding: "0.35rem 0",
   },
-  rowAlt: { background: "var(--surface-2)" },
+  description: { minWidth: 0, fontSize: "0.9rem" },
+  // The key reads as the accent's own mark rather than a drawn keycap: a soft
+  // tint carries it without adding a border to every row.
   keys: {
     flexShrink: 0,
-    background: "var(--bg)",
-    border: "1px solid var(--border)",
+    background: "color-mix(in srgb, var(--accent-strong) 15%, transparent)",
+    color: "var(--accent-strong)",
     borderRadius: 4,
     padding: "0.1rem 0.45rem",
     fontFamily: "var(--font-mono)",
     fontSize: "0.8rem",
+    fontWeight: 600,
+    whiteSpace: "nowrap",
   },
 };

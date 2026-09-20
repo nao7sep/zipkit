@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
 import { reportableError } from "../externalDropBoundary";
@@ -57,13 +58,19 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
       <p className="about-name">{info?.name ?? "ZipKit"}</p>
       {loadFailed ? <><p role="alert">App information could not be loaded. Try again.</p><button onClick={() => setAttempt((value) => value + 1)}>Retry</button></> : <p className="about-version">Version {info?.version ?? "Loading…"}</p>}
       <p id="about-description">Clean, portable ZIP archives for macOS and Windows.</p>
-      <p>
-        <button disabled={!info} onClick={() => void openLink("repository", REPO)}>Repository</button>{" "}
+      <div style={S.links}>
+        <button disabled={!info} onClick={() => void openLink("repository", REPO)}>Repository</button>
         <button disabled={!info} onClick={() => void openLink("issues", `${REPO}/issues`)}>Issues</button>
-      </p>
+      </div>
       {linkErrors.repository && <ReceiverResultNotice result={{ message: "The repository link could not be opened in your browser. Try again.", severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, repository: false }))} />}
       {linkErrors.issues && <ReceiverResultNotice result={{ message: "The issues link could not be opened in your browser. Try again.", severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, issues: false }))} />}
       <p style={{ opacity: 0.7 }}>{ABOUT_COPYRIGHT}</p>
     </ModalShell>
   );
 }
+
+const S: Record<string, CSSProperties> = {
+  // Side-by-side buttons are siblings in a row, not words in a sentence: a real
+  // gap between them rather than the single space a text node would give.
+  links: { display: "flex", flexWrap: "wrap", gap: "0.5rem", margin: "1rem 0" },
+};

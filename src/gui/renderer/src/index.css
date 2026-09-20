@@ -145,6 +145,14 @@ body,
   height: 100%;
 }
 
+/* The window chrome itself never scrolls — every scroller in the app belongs to
+   a pane body, a dialog body or the log. `clip` rather than `hidden` so the page
+   cannot be scrolled even programmatically: a stray overflow must never be able
+   to slide the header off the top and leave a band of empty space below. */
+html {
+  overflow: clip;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -179,12 +187,21 @@ button.accent {
 button.accent:hover:not(:disabled) {
   background: var(--accent-hover);
 }
+/* A destructive action states itself in red but does not sit on the surface as a
+   solid block of it: at rest it is red letters inside a red outline over a faint
+   tint, and it fills in — red ground, white letters — only under the pointer, at
+   the moment the click is about to happen. The resting colour is the per-theme
+   --status-error (the marigold-paper and olive-black surfaces need different
+   reds to stay legible); the fill is the one --danger. */
 button.danger {
-  background: var(--danger);
-  color: #fff;
+  color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 8%, transparent);
+  border: 1px solid var(--status-error);
 }
 button.danger:hover:not(:disabled) {
-  background: var(--danger-hover);
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
 }
 
 /* A committed receiver result must not read like low-priority helper text, and
