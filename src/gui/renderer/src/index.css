@@ -32,12 +32,14 @@
   /* The marigold fill (Primary buttons, under --accent-ink). */
   --accent: #f0b429;
   --accent-hover: #e3a41c;
+  --accent-active: #d6940f;
   --accent-ink: #211a03;
   /* The accent as a mark on a surface: focus rings, the selected job, drop
      targets. Marigold itself is too light for that on paper. */
   --accent-strong: #8f6400;
   --danger: #b93650;
   --danger-hover: #a52d45;
+  --danger-active: #91243a;
   /* Status colors (view.ts's COLOR map, notices), as text and marks. */
   --status-error: #a11f34;
   --status-warning: #804900;
@@ -49,6 +51,7 @@
   --status-idle: #535949;
   --utility: #e4e3d6;
   --utility-hover: #d8d7c8;
+  --utility-active: #cccbba;
   --menu-shadow: 0 8px 28px rgba(31, 33, 23, 0.18);
   --modal-shadow: 0 8px 32px rgba(31, 33, 23, 0.22);
 
@@ -69,10 +72,14 @@
     --scrollbar-thumb: #737b68;
     --accent: #f0b429;
     --accent-hover: #f8c94e;
+    --accent-active: #ffde73;
     --accent-ink: #211a03;
     --accent-strong: #f0b429;
     --danger: #b93650;
     --danger-hover: #c24152;
+    /* Deepens on press although the hover lifts: white on the hover fill is
+       already 5.03:1, so a further lift drops the label under the floor. */
+    --danger-active: #a52d45;
     --status-error: #ff9ba6;
     --status-warning: #ffb454;
     --status-ok: #6fd08c;
@@ -83,6 +90,7 @@
     --status-idle: #b7bbb0;
     --utility: #2d3124;
     --utility-hover: #383d2c;
+    --utility-active: #434934;
     --menu-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
     --modal-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   }
@@ -176,6 +184,9 @@ button {
 button:hover:not(:disabled) {
   background: var(--utility-hover);
 }
+button:active:not(:disabled) {
+  background: var(--utility-active);
+}
 button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -186,6 +197,9 @@ button.accent {
 }
 button.accent:hover:not(:disabled) {
   background: var(--accent-hover);
+}
+button.accent:active:not(:disabled) {
+  background: var(--accent-active);
 }
 /* Destructive actions come in two roles. `danger` OPENS a destructive path — the
    Trash and Remove buttons in the command bar — and stays outlined: red letters
@@ -203,6 +217,13 @@ button.danger {
 button.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--status-error) 18%, transparent);
 }
+/* A small step, and capped by the letters it sits under: at 22% the red text
+   falls under 4.5:1 on --surface-2. The outline is already the strongest red and
+   its width cannot change without moving the footprint, so the tint is the only
+   axis left. */
+button.danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--status-error) 20%, transparent);
+}
 button.danger-confirm {
   color: #fff;
   background: var(--danger);
@@ -211,6 +232,10 @@ button.danger-confirm {
 button.danger-confirm:hover:not(:disabled) {
   background: var(--danger-hover);
   border-color: var(--danger-hover);
+}
+button.danger-confirm:active:not(:disabled) {
+  background: var(--danger-active);
+  border-color: var(--danger-active);
 }
 
 /* A committed receiver result must not read like low-priority helper text, and
@@ -258,6 +283,12 @@ button.icon {
 }
 button.icon:hover:not(:disabled) {
   background: var(--utility);
+  color: var(--text);
+}
+/* Its hover is the utility fill, so its press is the next step of that same
+   ladder and needs no colour of its own. */
+button.icon:active:not(:disabled) {
+  background: var(--utility-hover);
   color: var(--text);
 }
 

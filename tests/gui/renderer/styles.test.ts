@@ -21,3 +21,22 @@ describe("renderer scrollbar contract", () => {
     expect(compact).toContain("scrollbar-gutter:stable");
   });
 });
+
+// A button that does not answer a click reads as one that did nothing, so the
+// action behind it gets reported as slow. Every role states its own pressed step:
+// a role that leaves it unsaid does not fall back to a sensible default here,
+// because the generic `button:active` rule outranks a variant's resting rule and
+// would put the neutral utility step on a marigold or a red button.
+describe("button pressed states", () => {
+  it.each(["button", "button.accent", "button.danger", "button.danger-confirm", "button.icon"])(
+    "gives %s a pressed step of its own",
+    (role) => {
+      expect(compact).toContain(`${role}:active:not(:disabled){`);
+    },
+  );
+
+  // Off, every button is its resting self faded, at the one value the app states.
+  it("fades a disabled button instead of restyling it", () => {
+    expect(compact).toMatch(/button:disabled\{opacity:0\.45/);
+  });
+});

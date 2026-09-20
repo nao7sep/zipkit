@@ -71,12 +71,14 @@ describe("theme token contrast", () => {
       for (const ink of ["--text", "--text-2"]) {
         for (const surface of SURFACES) check(hexOf(block, ink), hexOf(block, surface), 4.5, `${ink} on ${surface}`);
       }
-      for (const control of ["--utility", "--utility-hover"]) {
+      for (const control of ["--utility", "--utility-hover", "--utility-active"]) {
         check(hexOf(block, "--text"), hexOf(block, control), 4.5, `--text on ${control}`);
       }
       check(hexOf(block, "--accent-ink"), hexOf(block, "--accent"), 4.5, "--accent-ink on --accent");
       check(hexOf(block, "--accent-ink"), hexOf(block, "--accent-hover"), 4.5, "--accent-ink on --accent-hover");
-      for (const fill of ["--danger", "--danger-hover"]) check([255, 255, 255], hexOf(block, fill), 4.5, `white on ${fill}`);
+      check(hexOf(block, "--accent-ink"), hexOf(block, "--accent-active"), 4.5, "--accent-ink on --accent-active");
+      for (const fill of ["--danger", "--danger-hover", "--danger-active"])
+        check([255, 255, 255], hexOf(block, fill), 4.5, `white on ${fill}`);
     });
 
     it("keeps status text at 4.5:1 or more, on its own tint and on a status-tinted row", () => {
@@ -95,12 +97,15 @@ describe("theme token contrast", () => {
     it("keeps both destructive roles legible: the outlined trigger and the filled confirm", () => {
       const ink = hexOf(block, "--status-error");
       for (const surface of SURFACES) {
-        for (const amount of [0.08, 0.18]) {
+        // The tint the outlined trigger rests, hovers and presses on. 0.20 is the
+        // deepest the red letters clear 4.5:1 over --surface-2, which is what caps
+        // the pressed step rather than taste.
+        for (const amount of [0.08, 0.18, 0.2]) {
           check(ink, mix(ink, hexOf(block, surface), amount), 4.5, `--status-error on its ${amount * 100}% tint over ${surface}`);
         }
         check(ink, hexOf(block, surface), 3, `--status-error outline on ${surface}`);
       }
-      for (const fill of ["--danger", "--danger-hover"]) {
+      for (const fill of ["--danger", "--danger-hover", "--danger-active"]) {
         check([255, 255, 255], hexOf(block, fill), 4.5, `white on the ${fill} confirm fill`);
       }
     });
