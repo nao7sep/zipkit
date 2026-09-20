@@ -263,8 +263,8 @@ export function JobListbox({
                 <button
                   className="icon"
                   tabIndex={-1}
-                  title="Remove from the list (Delete)"
-                  aria-label="Remove from the list"
+                  title="Remove (Delete)"
+                  aria-label="Remove"
                   onClick={(e) => {
                     e.stopPropagation();
                     remove(job);

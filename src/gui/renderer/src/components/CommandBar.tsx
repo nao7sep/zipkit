@@ -19,7 +19,7 @@ const LABEL: Record<JobCommand, string> = {
   verify: "Verify",
   reveal: "Reveal in file manager",
   "trash-originals": "Move originals to Trash",
-  "remove-archive": "Remove archive",
+  "remove-archive": "Move archive to Trash",
 };
 
 const CLASS: Partial<Record<JobCommand, string>> = {
@@ -37,7 +37,7 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
   const firstDanger = commands.findIndex((c) => CLASS[c] === "danger");
 
   // Focus follows the workflow (focus/selection policy). When a button the user was
-  // on unmounts because the job advanced (Create -> running, Remove archive -> back
+  // on unmounts because the job advanced (Create -> running, Move archive to Trash -> back
   // through planning to ready), the browser drops focus to <body>. We act only when
   // the command SET changes AND focus has fallen to the body — i.e. exactly when a
   // button just unmounted from under focus — and pull it to the bar's new primary

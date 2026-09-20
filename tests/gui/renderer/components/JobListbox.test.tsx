@@ -112,7 +112,7 @@ describe("JobListbox", () => {
   it("keeps the row action buttons out of the tab order", () => {
     renderListbox({ jobs: [job("a", "planning")], selectedId: "a" });
     expect(screen.getByTitle("Cancel (Escape)").tabIndex).toBe(-1);
-    expect(screen.getByTitle("Remove from the list (Delete)").tabIndex).toBe(-1);
+    expect(screen.getByTitle("Remove (Delete)").tabIndex).toBe(-1);
   });
 
   it("shows an internal job result as a sentence without changing the stored message", () => {
