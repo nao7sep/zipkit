@@ -76,10 +76,11 @@
     --accent-ink: #211a03;
     --accent-strong: #f0b429;
     --danger: #b93650;
-    --danger-hover: #c24152;
-    /* Deepens on press although the hover lifts: white on the hover fill is
-       already 5.03:1, so a further lift drops the label under the floor. */
-    --danger-active: #a52d45;
+    /* The filled confirm deepens under the pointer and again under the finger,
+       the same direction as the light theme: a red that lightens as it is pressed
+       reads as retreating from the click. */
+    --danger-hover: #a52d45;
+    --danger-active: #91243a;
     --status-error: #ff9ba6;
     --status-warning: #ffb454;
     --status-ok: #6fd08c;
@@ -217,10 +218,9 @@ button.danger {
 button.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--status-error) 18%, transparent);
 }
-/* A small step, and capped by the letters it sits under: at 22% the red text
-   falls under 4.5:1 on --surface-2. The outline is already the strongest red and
-   its width cannot change without moving the footprint, so the tint is the only
-   axis left. */
+/* A small step on purpose: this is the TRIGGER, and a tint deep enough to read
+   as a fill would say what only the confirming button may say. The step is the
+   tint's, since the outline already carries the strongest red. */
 button.danger:active:not(:disabled) {
   background: color-mix(in srgb, var(--status-error) 20%, transparent);
 }
