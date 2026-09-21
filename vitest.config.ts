@@ -1,7 +1,14 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+import { readFileSync } from "node:fs";
+
+// __APP_VERSION__ is injected from package.json by electron.vite.config.ts for the
+// build; mirrored here so the tests run against the same value.
+const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // The same React transform the app build uses, so the renderer-component tests
   // (.tsx) compile with the automatic JSX runtime rather than classic
   // `React.createElement`. Node-side tests have no JSX and are unaffected.

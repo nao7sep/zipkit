@@ -3,10 +3,11 @@
  * verification. The queue's plan/write/verify/trash live in queue.ts.
  */
 
-import { app, dialog, ipcMain, shell } from "electron";
+import { dialog, ipcMain, shell } from "electron";
 import type { AppInfo, VerifyResult } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
+import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log, sendEvent, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
@@ -101,9 +102,13 @@ export function registerIpc(): void {
     shell.showItemInFolder(path);
   });
 
+  // The app knows its own identity. app.getName()/getVersion() answer about the
+  // running binary, so an unpackaged run — the way the app is dogfooded and shot
+  // for screenshots — reported "Electron 44.2.0" in About. The name is this app's
+  // own, and the version is package.json's, injected at build.
   ipcMain.handle("zipkit:appInfo", async (): Promise<AppInfo> => ({
-    name: app.getName(),
-    version: app.getVersion(),
+    name: APP_NAME,
+    version: APP_VERSION,
   }));
 
   ipcMain.handle("zipkit:openExternal", async (_event, url: string): Promise<void> => {

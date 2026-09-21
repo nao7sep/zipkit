@@ -10,6 +10,7 @@
  */
 
 import { app, BrowserWindow, nativeTheme } from "electron";
+import { APP_VERSION } from "../shared/identity.js";
 import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
 import { installContentSecurityPolicy } from "./csp.js";
@@ -131,7 +132,7 @@ async function reportStartupHalt(error: unknown): Promise<void> {
 
 app.whenReady().then(async () => {
   log.info("app started", {
-    version: app.getVersion(),
+    version: APP_VERSION,
     platform: process.platform,
     arch: process.arch,
     electron: process.versions.electron,

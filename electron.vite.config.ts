@@ -1,6 +1,12 @@
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+// Single source of truth for the app version: package.json, injected as
+// __APP_VERSION__. Asking Electron for it instead answers about the running
+// binary, so an unpackaged run reported Electron's own version in About.
+const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 
 // The GUI lives under src/gui/{main,preload,renderer,shared} (peers to src/sdk),
 // so each electron-vite part is pointed at its entry there rather than the
@@ -21,6 +27,7 @@ export default defineConfig({
       },
     },
     plugins: [externalizeDepsPlugin()],
+    define: { __APP_VERSION__: JSON.stringify(version) },
   },
   preload: {
     build: {
