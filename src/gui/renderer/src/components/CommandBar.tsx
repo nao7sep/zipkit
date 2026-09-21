@@ -71,7 +71,9 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
   return (
     // tabIndex -1 so the bar itself can hold focus as a last resort (a blocked job
     // shows only a hint with no button to land on); it never becomes a tab stop.
-    <div ref={barRef} tabIndex={-1} style={S.bar}>
+    // It draws no ring when it does: the focus is a place to stand, not a control,
+    // and the key that led here would light one around the whole bar.
+    <div ref={barRef} tabIndex={-1} style={{ ...S.bar, outline: "none" }}>
       {commands.length === 0 ? (
         <span style={S.hint}>
           {job.message ? humanSentence(job.message) : "Resolve the blocking issues to create this archive."}
