@@ -17,13 +17,14 @@ import { installContentSecurityPolicy } from "./csp.js";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { isLoopbackRendererUrl, isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
-import { flushQueue, registerQueueIpc, restoreQueue } from "./queue.js";
+import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue } from "./queue.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { loadLayout } from "./layout.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
+import { confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
 import { flushThenExit } from "./quit.js";
 import { configureWindowMinimum } from "./window-minimum.js";
@@ -194,19 +195,40 @@ app.on("window-all-closed", () => {
 });
 
 let queueFlushedForQuit = false;
+// Guards the async confirm/cancel decision below against a second `before-quit`
+// (e.g. a repeated Cmd+Q) firing while the first is still awaiting the user or
+// the running job's own abort.
+let quitDecisionPending = false;
 app.on("before-quit", (event) => {
   if (queueFlushedForQuit) return;
   event.preventDefault();
-  void flushThenExit(
-    flushQueue(),
-    () => {
-      queueFlushedForQuit = true;
-      log.info("app quitting");
-    },
-    (err) => {
-      queueFlushedForQuit = true;
-      log.error("failed to flush the queue before quit", { error: errorInfo(err) });
-    },
-    (code) => app.exit(code),
-  );
+  if (quitDecisionPending) return;
+  quitDecisionPending = true;
+  void (async () => {
+    try {
+      // A job still writing, verifying, or moving originals to Trash has no
+      // bounded way to finish on its own schedule, so quitting must choose:
+      // cancel it (leaving either a complete archive or none — never a stray
+      // mid-write temp file) or let the user keep working.
+      if (hasRunningJob()) {
+        const quitAnyway = await confirmQuitDuringWrite(getMainWindow());
+        if (!quitAnyway) return; // quit stays cancelled; the job keeps running
+      }
+      await cancelRunningJobAndWait();
+      await flushThenExit(
+        flushQueue(),
+        () => {
+          queueFlushedForQuit = true;
+          log.info("app quitting");
+        },
+        (err) => {
+          queueFlushedForQuit = true;
+          log.error("failed to flush the queue before quit", { error: errorInfo(err) });
+        },
+        (code) => app.exit(code),
+      );
+    } finally {
+      quitDecisionPending = false;
+    }
+  })();
 });

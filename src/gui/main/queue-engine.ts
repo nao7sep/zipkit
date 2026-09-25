@@ -35,8 +35,11 @@ export interface EngineDeps {
   verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<boolean>;
   /** Classify input paths on disk (dir/file/nonexistent) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
-  /** Move each path independently to the OS Trash and report the exact outcome. */
-  trash(paths: string[]): Promise<TrashResult>;
+  /** Move each path independently to the OS Trash and report the exact outcome.
+   *  Bounded and cancellable like `plan`/`write`/`verify`: a path still pending
+   *  when `signal` aborts, or one whose Trash call cannot be confirmed in time,
+   *  is reported in `failed` rather than left unresolved. */
+  trash(paths: string[], signal: AbortSignal): Promise<TrashResult>;
   /** Physical-identity containment guard for every destructive action. */
   outputInsideInputs(output: string, inputs: string[]): Promise<boolean>;
   /** Push the current job list to observers (renderer + persistence). */
@@ -63,6 +66,13 @@ export interface QueueEngine {
   trashOriginals(id: string): void;
   getPlan(id: string): PlanData | null;
   restore(saved: SavedJob[]): void;
+  /** True while a job is actually writing/verifying/trashing (not merely queued). */
+  hasRunningJob(): boolean;
+  /** For app quit: abort whatever job is running, stop draining any queued ones,
+   *  and resolve only once the in-flight run has actually stopped — so quitting
+   *  never abandons a writer mid-stream (its own `abort()` already removes its
+   *  temp file; this just makes sure quit waits for that to happen). */
+  shutdown(): Promise<void>;
 }
 
 interface Rec {
@@ -242,7 +252,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
       let trashResult: TrashResult;
       try {
-        trashResult = await deps.trash(rec.job.inputs);
+        trashResult = await deps.trash(rec.job.inputs, signal);
       } catch (err) {
         set(rec, { state: "failed", message: "The archive was saved and verified, but the originals could not be moved to Trash. The originals were kept." });
         deps.log.error("job Trash failed after verify", { jobId: id, error: errorInfo(err) });
@@ -272,6 +282,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     return state === "ready" || state === "queued" || state === "failed";
   }
 
+  /** The in-flight `runJob` call, if any — at most one at a time by design.
+   *  `shutdown()` awaits this rather than the cancel request itself, so quit
+   *  waits for the writer to actually stop. */
+  let currentRun: Promise<void> | null = null;
+
   // Drain the explicit run requests one at a time (never two writes at once).
   async function drain(): Promise<void> {
     if (draining) return;
@@ -283,7 +298,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         const rec = recs.get(id);
         // Skip if removed or no longer runnable (e.g. re-planned to needs-attention).
         if (!rec || !isRunnable(rec.job.state)) continue;
-        await runJob(id);
+        currentRun = runJob(id);
+        try {
+          await currentRun;
+        } finally {
+          currentRun = null;
+        }
       }
     } finally {
       draining = false;
@@ -427,7 +447,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.info("remove archive requested", { jobId: id, output });
       void (async () => {
         try {
-          const result = await deps.trash([output]);
+          // A standalone Trash action, not tied to a running job's own
+          // cancellation — bounded by `trash`'s own per-path timeout, but with
+          // nothing (yet) for the user to cancel it through.
+          const result = await deps.trash([output], new AbortController().signal);
           if (result.failed.length > 0) throw new Error("archive trash failed");
         } catch (err) {
           set(rec, {
@@ -481,7 +504,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             emit();
             return;
           }
-          const result = await deps.trash(inputs);
+          // Same standalone-action note as `removeArchive` above.
+          const result = await deps.trash(inputs, new AbortController().signal);
           if (result.failed.length > 0) {
             set(rec, {
               actionResult: {
@@ -527,6 +551,19 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         void classifyInputs(s.id);
         void planJob(s.id);
       }
+    },
+    hasRunningJob() {
+      for (const rec of recs.values()) if (rec.job.state === "running") return true;
+      return false;
+    },
+    async shutdown() {
+      // Stop draining any job still only `queued`: quit takes whatever the
+      // running job leaves behind and goes no further.
+      pending.length = 0;
+      for (const rec of recs.values()) {
+        if (rec.job.state === "running") rec.aborter?.abort();
+      }
+      if (currentRun) await currentRun.catch(() => {});
     },
   };
 }

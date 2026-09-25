@@ -23,6 +23,37 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingJobs: SavedJob[] | undefined;
 let saveChain: Promise<void> = Promise.resolve();
 
+/** How long one path's Trash call may run before it is reported rather than
+ *  awaited forever — `shell.trashItem` has no timeout or cancel of its own. */
+const TRASH_TIMEOUT_MS = 10_000;
+
+/** Move one path to the OS Trash, bounded by `TRASH_TIMEOUT_MS` and cancellable
+ *  via `signal`. Neither condition stops the underlying OS call — Electron's API
+ *  offers no way to do that — but the job stops waiting on it and moves on,
+ *  reporting the path as not (confirmed) moved. */
+function trashPath(path: string, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      fn();
+    };
+    const timer = setTimeout(
+      () => finish(() => reject(new Error(`could not confirm Trash for ${path} in time`))),
+      TRASH_TIMEOUT_MS,
+    );
+    const onAbort = (): void => finish(() => reject(new Error("cancelled")));
+    signal.addEventListener("abort", onAbort);
+    shell.trashItem(path).then(
+      () => finish(resolve),
+      (err: unknown) => finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
+    );
+  });
+}
+
 const engine = createQueueEngine({
   // Compose the output path from the GUI's directory + file name at the boundary
   // (absolute, or empty so the SDK infers beside the input — never resolved
@@ -43,12 +74,16 @@ const engine = createQueueEngine({
       )
     ).reportOk,
   classify: (paths) => classifyPaths(paths),
-  trash: async (paths) => {
+  trash: async (paths, signal) => {
     const moved: string[] = [];
     const failed: Array<{ path: string; message: string }> = [];
     for (const p of paths) {
+      if (signal.aborted) {
+        failed.push({ path: p, message: "cancelled before Trash" });
+        continue;
+      }
       try {
-        await shell.trashItem(p);
+        await trashPath(p, signal);
         moved.push(p);
       } catch (err) {
         failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
@@ -120,6 +155,18 @@ export async function restoreQueue(): Promise<string | null> {
   log.info("queue restored", { jobs: saved.length });
   engine.restore(saved);
   return quarantinedTo;
+}
+
+/** Whether a job is actually writing/verifying/trashing right now — the
+ *  question quit asks before it decides whether to confirm with the user. */
+export function hasRunningJob(): boolean {
+  return engine.hasRunningJob();
+}
+
+/** Cancel whatever job is running and wait for it to actually stop, for quit.
+ *  A no-op when nothing is running. */
+export async function cancelRunningJobAndWait(): Promise<void> {
+  await engine.shutdown();
 }
 
 export function registerQueueIpc(): void {

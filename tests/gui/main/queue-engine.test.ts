@@ -414,6 +414,98 @@ describe("queue engine", () => {
     });
   });
 
+  it("ZK-1: cancel reaches the Trash step through a real signal, not a dead button", async () => {
+    let observedSignal: AbortSignal | undefined;
+    let releaseTrash!: () => void;
+    const { deps } = makeDeps({
+      trash: (paths, signal) => {
+        observedSignal = signal;
+        return new Promise((resolve) => {
+          releaseTrash = () =>
+            resolve(
+              signal.aborted
+                ? { moved: [], failed: paths.map((path) => ({ path, message: "cancelled before Trash" })) }
+                : { moved: paths, failed: [] },
+            );
+        });
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(observedSignal).toBeDefined());
+
+    // The Cancel button, while the Trash step is in flight.
+    engine.cancel(id);
+    expect(observedSignal!.aborted).toBe(true); // previously: trash had no signal to abort at all
+    releaseTrash();
+
+    await vi.waitFor(() => {
+      const j = engine.snapshot()[0];
+      expect(j?.state).toBe("failed");
+      expect(j?.message).toContain("kept");
+    });
+  });
+
+  it("ZK-2: shutdown waits for the aborted writer to actually stop, not just for the abort call", async () => {
+    let rejectWrite!: (err: Error) => void;
+    const { deps } = makeDeps({
+      // Aborting alone does not settle this fake — only the writer itself
+      // decides when it has actually stopped, same as the real ZipWriter's
+      // own `abort()` cleanup taking real (if brief) time.
+      write: () =>
+        new Promise<number>((_resolve, reject) => {
+          rejectWrite = reject;
+        }),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.hasRunningJob()).toBe(true));
+
+    let settled = false;
+    const shutdown = engine.shutdown().then(() => {
+      settled = true;
+    });
+    await tick();
+    expect(settled).toBe(false); // shutdown asked for cancellation; the writer hasn't stopped yet
+    expect(engine.hasRunningJob()).toBe(true); // still running, by design of this fake
+
+    rejectWrite(new Error("aborted"));
+    await shutdown;
+    expect(settled).toBe(true);
+    expect(engine.hasRunningJob()).toBe(false);
+    expect(engine.snapshot()[0]?.state).toBe("failed");
+  });
+
+  it("ZK-2: shutdown stops a queued job from ever getting its turn", async () => {
+    let rejectFirstWrite!: (err: Error) => void;
+    const { deps, calls } = makeDeps({
+      write: () => {
+        calls.write++;
+        return new Promise<number>((_resolve, reject) => {
+          rejectFirstWrite = reject;
+        });
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    engine.run(a);
+    engine.run(b);
+    await vi.waitFor(() => expect(engine.snapshot().find((j) => j.id === b)?.state).toBe("queued"));
+
+    const shutdown = engine.shutdown();
+    rejectFirstWrite(new Error("aborted"));
+    await shutdown;
+
+    expect(calls.write).toBe(1); // b never started
+    expect(engine.snapshot().find((j) => j.id === b)?.state).toBe("queued");
+  });
+
   it("archive-and-trash refuses to Trash when the archive is inside the source", async () => {
     const { deps, calls } = makeDeps({
       plan: async (inputs) => planData(true, `${inputs[0]}/out.zip`),

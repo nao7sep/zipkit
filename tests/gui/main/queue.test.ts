@@ -5,7 +5,15 @@ const mocks = vi.hoisted(() => ({
   saveQueue: vi.fn(),
   toResumable: vi.fn((jobs: unknown) => jobs),
   restore: vi.fn(),
-  deps: undefined as undefined | { emit(jobs: unknown[]): void },
+  deps: undefined as
+    | undefined
+    | {
+        emit(jobs: unknown[]): void;
+        trash(
+          paths: string[],
+          signal: AbortSignal,
+        ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }> }>;
+      },
 }));
 
 vi.mock("electron", () => ({
@@ -25,7 +33,13 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
   zip: {},
 }));
 vi.mock("../../../src/gui/main/queue-engine.js", () => ({
-  createQueueEngine: (deps: { emit(jobs: unknown[]): void }) => {
+  createQueueEngine: (deps: {
+    emit(jobs: unknown[]): void;
+    trash(
+      paths: string[],
+      signal: AbortSignal,
+    ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }> }>;
+  }) => {
     mocks.deps = deps;
     return { restore: mocks.restore };
   },
@@ -34,7 +48,10 @@ vi.mock("../../../src/gui/shared/spec.js", () => ({ buildSpec: vi.fn() }));
 vi.mock("../../../src/gui/main/output.js", () => ({ resolveOutputPath: vi.fn() }));
 vi.mock("../../../src/gui/main/inputs.js", () => ({ classifyPaths: vi.fn() }));
 
+import { shell } from "electron";
 import { flushQueue, restoreQueue } from "../../../src/gui/main/queue.js";
+
+const trashItem = vi.mocked(shell.trashItem);
 
 describe("restoreQueue", () => {
   beforeEach(() => {
@@ -121,5 +138,67 @@ describe("restoreQueue", () => {
     releaseSecond();
     await Promise.all([firstFlush, quitFlush]);
     expect(quitFinished).toBe(true);
+  });
+});
+
+describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
+  beforeEach(() => {
+    trashItem.mockReset();
+  });
+
+  it("stops before a path once the signal is already aborted, never calling shell.trashItem for it", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await mocks.deps!.trash(["/a", "/b"], controller.signal);
+
+    expect(trashItem).not.toHaveBeenCalled();
+    expect(result.moved).toEqual([]);
+    expect(result.failed).toEqual([
+      { path: "/a", message: "cancelled before Trash" },
+      { path: "/b", message: "cancelled before Trash" },
+    ]);
+  });
+
+  it("reports a path whose Trash call never answers, instead of waiting forever", async () => {
+    vi.useFakeTimers();
+    try {
+      trashItem.mockReturnValue(new Promise(() => {})); // never settles
+      const controller = new AbortController();
+
+      const pending = mocks.deps!.trash(["/stuck"], controller.signal);
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await pending;
+
+      expect(result.moved).toEqual([]);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0]?.path).toBe("/stuck");
+      expect(result.failed[0]?.message).toContain("could not confirm Trash");
+      expect(result.failed[0]?.message).toContain("in time");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a still-waiting Trash call as soon as the signal aborts, without waiting for the timeout", async () => {
+    trashItem.mockReturnValue(new Promise(() => {})); // never settles on its own
+    const controller = new AbortController();
+
+    const pending = mocks.deps!.trash(["/a"], controller.signal);
+    controller.abort();
+    const result = await pending;
+
+    expect(result.moved).toEqual([]);
+    expect(result.failed).toEqual([{ path: "/a", message: "cancelled" }]);
+  });
+
+  it("moves every path that resolves before the signal aborts", async () => {
+    trashItem.mockResolvedValue(undefined);
+
+    const result = await mocks.deps!.trash(["/a", "/b"], new AbortController().signal);
+
+    expect(trashItem).toHaveBeenCalledTimes(2);
+    expect(result.moved).toEqual(["/a", "/b"]);
+    expect(result.failed).toEqual([]);
   });
 });
