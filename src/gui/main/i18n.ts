@@ -63,11 +63,17 @@ export function readConfigText(file: string): string | null {
 // domain, so ZipKit keeps the interface language in its own defaults domain
 // (never the global one): AppKit, and Chromium's own strings, pick it up at the
 // next launch, as the conventions allow for a language saved mid-session.
-// System removes the entry, so the computer's own list applies again.
+// System removes the entry, so the computer's own list applies again. Only the
+// packaged app does this: an unpackaged run shares the Electron runtime's own
+// domain with every other app in development.
 const APPLE_LANGUAGES = "AppleLanguages";
 
+function ownsAppKitLanguages(): boolean {
+  return process.platform === "darwin" && app.isPackaged;
+}
+
 function computerLanguages(): string[] {
-  if (process.platform === "darwin") {
+  if (ownsAppKitLanguages()) {
     // The entry this app wrote shadows the computer's list; clear it first so
     // System reads what the computer prefers, then write it back below.
     systemPreferences.removeUserDefault(APPLE_LANGUAGES);
@@ -76,7 +82,7 @@ function computerLanguages(): string[] {
 }
 
 function alignAppKit(preference: LanguagePreference, onError: (error: unknown) => void): void {
-  if (process.platform !== "darwin") return;
+  if (!ownsAppKitLanguages()) return;
   try {
     if (preference === "system") systemPreferences.removeUserDefault(APPLE_LANGUAGES);
     else systemPreferences.setUserDefault(APPLE_LANGUAGES, "array", [preference]);
