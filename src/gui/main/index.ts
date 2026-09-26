@@ -28,9 +28,12 @@ if (!app.requestSingleInstanceLock()) {
     process.stderr.write(`zipkit: ${message}\n`);
     void app.whenReady().then(async () => {
       const { notifyStartupFailure } = await import("./startup-dialog.js");
-      await notifyStartupFailure(
-        "ZipKit could not open its data folder. Restore access to the configured folder, then start ZipKit again.",
-      );
+      const { mainTranslator } = await import("./i18n.js");
+      const { installAppMenu } = await import("./menu.js");
+      // The saved choice lives under the unusable root, so the computer's
+      // language speaks here, in the menu as in the dialog.
+      installAppMenu(mainTranslator());
+      await notifyStartupFailure("startup.dataFolder");
       app.exit(1);
     }).catch((dialogError) => {
       process.stderr.write(`zipkit: startup failure dialog could not open: ${String(dialogError)}\n`);

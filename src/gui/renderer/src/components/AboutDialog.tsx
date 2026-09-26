@@ -10,11 +10,15 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
 import { reportableError } from "../externalDropBoundary";
+import { useI18n } from "../i18n/I18nContext";
+import { message } from "../../../shared/i18n/translate";
+import { APP_NAME } from "../../../shared/identity";
 
 const REPO = "https://github.com/nao7sep/zipkit";
 export const ABOUT_COPYRIGHT = "© 2026 Yoshinao Inoguchi · GNU GPL v3 or later";
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
   const [info, setInfo] = useState<{ name: string; version: string } | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [linkErrors, setLinkErrors] = useState<Record<"repository" | "issues", boolean>>({
@@ -49,21 +53,21 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <ModalShell
-      title={`About ${info?.name ?? "ZipKit"}`}
+      title={t("about.title", { name: info?.name ?? APP_NAME })}
       titleHidden
       onClose={onClose}
       describedById="about-description"
-      footer={<button onClick={onClose}>Close</button>}
+      footer={<button onClick={onClose}>{t("common.close")}</button>}
     >
-      <p className="about-name">{info?.name ?? "ZipKit"}</p>
-      {loadFailed ? <><p role="alert">App information could not be loaded. Try again.</p><button onClick={() => setAttempt((value) => value + 1)}>Retry</button></> : <p className="about-version">Version {info?.version ?? "Loading…"}</p>}
-      <p id="about-description">Clean, portable ZIP archives for macOS and Windows.</p>
+      <p className="about-name">{info?.name ?? APP_NAME}</p>
+      {loadFailed ? <><p role="alert">{t("about.loadFailed")}</p><button onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</button></> : <p className="about-version">{info ? t("about.version", { version: info.version }) : t("about.loading")}</p>}
+      <p id="about-description">{t("about.description")}</p>
       <div style={S.links}>
-        <button disabled={!info} onClick={() => void openLink("repository", REPO)}>Repository</button>
-        <button disabled={!info} onClick={() => void openLink("issues", `${REPO}/issues`)}>Issues</button>
+        <button disabled={!info} onClick={() => void openLink("repository", REPO)}>{t("about.repository")}</button>
+        <button disabled={!info} onClick={() => void openLink("issues", `${REPO}/issues`)}>{t("about.issues")}</button>
       </div>
-      {linkErrors.repository && <ReceiverResultNotice result={{ message: "The repository link could not be opened in your browser. Try again.", severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, repository: false }))} />}
-      {linkErrors.issues && <ReceiverResultNotice result={{ message: "The issues link could not be opened in your browser. Try again.", severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, issues: false }))} />}
+      {linkErrors.repository && <ReceiverResultNotice result={{ message: message("about.repositoryFailed"), severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, repository: false }))} />}
+      {linkErrors.issues && <ReceiverResultNotice result={{ message: message("about.issuesFailed"), severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, issues: false }))} />}
       <p style={{ opacity: 0.7 }}>{ABOUT_COPYRIGHT}</p>
     </ModalShell>
   );

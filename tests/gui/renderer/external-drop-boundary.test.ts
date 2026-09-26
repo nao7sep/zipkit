@@ -7,6 +7,7 @@ import {
   receiverOperationKey,
   settleReceiverResult,
 } from "../../../src/gui/renderer/src/externalDropBoundary";
+import { message } from "../../../src/gui/shared/i18n/translate";
 
 function drag(target: Element, types: string[], items: Array<{ kind: string }> = []): DragEvent {
   const event = new Event("drop", { cancelable: true }) as DragEvent;
@@ -38,7 +39,7 @@ describe("desktop drop boundary", () => {
     const current = settleReceiverResult(null, {
       operationKey: firstKey,
       entryKey: "inputs:job-1:picker",
-      result: { message: "Already present", severity: "information" },
+      result: { message: message("result.alreadyInJob", { count: 1 }), severity: "information" },
     });
 
     expect(settleReceiverResult(current, {
@@ -67,7 +68,7 @@ describe("desktop drop boundary", () => {
     const pickerFailure = settleReceiverResult(null, {
       operationKey: "jobs:picker",
       entryKey: "jobs:picker",
-      result: { message: "Could not choose inputs", severity: "error" },
+      result: { message: message("result.pickerFailed"), severity: "error" },
     });
 
     expect(settleReceiverResult(pickerFailure, {

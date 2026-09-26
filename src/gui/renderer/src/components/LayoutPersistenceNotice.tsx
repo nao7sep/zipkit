@@ -4,18 +4,17 @@
 
 import type { CSSProperties } from "react";
 import { CloseIcon } from "./Icon";
+import { useI18n } from "../i18n/I18nContext";
 
 export function LayoutPersistenceNotice({ onDismiss }: { onDismiss: () => void }) {
+  const { t } = useI18n();
   return (
     <div role="alert" aria-atomic="true" style={S.root}>
-      <span style={S.message}>
-        The pane layout wasn’t saved. Your current layout is still in use; resize a pane to try
-        saving it again.
-      </span>
+      <span style={S.message}>{t("layout.notSaved")}</span>
       <button
         type="button"
         className="icon"
-        aria-label="Close pane layout save result"
+        aria-label={t("layout.close")}
         onClick={onDismiss}
         style={S.dismiss}
       >

@@ -6,6 +6,7 @@ import {
   resolveDroppedFiles,
   summarizeDroppedFiles,
 } from "../../../../src/gui/renderer/src/externalDropBoundary";
+import { createTranslator } from "../../../../src/gui/shared/i18n/translate";
 
 describe("InputList drag offers", () => {
   it("keeps an uninspectable native Files offer delivery-only", () => {
@@ -63,30 +64,31 @@ describe("InputList drag offers", () => {
 
   it("keeps full success quiet and accounts for a partial resolution once", () => {
     expect(summarizeDroppedFiles(
-      "Added",
+      "result.addedInputs",
       { paths: ["/a"], duplicates: 0, unavailable: 0, errors: [] },
       { changed: true, accepted: 1, result: null },
     )).toBeNull();
 
-    expect(summarizeDroppedFiles(
-      "Added",
+    const summary = summarizeDroppedFiles(
+      "result.addedInputs",
       { paths: ["/a"], duplicates: 1, unavailable: 2, errors: [] },
       { changed: true, accepted: 1, result: null },
-    )).toEqual({
-      message: "Added 1 input. 1 dropped item repeated the same local path. 2 dropped items were not available as a local path.",
-      severity: "warning",
-    });
+    );
+    expect(summary?.severity).toBe("warning");
+    expect(createTranslator("en").text(summary!.message)).toBe(
+      "Added 1 input. 1 dropped item repeated the same local path. 2 dropped items were not available as a local path.",
+    );
   });
 
   it("keeps duplicate-only outcomes informational and unexpected resolution failures erroneous", () => {
     expect(summarizeDroppedFiles(
-      "Added",
+      "result.addedInputs",
       { paths: ["/a"], duplicates: 1, unavailable: 0, errors: [] },
       { changed: true, accepted: 1, result: null },
     )?.severity).toBe("information");
 
     expect(summarizeDroppedFiles(
-      "Added",
+      "result.addedInputs",
       {
         paths: [],
         duplicates: 0,

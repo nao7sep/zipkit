@@ -12,6 +12,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_OPTIONS, normalizeThemePreference, type GuiOptions, type GuiSettings } from "../shared/spec.js";
+import { normalizeLanguagePreference } from "../shared/i18n/languages.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
@@ -24,7 +25,7 @@ export function settingsFile(): string {
 }
 
 function freshSettings(): GuiSettings {
-  return { defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "", theme: "system" };
+  return { defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "", theme: "system", language: "system" };
 }
 
 /** Parse settings-file text: fill absent fields and reject wrong known shapes. */
@@ -61,13 +62,24 @@ export function parseSettings(text: string): GuiSettings {
   // An unrecognized theme name (a newer build's, a hand edit) resolves to System
   // rather than setting the whole file aside.
   const theme = normalizeThemePreference(root.theme);
-  return { defaults, uiFontFamily, theme };
+  if (root.language !== undefined && typeof root.language !== "string") {
+    throw new InvalidManagedJsonError("config.json", "language must be a string");
+  }
+  // Likewise an unknown language tag resolves to System.
+  const language = normalizeLanguagePreference(root.language);
+  return { defaults, uiFontFamily, theme, language };
 }
 
 /** Serialize the GUI settings to settings-file text. Pure. */
 export function serializeSettings(settings: GuiSettings): string {
   return JSON.stringify(
-    { version: 1, defaults: settings.defaults, uiFontFamily: settings.uiFontFamily, theme: settings.theme },
+    {
+      version: 1,
+      defaults: settings.defaults,
+      uiFontFamily: settings.uiFontFamily,
+      theme: settings.theme,
+      language: settings.language,
+    },
     null,
     2,
   );

@@ -33,6 +33,9 @@ import {
 } from "../../../src/gui/renderer/src/view";
 import type { ExtractData, Job, LogEvent, PlanData } from "../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
+import { createTranslator, message } from "../../../src/gui/shared/i18n/translate";
+
+const en = createTranslator("en");
 
 const job = (over: Partial<Job> = {}): Job => ({
   id: "j",
@@ -55,8 +58,8 @@ const ALL_STATES: Job["state"][] = [
 
 describe("label", () => {
   it("shows a lone input's own name with extension", () => {
-    expect(label(job({ inputs: ["/x/y/report.pdf"] }))).toBe("report.pdf");
-    expect(label(job({ inputs: ["/x/y/photos"] }))).toBe("photos");
+    expect(label(job({ inputs: ["/x/y/report.pdf"] }), en)).toBe("report.pdf");
+    expect(label(job({ inputs: ["/x/y/photos"] }), en)).toBe("photos");
   });
   it("counts directories and files for multiple inputs (omitting a zero count)", () => {
     const j = job({
@@ -67,19 +70,19 @@ describe("label", () => {
         { path: "/f1", kind: "file" },
       ],
     });
-    expect(label(j)).toBe("2 directories, 1 file");
+    expect(label(j, en)).toBe("2 directories, 1 file");
     expect(
       label(job({ inputs: ["/f1", "/f2"], entries: [
         { path: "/f1", kind: "file" },
         { path: "/f2", kind: "file" },
-      ] })),
+      ] }), en),
     ).toBe("2 files");
   });
   it("falls back to an item count before classification resolves", () => {
-    expect(label(job({ inputs: ["/a", "/b", "/c"] }))).toBe("3 items");
+    expect(label(job({ inputs: ["/a", "/b", "/c"] }), en)).toBe("3 items");
   });
   it("falls back when there are no inputs", () => {
-    expect(label(job({ inputs: [] }))).toBe("(no input)");
+    expect(label(job({ inputs: [] }), en)).toBe("(no input)");
   });
 });
 
@@ -113,24 +116,24 @@ describe("orderedEntries", () => {
 describe("outputPreview", () => {
   it("prefers the resolved output (split into dir + name)", () => {
     const j = job({ state: "ready", output: "/out/dir/report.zip" });
-    expect(outputPreview(j, DEFAULT_OPTIONS)).toEqual({ dir: "/out/dir", name: "report.zip" });
+    expect(outputPreview(j, DEFAULT_OPTIONS, en)).toEqual({ dir: "/out/dir", name: "report.zip" });
   });
   it("falls back to the user's typed values when not yet resolved", () => {
     const j = job({ state: "needs-attention", inputs: ["/a/b/c"] });
-    expect(outputPreview(j, { ...DEFAULT_OPTIONS, outputDir: "/picked", fileName: "mine" })).toEqual({
+    expect(outputPreview(j, { ...DEFAULT_OPTIONS, outputDir: "/picked", fileName: "mine" }, en)).toEqual({
       dir: "/picked",
       name: "mine",
     });
   });
   it("says 'resolving…' for the name only while planning, never claims planning when blocked", () => {
     const planning = job({ state: "planning", inputs: ["/a/b/c"] });
-    expect(outputPreview(planning, DEFAULT_OPTIONS).name).toBe("resolving…");
+    expect(outputPreview(planning, DEFAULT_OPTIONS, en).name).toBe("Resolving…");
     const blocked = job({ state: "needs-attention", inputs: ["/a/x", "/b/y"] });
-    expect(outputPreview(blocked, DEFAULT_OPTIONS).name).toBe("(set a file name)");
+    expect(outputPreview(blocked, DEFAULT_OPTIONS, en).name).toBe("(set a file name)");
   });
   it("defaults the directory to the first input's parent, else a clear placeholder", () => {
-    expect(outputPreview(job({ state: "ready", inputs: ["/a/b/c"] }), DEFAULT_OPTIONS).dir).toBe("/a/b");
-    expect(outputPreview(job({ state: "ready", inputs: ["bare"] }), DEFAULT_OPTIONS).dir).toBe(
+    expect(outputPreview(job({ state: "ready", inputs: ["/a/b/c"] }), DEFAULT_OPTIONS, en).dir).toBe("/a/b");
+    expect(outputPreview(job({ state: "ready", inputs: ["bare"] }), DEFAULT_OPTIONS, en).dir).toBe(
       "(beside the input)",
     );
   });
@@ -208,14 +211,14 @@ describe("manifestRequiredButMissing", () => {
 
 describe("intentLabel", () => {
   it("tags only the noteworthy intent; the default save shows nothing", () => {
-    expect(intentLabel("save")).toBe("");
-    expect(intentLabel("archive-and-trash")).toBe("→ Trash");
+    expect(intentLabel("save", en)).toBe("");
+    expect(intentLabel("archive-and-trash", en)).toBe("→ Trash");
   });
 });
 
 describe("stateLabel", () => {
   it("proper-cases every state (exhaustive, none left raw)", () => {
-    expect(ALL_STATES.map(stateLabel)).toEqual([
+    expect(ALL_STATES.map((state) => en.t(stateLabel(state)))).toEqual([
       "Planning",
       "Needs attention",
       "Ready",
@@ -248,15 +251,17 @@ describe("reportSummary", () => {
     } as unknown as PlanData;
   };
   it("speaks to the job's actual state, never a vague 'safe' claim", () => {
-    expect(reportSummary(job({ state: "failed", message: "disk full" }), null)?.text).toBe("Disk full");
-    expect(reportSummary(job({ state: "done" }), planOf({ writable: true, included: 3 }))).toEqual({
+    expect(reportSummary(job({ state: "failed", message: message("job.writeFailed") }), null, en)?.text).toBe(
+      "The archive could not be written. Check the output location and available storage, then try again.",
+    );
+    expect(reportSummary(job({ state: "done" }), planOf({ writable: true, included: 3 }), en)).toEqual({
       level: "info",
       text: "Archived 3 items.",
     });
     expect(
-      reportSummary(job({ state: "needs-attention" }), planOf({ writable: false, errors: 2 }))?.text,
+      reportSummary(job({ state: "needs-attention" }), planOf({ writable: false, errors: 2 }), en)?.text,
     ).toBe("2 blocking issues must be resolved before this can be archived.");
-    expect(reportSummary(job({ state: "ready" }), planOf({ writable: true, included: 1 }))).toEqual({
+    expect(reportSummary(job({ state: "ready" }), planOf({ writable: true, included: 1 }), en)).toEqual({
       level: "info",
       text: "1 item ready to archive.",
     });
@@ -264,6 +269,7 @@ describe("reportSummary", () => {
       reportSummary(
         job({ state: "ready" }),
         planOf({ writable: true, included: 5, renamed: 2, excluded: 1, warnings: 1 }),
+        en,
       ),
     ).toEqual({
       level: "warning",
@@ -274,13 +280,10 @@ describe("reportSummary", () => {
     // Regression: a plan that throws (e.g. inputs in different folders) leaves
     // plan === null; the captured error must still reach the user, never be swallowed.
     expect(
-      reportSummary(
-        job({ state: "needs-attention", message: "cannot infer the output path; pass an explicit output" }),
-        null,
-      ),
+      reportSummary(job({ state: "needs-attention", message: message("job.prepareFailed") }), null, en),
     ).toEqual({
       level: "error",
-      text: "Cannot infer the output path; pass an explicit output",
+      text: "This job could not be prepared. Check that its inputs are still available, then try again.",
     });
   });
   it("prefers friendly guidance keyed on the SDK error code over the raw message", () => {
@@ -288,36 +291,44 @@ describe("reportSummary", () => {
       job({
         state: "needs-attention",
         errorCode: "output.ambiguous",
-        message: "cannot infer the output path: inputs live in different parents; pass an explicit output",
+        message: message("job.prepareFailed"),
       }),
       null,
+      en,
     );
     expect(line?.level).toBe("error");
     expect(line?.text).toContain("different folders");
     expect(line?.text).toContain("Set a file name");
   });
-  it("falls back to the raw message for an unmapped error code", () => {
+  it("falls back to the job's own message for an unmapped error code", () => {
     expect(
-      reportSummary(job({ state: "needs-attention", errorCode: "write.failed", message: "disk is full" }), null)
+      reportSummary(job({ state: "needs-attention", errorCode: "write.failed", message: message("job.prepareFailed") }), null, en)
         ?.text,
-    ).toBe("Disk is full");
+    ).toContain("could not be prepared");
   });
   it("returns null only while planning (nothing to report yet)", () => {
-    expect(reportSummary(job({ state: "planning" }), null)).toBeNull();
+    expect(reportSummary(job({ state: "planning" }), null, en)).toBeNull();
+  });
+  it("speaks the reader's language, with each count in its own plural form", () => {
+    const ru = createTranslator("ru");
+    const plan = planOf({ writable: true, included: 5, renamed: 2, warnings: 1 });
+    const text = reportSummary(job({ state: "ready" }), plan, ru)!.text;
+    expect(text).not.toMatch(/[A-Za-z]{3,}/);
+    expect(text).not.toContain("{");
   });
 });
 
 describe("jobAdvisories", () => {
   it("warns when the lone input is already a .zip file", () => {
     const j = job({ inputs: ["/x/foo.zip"], entries: [{ path: "/x/foo.zip", kind: "file" }] });
-    const lines = jobAdvisories(j);
+    const lines = jobAdvisories(j, en);
     expect(lines).toHaveLength(1);
     expect(lines[0]!.level).toBe("warning");
     expect(lines[0]!.text).toContain("already a .zip");
   });
   it("does not warn for a directory, a non-zip file, or multiple inputs", () => {
-    expect(jobAdvisories(job({ inputs: ["/x/foo.zip"], entries: [{ path: "/x/foo.zip", kind: "directory" }] }))).toEqual([]);
-    expect(jobAdvisories(job({ inputs: ["/x/notes.txt"], entries: [{ path: "/x/notes.txt", kind: "file" }] }))).toEqual([]);
+    expect(jobAdvisories(job({ inputs: ["/x/foo.zip"], entries: [{ path: "/x/foo.zip", kind: "directory" }] }), en)).toEqual([]);
+    expect(jobAdvisories(job({ inputs: ["/x/notes.txt"], entries: [{ path: "/x/notes.txt", kind: "file" }] }), en)).toEqual([]);
     expect(
       jobAdvisories(
         job({
@@ -327,6 +338,7 @@ describe("jobAdvisories", () => {
             { path: "/x/b.zip", kind: "file" },
           ],
         }),
+        en,
       ),
     ).toEqual([]);
   });
@@ -342,42 +354,80 @@ describe("planReport", () => {
       ],
       entries: [],
     } as unknown as PlanData;
-    const lines = planReport(plan);
-    expect(lines[0]).toEqual({ level: "error", text: "case-only collision", path: "b/X" });
+    const lines = planReport(plan, en);
+    expect(lines[0]).toEqual({
+      level: "error",
+      text: "The path differs from another only by case, so the two collide on case-insensitive file systems",
+      path: "b/X",
+    });
     expect(lines[1]).toEqual({
       level: "info",
-      text: "name normalized from NFD to NFC → café",
+      text: "Name normalized from NFD to NFC → café",
       path: "a/café",
     });
+    expect(lines[2]?.text).toBe("Excluded by the junk preset");
+  });
+  it("reads a name finding as repaired only when the SDK gave it a rename target", () => {
+    const plan = {
+      findings: [{ rule: "name.reserved", severity: "error", path: "CON", message: "name is a reserved device name" }],
+      entries: [],
+    } as unknown as PlanData;
+    expect(planReport(plan, en)[0]?.text).toBe("The name is a reserved device name");
+  });
+  it("tells a kept symlink from an ignored one by whether the plan excluded it", () => {
+    const plan = {
+      findings: [
+        { rule: "entry.symlink", severity: "warning", path: "kept", message: "symlink preserved" },
+        { rule: "entry.symlink", severity: "warning", path: "dropped", message: "symlink ignored" },
+      ],
+      entries: [
+        { archivePath: "kept", excluded: false },
+        { archivePath: "dropped", excluded: true, excludeReason: "symlink ignored" },
+      ],
+    } as unknown as PlanData;
+    expect(planReport(plan, en).map((line) => line.text)).toEqual([
+      "Symlink kept as a Unix link entry; Windows extracts it as a text file",
+      "Symlink ignored",
+    ]);
+  });
+  it("shows a rule the GUI does not know as the SDK wrote it", () => {
+    const plan = {
+      findings: [{ rule: "future.rule", severity: "warning", path: "x", message: "something new" }],
+      entries: [],
+    } as unknown as PlanData;
+    expect(planReport(plan, en)[0]?.text).toBe("Something new");
   });
   it("surfaces an excluded entry that has no finding (custom exclude, pruned empty dir)", () => {
     const plan = {
       findings: [],
       entries: [
         { archivePath: "keep.txt", excluded: false },
-        { archivePath: "build/", excluded: true, excludeReason: "matched an exclude rule" },
+        { archivePath: "build/", excluded: true, excludeReason: "exclude rule: build/" },
+        { archivePath: "empty/", excluded: true, excludeReason: "empty directory pruned" },
       ],
     } as unknown as PlanData;
-    expect(planReport(plan)).toEqual([
-      { level: "info", text: "excluded — matched an exclude rule", path: "build/" },
+    expect(planReport(plan, en)).toEqual([
+      { level: "info", text: "Excluded: exclude rule: build/", path: "build/" },
+      { level: "info", text: "Empty directory pruned", path: "empty/" },
     ]);
   });
 });
 
 describe("eventLineParts", () => {
-  it("renders a local ISO-ish time, then a human level and sentence-cased message", () => {
+  it("renders the local time in the locale's format, then a human level and message", () => {
     // The time is rendered in the viewer's local zone, so assert the shape
-    // (yyyy-mm-dd hh:mm:ss) rather than an exact value that would vary by zone.
-    const e = { time: "2026-06-14T05:00:00.000Z", level: "info", message: "hi" } as unknown as LogEvent;
-    expect(eventLineParts(e)).toEqual({
-      time: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+    // (a short date, then the time to the second) rather than an exact value.
+    const e = { time: "2026-06-14T05:00:00.000Z", level: "info", event: "scan.dir", path: "/x", message: "scanning /x" } as unknown as LogEvent;
+    expect(eventLineParts(e, createTranslator("en", "en-US"))).toEqual({
+      time: expect.stringMatching(/^\d{1,2}\/\d{1,2}\/\d{2}, \d{1,2}:\d{2}:\d{2}\s?[AP]M$/),
       level: "Info",
-      message: "Hi",
+      message: "Scanning /x",
     });
+    expect(eventLineParts(e, createTranslator("de")).time).toMatch(/^\d{2}\.\d{2}\.\d{2}, \d{2}:\d{2}:\d{2}$/);
   });
   it("falls back to the raw value when the time cannot be parsed", () => {
-    const e = { time: "not-a-time", level: "warn", message: "x" } as unknown as LogEvent;
-    expect(eventLineParts(e)).toEqual({ time: "not-a-time", level: "Warning", message: "X" });
+    const e = { time: "not-a-time", level: "warn", event: "scan.dir", path: "x", message: "scanning x" } as unknown as LogEvent;
+    expect(eventLineParts(e, en)).toEqual({ time: "not-a-time", level: "Warning", message: "Scanning x" });
   });
   it("paints only the levels worth stopping at, and keeps the rest quiet", () => {
     expect(logLevelColor("error")).toBe("var(--status-error)");
@@ -389,7 +439,7 @@ describe("eventLineParts", () => {
 
 describe("progress presentation", () => {
   it("labels every machine log level without leaking raw values", () => {
-    expect((["debug", "info", "warn", "error"] as LogEvent["level"][]).map(logLevelLabel)).toEqual([
+    expect((["debug", "info", "warn", "error"] as LogEvent["level"][]).map((level) => en.t(logLevelLabel(level)))).toEqual([
       "Debug",
       "Info",
       "Warning",
@@ -397,7 +447,7 @@ describe("progress presentation", () => {
     ]);
   });
 
-  it("proper-cases ZipKit and ZIP64 without mutating the event message", () => {
+  it("renders from the typed fields, proper-casing ZipKit and ZIP64, without mutating the event message", () => {
     const start = {
       time: "2026-06-14T05:00:00.000Z",
       level: "info",
@@ -416,8 +466,8 @@ describe("progress presentation", () => {
       message: "archive written: 12 bytes (zip64)",
     } as LogEvent;
 
-    expect(progressMessage(start)).toBe("ZipKit 0.1.0 (concurrency 2, chunk 1024 bytes)");
-    expect(progressMessage(written)).toBe("Archive written: 12 bytes (ZIP64)");
+    expect(progressMessage(start, en)).toBe("ZipKit 0.1.0 (concurrency 2, chunk 1,024 bytes)");
+    expect(progressMessage(written, en)).toBe("Archive written: 12 bytes (ZIP64)");
     expect(start.message).toBe("zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)");
     expect(written.message).toBe("archive written: 12 bytes (zip64)");
   });
@@ -432,8 +482,38 @@ describe("progress presentation", () => {
       severity: "warning",
       message: "warning: name.reserved at CON.txt",
     } as LogEvent;
-    expect(progressMessage(event)).toBe("Finding name.reserved at CON.txt");
+    expect(progressMessage(event, en)).toBe("Finding name.reserved at CON.txt");
     expect(event.message).toBe("warning: name.reserved at CON.txt");
+  });
+
+  it("keeps a fault's code and diagnostic detail as the SDK wrote them", () => {
+    const event = {
+      time: "2026-06-14T05:00:00.000Z",
+      level: "error",
+      event: "fault",
+      code: "scan.stat-failed",
+      detail: "cannot stat: /x",
+      cause: "EACCES",
+      message: "scan.stat-failed: cannot stat: /x: EACCES",
+    } as LogEvent;
+    expect(progressMessage(event, createTranslator("ja"))).toBe("scan.stat-failed: cannot stat: /x: EACCES");
+  });
+
+  it("lists a stage's counts the way the language lists things", () => {
+    const event = {
+      time: "2026-06-14T05:00:00.000Z",
+      level: "info",
+      event: "plan.done",
+      included: 3,
+      excluded: 1,
+      renamed: 0,
+      warnings: 1,
+      errors: 2,
+      message: "plan complete",
+    } as LogEvent;
+    expect(progressMessage(event, en)).toBe(
+      "Plan complete: 3 included, 1 excluded, 0 renamed, 1 warning, 2 errors",
+    );
   });
 });
 
@@ -484,6 +564,6 @@ describe("jobCommands", () => {
 describe("verifySummary", () => {
   it("summarizes the verify counts", () => {
     const data = { summary: { total: 10, crcFailed: 1, shaMismatched: 2 } } as unknown as ExtractData;
-    expect(verifySummary(data)).toBe("10 entries, 1 CRC failure(s), 2 SHA mismatch(es)");
+    expect(verifySummary(data, en)).toBe("10 entries, 1 CRC failure, 2 SHA mismatches");
   });
 });

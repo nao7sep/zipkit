@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { JobListbox } from "../../../../src/gui/renderer/src/components/JobListbox";
 import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
+import { message } from "../../../../src/gui/shared/i18n/translate";
 
 afterEach(cleanup);
 
@@ -115,11 +116,11 @@ describe("JobListbox", () => {
     expect(screen.getByTitle("Remove (Delete)").tabIndex).toBe(-1);
   });
 
-  it("shows an internal job result as a sentence without changing the stored message", () => {
-    const saved = { ...job("a", "done"), message: "saved and verified" };
+  it("shows a job result in the interface language without changing the stored message", () => {
+    const saved = { ...job("a", "done"), message: message("job.saved", { count: 2048 }) };
     renderListbox({ jobs: [saved], selectedId: "a" });
-    expect(screen.getByText("Saved and verified")).toBeTruthy();
-    expect(saved.message).toBe("saved and verified");
+    expect(screen.getByText("Saved (2,048 bytes).")).toBeTruthy();
+    expect(saved.message).toEqual({ key: "job.saved", values: { count: 2048 } });
   });
 
   it("announces only actionable job states assertively", () => {
@@ -129,7 +130,7 @@ describe("JobListbox", () => {
 
     rerender(
       <JobListbox
-        jobs={[{ ...job("a", "failed"), message: "write failed" }]}
+        jobs={[{ ...job("a", "failed"), message: message("job.writeFailed") }]}
         selectedId={null}
         pullFocusId={null}
         onFocusPulled={noop}
@@ -140,11 +141,11 @@ describe("JobListbox", () => {
     );
 
     expect(live.textContent).toContain("a");
-    expect(live.textContent).toContain("Write failed");
+    expect(live.textContent).toContain("could not be written");
   });
 
   it("does not re-announce a restored failure or an existing failure on selection change", () => {
-    const failed = { ...job("a", "failed"), message: "write failed" };
+    const failed = { ...job("a", "failed"), message: message("job.writeFailed") };
     const { rerender } = renderListbox({ jobs: [failed], selectedId: "a" });
     const live = document.querySelector<HTMLElement>("[aria-live='assertive']")!;
     expect(live.textContent).toBe("");

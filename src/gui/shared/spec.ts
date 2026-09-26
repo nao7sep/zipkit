@@ -6,6 +6,7 @@
  */
 
 import type { ArchivePolicy, ArchiveSpec, DeepPartial, NameAction } from "../../sdk/types.js";
+import type { LanguagePreference } from "./i18n/languages.js";
 
 /** The visible option state for one job. Defaults mirror the SDK's own defaults. */
 export interface GuiOptions {
@@ -65,12 +66,15 @@ export interface GuiSettings {
   uiFontFamily: string;
   /** The app theme, applied by the main process to nativeTheme.themeSource. */
   theme: ThemePreference;
+  /** The interface language: System follows the computer's language. */
+  language: LanguagePreference;
 }
 
 export const DEFAULT_SETTINGS: GuiSettings = {
   defaults: DEFAULT_OPTIONS,
   uiFontFamily: "",
   theme: "system",
+  language: "system",
 };
 
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields

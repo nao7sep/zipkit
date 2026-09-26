@@ -29,7 +29,9 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     pathForFile: vi.fn(() => ""),
     platform: "darwin",
     onWindowActivityChanged: vi.fn(() => () => {}),
-    getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const })),
+    getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const })),
+    getLanguageEnvironment: vi.fn(async () => ({ language: "en" as const, locale: "en" })),
+    onLanguageChanged: vi.fn(() => () => {}),
     setSettings: vi.fn(async () => {}),
     getLayout: vi.fn(async () => DEFAULT_LAYOUT),
     setLayout: vi.fn(async () => {}),
@@ -76,7 +78,7 @@ describe("required app hydration", () => {
     const getSettings = vi
       .fn<ZipKitGuiApi["getSettings"]>()
       .mockRejectedValueOnce(new Error("settings unavailable"))
-      .mockResolvedValueOnce({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" });
+      .mockResolvedValueOnce({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system", language: "system" });
     const unsubscribes = [vi.fn(), vi.fn()];
     const onQueue = vi
       .fn<ZipKitGuiApi["onQueue"]>()
@@ -211,11 +213,11 @@ describe("selected-job IPC ownership", () => {
     const bridge = api({ getQueue: vi.fn(async () => [job("intent-job")]), updateJob });
     renderApp(bridge);
     fireEvent.click(await screen.findByRole("option"));
-    const intent = await screen.findByRole("combobox", { name: "Intent" });
+    const intent = await screen.findByRole("combobox", { name: "Action" });
     fireEvent.change(intent, { target: { value: "archive-and-trash" } });
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("previous intent is still active");
+    expect(alert.textContent).toContain("previous action is still selected");
     expect(alert.textContent).not.toContain("ZIPKIT_INTENT_SENTINEL");
     expect((intent as HTMLSelectElement).value).toBe("save");
     expect(bridge.reportError).toHaveBeenCalledWith("update job intent", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_INTENT_SENTINEL") }));

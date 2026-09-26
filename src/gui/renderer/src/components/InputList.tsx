@@ -27,12 +27,15 @@ import {
 import { COLOR, orderedEntries } from "../view";
 import { CloseIcon } from "./Icon";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
+import { useI18n } from "../i18n/I18nContext";
+import type { MessageKey } from "../../../shared/i18n/catalogues";
+import { message } from "../../../shared/i18n/translate";
 
-const KIND_LABEL: Record<PathKind, string> = {
-  directory: "Directory",
-  file: "File",
-  nonexistent: "Missing",
-  other: "Other",
+const KIND_LABEL: Record<PathKind, MessageKey> = {
+  directory: "inputs.directory",
+  file: "inputs.file",
+  nonexistent: "inputs.missing",
+  other: "inputs.other",
 };
 
 function kindColor(kind: PathKind): string {
@@ -58,6 +61,7 @@ export function InputList({
   result: ReceiverResult | null;
   onResult: (outcome: ReceiverOutcome) => void;
 }) {
+  const { t } = useI18n();
   const [dragActive, setDragActive] = useState(false);
   const rows: { path: string; kind?: PathKind }[] = job.entries
     ? orderedEntries(job.entries)
@@ -105,7 +109,7 @@ export function InputList({
       onResult({
         operationKey: `inputs:${job.id}:unsupported-drop`,
         entryKey,
-        result: { message: "Drop files or folders to add inputs to this job.", severity: "warning" },
+        result: { message: message("inputs.unsupportedDrop"), severity: "warning" },
       });
       return;
     }
@@ -113,7 +117,7 @@ export function InputList({
       onResult({
         operationKey,
         entryKey,
-        result: { message: "Inputs cannot be changed in the current job state.", severity: "warning" },
+        result: { message: message("inputs.locked"), severity: "warning" },
       });
       return;
     }
@@ -123,7 +127,7 @@ export function InputList({
           operationKey,
           entryKey,
           result: {
-            message: "The dropped items could not be accessed as local files or folders.",
+            message: message("result.dropUnavailable"),
             severity: "warning",
           },
         });
@@ -138,7 +142,7 @@ export function InputList({
         operationKey,
         entryKey,
         result: {
-          message: "The dropped inputs could not be added. Check that they are still available, then try again.",
+          message: message("result.dropAddFailed"),
           severity: "error",
         },
       });
@@ -154,7 +158,7 @@ export function InputList({
       onResult({
         operationKey: `inputs:${job.id}:picker`,
         entryKey: `inputs:${job.id}:picker`,
-        result: { message: "Inputs could not be added. Check that they are still available, then try again.", severity: "error" },
+        result: { message: message("result.addInputsFailed"), severity: "error" },
       });
     }
   }
@@ -171,15 +175,15 @@ export function InputList({
       onDrop={(event) => void onDrop(event)}
     >
       <div style={S.head}>
-        <span style={S.title}>Inputs</span>
+        <span style={S.title}>{t("inputs.title")}</span>
         <button onClick={() => void onAddClick()} disabled={!editable}>
-          Add
+          {t("common.add")}
         </button>
       </div>
       <ul style={S.list}>
         {rows.map(({ path, kind }) => (
           <li key={path} className="input-row" style={S.row}>
-            {kind && <span style={{ ...S.kind, color: kindColor(kind) }}>{KIND_LABEL[kind]}</span>}
+            {kind && <span style={{ ...S.kind, color: kindColor(kind) }}>{t(KIND_LABEL[kind])}</span>}
             <span style={S.path} title={path}>
               {path}
             </span>
@@ -187,8 +191,8 @@ export function InputList({
               className="icon"
               onClick={() => onRemove(path)}
               disabled={!canRemove}
-              title={canRemove ? "Remove from this job" : "A job needs at least one input"}
-              aria-label={`Remove ${path}`}
+              title={t(canRemove ? "inputs.removeFromJob" : "inputs.needsOne")}
+              aria-label={t("inputs.removePath", { path })}
             >
               <CloseIcon />
             </button>
@@ -239,7 +243,9 @@ const S: Record<string, CSSProperties> = {
     padding: "0.2rem 0.4rem",
     borderRadius: 5,
   },
-  kind: { fontSize: "0.7rem", fontWeight: 700, flexShrink: 0, width: "4.2rem" },
+  // At least the column the English kinds need, and wider when a translation
+  // is, so a kind never wraps or clips.
+  kind: { fontSize: "0.7rem", fontWeight: 700, flexShrink: 0, minWidth: "4.2rem", whiteSpace: "nowrap" },
   // Full path, wrapping rather than truncating — in a management list, seeing the
   // whole path matters more than a tidy single line.
   path: { flex: 1, minWidth: 0, wordBreak: "break-all", fontSize: "0.85rem" },

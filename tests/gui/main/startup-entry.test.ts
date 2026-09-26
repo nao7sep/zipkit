@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   exit: vi.fn(),
   notifyStartupFailure: vi.fn().mockResolvedValue(undefined),
   bootstrapLoaded: vi.fn(),
+  installAppMenu: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -29,6 +30,14 @@ vi.mock("../../../src/gui/main/startup-dialog.js", () => ({
   notifyStartupFailure: mocks.notifyStartupFailure,
 }));
 
+vi.mock("../../../src/gui/main/i18n.js", () => ({
+  mainTranslator: () => ({ language: "en" }),
+}));
+
+vi.mock("../../../src/gui/main/menu.js", () => ({
+  installAppMenu: mocks.installAppMenu,
+}));
+
 vi.mock("../../../src/gui/main/bootstrap.js", () => {
   mocks.bootstrapLoaded();
   return {};
@@ -41,9 +50,9 @@ describe("startup storage failure", () => {
     await expect(import("../../../src/gui/main/index.js")).resolves.toBeDefined();
     await vi.waitFor(() => expect(mocks.notifyStartupFailure).toHaveBeenCalledOnce());
 
-    expect(mocks.notifyStartupFailure).toHaveBeenCalledWith(
-      "ZipKit could not open its data folder. Restore access to the configured folder, then start ZipKit again.",
-    );
+    expect(mocks.notifyStartupFailure).toHaveBeenCalledWith("startup.dataFolder");
+    // The menu bar speaks the same language as the dialog, not Electron's English default.
+    expect(mocks.installAppMenu).toHaveBeenCalledOnce();
     expect(mocks.notifyStartupFailure.mock.calls.flat().join(" ")).not.toMatch(
       /EACCES|private\/tmp|sentinel|SECRET/,
     );

@@ -1,4 +1,6 @@
 import type { GuiReportedError } from "../../shared/api";
+import type { MessageKey } from "../../shared/i18n/catalogues";
+import { message, sentences, type Message } from "../../shared/i18n/translate";
 import { isEditableTarget } from "./shortcuts";
 
 export type ExternalFileOffer = "rejected" | "delivery-only";
@@ -30,7 +32,8 @@ export interface ReceiverCommit {
 export type ReceiverResultSeverity = "information" | "warning" | "error";
 
 export interface ReceiverResultDetails {
-  message: string;
+  /** A catalogue message, rendered in the language current when it is shown. */
+  message: Message;
   severity: ReceiverResultSeverity;
 }
 
@@ -114,36 +117,33 @@ export function resolveDroppedFiles(
 
 /** Build the single receiver-local result for a committed external drop. A clean
  * full success remains quiet; any partial resolution accounts for every omitted
- * item alongside the durable operation's own result. */
+ * item alongside the durable operation's own result. `success` is the counted
+ * sentence that leads a partial success ("Added 2 inputs."). */
 export function summarizeDroppedFiles(
-  successLead: string,
+  success: MessageKey,
   resolved: ResolvedDroppedFiles,
   commit: ReceiverCommit,
 ): ReceiverResultDetails | null {
-  const details: string[] = [];
+  const details: Message[] = [];
   const severities: ReceiverResultSeverity[] = [];
   if (commit.result) {
     details.push(commit.result.message);
     severities.push(commit.result.severity);
   }
   if (resolved.duplicates > 0) {
-    details.push(
-      `${resolved.duplicates} ${resolved.duplicates === 1 ? "dropped item repeated" : "dropped items repeated"} the same local path.`,
-    );
+    details.push(message("result.droppedRepeated", { count: resolved.duplicates }));
     severities.push("information");
   }
   if (resolved.unavailable > 0) {
-    details.push(
-      `${resolved.unavailable} ${resolved.unavailable === 1 ? "dropped item was" : "dropped items were"} not available as a local path.`,
-    );
+    details.push(message("result.droppedNotLocal", { count: resolved.unavailable }));
     severities.push(resolved.errors.length > 0 ? "error" : "warning");
   }
   if (details.length === 0) return null;
   if (commit.changed && !commit.result) {
-    details.unshift(`${successLead} ${commit.accepted} ${commit.accepted === 1 ? "input" : "inputs"}.`);
+    details.unshift(message(success, { count: commit.accepted }));
   }
   return {
-    message: details.join(" "),
+    message: sentences(details)!,
     severity: highestSeverity(severities),
   };
 }

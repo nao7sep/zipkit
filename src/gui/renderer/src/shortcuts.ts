@@ -8,19 +8,23 @@
  */
 
 import type { GuiPlatform } from "../../shared/api";
+import type { MessageKey } from "../../shared/i18n/catalogues";
 
 export interface ShortcutItem {
   /** The key combination, spelled out per the display convention — modifier words
    *  not glyphs, symbol keys as words ("Cmd+Comma", not "Cmd+,"), full key names
    *  ("Escape", "PageUp"). The shared modifier is the running platform's single
    *  word ("Cmd" on macOS, "Ctrl" elsewhere). Tight "/" is an "either key"
-   *  separator; spaced " / " joins independent chords. */
+   *  separator; spaced " / " joins independent chords. Key tokens stay English
+   *  in every interface language (keyboard-shortcut-conventions); an item that
+   *  is an act rather than a chord ("Type a name") gives `keysText` instead. */
   keys: string;
-  description: string;
+  keysText?: MessageKey;
+  description: MessageKey;
 }
 
 export interface ShortcutGroup {
-  title: string;
+  title: MessageKey;
   items: ShortcutItem[];
 }
 
@@ -71,28 +75,28 @@ export function modifierWord(platform: GuiPlatform): string {
 export function buildShortcuts(mod: string): ShortcutGroup[] {
   return [
     {
-      title: "General",
+      title: "shortcuts.general",
       items: [
-        { keys: `${mod}+N`, description: "Add a job" },
-        { keys: `${mod}+Comma`, description: "Open Settings" },
-        { keys: `${mod}+Question`, description: "Show keyboard shortcuts" },
+        { keys: `${mod}+N`, description: "shortcuts.addJob" },
+        { keys: `${mod}+Comma`, description: "shortcuts.openSettings" },
+        { keys: `${mod}+Question`, description: "shortcuts.showShortcuts" },
       ],
     },
     {
-      title: "Move around the job list",
+      title: "shortcuts.navigate",
       items: [
-        { keys: "Up/Down", description: "Select the previous / next job" },
-        { keys: "Home/End", description: "Select the first / last job" },
-        { keys: "PageUp/PageDown", description: "Jump up / down a page" },
-        { keys: "Type a name", description: "Jump to a matching job" },
+        { keys: "Up/Down", description: "shortcuts.selectPrevNext" },
+        { keys: "Home/End", description: "shortcuts.selectFirstLast" },
+        { keys: "PageUp/PageDown", description: "shortcuts.jumpPage" },
+        { keys: "type-a-name", keysText: "shortcuts.typeName", description: "shortcuts.jumpMatching" },
       ],
     },
     {
-      title: "Act on the selected job",
+      title: "shortcuts.act",
       items: [
-        { keys: `${mod}+Enter`, description: "Create the selected job's archive" },
-        { keys: "Delete/Backspace", description: "Remove the job from the queue" },
-        { keys: "Escape", description: "Cancel a planning, queued, or running job" },
+        { keys: `${mod}+Enter`, description: "shortcuts.createSelected" },
+        { keys: "Delete/Backspace", description: "shortcuts.removeJob" },
+        { keys: "Escape", description: "shortcuts.cancelJob" },
       ],
     },
   ];

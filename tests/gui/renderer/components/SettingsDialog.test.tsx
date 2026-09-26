@@ -25,11 +25,13 @@ Object.defineProperty(window, "zipkit", {
 });
 
 /** Settings that differ from the built-ins on every axis: edited option defaults,
- *  a chosen UI font, and a chosen theme — so a reset's reach is visible on each. */
+ *  a chosen UI font, a chosen theme, and a chosen language — so a reset's reach
+ *  is visible on each. */
 const CUSTOM: GuiSettings = {
   defaults: { ...DEFAULT_OPTIONS, level: 9, junk: false, comment: "mine" },
   uiFontFamily: "Iosevka, monospace",
   theme: "dark",
+  language: "fr",
 };
 
 function renderDialog(settings: GuiSettings = CUSTOM) {
@@ -103,6 +105,7 @@ describe("SettingsDialog reset", () => {
       defaults: { ...CUSTOM.defaults, symlinks: "follow", emptyDirs: "prune" },
       uiFontFamily: CUSTOM.uiFontFamily,
       theme: CUSTOM.theme,
+      language: CUSTOM.language,
     });
   });
 
@@ -137,6 +140,7 @@ describe("SettingsDialog reset", () => {
       defaults: DEFAULT_OPTIONS,
       uiFontFamily: "Iosevka, monospace",
       theme: "dark",
+      language: "fr",
     });
   });
 
@@ -147,7 +151,7 @@ describe("SettingsDialog reset", () => {
 
     expect(fontInput().value).toBe("Menlo");
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo", theme: "dark" });
+    expect(onSave).toHaveBeenCalledWith({ defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo", theme: "dark", language: "fr" });
   });
 
   it("keeps the dialog open and reports a failed durable save", async () => {

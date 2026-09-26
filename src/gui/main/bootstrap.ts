@@ -18,7 +18,9 @@ import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { isLoopbackRendererUrl, isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue } from "./queue.js";
-import { loadSettings, saveSettings } from "./settings.js";
+import { loadSettings, saveSettings, settingsFile } from "./settings.js";
+import { applyLanguagePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
+import { installAppMenu } from "./menu.js";
 import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
@@ -92,9 +94,7 @@ function createWindow(): BrowserWindow {
     // not flush an empty in-memory queue over the saved one.
     flushQueueOnClose = false;
     if (!win.isDestroyed()) win.close();
-    void notifyStartupFailure(
-      "ZipKit could not load its window. Restart it. Your source files and archives are unchanged.",
-    ).catch((dialogError) => log.error("window load failure dialog failed", { error: errorInfo(dialogError) }));
+    void notifyStartupFailure("startup.windowLoad").catch((dialogError) => log.error("window load failure dialog failed", { error: errorInfo(dialogError) }));
   });
   return win;
 }
@@ -125,13 +125,21 @@ function activateMainWindow(): void {
 // log; the app-authored dialog carries stable recovery guidance only.
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
-  await notifyStartupFailure(
-    "ZipKit stopped before opening its window. Restart it. If the problem continues, check the ZipKit log for the diagnostic. Your archive files on disk are not affected.",
-  );
+  await notifyStartupFailure("startup.halted");
   app.exit(1);
 }
 
+function logLanguageError(error: unknown): void {
+  log.warn("the interface language could not reach a native surface", { error: errorInfo(error) });
+}
+
 app.whenReady().then(async () => {
+  // The language is settled before anything draws: the saved choice is read
+  // straight from config.json so the menu that replaces Electron's default in
+  // this same turn is already in it. The store's load below can still reset it.
+  settleLanguage(readSavedPreference(readConfigText(settingsFile())), logLanguageError);
+  installAppMenu(mainTranslator());
+  onLanguageChanged(installAppMenu);
   log.info("app started", {
     version: APP_VERSION,
     platform: process.platform,
@@ -160,6 +168,9 @@ app.whenReady().then(async () => {
   // OS appearance and then switches. A halt before this point follows the OS.
   applyThemePreference(settingsLoad.value.theme);
   followOsThemeChanges();
+  // A quarantined or hand-edited file may settle on another language than the
+  // raw read above; the store's value wins before the window opens.
+  applyLanguagePreference(settingsLoad.value.language, logLanguageError);
   await loadLayout(log);
 
   windowCreationReady = true;
@@ -172,11 +183,12 @@ app.whenReady().then(async () => {
   const queueQuarantinedTo = await restoreQueue();
 
   for (const recoveryDialog of buildRecoveryDialogs({ settingsQuarantinedTo, queueQuarantinedTo })) {
+    const { t } = mainTranslator();
     await showAppMessageDialog({
       owner: initialWindow,
-      title: recoveryDialog.title,
-      message: recoveryDialog.message,
-      buttonLabel: "OK",
+      title: t(recoveryDialog.title),
+      message: t(recoveryDialog.message),
+      button: "ok",
     });
   }
   app.on("activate", () => {

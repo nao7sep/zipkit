@@ -62,8 +62,8 @@ describe("GUI error presentation", () => {
     expect(result).toEqual({
       type: "unknown",
       code: "unknown",
-      presentation: "Verification could not be completed. Check that the archive is still available, then try again.",
+      presentation: { key: "error.verifyIncomplete" },
     });
-    expect(result.presentation).not.toContain("HOSTILE-SENTINEL");
+    expect(JSON.stringify(result)).not.toContain("HOSTILE-SENTINEL");
   });
 });

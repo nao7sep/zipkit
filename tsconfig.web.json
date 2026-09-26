@@ -31,5 +31,5 @@
   // The renderer uses the SDK's pure data contract (types only, no Node) through
   // the shared bridge; that single node-free file is listed so the composite web
   // project owns every file it references.
-  "include": ["src/gui/renderer/**/*", "src/gui/shared/**/*", "src/sdk/types.ts"]
+  "include": ["src/gui/renderer/**/*", "src/gui/shared/**/*", "src/gui/shared/i18n/locales/*.json", "src/sdk/types.ts"]
 }

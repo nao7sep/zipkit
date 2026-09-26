@@ -12,6 +12,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { GuiOptions } from "../../../shared/spec";
 import { multiline } from "../textCleanup";
 import { DirectoryField } from "./DirectoryField";
+import { useI18n } from "../i18n/I18nContext";
 
 export function OptionsPanel({
   options,
@@ -22,6 +23,7 @@ export function OptionsPanel({
   onChange: (o: GuiOptions) => void;
   disabled: boolean;
 }) {
+  const { t, rich } = useI18n();
   const set = <K extends keyof GuiOptions>(key: K, value: GuiOptions[K]) =>
     onChange({ ...options, [key]: value });
 
@@ -30,26 +32,26 @@ export function OptionsPanel({
     // responds to the *pane's* width (not the viewport), capping at 4 columns.
     <div className="options-grid-container">
       <fieldset disabled={disabled} className="options-grid" style={S.fieldset}>
-      <Section title="Cleaning">
+      <Section title={t("options.cleaning")}>
         <Check checked={options.junk} onChange={(v) => set("junk", v)}>
-          Drop OS junk files
+          {t("options.junk")}
         </Check>
         <Check checked={options.strict} onChange={(v) => set("strict", v)}>
-          Strict: block portability issues instead of auto-fixing
+          {t("options.strict")}
         </Check>
       </Section>
 
-      <Section title="Manifest">
+      <Section title={t("options.manifest")}>
         <Check checked={options.metadata} onChange={(v) => set("metadata", v)}>
-          Embed manifest (<code>_metadata.json</code>)
+          {rich("options.embedManifest", { file: <code>_metadata.json</code> })}
         </Check>
         <Check checked={options.hash} disabled={!options.metadata} onChange={(v) => set("hash", v)}>
-          Record a per-file SHA-256
+          {t("options.hash")}
         </Check>
       </Section>
 
-      <Section title="Archive">
-        <Field label="Compression level (1–9)">
+      <Section title={t("options.archive")}>
+        <Field label={t("options.level")}>
           <input
             type="number"
             min={1}
@@ -59,23 +61,23 @@ export function OptionsPanel({
             style={{ width: "3.5rem" }}
           />
         </Field>
-        <Field label="Symlinks">
+        <Field label={t("options.symlinks")}>
           <select
             value={options.symlinks}
             onChange={(e) => set("symlinks", e.target.value as GuiOptions["symlinks"])}
           >
-            <option value="ignore">Ignore</option>
-            <option value="preserve">Preserve</option>
-            <option value="follow">Follow</option>
+            <option value="ignore">{t("options.symlinksIgnore")}</option>
+            <option value="preserve">{t("options.symlinksPreserve")}</option>
+            <option value="follow">{t("options.symlinksFollow")}</option>
           </select>
         </Field>
-        <Field label="Empty directories">
+        <Field label={t("options.emptyDirs")}>
           <select
             value={options.emptyDirs}
             onChange={(e) => set("emptyDirs", e.target.value as GuiOptions["emptyDirs"])}
           >
-            <option value="keep">Keep</option>
-            <option value="prune">Prune</option>
+            <option value="keep">{t("options.emptyDirsKeep")}</option>
+            <option value="prune">{t("options.emptyDirsPrune")}</option>
           </select>
         </Field>
       </Section>
@@ -84,21 +86,21 @@ export function OptionsPanel({
           when the pane is wide. The output directory and the overwrite policy
           belong together: both answer "where does the .zip land, and may it
           clobber?". */}
-      <Section title="Output">
+      <Section title={t("options.output")}>
         <DirectoryField
-          label="Output directory"
+          label={t("options.outputDir")}
           value={options.outputDir}
           onChange={(v) => set("outputDir", v)}
-          placeholder="(beside the input)"
+          placeholder={t("dest.besideInput")}
         />
         <Check checked={options.overwrite} onChange={(v) => set("overwrite", v)}>
-          Overwrite an existing file
+          {t("options.overwrite")}
         </Check>
       </Section>
 
       {/* A ZIP comment may span lines, so this is a multiline field cleaned on blur
           (commit-time, never mid-edit, IME-safe). Always its own full-width row. */}
-      <Section title="Comment" wide>
+      <Section title={t("options.comment")} wide>
         <textarea
           value={options.comment}
           rows={2}

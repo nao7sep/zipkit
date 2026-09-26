@@ -12,9 +12,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Job, PlanData, VerifyResult } from "../../../shared/api";
+import { useI18n } from "../i18n/I18nContext";
 import {
   jobAdvisories,
-  humanSentence,
   planReport,
   reportSummary,
   severityColor,
@@ -31,12 +31,13 @@ export function Report({
   plan: PlanData | null;
   verify: VerifyResult | null;
 }) {
-  const summary = reportSummary(job, plan);
+  const t = useI18n();
+  const summary = reportSummary(job, plan, t);
   // GUI advisories about the inputs (e.g. re-zipping a .zip) lead the log — they
   // are relevant before any plan exists, so they keep the report from reading
   // "No report yet" when there's genuinely something to say.
-  const advisories = jobAdvisories(job);
-  const lines = plan ? planReport(plan) : [];
+  const advisories = jobAdvisories(job, t);
+  const lines = plan ? planReport(plan, t) : [];
 
   const noReport = !plan && !summary && advisories.length === 0;
 
@@ -44,10 +45,10 @@ export function Report({
   const verifyLines: ReportLine[] = verifyData
     ? [
         ...(verifyData.missing.length > 0
-          ? [{ level: "error" as const, text: `Missing from the archive: ${verifyData.missing.join(", ")}` }]
+          ? [{ level: "error" as const, text: t.t("report.missing", { paths: t.list(verifyData.missing) }) }]
           : []),
         ...(verifyData.extra.length > 0
-          ? [{ level: "warning" as const, text: `Unexpected extra entries: ${verifyData.extra.join(", ")}` }]
+          ? [{ level: "warning" as const, text: t.t("report.extra", { paths: t.list(verifyData.extra) }) }]
           : []),
       ]
     : [];
@@ -56,13 +57,13 @@ export function Report({
     ? verify.ok
       ? {
           level: verify.data.reportOk ? "info" as const : "error" as const,
-          text: verify.data.reportOk
-            ? `Verified — ${verifySummary(verify.data)}`
-            : `Verification failed — ${verifySummary(verify.data)}`,
+          text: t.t(verify.data.reportOk ? "report.verified" : "report.verificationFailed", {
+            summary: verifySummary(verify.data, t),
+          }),
         }
       : {
           level: "error" as const,
-          text: verify.error.presentation,
+          text: t.text(verify.error.presentation),
         }
     : null;
 
@@ -70,9 +71,8 @@ export function Report({
   const [assertiveAnnouncement, setAssertiveAnnouncement] = useState("");
   const [politeAnnouncement, setPoliteAnnouncement] = useState("");
   const summarySignature = summary ? `${summary.level}|${summary.text}` : "";
-  const actionSignature = job.actionResult
-    ? `${job.actionResult.severity}|${job.actionResult.message}`
-    : "";
+  const actionText = job.actionResult ? t.text(job.actionResult.message) : "";
+  const actionSignature = job.actionResult ? `${job.actionResult.severity}|${actionText}` : "";
   const verificationSignature = verificationResult
     ? `${verificationResult.level}|${verificationResult.text}`
     : "";
@@ -80,7 +80,7 @@ export function Report({
     ? { level: summary.level, text: summary.text }
     : null;
   const actionAnnouncement = job.actionResult
-    ? { level: job.actionResult.severity, text: job.actionResult.message }
+    ? { level: job.actionResult.severity, text: actionText }
     : null;
 
   // The Report remounts when selection changes, so its first render establishes
@@ -126,16 +126,16 @@ export function Report({
 
   return (
     <div>
-      {noReport && <p style={S.muted}>No report yet.</p>}
+      {noReport && <p style={S.muted}>{t.t("report.noReport")}</p>}
       {summary && (
         <p style={{ ...S.summary, color: severityColor(summary.level) }}>
           {summary.text}
         </p>
       )}
-      {job.state === "done" && job.message && <p style={S.note}>{humanSentence(job.message)}</p>}
+      {job.state === "done" && job.message && <p style={S.note}>{t.text(job.message)}</p>}
       {job.actionResult && (
         <p style={{ ...S.note, color: severityColor(job.actionResult.severity) }}>
-          {job.actionResult.message}
+          {actionText}
         </p>
       )}
       {verificationResult && (
@@ -144,7 +144,7 @@ export function Report({
         </p>
       )}
       {plan && lines.length === 0 && plan.writable && (
-        <p style={S.note}>Everything is clean — nothing needed fixing.</p>
+        <p style={S.note}>{t.t("report.clean")}</p>
       )}
       {(advisories.length > 0 || lines.length > 0 || verifyLines.length > 0) && (
         <ul style={S.log}>

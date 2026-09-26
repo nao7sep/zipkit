@@ -17,7 +17,9 @@ export default defineConfig({
     // Redirect every test's per-session log off the real `~/.zipkit/logs` (see
     // tests/setup.ts). Every ZipKit instance now opens a session log, so this
     // keeps the suite from writing into the developer's home directory.
-    setupFiles: ["./tests/setup.ts"],
+    // Every spec that mounts the interface also checks that no catalogue key
+    // reaches the screen (localization-conventions, Gates).
+    setupFiles: ["./tests/setup.ts", "./tests/setup/rendered-keys.ts"],
     coverage: {
       // V8's native coverage — already the installed provider, no instrumentation
       // step. `include` lists every source file (not just the ones a test happens

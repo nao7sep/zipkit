@@ -32,6 +32,7 @@
     "src/gui/main/**/*",
     "src/gui/preload/**/*",
     "src/gui/shared/**/*",
+    "src/gui/shared/i18n/locales/*.json",
     "electron.vite.config.ts"
   ]
 }

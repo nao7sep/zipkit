@@ -16,6 +16,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { GuiLogEvent, Job, JobIntent, PlanData, VerifyResult } from "../../shared/api";
+import type { MessageKey } from "../../shared/i18n/catalogues";
+import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable } from "../../shared/queue";
 import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
 import {
@@ -50,6 +52,8 @@ import {
 } from "./externalDropBoundary";
 import { planInputAdmission } from "./inputAdmission";
 import { hasMod, isEditableTarget, shadowsMacTextBinding } from "./shortcuts";
+import { useI18n, type Translator } from "./i18n/I18nContext";
+import { message, sentences } from "../../shared/i18n/translate";
 import { useConfirm, type ConfirmOptions } from "./components/DialogHost";
 import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
@@ -83,20 +87,18 @@ const GROW: CSSProperties = { flex: 1 };
  *  say so. Shared by the button path (JobView) and the keyboard accelerator (App)
  *  so both honor the same policy. A plain `save` run moves nothing and needs no
  *  confirm. */
-function runConfirmation(job: Job): ConfirmOptions | null {
+function runConfirmation(job: Job, t: Translator): ConfirmOptions | null {
   if (job.intent !== "archive-and-trash") return null;
-  const n = job.inputs.length;
   return {
-    title: "Create archive and move originals to Trash?",
-    message: `The archive will be created and verified, then the ${n} original ${
-      n === 1 ? "item" : "items"
-    } will be moved to the Trash. The originals are moved only after the archive verifies.`,
-    confirmLabel: "Create and move to Trash",
+    title: t.t("confirm.runTitle"),
+    message: t.t("confirm.runMessage", { count: job.inputs.length }),
+    confirmLabel: t.t("confirm.runConfirm"),
     danger: true,
   };
 }
 
 export function App() {
+  const t = useI18n();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
@@ -105,6 +107,9 @@ export function App() {
   // The saved theme, kept only to seed the Settings draft: the main process
   // applies it, and the page follows prefers-color-scheme.
   const [theme, setTheme] = useState<ThemePreference>("system");
+  // The saved language choice, likewise kept only to seed the Settings draft:
+  // the main process resolves it and tells the window which language to speak.
+  const [language, setLanguage] = useState<LanguagePreference>("system");
   const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
@@ -176,6 +181,7 @@ export function App() {
       setDefaults(settings.defaults);
       setUiFontFamily(settings.uiFontFamily);
       setTheme(settings.theme);
+      setLanguage(settings.language);
       // Persisted pane widths are the intent. Live-width clamping below affects
       // display only and never rewrites what the user dragged.
       setIntent(clampLayout(layout));
@@ -289,6 +295,7 @@ export function App() {
     setDefaults(next.defaults);
     setUiFontFamily(next.uiFontFamily);
     setTheme(next.theme);
+    setLanguage(next.language);
   }
 
   async function createJob(inputs: string[]): Promise<ReceiverCommit> {
@@ -303,7 +310,10 @@ export function App() {
         accepted: admission.accepted.length,
         result: admission.duplicates > 0
           ? {
-              message: `Created the job with ${admission.accepted.length} ${admission.accepted.length === 1 ? "input" : "inputs"}; ${admission.duplicates} ${admission.duplicates === 1 ? "duplicate input was" : "duplicate inputs were"} already included.`,
+              message: sentences([
+                message("result.createdJob", { count: admission.accepted.length }),
+                message("result.duplicatesIncluded", { count: admission.duplicates }),
+              ])!,
               severity: "information",
             }
           : null,
@@ -313,7 +323,7 @@ export function App() {
       return {
         changed: false,
         accepted: 0,
-        result: { message: "The job could not be created. Check that the inputs are still available, then try again.", severity: "error" },
+        result: { message: message("result.createJobFailed"), severity: "error" },
       };
     }
   }
@@ -333,7 +343,7 @@ export function App() {
       setJobsResult((current) => settleReceiverResult(current, {
         operationKey: "jobs:picker",
         entryKey: "jobs:picker",
-        result: { message: "The input picker could not be opened. Try again.", severity: "error" },
+        result: { message: message("result.pickerFailed"), severity: "error" },
       }));
     }
   }
@@ -358,7 +368,7 @@ export function App() {
         operationKey: "jobs:unsupported-drop",
         entryKey: "jobs:drop",
         result: {
-          message: "Drop files or folders on Jobs to create a new archive job.",
+          message: message("result.jobsUnsupportedDrop"),
           severity: "warning",
         },
       }));
@@ -377,7 +387,7 @@ export function App() {
         operationKey,
         entryKey: "jobs:drop",
         result: {
-          message: "The dropped items could not be accessed as local files or folders.",
+          message: message("result.dropUnavailable"),
           severity: resolved.errors.length > 0 ? "error" : "warning",
         },
       }));
@@ -385,7 +395,7 @@ export function App() {
     }
     event.dataTransfer.dropEffect = "copy";
     const commit = await createJob(resolved.paths);
-    const result = summarizeDroppedFiles("Created the job with", resolved, commit);
+    const result = summarizeDroppedFiles("result.createdJob", resolved, commit);
     setJobsResult((current) => settleReceiverResult(current, {
       operationKey,
       entryKey: "jobs:drop",
@@ -403,14 +413,14 @@ export function App() {
     const cmds = jobCommands(selected);
     if (!cmds.includes("create") && !cmds.includes("retry")) return;
     (document.activeElement as HTMLElement | null)?.blur?.();
-    const ask = runConfirmation(selected);
+    const ask = runConfirmation(selected, t);
     if (ask && !(await confirm(ask))) return;
     try {
       await window.zipkit.runJob(selected.id);
       setJobResults((current) => { const next = { ...current }; delete next[selected.id]; return next; });
     } catch (error) {
       window.zipkit.reportError("run selected job", reportableError(error));
-      setJobResults((current) => ({ ...current, [selected.id]: { message: "The archive could not be started. The job is unchanged; try again.", severity: "error" } }));
+      setJobResults((current) => ({ ...current, [selected.id]: { message: message("result.runFailed"), severity: "error" } }));
     }
   }
 
@@ -450,7 +460,7 @@ export function App() {
   // persists it on release.
   const jobsSplitter = (
     <Splitter
-      label="Resize Jobs pane"
+      label={t.t("pane.resizeJobs")}
       value={intent.jobsWidth}
       min={LAYOUT_BOUNDS.jobsWidth.min}
       max={LAYOUT_BOUNDS.jobsWidth.max}
@@ -469,7 +479,7 @@ export function App() {
   );
   const progressSplitter = (
     <Splitter
-      label="Resize Progress pane"
+      label={t.t("pane.resizeProgress")}
       value={intent.progressWidth}
       min={LAYOUT_BOUNDS.progressWidth.min}
       max={LAYOUT_BOUNDS.progressWidth.max}
@@ -533,10 +543,10 @@ export function App() {
       <div data-app-content-viewport style={S.contentViewport}>
         <div data-app-pane-grid ref={bodyRef} style={bodyStyle}>
         <Pane
-          title="Jobs"
+          title={t.t("pane.jobs")}
           actions={
             <button className="accent" onClick={() => void addJob()}>
-              Add
+              {t.t("common.add")}
             </button>
           }
           bodyStyle={S.listBody}
@@ -560,11 +570,11 @@ export function App() {
               onSelect={setSelectedId}
               onRemove={(id) => { void window.zipkit.removeJob(id).catch((error) => {
                 window.zipkit.reportError("remove job", reportableError(error));
-                setJobsResult({ operationKey: `remove:${id}`, message: "The job could not be removed. It remains in the queue; try again.", severity: "error" });
+                setJobsResult({ operationKey: `remove:${id}`, message: message("result.removeJobFailed"), severity: "error" });
               }); }}
               onCancel={(id) => { void window.zipkit.cancelJob(id).catch((error) => {
                 window.zipkit.reportError("cancel job from list", reportableError(error));
-                setJobsResult({ operationKey: `cancel:${id}`, message: "The job could not be cancelled. It may still be running; try again.", severity: "error" });
+                setJobsResult({ operationKey: `cancel:${id}`, message: message("result.cancelJobFailed"), severity: "error" });
               }); }}
             />
             {jobsResult && (
@@ -600,12 +610,12 @@ export function App() {
           />
         ) : (
           <>
-            <Pane title="Archive" rootStyle={GROW}>
-              <p style={S.muted}>Add or select a job.</p>
+            <Pane title={t.t("pane.archive")} rootStyle={GROW}>
+              <p style={S.muted}>{t.t("archive.empty")}</p>
             </Pane>
             {progressSplitter}
-            <Pane title="Progress" rootStyle={GROW}>
-              <p style={S.muted}>No job selected.</p>
+            <Pane title={t.t("pane.progress")} rootStyle={GROW}>
+              <p style={S.muted}>{t.t("progress.noJob")}</p>
             </Pane>
           </>
         )}
@@ -614,7 +624,7 @@ export function App() {
 
       {dialog === "settings" && (
         <SettingsDialog
-          settings={{ defaults, uiFontFamily, theme }}
+          settings={{ defaults, uiFontFamily, theme, language }}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
         />
@@ -644,6 +654,7 @@ function JobView({
   operationResult: ReceiverResultDetails | null;
   onOperationResult: (result: ReceiverResultDetails | null) => void;
 }) {
+  const t = useI18n();
   // Keyed by job id in the parent, so this remounts per job: local option draft and
   // verify state start fresh, no manual re-sync.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
@@ -700,11 +711,11 @@ function JobView({
     if (operationAttempt.current === attempt) onOperationResult(null);
   }
 
-  function failOperation(attempt: number, context: string, message: string, error: unknown, recover?: () => void) {
+  function failOperation(attempt: number, context: string, result: MessageKey, error: unknown, recover?: () => void) {
     window.zipkit.reportError(context, reportableError(error));
     if (operationAttempt.current !== attempt) return;
     recover?.();
-    onOperationResult({ message, severity: "error" });
+    onOperationResult({ message: message(result), severity: "error" });
   }
 
   async function persistOptions(next: GuiOptions) {
@@ -716,7 +727,7 @@ function JobView({
       failOperation(
         attempt,
         "update job options",
-        "The parameter change could not be saved. The previous values were restored; try again.",
+        "result.optionsSaveFailed",
         error,
         () => {
           setOpts(job.options);
@@ -759,7 +770,7 @@ function JobView({
     const attempt = beginOperation();
     void window.zipkit.updateJob(job.id, { intent })
       .then(() => finishOperation(attempt))
-      .catch((error) => failOperation(attempt, "update job intent", "The intent could not be changed. The previous intent is still active; try again.", error));
+      .catch((error) => failOperation(attempt, "update job intent", "result.intentFailed", error));
   }
 
   // Input CRUD: add appends paths (from the picker or a drop), skipping ones
@@ -772,7 +783,7 @@ function JobView({
         accepted: 0,
         result: admission.duplicates > 0
           ? {
-              message: `${admission.duplicates === 1 ? "That input is" : "Those inputs are"} already in this job.`,
+              message: message("result.alreadyInJob", { count: admission.duplicates }),
               severity: "information",
             }
           : null,
@@ -785,7 +796,7 @@ function JobView({
       return {
         changed: false,
         accepted: 0,
-        result: { message: "Inputs could not be added. Check that they are still available, then try again.", severity: "error" },
+        result: { message: message("result.addInputsFailed"), severity: "error" },
       };
     }
     return {
@@ -793,7 +804,10 @@ function JobView({
       accepted: admission.accepted.length,
       result: admission.duplicates > 0
         ? {
-            message: `Added ${admission.accepted.length} new ${admission.accepted.length === 1 ? "input" : "inputs"}; ${admission.duplicates} ${admission.duplicates === 1 ? "input was" : "inputs were"} already in this job.`,
+            message: sentences([
+              message("result.addedNewInputs", { count: admission.accepted.length }),
+              message("result.alreadyInJob", { count: admission.duplicates }),
+            ])!,
             severity: "information",
           }
         : null,
@@ -822,7 +836,7 @@ function JobView({
         operationKey,
         entryKey,
         result: {
-          message: "The dropped items could not be accessed as local files or folders.",
+          message: message("result.dropUnavailable"),
           severity: resolved.errors.length > 0 ? "error" : "warning",
         },
       };
@@ -831,7 +845,7 @@ function JobView({
     return {
       operationKey,
       entryKey,
-      result: summarizeDroppedFiles("Added", resolved, commit),
+      result: summarizeDroppedFiles("result.addedInputs", resolved, commit),
     };
   }
   function removeInput(path: string) {
@@ -839,7 +853,7 @@ function JobView({
     const attempt = beginOperation();
     void window.zipkit.updateJob(job.id, { inputs: job.inputs.filter((p) => p !== path) })
       .then(() => finishOperation(attempt))
-      .catch((error) => failOperation(attempt, "remove input from job", "The input could not be removed. It remains in this job; try again.", error));
+      .catch((error) => failOperation(attempt, "remove input from job", "result.removeInputFailed", error));
   }
 
   async function onCommand(c: JobCommand) {
@@ -849,17 +863,17 @@ function JobView({
         // Confirm only when running this job also moves the user's data (the
         // confirmation policy) — runConfirmation returns the prompt for an
         // archive-and-trash run and null for a plain save.
-        const ask = runConfirmation(job);
+        const ask = runConfirmation(job, t);
         if (ask && !(await confirm(ask))) break;
         const attempt = beginOperation();
         try { await window.zipkit.runJob(job.id); finishOperation(attempt); }
-        catch (error) { failOperation(attempt, "run job", "The archive could not be started. The job is unchanged; try again.", error); }
+        catch (error) { failOperation(attempt, "run job", "result.runFailed", error); }
         break;
       }
       case "cancel": {
         const attempt = beginOperation();
         try { await window.zipkit.cancelJob(job.id); finishOperation(attempt); }
-        catch (error) { failOperation(attempt, "cancel job", "The job could not be cancelled. It may still be running; try again.", error); }
+        catch (error) { failOperation(attempt, "cancel job", "result.cancelJobFailed", error); }
         break;
       }
       case "verify": {
@@ -870,7 +884,7 @@ function JobView({
             if (operationAttempt.current === attempt) setVerify(result);
             finishOperation(attempt);
           }
-          catch (error) { failOperation(attempt, "verify archive", "The archive could not be verified. It was not changed; try again.", error); }
+          catch (error) { failOperation(attempt, "verify archive", "result.verifyFailed", error); }
         }
         break;
       }
@@ -878,7 +892,7 @@ function JobView({
         if (job.output) {
           const attempt = beginOperation();
           try { await window.zipkit.reveal(job.output); finishOperation(attempt); }
-          catch (error) { failOperation(attempt, "reveal archive", "The archive could not be revealed. Check that it is still available.", error); }
+          catch (error) { failOperation(attempt, "reveal archive", "result.revealFailed", error); }
         }
         break;
       }
@@ -886,16 +900,15 @@ function JobView({
         // Destructive and not part of the normal run path, so confirm explicitly.
         if (
           await confirm({
-            title: "Move originals to Trash?",
-            message:
-              "The original files and directories for this job will be moved to the Trash. The archive is kept.",
-            confirmLabel: "Move to Trash",
+            title: t.t("confirm.trashOriginalsTitle"),
+            message: t.t("confirm.trashOriginalsMessage"),
+            confirmLabel: t.t("confirm.moveToTrash"),
             danger: true,
           })
         ) {
           const attempt = beginOperation();
           try { await window.zipkit.trashOriginals(job.id); finishOperation(attempt); }
-          catch (error) { failOperation(attempt, "trash job originals", "The originals could not be moved to the Trash. They remain in place; try again.", error); }
+          catch (error) { failOperation(attempt, "trash job originals", "result.trashOriginalsFailed", error); }
         }
         break;
       case "remove-archive":
@@ -903,28 +916,27 @@ function JobView({
         // inputs are untouched, so the job stays and can create the archive again.
         if (
           await confirm({
-            title: "Move this archive to the Trash?",
-            message:
-              "The archive file for this job will be moved to the Trash. Your original files and directories are kept, so you can create the archive again.",
-            confirmLabel: "Move to Trash",
+            title: t.t("confirm.removeArchiveTitle"),
+            message: t.t("confirm.removeArchiveMessage"),
+            confirmLabel: t.t("confirm.moveToTrash"),
             danger: true,
           })
         ) {
           const attempt = beginOperation();
           try { await window.zipkit.removeArchive(job.id); finishOperation(attempt); }
-          catch (error) { failOperation(attempt, "remove job archive", "The archive could not be moved to the Trash. It remains in place; try again.", error); }
+          catch (error) { failOperation(attempt, "remove job archive", "result.removeArchiveFailed", error); }
         }
         break;
     }
   }
 
   // Destination preview (directory + file name), derived in one place — see view.ts.
-  const { dir: destDir, name: target } = outputPreview(job, opts);
+  const { dir: destDir, name: target } = outputPreview(job, opts, t);
   const jobEvents = events.filter((e) => e.jobId === job.id);
 
   return (
     <>
-      <Pane title={label(job)} rootStyle={GROW} actions={<StateBadge state={job.state} />}>
+      <Pane title={label(job, t)} rootStyle={GROW} actions={<StateBadge state={job.state} />}>
         {/* Inputs lead the pane: what this job archives, add/remove without
             rebuilding it. */}
         <InputList
@@ -940,7 +952,7 @@ function JobView({
         {/* Parameters: the archive knobs, with the use-defaults toggle in the
             header and the output-directory group inside. */}
         <div style={S.sectionHead}>
-          <span style={S.sectionTitle}>Parameters</span>
+          <span style={S.sectionTitle}>{t.t("section.parameters")}</span>
           <label style={S.defaultsToggle}>
             <input
               type="checkbox"
@@ -948,7 +960,7 @@ function JobView({
               disabled={!editable}
               onChange={(e) => toggleUseDefaults(e.target.checked)}
             />
-            <span>Use default parameters</span>
+            <span>{t.t("params.useDefaults")}</span>
           </label>
         </div>
         <OptionsPanel options={opts} onChange={changeOptions} disabled={useDefaults || !editable} />
@@ -956,29 +968,29 @@ function JobView({
         {/* Operation: the per-archive name and intent, then the output path as the
             final checkpoint right above Create, then the lifecycle buttons. */}
         <div style={S.sectionHead}>
-          <span style={S.sectionTitle}>Operation</span>
+          <span style={S.sectionTitle}>{t.t("section.operation")}</span>
         </div>
         <div style={S.opsGrid}>
           <label style={S.stack}>
-            <span style={S.stackLabel}>File name</span>
+            <span style={S.stackLabel}>{t.t("op.fileName")}</span>
             <input
               type="text"
               value={opts.fileName}
-              placeholder={archiveName(job.output) || "(automatic)"}
+              placeholder={archiveName(job.output) || t.t("op.automatic")}
               disabled={!editable}
               onChange={(e) => setOpts({ ...opts, fileName: e.target.value })}
               onBlur={(e) => commitOptions({ ...opts, fileName: e.target.value })}
             />
           </label>
           <label style={S.stack}>
-            <span style={S.stackLabel}>Intent</span>
+            <span style={S.stackLabel}>{t.t("op.intent")}</span>
             <select
               value={job.intent}
               disabled={!editable}
               onChange={(e) => changeIntent(e.target.value as JobIntent)}
             >
-              <option value="save">Save archive</option>
-              <option value="archive-and-trash">Archive &amp; move originals to Trash</option>
+              <option value="save">{t.t("intent.save")}</option>
+              <option value="archive-and-trash">{t.t("intent.archiveAndTrash")}</option>
             </select>
           </label>
         </div>
@@ -986,24 +998,20 @@ function JobView({
             name" (file name) are still separate concerns here, so they are shown as
             two labeled lines, never joined into one finalized path. */}
         <div style={S.dest}>
-          <span style={S.destLead}>{job.state === "done" ? "Saved" : "Will save"}</span>
-          <div style={S.destRow}>
-            <span style={S.destKey}>in</span>
+          <span style={S.destLead}>{t.t(job.state === "done" ? "dest.saved" : "dest.willSave")}</span>
+          <div style={S.destRows}>
+            <span style={S.destKey}>{t.t("dest.folder")}</span>
             <span style={S.destVal} title={destDir}>
               {destDir}
             </span>
-          </div>
-          <div style={S.destRow}>
-            <span style={S.destKey}>as</span>
+            <span style={S.destKey}>{t.t("dest.name")}</span>
             <span style={S.destVal} title={target}>
               {target}
             </span>
           </div>
         </div>
         {manifestRequiredButMissing(job.intent, opts.metadata) && (
-          <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>
-            Enable “Embed manifest”. Verify-before-Trash needs it.
-          </p>
+          <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>{t.t("op.manifestNeeded")}</p>
         )}
         <CommandBar job={job} onCommand={onCommand} />
         {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
@@ -1011,19 +1019,19 @@ function JobView({
         {/* Report: a context-aware, natural-language log of what the archive does
             for the user, integrated into the same pane. */}
         <div style={S.sectionHead}>
-          <span style={S.sectionTitle}>Report</span>
+          <span style={S.sectionTitle}>{t.t("section.report")}</span>
         </div>
         {planLoadFailed ? (
           <div style={S.planRecovery}>
-            <p role="alert">This job’s plan could not be loaded. The job is unchanged; try again.</p>
-            <button onClick={() => setPlanAttempt((value) => value + 1)}>Retry plan</button>
+            <p role="alert">{t.t("report.planLoadFailed")}</p>
+            <button onClick={() => setPlanAttempt((value) => value + 1)}>{t.t("report.retryPlan")}</button>
           </div>
         ) : <Report job={job} plan={plan} verify={verify} />}
       </Pane>
 
       {splitter}
 
-      <Pane title="Progress" rootStyle={GROW} bodyStyle={S.progressBody}>
+      <Pane title={t.t("pane.progress")} rootStyle={GROW} bodyStyle={S.progressBody}>
         <ProgressLog events={jobEvents} />
       </Pane>
     </>
@@ -1057,15 +1065,16 @@ const S: Record<string, CSSProperties> = {
     boxShadow: "0 0 0 2px var(--accent-strong)",
     background: "color-mix(in srgb, var(--accent) 10%, transparent)",
   },
-  // The destination checkpoint above Create: a "Will save" lead, then "in <dir>"
-  // and "as <name>" on their own lines so where and what-name read as the two
-  // separate concerns they still are. Plain text (no box); values selectable and
-  // wrapping so the whole path/name is always visible.
+  // The destination checkpoint above Create: a "Will save" lead, then the folder
+  // and the file name on their own labelled lines so where and what-name read as
+  // the two separate concerns they still are. Plain text (no box); values
+  // selectable and wrapping so the whole path/name is always visible. The label
+  // column is as wide as its longest label in the interface language.
   dest: { display: "grid", gap: "0.25rem", margin: "0.85rem 0 0.25rem", userSelect: "text" },
   destLead: { color: "var(--text-2)", fontSize: "0.85rem" },
-  destRow: { display: "flex", gap: "0.6rem", alignItems: "baseline", minWidth: 0 },
-  destKey: { color: "var(--text-2)", fontSize: "0.85rem", width: "1.75rem", flexShrink: 0, textAlign: "right" },
-  destVal: { flex: 1, minWidth: 0, fontSize: "0.95rem", fontWeight: 600, wordBreak: "break-all" },
+  destRows: { display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "0.25rem 0.6rem", alignItems: "baseline" },
+  destKey: { color: "var(--text-2)", fontSize: "0.85rem", whiteSpace: "nowrap" },
+  destVal: { minWidth: 0, fontSize: "0.95rem", fontWeight: 600, wordBreak: "break-all" },
   opsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",

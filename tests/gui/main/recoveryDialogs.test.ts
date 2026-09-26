@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildRecoveryDialogs } from "../../../src/gui/main/recoveryDialogs.js";
+import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
+
+const { t } = createTranslator("en");
 
 describe("buildRecoveryDialogs", () => {
   it("identifies a recovered queue as pending work, not settings", () => {
@@ -9,12 +12,13 @@ describe("buildRecoveryDialogs", () => {
     });
 
     expect(dialogs).toHaveLength(1);
-    expect(dialogs[0]?.title).toBe("Saved queue was reset");
-    expect(dialogs[0]?.message).toContain("saved pending jobs");
-    expect(dialogs[0]?.message).toContain("started with an empty queue");
-    expect(dialogs[0]?.message).toContain("Check the ZipKit log");
-    expect(dialogs[0]?.message).not.toContain("/tmp/.zipkit");
-    expect(dialogs[0]?.message).not.toContain("settings file");
+    expect(t(dialogs[0]!.title)).toBe("Saved queue was reset");
+    const message = t(dialogs[0]!.message);
+    expect(message).toContain("saved pending jobs");
+    expect(message).toContain("started with an empty queue");
+    expect(message).toContain("Check the ZipKit log");
+    expect(message).not.toContain("/tmp/.zipkit");
+    expect(message).not.toContain("settings file");
   });
 
   it("reports settings and queue recoveries separately", () => {
@@ -23,13 +27,13 @@ describe("buildRecoveryDialogs", () => {
       queueQuarantinedTo: "/tmp/.zipkit/queue.invalid",
     });
 
-    expect(dialogs.map((dialog) => dialog.title)).toEqual([
+    expect(dialogs.map((dialog) => t(dialog.title))).toEqual([
       "Settings were reset",
       "Saved queue was reset",
     ]);
     for (const dialog of dialogs) {
-      expect(dialog.message).not.toContain("/tmp/.zipkit");
-      expect(dialog.message).toContain("Check the ZipKit log");
+      expect(t(dialog.message)).not.toContain("/tmp/.zipkit");
+      expect(t(dialog.message)).toContain("Check the ZipKit log");
     }
   });
 

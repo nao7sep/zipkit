@@ -21,6 +21,7 @@ import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
+import { message } from "../shared/i18n/translate.js";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -156,7 +157,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         summary: plan.summary,
         writable: plan.writable,
         state: plan.writable ? "ready" : "needs-attention",
-        message: plan.writable ? undefined : `${plan.summary.errors} blocking finding(s)`,
+        message: plan.writable ? undefined : message("job.blocking", { count: plan.summary.errors }),
       });
       deps.log.info("job planned", {
         jobId: id,
@@ -168,7 +169,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     } catch (err) {
       if (!current()) return; // superseded (often via the abort above) — discard
       rec.plan = null;
-      set(rec, { state: "needs-attention", writable: false, message: "This job could not be prepared. Check that its inputs are still available, then try again.", errorCode: errCode(err) });
+      set(rec, { state: "needs-attention", writable: false, message: message("job.prepareFailed"), errorCode: errCode(err) });
       deps.log.error("job plan failed", { jobId: id, error: errorInfo(err) });
     } finally {
       // Only the current run owns the aborter and the post-plan emit; a superseded
@@ -199,12 +200,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         rec.plan = plan;
         set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
       } catch (err) {
-        set(rec, { state: "needs-attention", writable: false, message: "This job could not be prepared. Check that its inputs are still available, then try again.", errorCode: errCode(err) });
+        set(rec, { state: "needs-attention", writable: false, message: message("job.prepareFailed"), errorCode: errCode(err) });
         deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
         return;
       }
       if (!plan.writable) {
-        set(rec, { state: "needs-attention", message: "no longer writable (re-checked at run)" });
+        set(rec, { state: "needs-attention", message: message("job.noLongerWritable") });
         deps.log.warn("job run skipped: no longer writable", { jobId: id, errors: plan.summary.errors });
         return;
       }
@@ -214,14 +215,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       try {
         bytes = await deps.write(plan, signal, onProgress);
       } catch (err) {
-        set(rec, { state: "failed", message: "The archive could not be written. Check the output location and available storage, then try again." });
+        set(rec, { state: "failed", message: message("job.writeFailed") });
         deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
         return;
       }
       rec.publishedOutput = plan.output;
 
       if (rec.job.intent === "save") {
-        set(rec, { state: "done", message: `saved (${bytes ?? 0} bytes)` });
+        set(rec, { state: "done", message: message("job.saved", { count: bytes ?? 0 }) });
         deps.log.info("job saved", { jobId: id, output: plan.output, bytes });
         return;
       }
@@ -229,23 +230,23 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // archive-and-trash: guard, verify, then Trash — originals kept on any failure.
       try {
         if (await deps.outputInsideInputs(plan.output, rec.job.inputs)) {
-          set(rec, { state: "failed", message: "archive is inside the source; originals untouched" });
+          set(rec, { state: "failed", message: message("job.insideSource") });
           deps.log.error("job trash blocked: archive inside source", { jobId: id, output: plan.output });
           return;
         }
       } catch (err) {
-        set(rec, { state: "failed", message: "The archive location could not be verified. The originals were kept." });
+        set(rec, { state: "failed", message: message("job.locationUnverified") });
         deps.log.error("job trash blocked: physical identity check failed", { jobId: id, error: errorInfo(err) });
         return;
       }
       try {
         if (!(await deps.verify(plan.output, signal, onProgress))) {
-          set(rec, { state: "failed", message: "verification failed; originals kept" });
+          set(rec, { state: "failed", message: message("job.verifyFailed") });
           deps.log.error("job verification failed; originals kept", { jobId: id, output: plan.output });
           return;
         }
       } catch (err) {
-        set(rec, { state: "failed", message: "The archive could not be verified. The originals were kept." });
+        set(rec, { state: "failed", message: message("job.verifyErrored") });
         deps.log.error("job verification errored; originals kept", { jobId: id, error: errorInfo(err) });
         return;
       }
@@ -253,20 +254,20 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       try {
         trashResult = await deps.trash(rec.job.inputs, signal);
       } catch (err) {
-        set(rec, { state: "failed", message: "The archive was saved and verified, but the originals could not be moved to Trash. The originals were kept." });
+        set(rec, { state: "failed", message: message("job.trashFailed") });
         deps.log.error("job Trash failed after verify", { jobId: id, error: errorInfo(err) });
         return;
       }
       if (!trashConfirmed(trashResult)) {
         set(rec, {
           state: "failed",
-          message: `The archive was saved and verified. ${describeOriginalsTrash(trashResult)}`,
+          message: message("job.savedVerifiedPartial", { detail: describeOriginalsTrash(trashResult) }),
         });
         deps.log.error("job Trash not fully confirmed after verify", { jobId: id, ...trashResult });
         void classifyInputs(id);
         return;
       }
-      set(rec, { state: "done", message: `saved, verified, ${rec.job.inputs.length} moved to Trash` });
+      set(rec, { state: "done", message: message("job.archivedAndTrashed", { count: rec.job.inputs.length }) });
       deps.log.info("job archived and trashed", { jobId: id, output: plan.output, trashed: rec.job.inputs.length });
     } finally {
       rec.aborter = null;
@@ -454,7 +455,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             set(rec, {
               actionResult: {
                 severity: "warning",
-                message: "The archive was still being moved to Trash and may yet reach recoverable Trash.",
+                message: message("action.archiveTrashUnconfirmed"),
               },
             });
             deps.log.warn("remove archive unconfirmed", { jobId: id, output });
@@ -466,7 +467,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           set(rec, {
             actionResult: {
               severity: "error",
-              message: "The archive could not be moved to Trash. It remains available.",
+              message: message("action.archiveTrashFailed"),
             },
           });
           deps.log.error("remove archive failed", { jobId: id, error: errorInfo(err) });
@@ -498,7 +499,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             set(rec, {
               actionResult: {
                 severity: "error",
-                message: "No successfully written archive is available. The originals were kept.",
+                message: message("action.noArchive"),
               },
             });
             emit();
@@ -508,7 +509,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             set(rec, {
               actionResult: {
                 severity: "error",
-                message: "The archive is inside an original, so the originals were kept.",
+                message: message("action.archiveInsideOriginal"),
               },
             });
             emit();
@@ -529,7 +530,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           set(rec, {
             actionResult: {
               severity: "error",
-              message: "The originals could not be moved to Trash. They were kept.",
+              message: message("action.originalsTrashFailed"),
             },
           });
           deps.log.error("trash originals failed", { jobId: id, error: errorInfo(err) });
@@ -537,7 +538,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           return;
         }
         set(rec, {
-          actionResult: { severity: "info", message: `${inputs.length} moved to Trash.` },
+          actionResult: { severity: "info", message: message("action.originalsTrashed", { count: inputs.length }) },
         });
         deps.log.info("originals trashed", { jobId: id, count: inputs.length });
         emit();

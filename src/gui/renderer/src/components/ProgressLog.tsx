@@ -19,18 +19,20 @@ import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { LogEvent } from "../../../shared/api";
 import { eventLineParts, logLevelColor, logLevelLabel } from "../view";
+import { useI18n } from "../i18n/I18nContext";
 
 // "Near the bottom" tolerance, in pixels (ScriptDock uses 24).
 const PIN_THRESHOLD_PX = 24;
 
-// The level column is as wide as the longest level word, so the messages start
-// at one column and the log reads as a table rather than a ragged edge. Derived
-// from the labels themselves: a renamed level cannot leave the column stale.
-const LEVEL_WIDTH = Math.max(
-  ...(["debug", "info", "warn", "error"] as LogEvent["level"][]).map((level) => logLevelLabel(level).length),
-);
+const LEVELS: LogEvent["level"][] = ["debug", "info", "warn", "error"];
 
 export function ProgressLog({ events }: { events: LogEvent[] }) {
+  const t = useI18n();
+  // The level column is as wide as the longest level word in the interface
+  // language, so the messages start at one column and the log reads as a table
+  // rather than a ragged edge. Derived from the labels themselves: a renamed
+  // level cannot leave the column stale.
+  const levelWidth = Math.max(...LEVELS.map((level) => t.t(logLevelLabel(level)).length));
   const ref = useRef<HTMLPreElement>(null);
   // Whether the user is currently following the tail. Starts pinned; updated on
   // every manual scroll, read (synchronously, before paint) after each new batch.
@@ -50,26 +52,26 @@ export function ProgressLog({ events }: { events: LogEvent[] }) {
     pinned.current = el.scrollHeight <= el.clientHeight || distanceFromBottom <= PIN_THRESHOLD_PX;
   }
 
-  if (events.length === 0) return <p style={S.empty}>Nothing to show yet.</p>;
+  if (events.length === 0) return <p style={S.empty}>{t.t("progress.empty")}</p>;
   return (
     <pre
       ref={ref}
       role="region"
-      aria-label="Progress log"
+      aria-label={t.t("progress.region")}
       aria-live="off"
       tabIndex={0}
       style={S.log}
       onScroll={onScroll}
     >
       {events.map((event, index) => {
-        const { time, level, message } = eventLineParts(event);
+        const { time, level, message } = eventLineParts(event, t);
         const loud = event.level === "warn" || event.level === "error";
         return (
           <span key={index}>
             <span style={S.time}>{time}</span>
             {"  "}
             <span style={{ color: logLevelColor(event.level), fontWeight: loud ? 700 : 400 }}>
-              {level.padEnd(LEVEL_WIDTH)}
+              {level.padEnd(levelWidth)}
             </span>
             {"  "}
             {message}

@@ -4,9 +4,18 @@
  * without a DOM. No React, no Electron, no Node: Job / Plan / Event data in,
  * strings / booleans / colors out. (This file is in the renderer project, so it
  * must stay Node-free — it carries no `node:*` import and no Node global.)
+ *
+ * This is also where the SDK's words become the interface's: the SDK keeps
+ * stable codes and English text for its CLI and library users, and the GUI
+ * maps each code (a finding's rule, an event's name, an error code) to a
+ * catalogue entry, so the SDK itself stays language-free. Text a code does not
+ * cover (a fault's diagnostic detail, an unknown rule) is shown as the SDK
+ * wrote it.
  */
 
 import type { ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
+import type { MessageKey } from "../../shared/i18n/catalogues";
+import type { Translator } from "../../shared/i18n/translate";
 import type { GuiOptions } from "../../shared/spec";
 
 /** The status palette, in one place so every status reads one map. Each entry is
@@ -39,18 +48,18 @@ function baseName(p: string): string {
  *  inputs show a quiet count of directories and files (each only when > 0) rather
  *  than a noisy file list. The counts need the on-disk classification (`entries`);
  *  before it resolves it falls back to a plain item count. */
-export function label(job: Job): string {
-  if (job.inputs.length === 0) return "(no input)";
+export function label(job: Job, t: Translator): string {
+  if (job.inputs.length === 0) return t.t("jobs.noInput");
   if (job.inputs.length === 1) return baseName(job.inputs[0]!);
   const entries = job.entries;
-  if (!entries || entries.length === 0) return `${job.inputs.length} items`;
+  if (!entries || entries.length === 0) return t.t("jobs.items", { count: job.inputs.length });
   const dirs = entries.filter((e) => e.kind === "directory").length;
   const files = entries.filter((e) => e.kind === "file").length;
   const parts: string[] = [];
-  if (dirs > 0) parts.push(`${dirs} ${dirs === 1 ? "directory" : "directories"}`);
-  if (files > 0) parts.push(`${files} ${files === 1 ? "file" : "files"}`);
+  if (dirs > 0) parts.push(t.t("jobs.directories", { count: dirs }));
+  if (files > 0) parts.push(t.t("jobs.files", { count: files }));
   // All inputs missing/other: still say something honest.
-  return parts.length > 0 ? parts.join(", ") : `${entries.length} items`;
+  return parts.length > 0 ? t.list(parts) : t.t("jobs.items", { count: entries.length });
 }
 
 /** Whether any of the job's originals still exist on disk, so trashing them is
@@ -104,25 +113,24 @@ export function severityColor(severity: Finding["severity"]): string {
   }
 }
 
-/** The human label for a job state — proper-cased for UI (the raw union is
- *  lower-kebab for code). Exhaustive over JobState so a new state can't slip out
- *  unlabelled. */
-export function stateLabel(state: Job["state"]): string {
+/** The catalogue label for a job state (the raw union is lower-kebab for code).
+ *  Exhaustive over JobState so a new state can't slip out unlabelled. */
+export function stateLabel(state: Job["state"]): MessageKey {
   switch (state) {
     case "planning":
-      return "Planning";
+      return "state.planning";
     case "needs-attention":
-      return "Needs attention";
+      return "state.needsAttention";
     case "ready":
-      return "Ready";
+      return "state.ready";
     case "queued":
-      return "Queued";
+      return "state.queued";
     case "running":
-      return "Running";
+      return "state.running";
     case "done":
-      return "Done";
+      return "state.done";
     case "failed":
-      return "Failed";
+      return "state.failed";
   }
 }
 
@@ -201,8 +209,8 @@ export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean)
 
 /** The short intent tag shown on a job row — only the noteworthy intent gets a
  *  tag; the plain "save" is the default and adds no signal, so it shows nothing. */
-export function intentLabel(intent: JobIntent): string {
-  return intent === "archive-and-trash" ? "→ Trash" : "";
+export function intentLabel(intent: JobIntent, t: Translator): string {
+  return intent === "archive-and-trash" ? t.t("jobs.trashTag") : "";
 }
 
 /** One line of the report — a severity level, a human sentence, and the path it
@@ -213,27 +221,22 @@ export interface ReportLine {
   path?: string;
 }
 
-function pluralItems(n: number): string {
-  return `${n} item${n === 1 ? "" : "s"}`;
-}
-
 /** Plain, actionable GUI guidance for the SDK error codes a user can hit while
  *  setting up a job, keyed on the stable `code` (never the message text). Codes
- *  without an entry fall back to the SDK's own message — accurate, if terser. */
-const ERROR_GUIDANCE: Record<string, string> = {
-  "output.ambiguous":
-    "These inputs are in different folders, so ZipKit can't choose a location on its own. Set a file name (the output directory defaults to the first input's folder) and they'll be archived together.",
-  "scan.input-missing": "An input no longer exists on disk. Remove it from the list or restore it, then try again.",
-  "scan.stat-failed": "An input couldn't be read — it may be locked or permission-protected. Check it, then try again.",
-  "scan.walk-failed": "A folder couldn't be fully read (a permission or I/O problem). Check it, then try again.",
+ *  without an entry fall back to the job's own message. */
+const ERROR_GUIDANCE: Record<string, MessageKey> = {
+  "output.ambiguous": "guidance.outputAmbiguous",
+  "scan.input-missing": "guidance.inputMissing",
+  "scan.stat-failed": "guidance.statFailed",
+  "scan.walk-failed": "guidance.walkFailed",
 };
 
 /** The report's headline sentence: context-aware, factual, and never the vague
  *  "Windows-safe" claim. Speaks to the job's actual state — failed, done, blocked,
  *  or ready (with what the archive will carry / what was auto-handled). */
-export function reportSummary(job: Job, plan: PlanData | null): ReportLine | null {
+export function reportSummary(job: Job, plan: PlanData | null, t: Translator): ReportLine | null {
   if (job.state === "failed") {
-    return { level: "error", text: job.message ? humanSentence(job.message) : "The archive could not be created." };
+    return { level: "error", text: job.message ? t.text(job.message) : t.t("report.createFailed") };
   }
   // A blocked job must ALWAYS explain itself, even when the plan threw and left no
   // structured data (plan === null) — the captured message is the only explanation
@@ -241,29 +244,27 @@ export function reportSummary(job: Job, plan: PlanData | null): ReportLine | nul
   // error code; fall back to the structured count, then the raw message.
   if (job.state === "needs-attention") {
     const guidance = job.errorCode ? ERROR_GUIDANCE[job.errorCode] : undefined;
-    if (guidance) return { level: "error", text: guidance };
+    if (guidance) return { level: "error", text: t.t(guidance) };
     if (plan) {
-      const n = plan.summary.errors;
-      return {
-        level: "error",
-        text: `${n} blocking issue${n === 1 ? "" : "s"} must be resolved before this can be archived.`,
-      };
+      return { level: "error", text: t.t("report.blockingIssues", { count: plan.summary.errors }) };
     }
-    return { level: "error", text: job.message ? humanSentence(job.message) : "This job can't be archived yet." };
+    return { level: "error", text: job.message ? t.text(job.message) : t.t("report.cannotArchiveYet") };
   }
   if (!plan) return null; // planning — nothing to report yet
   const s = plan.summary;
   if (job.state === "done") {
-    return { level: "info", text: `Archived ${pluralItems(s.included)}.` };
+    return { level: "info", text: t.t("report.archived", { count: s.included }) };
   }
-  const extras: string[] = [];
-  if (s.renamed > 0) extras.push(`${s.renamed} renamed for portability`);
-  if (s.excluded > 0) extras.push(`${s.excluded} excluded`);
-  if (s.warnings > 0) extras.push(`${s.warnings} warning${s.warnings === 1 ? "" : "s"}`);
-  const tail = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+  const notes: string[] = [];
+  if (s.renamed > 0) notes.push(t.t("report.renamedNote", { count: s.renamed }));
+  if (s.excluded > 0) notes.push(t.t("report.excludedNote", { count: s.excluded }));
+  if (s.warnings > 0) notes.push(t.t("report.warningsNote", { count: s.warnings }));
   return {
     level: s.warnings > 0 ? "warning" : "info",
-    text: `${pluralItems(s.included)} ready to archive${tail}.`,
+    text:
+      notes.length > 0
+        ? t.t("report.readyWithNotes", { count: s.included, notes: t.list(notes) })
+        : t.t("report.ready", { count: s.included }),
   };
 }
 
@@ -271,39 +272,94 @@ export function reportSummary(job: Job, plan: PlanData | null): ReportLine | nul
  *  emit (it isn't an archive fault, just advice). Currently: a lone `.zip` input
  *  gains little from re-compression and would only nest. Shown in the Report so
  *  the user sees it before creating. */
-export function jobAdvisories(job: Job): ReportLine[] {
+export function jobAdvisories(job: Job, t: Translator): ReportLine[] {
   const lines: ReportLine[] = [];
   const onlyInput = job.inputs.length === 1 ? job.inputs[0] : undefined;
   const isFile = job.entries?.[0]?.kind === "file";
   if (onlyInput && isFile && /\.zip$/i.test(onlyInput)) {
-    lines.push({
-      level: "warning",
-      text: "This input is already a .zip — re-compressing it saves little and just nests a zip inside a zip. Archive its contents instead, or give the output a different name.",
-    });
+    lines.push({ level: "warning", text: t.t("report.zipInput") });
   }
   return lines;
 }
 
+/** The name rules: one entry for a name the SDK repaired, one for a name it
+ *  only reported. The SDK marks a repair by giving the finding its rename
+ *  target (`fix.kind === "rename"`). */
+const NAME_FINDINGS: Record<string, { fixed: MessageKey; found: MessageKey }> = {
+  "name.nfd": { fixed: "finding.nfdFixed", found: "finding.nfd" },
+  "name.invalid-char": { fixed: "finding.invalidCharFixed", found: "finding.invalidChar" },
+  "name.control-char": { fixed: "finding.controlCharFixed", found: "finding.controlChar" },
+  "name.trailing-dot-space": { fixed: "finding.trailingDotSpaceFixed", found: "finding.trailingDotSpace" },
+  "name.reserved": { fixed: "finding.reservedFixed", found: "finding.reserved" },
+};
+
+/** The rules whose text depends on nothing but the rule itself. */
+const RULE_FINDINGS: Record<string, MessageKey> = {
+  "path.absolute": "finding.pathAbsolute",
+  "path.traversal": "finding.pathTraversal",
+  "path.too-long": "finding.pathTooLong",
+  "macos.junk": "finding.junk",
+  "windows.junk": "finding.junk",
+  "linux.junk": "finding.junk",
+  "name.suspicious": "finding.suspicious",
+  "entry.duplicate": "finding.duplicate",
+  "collision.case": "finding.collisionCase",
+  "collision.post-fix": "finding.collisionPostFix",
+  "time.pre-1980": "finding.pre1980",
+  "time.post-2107": "finding.post2107",
+  "output.exists": "finding.outputExists",
+};
+
+/** The catalogue entry for a plan finding, keyed on its stable rule, or null
+ *  for a rule the GUI does not know (shown as the SDK wrote it). A symlink
+ *  finding reads from the plan whether the link was kept or dropped: the SDK
+ *  excludes the entry it ignores. */
+export function findingKey(f: Finding, plan: PlanData): MessageKey | null {
+  const name = NAME_FINDINGS[f.rule];
+  if (name) return f.fix?.kind === "rename" ? name.fixed : name.found;
+  if (f.rule === "entry.symlink") {
+    const entry = plan.entries.find((e) => e.archivePath === f.path);
+    return entry?.excluded ? "finding.symlinkIgnored" : "finding.symlinkPreserved";
+  }
+  return RULE_FINDINGS[f.rule] ?? null;
+}
+
 /** A finding as a human sentence; a rename also shows the new name (what we did). */
-function findingText(f: Finding): string {
-  if (f.fix?.kind === "rename" && f.fix.to) return `${f.message} → ${f.fix.to}`;
-  return f.message;
+function findingText(f: Finding, plan: PlanData, t: Translator): string {
+  const key = findingKey(f, plan);
+  const text = key ? t.t(key) : humanSentence(f.message);
+  if (f.fix?.kind === "rename" && f.fix.to) return t.t("finding.renamedTo", { text, to: f.fix.to });
+  return text;
+}
+
+/** The SDK's reasons for an exclusion no finding explains. The SDK writes them
+ *  as fixed English phrases rather than codes, so these phrases are the key;
+ *  one the table does not know is shown as the SDK wrote it. */
+const EXCLUDE_REASONS: Record<string, MessageKey> = {
+  "empty directory pruned": "report.excludedEmptyDir",
+  "empty file skipped": "report.excludedEmptyFile",
+};
+
+function excludedText(reason: string | undefined, t: Translator): string {
+  if (reason === undefined) return t.t("report.excludedFiltered");
+  const key = EXCLUDE_REASONS[reason];
+  return key ? t.t(key) : t.t("report.excludedReason", { reason });
 }
 
 /** The report log: every finding as a natural-language, severity-tagged line,
  *  plus any excluded entry not already covered by a finding (custom excludes,
  *  pruned empty dirs/files) so a dropped path is never hidden. Ordered most-severe
  *  first (errors, warnings, info), stable within a tier. Pure and testable. */
-export function planReport(plan: PlanData): ReportLine[] {
+export function planReport(plan: PlanData, t: Translator): ReportLine[] {
   const lines: ReportLine[] = plan.findings.map((f) => ({
     level: f.severity,
-    text: findingText(f),
+    text: findingText(f, plan, t),
     path: f.path,
   }));
   const covered = new Set(plan.findings.map((f) => f.path));
   for (const e of plan.entries) {
     if (e.excluded && !covered.has(e.archivePath)) {
-      lines.push({ level: "info", text: `excluded — ${e.excludeReason ?? "filtered out"}`, path: e.archivePath });
+      lines.push({ level: "info", text: excludedText(e.excludeReason, t), path: e.archivePath });
     }
   }
   const rank: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -313,26 +369,25 @@ export function planReport(plan: PlanData): ReportLine[] {
     .map(({ line }) => line);
 }
 
-/** A local, ISO-ish timestamp for user-facing lines (timestamp-conventions:
- *  user-facing = local time, ISO-ish, English). The event's `time` is the SDK's
- *  internal UTC ISO form; this renders it in the viewer's local zone. Falls back
- *  to the raw value if it cannot be parsed. */
-function formatLocalTime(iso: string): string {
+/** A user-facing timestamp in the viewer's zone and the interface's locale
+ *  format, to the second (timestamp-conventions). The event's `time` is the
+ *  SDK's internal UTC ISO form. Falls back to the raw value if it cannot be
+ *  parsed. */
+function formatLocalTime(iso: string, t: Translator): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const p = (n: number): string => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return t.logTime(d);
 }
 
 /** One Progress-log line, in the three parts the log paints separately: the time
  *  in local (not raw UTC) form, the human level, and the message. They stay
  *  apart rather than being joined here, because the log gives each its own
  *  weight and colour. */
-export function eventLineParts(event: LogEvent): { time: string; level: string; message: string } {
+export function eventLineParts(event: LogEvent, t: Translator): { time: string; level: string; message: string } {
   return {
-    time: formatLocalTime(event.time),
-    level: logLevelLabel(event.level),
-    message: progressMessage(event),
+    time: formatLocalTime(event.time, t),
+    level: t.t(logLevelLabel(event.level)),
+    message: progressMessage(event, t),
   };
 }
 
@@ -351,32 +406,84 @@ export function logLevelColor(level: LogEvent["level"]): string {
   }
 }
 
-/** Human labels for the machine-readable logging levels. */
-export function logLevelLabel(level: LogEvent["level"]): string {
+/** Catalogue labels for the machine-readable logging levels. */
+export function logLevelLabel(level: LogEvent["level"]): MessageKey {
   switch (level) {
     case "debug":
-      return "Debug";
+      return "log.debug";
     case "info":
-      return "Info";
+      return "log.info";
     case "warn":
-      return "Warning";
+      return "log.warn";
     case "error":
-      return "Error";
+      return "log.error";
   }
 }
 
-/** Presentation-only cleanup for the typed event stream. The structured event,
- * its JSONL message, and its wire literals remain untouched. */
-export function progressMessage(event: LogEvent): string {
+/** The Progress line for a typed SDK event, rendered from the event's own
+ *  fields rather than from the SDK's English `message`. The structured event,
+ *  its JSONL message, and its wire literals remain untouched. A fault keeps
+ *  its code and diagnostic detail as the SDK wrote them. */
+export function progressMessage(event: LogEvent, t: Translator): string {
   switch (event.event) {
     case "session.start":
-      return humanSentence(event.message).replace(/^Zipkit\b/, "ZipKit");
-    case "write.done":
-      return humanSentence(event.message).replace(/\bzip64\b/g, "ZIP64");
+      return t.t("event.sessionStart", {
+        version: event.version,
+        concurrency: event.concurrency,
+        chunkSize: event.chunkSize,
+      });
+    case "scan.start":
+      return t.t("event.scanStart", { count: event.inputs });
+    case "scan.dir":
+      return t.t("event.scanDir", { path: event.path });
+    case "scan.symlink-unreadable":
+      return t.t("event.symlinkUnreadable", { path: event.path });
+    case "scan.done":
+      return t.t("event.scanDone", {
+        counts: t.list([
+          t.t("report.entries", { count: event.entries }),
+          t.t("event.prunedDirs", { count: event.prunedDirs }),
+        ]),
+      });
+    case "plan.done":
+      return t.t("event.planDone", {
+        counts: t.list([
+          t.t("event.included", { count: event.included }),
+          t.t("event.excludedCount", { count: event.excluded }),
+          t.t("event.renamedCount", { count: event.renamed }),
+          t.t("event.warnings", { count: event.warnings }),
+          t.t("event.errors", { count: event.errors }),
+        ]),
+      });
+    case "entry.excluded":
+      return t.t("event.excluded", { path: event.path });
+    case "entry.renamed":
+      return t.t("event.renamed", { from: event.from, path: event.path });
     case "entry.flagged":
-      return `Finding ${event.rule} at ${event.path}`;
-    default:
-      return humanSentence(event.message);
+      return t.t("event.flagged", { rule: event.rule, path: event.path });
+    case "write.start":
+      return t.t("event.writeStart", { count: event.entries });
+    case "entry.written":
+      return t.t("event.written", { path: event.path });
+    case "write.done":
+      return t.t(event.zip64 ? "event.writeDoneZip64" : "event.writeDone", { count: event.bytes });
+    case "extract.start":
+      return t.t(event.write ? "event.extractStart" : "event.verifyStart", { count: event.entries });
+    case "entry.verified":
+      return t.t("event.verified", { path: event.path });
+    case "extract.done":
+      return t.t("event.extractDone", {
+        counts: t.list([
+          t.t("event.writtenCount", { count: event.written }),
+          t.t("event.skippedCount", { count: event.skipped }),
+          t.t("report.crcFailures", { count: event.crcFailed }),
+          t.t("report.shaMismatches", { count: event.shaMismatched }),
+        ]),
+      });
+    case "fault":
+      return event.cause !== undefined
+        ? `${event.code}: ${event.detail}: ${event.cause}`
+        : `${event.code}: ${event.detail}`;
   }
 }
 
@@ -407,16 +514,16 @@ export function containingDir(p: string | undefined): string {
  * to see — so it never claims "planning" for a blocked/failed job. One place, so
  * the renderer has a single (tested) derivation instead of an inline ladder.
  */
-export function outputPreview(job: Job, opts: GuiOptions): { dir: string; name: string } {
+export function outputPreview(job: Job, opts: GuiOptions, t: Translator): { dir: string; name: string } {
   const name =
     archiveName(job.output) ||
     opts.fileName.trim() ||
-    (job.state === "planning" ? "resolving…" : "(set a file name)");
+    t.t(job.state === "planning" ? "dest.resolving" : "dest.setFileName");
   const dir =
     containingDir(job.output) ||
     opts.outputDir.trim() ||
     containingDir(job.inputs[0]) ||
-    "(beside the input)";
+    t.t("dest.besideInput");
   return { dir, name };
 }
 
@@ -442,7 +549,11 @@ export function stateTint(state: Job["state"]): string {
 }
 
 /** The verify result one-liner. */
-export function verifySummary(data: ExtractData): string {
+export function verifySummary(data: ExtractData, t: Translator): string {
   const s = data.summary;
-  return `${s.total} entries, ${s.crcFailed} CRC failure(s), ${s.shaMismatched} SHA mismatch(es)`;
+  return t.list([
+    t.t("report.entries", { count: s.total }),
+    t.t("report.crcFailures", { count: s.crcFailed }),
+    t.t("report.shaMismatches", { count: s.shaMismatched }),
+  ]);
 }

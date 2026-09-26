@@ -9,6 +9,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { CSSProperties } from "react";
 import { HamburgerIcon } from "./Icon";
+import { useI18n } from "../i18n/I18nContext";
 
 export function AppHeader({
   onOpenSettings,
@@ -19,25 +20,26 @@ export function AppHeader({
   onOpenShortcuts: () => void;
   onOpenAbout: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <header style={S.header}>
       <h1 style={S.title}>ZipKit</h1>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button className="icon" aria-label="Menu" title="Menu">
+          <button className="icon" aria-label={t("header.menu")} title={t("header.menu")}>
             <HamburgerIcon />
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content className="menu-content" align="end" sideOffset={6}>
             <DropdownMenu.Item className="menu-item" onSelect={onOpenSettings}>
-              Settings
+              {t("header.settings")}
             </DropdownMenu.Item>
             <DropdownMenu.Item className="menu-item" onSelect={onOpenShortcuts}>
-              Shortcut keys
+              {t("header.shortcuts")}
             </DropdownMenu.Item>
             <DropdownMenu.Item className="menu-item" onSelect={onOpenAbout}>
-              About
+              {t("header.about")}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>

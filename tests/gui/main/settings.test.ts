@@ -29,11 +29,12 @@ import { managedEntries } from "../../helpers/managedEntries.js";
 vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: vi.fn() }));
 
 describe("settings", () => {
-  it("round-trips the settings (option defaults + UI font + theme)", () => {
+  it("round-trips the settings (option defaults + UI font + theme + language)", () => {
     const custom = {
       defaults: { ...DEFAULT_OPTIONS, level: 9, strict: true, comment: "hi" },
       uiFontFamily: "Iosevka, monospace",
       theme: "dark" as const,
+      language: "pt-BR" as const,
     };
     expect(parseSettings(serializeSettings(custom))).toEqual(custom);
   });
@@ -55,6 +56,13 @@ describe("settings", () => {
     expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, theme: "light" })).theme).toBe("light");
     expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, theme: "sepia" })).theme).toBe("system");
     expect(() => parseSettings(JSON.stringify({ version: 1, defaults: {}, theme: 42 }))).toThrow(/theme/);
+  });
+
+  it("resolves a missing or unknown language to System and rejects a non-string one", () => {
+    expect(parseSettings(JSON.stringify({ version: 1, defaults: {} })).language).toBe("system");
+    expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, language: "ja" })).language).toBe("ja");
+    expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, language: "zh-hant" })).language).toBe("system");
+    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: {}, language: 7 }))).toThrow(/language/);
   });
 
   it("rejects a non-string UI font", () => {
@@ -118,7 +126,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("never overwrites an existing config.json", async () => {
-    const custom = { defaults: { ...DEFAULT_OPTIONS, level: 9 }, uiFontFamily: "Iosevka", theme: "light" as const };
+    const custom = { defaults: { ...DEFAULT_OPTIONS, level: 9 }, uiFontFamily: "Iosevka", theme: "light" as const, language: "de" as const };
     await saveSettings(custom);
     const before = readFileSync(path.join(root, "config.json"), "utf8");
 
@@ -134,6 +142,7 @@ describe("settings file location and persistence", () => {
       defaults: { ...DEFAULT_OPTIONS, level: 9 },
       uiFontFamily: "Iosevka, monospace",
       theme: "dark" as const,
+      language: "ko" as const,
     };
     await saveSettings(settings);
 
@@ -180,7 +189,7 @@ describe("settings file location and persistence", () => {
     const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"))!;
     const before = readFileSync(path.join(root, quarantined), "utf8");
 
-    await saveSettings({ defaults: { ...DEFAULT_OPTIONS, level: 3 }, uiFontFamily: "", theme: "system" });
+    await saveSettings({ defaults: { ...DEFAULT_OPTIONS, level: 3 }, uiFontFamily: "", theme: "system", language: "system" });
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });

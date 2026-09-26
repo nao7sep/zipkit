@@ -8,8 +8,10 @@
 import type { CSSProperties } from "react";
 import type { Job } from "../../../shared/api";
 import { stateColor, stateLabel, stateTint } from "../view";
+import { useI18n } from "../i18n/I18nContext";
 
 export function StateBadge({ state }: { state: Job["state"] }) {
+  const { t } = useI18n();
   const color = stateColor(state);
   const style: CSSProperties = {
     color,
@@ -21,5 +23,5 @@ export function StateBadge({ state }: { state: Job["state"] }) {
     fontSize: "0.75rem",
     whiteSpace: "nowrap",
   };
-  return <span style={style}>{stateLabel(state)}</span>;
+  return <span style={style}>{t(stateLabel(state))}</span>;
 }

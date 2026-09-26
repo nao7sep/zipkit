@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { reportableError } from "../externalDropBoundary";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
+import { useI18n } from "../i18n/I18nContext";
+import { message } from "../../../shared/i18n/translate";
 
 export function DirectoryField({
   label,
@@ -25,6 +27,7 @@ export function DirectoryField({
   disabled?: boolean;
   placeholder?: string;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState(value);
   const [pickerError, setPickerError] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
@@ -79,10 +82,10 @@ export function DirectoryField({
           disabled={disabled || isPicking}
           onClick={() => void chooseDirectory()}
         >
-          Choose
+          {t("common.choose")}
         </button>
       </span>
-      {pickerError && <ReceiverResultNotice result={{ message: "The output folder picker could not be opened. The current path is unchanged; try again.", severity: "error" }} onDismiss={() => setPickerError(false)} />}
+      {pickerError && <ReceiverResultNotice result={{ message: message("directory.pickerFailed"), severity: "error" }} onDismiss={() => setPickerError(false)} />}
     </label>
   );
 }

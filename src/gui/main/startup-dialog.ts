@@ -1,11 +1,25 @@
 import { BrowserWindow } from "electron";
+import type { MessageKey } from "../shared/i18n/catalogues.js";
+import { mainTranslator } from "./i18n.js";
 import { windowBackground } from "./theme.js";
 
 export interface AppMessageDialogOptions {
   owner?: BrowserWindow;
   title: string;
   message: string;
-  buttonLabel: "OK" | "Quit";
+  /** The one button: OK acknowledges a report, Quit ends a failed launch. */
+  button: "ok" | "quit";
+}
+
+/** Everything the document shows, already in the interface language. */
+export interface AppMessageDialogText {
+  /** The interface language's tag, for `<html lang>`. */
+  lang: string;
+  title: string;
+  message: string;
+  buttonLabel: string;
+  /** The accessible name of the scrollable message region. */
+  regionLabel: string;
 }
 
 const MESSAGE_DIALOG_MIN_HEIGHT = 220;
@@ -28,20 +42,22 @@ function escapeHtml(value: string): string {
 }
 
 /** Complete app-authored document used by both fatal and recovery messages. */
-export function buildAppMessageDialogDocument(
-  title: string,
-  message: string,
-  buttonLabel: "OK" | "Quit",
-): string {
+export function buildAppMessageDialogDocument({
+  lang,
+  title,
+  message,
+  buttonLabel,
+  regionLabel,
+}: AppMessageDialogText): string {
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
+<html lang="${escapeHtml(lang)}"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <title>${escapeHtml(title)}</title><style>
 *{box-sizing:border-box;scrollbar-width:auto;scrollbar-color:#7d826c transparent}*::-webkit-scrollbar{width:16px;height:16px}*::-webkit-scrollbar-thumb{background:#7d826c;background-clip:padding-box;border:3px solid transparent;border-radius:999px}html,body{height:100%;margin:0;overflow:hidden}body{display:flex;flex-direction:column;background:#f3f2ea;color:#1f2117;font:14px/1.5 system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 h1{flex:0 0 auto;margin:0;padding:22px 24px 12px;font-size:18px;line-height:1.3}[role="region"]:focus-visible{outline:none}.body{min-height:0;flex:1 1 auto;overflow:auto;padding:0 24px 20px;color:#3a3e30;white-space:pre-wrap;overflow-wrap:anywhere}.footer{flex:0 0 auto;display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid #d3d4c3;background:#fbfaf5}
 button{min-width:76px;border:1px solid #7d826c;border-radius:7px;padding:7px 16px;background:#e4e3d6;color:#1f2117;font:inherit}button:hover{background:#d8d7c8}button:focus-visible{outline:2px solid #8f6400;outline-offset:2px}
 @media (prefers-color-scheme:dark){*{scrollbar-color:#666 transparent}*::-webkit-scrollbar-thumb{background:#666;background-clip:padding-box}body{background:#171717;color:#f3f3f3}.body{color:#d4d4d4}.footer{border-top-color:#373737;background:#1d1d1d}button{border-color:#666;background:#343434;color:#fff}button:hover{background:#414141}button:focus-visible{outline-color:#89b4fa}}
-</style></head><body><h1>${escapeHtml(title)}</h1><div class="body" role="region" aria-label="${escapeHtml(title)} details" tabindex="0">${escapeHtml(message)}</div><div class="footer"><button autofocus onclick="window.close()">${buttonLabel}</button></div></body></html>`;
+</style></head><body><h1>${escapeHtml(title)}</h1><div class="body" role="region" aria-label="${escapeHtml(regionLabel)}" tabindex="0">${escapeHtml(message)}</div><div class="footer"><button autofocus onclick="window.close()">${escapeHtml(buttonLabel)}</button></div></body></html>`;
 }
 
 /** App-authored plain message shell for launch recovery and fatal halts. */
@@ -49,8 +65,9 @@ export async function showAppMessageDialog({
   owner,
   title,
   message,
-  buttonLabel,
+  button,
 }: AppMessageDialogOptions): Promise<void> {
+  const translator = mainTranslator();
   const win = new BrowserWindow({
     width: 520,
     height: 280,
@@ -73,7 +90,13 @@ export async function showAppMessageDialog({
       nodeIntegration: false,
     },
   });
-  const html = buildAppMessageDialogDocument(title, message, buttonLabel);
+  const html = buildAppMessageDialogDocument({
+    lang: translator.language,
+    title,
+    message,
+    buttonLabel: translator.t(button === "ok" ? "messageDialog.ok" : "messageDialog.quit"),
+    regionLabel: translator.t("messageDialog.details", { title }),
+  });
 
   await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
   try {
@@ -100,10 +123,13 @@ export async function showAppMessageDialog({
   await new Promise<void>((resolve) => win.once("closed", resolve));
 }
 
-export function notifyStartupFailure(message: string): Promise<void> {
+/** The fatal launch message, in the interface language (the computer's when
+ *  the saved choice could not be read). */
+export function notifyStartupFailure(message: MessageKey): Promise<void> {
+  const translator = mainTranslator();
   return showAppMessageDialog({
-    title: "ZipKit could not start",
-    message,
-    buttonLabel: "Quit",
+    title: translator.t("startup.title"),
+    message: translator.t(message),
+    button: "quit",
   });
 }

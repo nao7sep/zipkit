@@ -1,5 +1,6 @@
 import React from "react";
 import { reportableError } from "../externalDropBoundary";
+import { documentTranslator } from "../i18n/I18nContext";
 
 export class RendererErrorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
   override state = { failed: false };
@@ -18,12 +19,14 @@ export class RendererErrorBoundary extends React.Component<React.PropsWithChildr
 
   override render(): React.ReactNode {
     if (!this.state.failed) return this.props.children;
+    // Outside the language provider: speak the language the document last declared.
+    const { t } = documentTranslator();
     return (
       <main role="alert" style={styles.root}>
         <div style={styles.card}>
-          <h1 style={styles.flush}>ZipKit could not keep this window open.</h1>
-          <p style={styles.flush}>Reload the window to recover. Your source files and archives are unchanged.</p>
-          <button style={styles.button} type="button" onClick={() => window.location.reload()}>Reload window</button>
+          <h1 style={styles.flush}>{t("crash.title")}</h1>
+          <p style={styles.flush}>{t("crash.message")}</p>
+          <button style={styles.button} type="button" onClick={() => window.location.reload()}>{t("crash.reload")}</button>
         </div>
       </main>
     );

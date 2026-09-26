@@ -8,7 +8,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
-import { WINDOW_ACTIVITY_CHANNEL, type AppInfo, type GuiLogEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
+import { LANGUAGE_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type GuiLogEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
@@ -25,6 +25,12 @@ const api = {
     };
     ipcRenderer.on(WINDOW_ACTIVITY_CHANNEL, handler);
     return () => ipcRenderer.removeListener(WINDOW_ACTIVITY_CHANNEL, handler);
+  },
+  getLanguageEnvironment: (): Promise<LanguageEnvironment> => ipcRenderer.invoke("zipkit:getLanguageEnvironment"),
+  onLanguageChanged: (callback: (environment: LanguageEnvironment) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, environment: LanguageEnvironment): void => callback(environment);
+    ipcRenderer.on(LANGUAGE_CHANGED_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(LANGUAGE_CHANGED_CHANNEL, handler);
   },
   getSettings: (): Promise<GuiSettings> => ipcRenderer.invoke("zipkit:getSettings"),
   setSettings: (settings: GuiSettings): Promise<void> =>

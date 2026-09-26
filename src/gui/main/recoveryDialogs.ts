@@ -1,6 +1,8 @@
+import type { MessageKey } from "../shared/i18n/catalogues.js";
+
 export interface RecoveryDialog {
-  title: string;
-  message: string;
+  title: MessageKey;
+  message: MessageKey;
 }
 
 /** Where startup's material stores were quarantined, when they were (null = the
@@ -15,22 +17,11 @@ export function buildRecoveryDialogs(quarantines: StartupQuarantines): RecoveryD
   const dialogs: RecoveryDialog[] = [];
 
   if (quarantines.settingsQuarantinedTo !== null) {
-    dialogs.push({
-      title: "Settings were reset",
-      message:
-        "An unreadable settings file was preserved. ZipKit started with default settings. " +
-        "Check the ZipKit log for the saved-copy location. Your archive files on disk are untouched.",
-    });
+    dialogs.push({ title: "recovery.settingsTitle", message: "recovery.settingsMessage" });
   }
 
   if (quarantines.queueQuarantinedTo !== null) {
-    dialogs.push({
-      title: "Saved queue was reset",
-      message:
-        "ZipKit could not read its saved pending jobs. The queue file was preserved for recovery, " +
-        "and ZipKit started with an empty queue. Check the ZipKit log for the saved-copy location. " +
-        "Your archive files on disk are untouched.",
-    });
+    dialogs.push({ title: "recovery.queueTitle", message: "recovery.queueMessage" });
   }
 
   return dialogs;

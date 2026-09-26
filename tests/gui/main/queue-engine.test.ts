@@ -12,6 +12,11 @@ import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
+import { createTranslator, type Message } from "../../../src/gui/shared/i18n/translate.js";
+
+const en = createTranslator("en");
+/** A job or action message as the English reader sees it. */
+const say = (message: Message | undefined): string => (message ? en.text(message) : "");
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -111,7 +116,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
-      expect(j?.message).toContain("could not be prepared");
+      expect(say(j?.message)).toContain("could not be prepared");
       expect(j?.errorCode).toBeUndefined(); // a plain Error carries no SDK code
     });
   });
@@ -349,7 +354,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
-      expect(j?.message).toContain("verification failed");
+      expect(say(j?.message)).toContain("Verification failed");
     });
     expect(calls.trash).toEqual([]);
   });
@@ -410,7 +415,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
-      expect(j?.message).toContain("could not be written");
+      expect(say(j?.message)).toContain("could not be written");
     });
   });
 
@@ -444,7 +449,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
-      expect(j?.message).toContain("kept");
+      expect(say(j?.message)).toContain("kept");
     });
   });
 
@@ -518,7 +523,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
-      expect(j?.message).toContain("inside the source");
+      expect(say(j?.message)).toContain("inside the source");
     });
     expect(calls.trash).toEqual([]); // originals untouched
   });
@@ -536,7 +541,7 @@ describe("queue engine", () => {
     engine.trashOriginals(id);
     await tick();
     expect(calls.trash).toEqual([]); // refused — never trashed
-    expect(engine.snapshot()[0]?.actionResult?.message).toContain("inside an original");
+    expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("inside an original");
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
   });
 
@@ -553,7 +558,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.trashOriginals(id);
     await vi.waitFor(() =>
-      expect(engine.snapshot()[0]?.actionResult?.message).toContain("could not be moved to Trash"),
+      expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("could not be moved to Trash"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
@@ -572,7 +577,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
-    expect(engine.snapshot()[0]?.message).toContain("1 original was moved to recoverable Trash; 1 was kept");
+    expect(say(engine.snapshot()[0]?.message)).toContain("1 original was moved to recoverable Trash. 1 original was kept.");
   });
 
   it("never calls an original kept while its Trash call may still move it", async () => {
@@ -584,8 +589,8 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
-    const message = engine.snapshot()[0]?.message ?? "";
-    expect(message).toContain("1 original was moved to recoverable Trash; 1 was still being moved and may yet reach recoverable Trash.");
+    const message = say(engine.snapshot()[0]?.message);
+    expect(message).toContain("1 original was moved to recoverable Trash. 1 original was still being moved and may yet reach recoverable Trash.");
     expect(message).not.toContain("kept");
   });
 
@@ -601,8 +606,8 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.actionResult).toBeDefined());
     const result = engine.snapshot()[0]?.actionResult;
     expect(result?.severity).toBe("warning");
-    expect(result?.message).toContain("may yet reach recoverable Trash");
-    expect(result?.message).not.toContain("remains available");
+    expect(say(result?.message)).toContain("may yet reach recoverable Trash");
+    expect(say(result?.message)).not.toContain("remains available");
   });
 
   it("does not offer a planned output as removable after its write fails", async () => {
@@ -632,7 +637,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeArchive(id);
     await vi.waitFor(() =>
-      expect(engine.snapshot()[0]?.actionResult?.message).toContain("archive could not be moved to Trash"),
+      expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("archive could not be moved to Trash"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
@@ -756,7 +761,7 @@ describe("queue engine", () => {
     await vi.waitFor(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
-      expect(j?.message).toContain("could not be prepared");
+      expect(say(j?.message)).toContain("could not be prepared");
     });
   });
 });

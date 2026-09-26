@@ -7,6 +7,7 @@ import { InputList } from "../../../../src/gui/renderer/src/components/InputList
 import { settleReceiverResult } from "../../../../src/gui/renderer/src/externalDropBoundary";
 import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
+import { message } from "../../../../src/gui/shared/i18n/translate";
 
 afterEach(cleanup);
 
@@ -51,7 +52,7 @@ describe("InputList external-drop receiver", () => {
       operationKey: "inputs:job-1:new.txt",
       entryKey: "inputs:job-1:drop",
       result: {
-        message: "That input is already in this job.",
+        message: message("result.alreadyInJob", { count: 1 }),
         severity: "information" as const,
       },
     }));
@@ -117,7 +118,7 @@ describe("InputList external-drop receiver", () => {
       .mockResolvedValueOnce({
         operationKey: "inputs:job-1:new.txt",
         entryKey: "inputs:job-1:drop",
-        result: { message: "That input is already in this job.", severity: "information" },
+        result: { message: message("result.alreadyInJob", { count: 1 }), severity: "information" },
       })
       .mockResolvedValueOnce({
         operationKey: "inputs:job-1:other.txt",
@@ -208,7 +209,7 @@ describe("InputList external-drop receiver", () => {
       operationKey: "inputs:job-1:picker",
       entryKey: "inputs:job-1:picker",
       result: {
-        message: "Inputs could not be added. Check that they are still available, then try again.",
+        message: { key: "result.addInputsFailed" },
         severity: "error",
       },
     }));

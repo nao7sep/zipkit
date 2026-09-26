@@ -8,6 +8,7 @@
  */
 
 import type { CSSProperties } from "react";
+import { useI18n } from "../i18n/I18nContext";
 
 export function AppLoadGate({
   failed,
@@ -16,6 +17,7 @@ export function AppLoadGate({
   failed: boolean;
   onRetry: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <main data-app-load-gate style={S.root}>
       <section
@@ -25,20 +27,17 @@ export function AppLoadGate({
         style={S.card}
       >
         <h1 id="app-load-gate-title" style={S.title}>
-          {failed ? "ZipKit couldn’t load" : "Loading ZipKit…"}
+          {t(failed ? "load.failedTitle" : "load.loadingTitle")}
         </h1>
         {failed ? (
           <>
-            <p style={S.message}>
-              The queue, settings, and pane layout could not all be loaded. Retry before using
-              ZipKit so no partial app state is shown.
-            </p>
+            <p style={S.message}>{t("load.failedMessage")}</p>
             <button className="accent" onClick={onRetry}>
-              Retry loading
+              {t("load.retry")}
             </button>
           </>
         ) : (
-          <p style={S.message}>Loading the queue, settings, and pane layout.</p>
+          <p style={S.message}>{t("load.loadingMessage")}</p>
         )}
       </section>
     </main>

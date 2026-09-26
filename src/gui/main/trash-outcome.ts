@@ -1,3 +1,5 @@
+import { message, sentences, type Message } from "../shared/i18n/translate.js";
+
 /**
  * What a batch of Trash calls did, and the user-facing account of it. A path
  * lands in exactly one bucket: `moved` (the OS confirmed the move), `failed`
@@ -17,20 +19,14 @@ export function trashConfirmed(result: TrashResult): boolean {
   return result.failed.length === 0 && result.unconfirmed.length === 0;
 }
 
-function wasWere(n: number): string {
-  return n === 1 ? "was" : "were";
-}
-
 /** The account of a batch of originals that was not fully confirmed, e.g.
- *  "1 original was moved to recoverable Trash; 1 was kept." */
-export function describeOriginalsTrash(result: TrashResult): string {
-  const moved = result.moved.length;
-  const parts = [`${moved} original${moved === 1 ? "" : "s"} ${wasWere(moved)} moved to recoverable Trash`];
-  const kept = result.failed.length;
-  if (kept > 0) parts.push(`${kept} ${wasWere(kept)} kept`);
-  const unconfirmed = result.unconfirmed.length;
-  if (unconfirmed > 0) {
-    parts.push(`${unconfirmed} ${wasWere(unconfirmed)} still being moved and may yet reach recoverable Trash`);
+ *  "1 original was moved to recoverable Trash. 1 original was kept.", as one
+ *  counted sentence per bucket so each keeps its own plural form. */
+export function describeOriginalsTrash(result: TrashResult): Message {
+  const parts = [message("trash.moved", { count: result.moved.length })];
+  if (result.failed.length > 0) parts.push(message("trash.kept", { count: result.failed.length }));
+  if (result.unconfirmed.length > 0) {
+    parts.push(message("trash.unconfirmed", { count: result.unconfirmed.length }));
   }
-  return `${parts.join("; ")}.`;
+  return sentences(parts)!;
 }

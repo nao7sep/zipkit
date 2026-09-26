@@ -8,6 +8,7 @@
 import { BrowserWindow } from "electron";
 import { ZipKit, ZipKitError } from "../../sdk/index.js";
 import type { GuiError, GuiLogEvent, Job } from "../shared/api.js";
+import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
 
 export const zip = new ZipKit();
@@ -62,9 +63,6 @@ export function toGuiError(err: unknown): GuiError {
   return { type: "unknown", code: "unknown", presentation: guiErrorPresentation("unknown") };
 }
 
-function guiErrorPresentation(type: string): string {
-  if (type === "read") {
-    return "The archive could not be read. Check that it is still available and is a valid ZIP file.";
-  }
-  return "Verification could not be completed. Check that the archive is still available, then try again.";
+function guiErrorPresentation(type: string): Message {
+  return message(type === "read" ? "error.readFailed" : "error.verifyIncomplete");
 }

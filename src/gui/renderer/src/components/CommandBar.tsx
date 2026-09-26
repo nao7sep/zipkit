@@ -10,16 +10,18 @@
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { Job } from "../../../shared/api";
-import { humanSentence, jobCommands, type JobCommand } from "../view";
+import { jobCommands, type JobCommand } from "../view";
+import { useI18n } from "../i18n/I18nContext";
+import type { MessageKey } from "../../../shared/i18n/catalogues";
 
-const LABEL: Record<JobCommand, string> = {
-  create: "Create archive",
-  retry: "Try again",
-  cancel: "Cancel",
-  verify: "Verify",
-  reveal: "Reveal in file manager",
-  "trash-originals": "Move originals to Trash",
-  "remove-archive": "Move archive to Trash",
+const LABEL: Record<JobCommand, MessageKey> = {
+  create: "command.create",
+  retry: "command.retry",
+  cancel: "command.cancel",
+  verify: "command.verify",
+  reveal: "command.reveal",
+  "trash-originals": "command.trashOriginals",
+  "remove-archive": "command.removeArchive",
 };
 
 const CLASS: Partial<Record<JobCommand, string>> = {
@@ -30,6 +32,7 @@ const CLASS: Partial<Record<JobCommand, string>> = {
 };
 
 export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCommand) => void }) {
+  const { t, text } = useI18n();
   const commands = jobCommands(job);
   // Seat the destructive group at the far-right end (an auto left-margin on the
   // first danger button pushes it and the rest right), away from the everyday
@@ -76,7 +79,7 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
     <div ref={barRef} tabIndex={-1} style={{ ...S.bar, outline: "none" }}>
       {commands.length === 0 ? (
         <span style={S.hint}>
-          {job.message ? humanSentence(job.message) : "Resolve the blocking issues to create this archive."}
+          {job.message ? text(job.message) : t("command.blockedHint")}
         </span>
       ) : (
         commands.map((c, i) => (
@@ -86,7 +89,7 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
             style={i === firstDanger ? S.pushRight : undefined}
             onClick={() => onCommand(c)}
           >
-            {LABEL[c]}
+            {t(LABEL[c])}
           </button>
         ))
       )}

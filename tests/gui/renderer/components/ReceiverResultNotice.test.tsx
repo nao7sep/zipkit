@@ -5,14 +5,22 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import { ReceiverResultNotice } from "../../../../src/gui/renderer/src/components/ReceiverResultNotice";
 import type { ReceiverResultSeverity } from "../../../../src/gui/renderer/src/externalDropBoundary";
+import { message } from "../../../../src/gui/shared/i18n/translate";
+import type { MessageKey } from "../../../../src/gui/shared/i18n/catalogues";
 
 afterEach(cleanup);
+
+const TEXT: Record<ReceiverResultSeverity, MessageKey> = {
+  error: "result.pickerFailed",
+  warning: "inputs.locked",
+  information: "result.alreadyInJob",
+};
 
 function renderSeverity(severity: ReceiverResultSeverity): void {
   render(
     <ReceiverResultNotice
       result={{
-        message: `${severity} result`,
+        message: message(TEXT[severity], { count: 1 }),
         severity,
         operationKey: severity,
       }}
@@ -25,7 +33,7 @@ describe("ReceiverResultNotice announcement urgency", () => {
   it("uses assertive alert semantics for an error", () => {
     renderSeverity("error");
 
-    expect(screen.getByRole("alert").textContent).toContain("error result");
+    expect(screen.getByRole("alert").textContent).toContain("The input picker could not be opened");
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -34,7 +42,7 @@ describe("ReceiverResultNotice announcement urgency", () => {
     (severity) => {
       renderSeverity(severity);
 
-      expect(screen.getByRole("status").textContent).toContain(`${severity} result`);
+      expect(screen.getByRole("status").textContent).toContain(severity === "warning" ? "cannot be changed" : "already in this job");
       expect(screen.queryByRole("alert")).toBeNull();
     },
   );

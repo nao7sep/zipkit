@@ -4,6 +4,7 @@ import "./index.css";
 import { App } from "./App";
 import { DialogHost } from "./components/DialogHost";
 import { RendererErrorBoundary } from "./components/RendererErrorBoundary";
+import { MainProcessLanguage } from "./i18n/I18nContext";
 import { installWindowActivityState } from "./windowActivity";
 
 installWindowActivityState(window.zipkit.onWindowActivityChanged, document.documentElement);
@@ -11,9 +12,11 @@ installWindowActivityState(window.zipkit.onWindowActivityChanged, document.docum
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RendererErrorBoundary>
-      <DialogHost>
-        <App />
-      </DialogHost>
+      <MainProcessLanguage>
+        <DialogHost>
+          <App />
+        </DialogHost>
+      </MainProcessLanguage>
     </RendererErrorBoundary>
   </StrictMode>,
 );

@@ -6,6 +6,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { Report } from "../../../../src/gui/renderer/src/components/Report";
 import type { Job, PlanData } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
+import { message } from "../../../../src/gui/shared/i18n/translate";
 
 afterEach(cleanup);
 
@@ -44,9 +45,11 @@ describe("Report result announcements", () => {
     const live = document.querySelector<HTMLElement>("[aria-live='assertive']")!;
     expect(live.textContent).toBe("");
 
-    rerender(<Report job={job({ state: "failed", message: "disk full" })} plan={null} verify={null} />);
+    rerender(<Report job={job({ state: "failed", message: message("job.writeFailed") })} plan={null} verify={null} />);
 
-    expect(live.textContent).toBe("Disk full");
+    expect(live.textContent).toBe(
+      "The archive could not be written. Check the output location and available storage, then try again.",
+    );
     expect(live.getAttribute("aria-atomic")).toBe("true");
   });
 
@@ -70,7 +73,7 @@ describe("Report result announcements", () => {
   });
 
   it("announces a follow-up job action failure at the selected job report", () => {
-    const base = job({ state: "done", message: "saved (12 bytes)" });
+    const base = job({ state: "done", message: message("job.saved", { count: 12 }) });
     const { rerender } = render(
       <Report job={base} plan={plan()} verify={null} />,
     );
@@ -80,14 +83,14 @@ describe("Report result announcements", () => {
       <Report
         job={{
           ...base,
-          actionResult: { severity: "error", message: "Could not move the originals to Trash." },
+          actionResult: { severity: "error", message: message("action.originalsTrashFailed") },
         }}
         plan={plan()}
         verify={null}
       />,
     );
 
-    expect(live.textContent).toContain("Could not move the originals");
+    expect(live.textContent).toContain("The originals could not be moved to Trash");
   });
 
   it("announces an IPC verification fault without turning the detail rows into live regions", () => {
@@ -107,7 +110,7 @@ describe("Report result announcements", () => {
           error: {
             type: "IoError",
             code: "verify.failed",
-            presentation: "The archive could not be read. Check that it is still available and is a valid ZIP file.",
+            presentation: message("error.readFailed"),
           },
         }}
       />,

@@ -7,6 +7,7 @@
 
 import type { PlanSummary, Severity } from "../../sdk/types.js";
 import type { GuiOptions } from "./spec.js";
+import type { Message } from "./i18n/translate.js";
 
 /** What a job does when run: just write, or write-verify-then-Trash the originals. */
 export type JobIntent = "save" | "archive-and-trash";
@@ -69,12 +70,13 @@ export interface Job {
   output?: string;
   summary?: PlanSummary;
   writable?: boolean;
-  /** A short status line for needs-attention / failed / done. */
-  message?: string;
+  /** A short status line for needs-attention / failed / done, as a catalogue
+   *  message so it renders in the interface language current when shown. */
+  message?: Message;
   /** Result of a follow-up action performed on a terminal job, such as moving
    * the archive or originals to Trash. Kept separate from lifecycle `message`
    * so its severity and recovery are explicit rather than parsed from prose. */
-  actionResult?: { severity: Severity; message: string };
+  actionResult?: { severity: Severity; message: Message };
   /** The SDK error code (e.g. `output.ambiguous`) when a fault produced the
    *  current state, so the renderer can show stable, friendly guidance keyed on
    *  the code rather than parsing `message`. Absent when there is no fault. */

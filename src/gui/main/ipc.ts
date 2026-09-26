@@ -12,6 +12,7 @@ import { errorInfo } from "./log.js";
 import { getMainWindow, log, sendEvent, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { applyThemePreference } from "./theme.js";
+import { applyLanguagePreference, languageEnvironment, mainTranslator } from "./i18n.js";
 import { loadLayout, saveLayout } from "./layout.js";
 import { isHttpUrl } from "./url.js";
 
@@ -31,9 +32,15 @@ export function registerIpc(): void {
       log.error("failed to persist settings", { error: errorInfo(err) });
       throw err;
     }
-    // Settings apply on Save, the theme included (app-chrome conventions, Theme).
+    // Settings apply on Save, the theme and the language included (app-chrome
+    // conventions, Theme; localization conventions).
     applyThemePreference(settings.theme);
+    applyLanguagePreference(settings.language, (error) =>
+      log.warn("the interface language could not reach a native surface", { error: errorInfo(error) }),
+    );
   });
+
+  ipcMain.handle("zipkit:getLanguageEnvironment", async () => languageEnvironment());
 
   ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => (await loadLayout(log)).value);
 
@@ -50,15 +57,11 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:chooseInputs", async (): Promise<string[]> => {
     const owner = getMainWindow();
-    const result = owner
-      ? await dialog.showOpenDialog(owner, {
-          title: "Choose directories or files to archive",
-          properties: ["openDirectory", "openFile", "multiSelections"],
-        })
-      : await dialog.showOpenDialog({
-          title: "Choose directories or files to archive",
-          properties: ["openDirectory", "openFile", "multiSelections"],
-        });
+    const options: Electron.OpenDialogOptions = {
+      title: mainTranslator().t("picker.inputsTitle"),
+      properties: ["openDirectory", "openFile", "multiSelections"],
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
     const chosen = result.canceled ? [] : result.filePaths;
     log.info("inputs chosen", { count: chosen.length });
     return chosen;
@@ -66,15 +69,11 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:chooseOutputDir", async (): Promise<string> => {
     const owner = getMainWindow();
-    const result = owner
-      ? await dialog.showOpenDialog(owner, {
-          title: "Choose the output directory",
-          properties: ["openDirectory", "createDirectory"],
-        })
-      : await dialog.showOpenDialog({
-          title: "Choose the output directory",
-          properties: ["openDirectory", "createDirectory"],
-        });
+    const options: Electron.OpenDialogOptions = {
+      title: mainTranslator().t("picker.outputTitle"),
+      properties: ["openDirectory", "createDirectory"],
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
     const dir = result.canceled || result.filePaths.length === 0 ? "" : result.filePaths[0]!;
     log.info("output directory chosen", { chosen: dir !== "" });
     return dir;

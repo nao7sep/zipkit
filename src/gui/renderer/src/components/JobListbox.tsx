@@ -21,7 +21,6 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { Job } from "../../../shared/api";
 import {
-  humanSentence,
   intentLabel,
   isCancelable,
   label,
@@ -31,6 +30,7 @@ import {
 import { navIndex, recoverIndex, typeaheadIndex } from "../listbox-nav";
 import { isComposing } from "../composition";
 import { StateBadge } from "./StateBadge";
+import { useI18n, type Translator } from "../i18n/I18nContext";
 import { CloseIcon } from "./Icon";
 
 const TYPEAHEAD_IDLE_MS = 600;
@@ -54,6 +54,7 @@ export function JobListbox({
   onRemove: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
+  const t = useI18n();
   const listRef = useRef<HTMLUListElement>(null);
   const taBuffer = useRef("");
   const taTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -73,9 +74,9 @@ export function JobListbox({
     for (const job of jobs) {
       const signature = [
         job.state,
-        job.message ?? "",
+        job.message ? t.text(job.message) : "",
         job.actionResult?.severity ?? "",
-        job.actionResult?.message ?? "",
+        job.actionResult ? t.text(job.actionResult.message) : "",
       ].join("|");
       next.set(job.id, signature);
       const previous = previousResults.current?.get(job.id);
@@ -84,15 +85,17 @@ export function JobListbox({
         job.state === "needs-attention" ||
         job.actionResult?.severity === "error";
       if (previous !== undefined && previous !== signature && job.id !== selectedId && isFailure) {
-        const result =
-          job.actionResult?.message ??
-          (job.message ? humanSentence(job.message) : stateLabel(job.state));
-        announcement = `${label(job)}: ${result}`;
+        const result = job.actionResult
+          ? t.text(job.actionResult.message)
+          : job.message
+            ? t.text(job.message)
+            : t.t(stateLabel(job.state));
+        announcement = t.t("common.labelled", { label: label(job, t), text: result });
       }
     }
     previousResults.current = next;
     setBackgroundFailureAnnouncement(announcement);
-  }, [jobs, selectedId]);
+  }, [jobs, selectedId, t]);
 
   // Keep the active option in view and focused when selection changes — but only
   // when focus already lives in the listbox, so selection never steals focus.
@@ -196,7 +199,7 @@ export function JobListbox({
       taTimer.current = setTimeout(() => {
         taBuffer.current = "";
       }, TYPEAHEAD_IDLE_MS);
-      const hit = typeaheadIndex(jobs.map(label), activeIndex, taBuffer.current);
+      const hit = typeaheadIndex(jobs.map((job) => label(job, t)), activeIndex, taBuffer.current);
       if (hit !== null) {
         e.preventDefault();
         activate(hit);
@@ -209,14 +212,14 @@ export function JobListbox({
       <ul
       ref={listRef}
       role="listbox"
-      aria-label="Job queue"
+      aria-label={t.t("jobs.queue")}
       tabIndex={jobs.length === 0 ? 0 : -1}
       onKeyDown={onKeyDown}
       style={S.listCol}
     >
       {jobs.length === 0 ? (
         <li role="presentation" style={S.empty}>
-          No jobs yet. Click “Add” to choose directories or files.
+          {t.t("jobs.empty")}
         </li>
       ) : (
         jobs.map((job, i) => {
@@ -239,32 +242,32 @@ export function JobListbox({
               {/* Filename gets the full top line; status sits under it so a long
                   name is never squeezed by a leading badge. */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={S.name}>{label(job)}</div>
+                <div style={S.name}>{label(job, t)}</div>
                 <div style={S.meta}>
                   <StateBadge state={job.state} />
-                  {metaText(job) && <span style={S.dim}>{metaText(job)}</span>}
+                  {metaText(job, t) && <span style={S.dim}>{metaText(job, t)}</span>}
                 </div>
               </div>
               {isCancelable(job.state) && (
                 <button
                   className="icon"
                   tabIndex={-1}
-                  title="Cancel (Escape)"
+                  title={t.t("common.withKey", { action: t.t("common.cancel"), key: "Escape" })}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCancel(job.id);
                   }}
                   style={S.rowAction}
                 >
-                  Cancel
+                  {t.t("common.cancel")}
                 </button>
               )}
               {job.state !== "running" && (
                 <button
                   className="icon"
                   tabIndex={-1}
-                  title="Remove (Delete)"
-                  aria-label="Remove"
+                  title={t.t("common.withKey", { action: t.t("common.remove"), key: "Delete" })}
+                  aria-label={t.t("common.remove")}
                   onClick={(e) => {
                     e.stopPropagation();
                     remove(job);
@@ -288,13 +291,13 @@ export function JobListbox({
 
 /** The dim sub-line beside the state badge: the noteworthy intent tag (nothing
  *  for the default save) and the job message, whichever are present. */
-function metaText(job: Job): string {
+function metaText(job: Job, t: Translator): string {
   return [
-    intentLabel(job.intent),
+    intentLabel(job.intent, t),
     job.actionResult
-      ? job.actionResult.message
+      ? t.text(job.actionResult.message)
       : job.message
-        ? humanSentence(job.message)
+        ? t.text(job.message)
         : "",
   ]
     .filter(Boolean)

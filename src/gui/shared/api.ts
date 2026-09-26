@@ -18,6 +18,8 @@ import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity 
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
 import type { PaneLayout } from "./layout.js";
+import type { LanguageEnvironment } from "./i18n/languages.js";
+import type { Message } from "./i18n/translate.js";
 
 /** The `mode:"plan"` payload — the dry run shown in a job's detail. */
 export type PlanData = Extract<CreateData, { mode: "plan" }>;
@@ -38,18 +40,19 @@ export type GuiPlatform =
   | "netbsd";
 
 export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity };
-export type { PaneLayout };
+export type { LanguageEnvironment, Message, PaneLayout };
 
 /** An SDK progress event tagged with the job it belongs to, so the renderer can
  *  show each job its own Progress stream. `jobId` is absent for any untagged event. */
 export type GuiLogEvent = LogEvent & { jobId?: string };
 
 /** A structured SDK fault surfaced to the renderer. `presentation` is authored
- * by main; arbitrary exception prose has no field on this boundary. */
+ * by main as a catalogue message; arbitrary exception prose has no field on
+ * this boundary. */
 export interface GuiError {
   type: string;
   code: string;
-  presentation: string;
+  presentation: Message;
 }
 
 /** A renderer-side exception serialized before it crosses contextBridge. */
@@ -71,6 +74,9 @@ export interface AppInfo {
 /** Main-to-renderer native BrowserWindow activation event. */
 export const WINDOW_ACTIVITY_CHANNEL = "zipkit:windowActivity";
 
+/** Main-to-renderer event: a saved language choice moved the interface language. */
+export const LANGUAGE_CHANGED_CHANNEL = "zipkit:languageChanged";
+
 export interface ZipKitGuiApi {
   /** Open a native picker; returns chosen absolute paths (empty if cancelled). */
   chooseInputs(): Promise<string[]>;
@@ -83,6 +89,12 @@ export interface ZipKitGuiApi {
   platform: GuiPlatform;
   /** Native window activation, distinct from DOM document focus on macOS. */
   onWindowActivityChanged(callback: (active: boolean) => void): () => void;
+
+  /** The interface language main settled on, and the locale its dates and
+   *  numbers are formatted in. */
+  getLanguageEnvironment(): Promise<LanguageEnvironment>;
+  /** Follow a saved language change; returns an unsubscribe function. */
+  onLanguageChanged(callback: (environment: LanguageEnvironment) => void): () => void;
 
   /** The persisted GUI settings — new-job defaults plus the UI font (built-in defaults if none saved). */
   getSettings(): Promise<GuiSettings>;

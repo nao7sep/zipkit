@@ -12,6 +12,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { CommandBar } from "../../../../src/gui/renderer/src/components/CommandBar";
 import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
+import { message } from "../../../../src/gui/shared/i18n/translate";
 
 afterEach(cleanup);
 
@@ -59,7 +60,7 @@ describe("CommandBar focus retention", () => {
   it("falls back to the bar itself when the job becomes blocked (no buttons)", () => {
     const { rerender } = render(<CommandBar job={job("ready")} onCommand={noop} />);
     screen.getByText("Create archive").focus();
-    rerender(<CommandBar job={job("needs-attention", { message: "blocked" })} onCommand={noop} />);
+    rerender(<CommandBar job={job("needs-attention", { message: message("job.blocking", { count: 1 }) })} onCommand={noop} />);
     // No buttons to land on, so focus rests on the bar container rather than <body>.
     expect(document.activeElement).not.toBe(document.body);
   });

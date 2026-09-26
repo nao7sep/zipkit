@@ -22,6 +22,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import type { CSSProperties, ReactNode } from "react";
 
 import { isComposing } from "../composition";
+import { useI18n } from "../i18n/I18nContext";
 
 // A focusable that can actually take focus right now — disabled and
 // explicitly-untabbable controls are excluded, so the safe-default focus never
@@ -53,6 +54,7 @@ export function ModalShell({
   /** Override the default surface width cap (e.g. a wider settings form). */
   maxWidth?: string;
 }) {
+  const { t } = useI18n();
   return (
     <Dialog.Root
       open
@@ -88,7 +90,7 @@ export function ModalShell({
           <div style={titleHidden ? ST.titleBarBare : ST.titleBar}>
             <Dialog.Title style={titleHidden ? ST.titleHidden : ST.title}>{title}</Dialog.Title>
             <Dialog.Close asChild>
-              <button type="button" style={ST.close} className="icon" aria-label="Close" title="Close">
+              <button type="button" style={ST.close} className="icon" aria-label={t("common.close")} title={t("common.close")}>
                 <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
                   <path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>
