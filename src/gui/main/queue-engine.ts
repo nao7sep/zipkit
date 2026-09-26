@@ -68,9 +68,9 @@ export interface QueueEngine {
   /** True while a job is actually writing/verifying/trashing (not merely queued). */
   hasRunningJob(): boolean;
   /** For app quit: abort whatever job is running, stop draining any queued ones,
-   *  and resolve only once the in-flight run has actually stopped — so quitting
-   *  never abandons a writer mid-stream (its own `abort()` already removes its
-   *  temp file; this just makes sure quit waits for that to happen). */
+   *  and resolve only once the in-flight run has actually stopped, so quit can
+   *  wait for the writer's own `abort()` to remove its temp file. Unbounded here;
+   *  the quit sequence bounds its wait on this. */
   shutdown(): Promise<void>;
 }
 

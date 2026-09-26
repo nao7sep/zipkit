@@ -26,7 +26,7 @@ import { loadLayout } from "./layout.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
-import { flushThenExit } from "./quit.js";
+import { QUIT_WAIT_MS, stopFlushAndExit } from "./quit.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
 import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
@@ -208,25 +208,27 @@ app.on("before-quit", (event) => {
     try {
       // A job still writing, verifying, or moving originals to Trash has no
       // bounded way to finish on its own schedule, so quitting must choose:
-      // cancel it (leaving either a complete archive or none — never a stray
-      // mid-write temp file) or let the user keep working.
+      // cancel it (its writer removes its own temp file, within quit's bound)
+      // or let the user keep working.
       if (hasRunningJob()) {
         const quitAnyway = await confirmQuitDuringWrite(getMainWindow());
         if (!quitAnyway) return; // quit stays cancelled; the job keeps running
       }
-      await cancelRunningJobAndWait();
-      await flushThenExit(
-        flushQueue(),
-        () => {
+      await stopFlushAndExit({
+        stopJob: cancelRunningJobAndWait,
+        flush: flushQueue,
+        onJobStopTimeout: () =>
+          log.warn("the cancelled job did not stop in time; quitting without it", { waitMs: QUIT_WAIT_MS }),
+        onFlushed: () => {
           queueFlushedForQuit = true;
           log.info("app quitting");
         },
-        (err) => {
+        onFlushError: (err) => {
           queueFlushedForQuit = true;
           log.error("failed to flush the queue before quit", { error: errorInfo(err) });
         },
-        (code) => app.exit(code),
-      );
+        exit: (code) => app.exit(code),
+      });
     } finally {
       quitDecisionPending = false;
     }
