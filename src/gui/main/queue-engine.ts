@@ -20,11 +20,9 @@ import { isEditable, type InputEntry, type Job, type JobIntent, type SavedJob } 
 import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
+import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
 
-export interface TrashResult {
-  moved: string[];
-  failed: Array<{ path: string; message: string }>;
-}
+export type { TrashResult } from "./trash-outcome.js";
 
 export interface EngineDeps {
   /** Dry-run plan for the given inputs/options; progress events go to `onProgress`. */
@@ -36,9 +34,10 @@ export interface EngineDeps {
   /** Classify input paths on disk (dir/file/nonexistent) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
   /** Move each path independently to the OS Trash and report the exact outcome.
-   *  Bounded and cancellable like `plan`/`write`/`verify`: a path still pending
-   *  when `signal` aborts, or one whose Trash call cannot be confirmed in time,
-   *  is reported in `failed` rather than left unresolved. */
+   *  Bounded and cancellable like `plan`/`write`/`verify`: a path not yet started
+   *  when `signal` aborts is reported in `failed` (kept); one whose Trash call was
+   *  still running when `signal` aborted or its time ran out is reported in
+   *  `unconfirmed`, because that call may still move it. */
   trash(paths: string[], signal: AbortSignal): Promise<TrashResult>;
   /** Physical-identity containment guard for every destructive action. */
   outputInsideInputs(output: string, inputs: string[]): Promise<boolean>;
@@ -258,12 +257,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         deps.log.error("job Trash failed after verify", { jobId: id, error: errorInfo(err) });
         return;
       }
-      if (trashResult.failed.length > 0) {
+      if (!trashConfirmed(trashResult)) {
         set(rec, {
           state: "failed",
-          message: `The archive was saved and verified. ${trashResult.moved.length} original ${trashResult.moved.length === 1 ? "was" : "were"} moved to recoverable Trash; ${trashResult.failed.length} ${trashResult.failed.length === 1 ? "was" : "were"} kept.`,
+          message: `The archive was saved and verified. ${describeOriginalsTrash(trashResult)}`,
         });
-        deps.log.error("job Trash partially failed after verify", { jobId: id, moved: trashResult.moved, failed: trashResult.failed });
+        deps.log.error("job Trash not fully confirmed after verify", { jobId: id, ...trashResult });
         void classifyInputs(id);
         return;
       }
@@ -451,6 +450,17 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           // cancellation — bounded by `trash`'s own per-path timeout, but with
           // nothing (yet) for the user to cancel it through.
           const result = await deps.trash([output], new AbortController().signal);
+          if (result.unconfirmed.length > 0) {
+            set(rec, {
+              actionResult: {
+                severity: "warning",
+                message: "The archive was still being moved to Trash and may yet reach recoverable Trash.",
+              },
+            });
+            deps.log.warn("remove archive unconfirmed", { jobId: id, output });
+            emit();
+            return;
+          }
           if (result.failed.length > 0) throw new Error("archive trash failed");
         } catch (err) {
           set(rec, {
@@ -506,14 +516,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           }
           // Same standalone-action note as `removeArchive` above.
           const result = await deps.trash(inputs, new AbortController().signal);
-          if (result.failed.length > 0) {
+          if (!trashConfirmed(result)) {
             set(rec, {
-              actionResult: {
-                severity: "error",
-                message: `${result.moved.length} original ${result.moved.length === 1 ? "was" : "were"} moved to recoverable Trash; ${result.failed.length} ${result.failed.length === 1 ? "was" : "were"} kept.`,
-              },
+              actionResult: { severity: "error", message: describeOriginalsTrash(result) },
             });
-            deps.log.error("trash originals partially failed", { jobId: id, moved: result.moved, failed: result.failed });
+            deps.log.error("trash originals not fully confirmed", { jobId: id, ...result });
             emit();
             void classifyInputs(id);
             return;

@@ -52,7 +52,7 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       calls.trash.push(paths);
-      return { moved: paths, failed: [] };
+      return { moved: paths, failed: [], unconfirmed: [] };
     },
     outputInsideInputs: async () => false,
     emit: () => {},
@@ -424,8 +424,8 @@ describe("queue engine", () => {
           releaseTrash = () =>
             resolve(
               signal.aborted
-                ? { moved: [], failed: paths.map((path) => ({ path, message: "cancelled before Trash" })) }
-                : { moved: paths, failed: [] },
+                ? { moved: [], failed: paths.map((path) => ({ path, message: "cancelled before Trash" })), unconfirmed: [] }
+                : { moved: paths, failed: [], unconfirmed: [] },
             );
         });
       },
@@ -564,6 +564,7 @@ describe("queue engine", () => {
       trash: async (paths) => ({
         moved: [paths[0]!],
         failed: [{ path: paths[1]!, message: "permission denied" }],
+        unconfirmed: [],
       }),
     });
     const engine = createQueueEngine(deps);
@@ -572,6 +573,36 @@ describe("queue engine", () => {
     engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(engine.snapshot()[0]?.message).toContain("1 original was moved to recoverable Trash; 1 was kept");
+  });
+
+  it("never calls an original kept while its Trash call may still move it", async () => {
+    const { deps } = makeDeps({
+      trash: async (paths) => ({ moved: [paths[0]!], failed: [], unconfirmed: [paths[1]!] }),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    const message = engine.snapshot()[0]?.message ?? "";
+    expect(message).toContain("1 original was moved to recoverable Trash; 1 was still being moved and may yet reach recoverable Trash.");
+    expect(message).not.toContain("kept");
+  });
+
+  it("removeArchive does not claim the archive remains when its Trash call is unconfirmed", async () => {
+    const { deps } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    deps.trash = async (paths) => ({ moved: [], failed: [], unconfirmed: paths });
+    engine.removeArchive(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.actionResult).toBeDefined());
+    const result = engine.snapshot()[0]?.actionResult;
+    expect(result?.severity).toBe("warning");
+    expect(result?.message).toContain("may yet reach recoverable Trash");
+    expect(result?.message).not.toContain("remains available");
   });
 
   it("does not offer a planned output as removable after its write fails", async () => {

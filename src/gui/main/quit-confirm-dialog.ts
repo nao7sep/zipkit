@@ -12,7 +12,8 @@ import { BrowserWindow, dialog } from "electron";
 
 /** Resolves `true` if the user chose to quit anyway (cancelling the running
  *  job), `false` to keep working. Cancelling the job here reuses the engine's
- *  own abort path, which already leaves either a complete archive or none. */
+ *  own abort path. An original whose Trash call is already under way may still
+ *  reach the Trash, so the text promises only those not yet sent. */
 export async function confirmQuitDuringWrite(owner: BrowserWindow | null): Promise<boolean> {
   const options = {
     type: "question" as const,
@@ -21,7 +22,7 @@ export async function confirmQuitDuringWrite(owner: BrowserWindow | null): Promi
     cancelId: 1,
     title: "A job is still running",
     message: "An archive is still being written, verified, or moved to Trash.",
-    detail: "Quitting now cancels that job. The archive will not be completed, and any originals not yet moved to Trash are kept.",
+    detail: "Quitting now cancels that job. The archive will not be completed, and originals not yet sent to Trash are kept.",
   };
   const result = await (owner ? dialog.showMessageBox(owner, options) : dialog.showMessageBox(options));
   return result.response === 0;

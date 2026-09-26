@@ -16,7 +16,7 @@ import { errorInfo } from "./log.js";
 import { loadQueue, saveQueue, toResumable } from "./persist.js";
 import { resolveOutputPath } from "./output.js";
 import { classifyPaths } from "./inputs.js";
-import { createQueueEngine } from "./queue-engine.js";
+import { createQueueEngine, type TrashResult } from "./queue-engine.js";
 import { outputInsideInputs } from "./safety.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -29,9 +29,10 @@ const TRASH_TIMEOUT_MS = 10_000;
 
 /** Move one path to the OS Trash, bounded by `TRASH_TIMEOUT_MS` and cancellable
  *  via `signal`. Neither condition stops the underlying OS call — Electron's API
- *  offers no way to do that — but the job stops waiting on it and moves on,
- *  reporting the path as not (confirmed) moved. */
-function trashPath(path: string, signal: AbortSignal): Promise<void> {
+ *  offers no way to do that — so a path the job stops waiting on resolves as
+ *  `unconfirmed`: its move may still complete afterward, and it must never be
+ *  reported as kept. Rejects only when the OS call itself fails. */
+function trashPath(path: string, signal: AbortSignal): Promise<"moved" | "unconfirmed"> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (fn: () => void): void => {
@@ -41,14 +42,11 @@ function trashPath(path: string, signal: AbortSignal): Promise<void> {
       signal.removeEventListener("abort", onAbort);
       fn();
     };
-    const timer = setTimeout(
-      () => finish(() => reject(new Error(`could not confirm Trash for ${path} in time`))),
-      TRASH_TIMEOUT_MS,
-    );
-    const onAbort = (): void => finish(() => reject(new Error("cancelled")));
+    const timer = setTimeout(() => finish(() => resolve("unconfirmed")), TRASH_TIMEOUT_MS);
+    const onAbort = (): void => finish(() => resolve("unconfirmed"));
     signal.addEventListener("abort", onAbort);
     shell.trashItem(path).then(
-      () => finish(resolve),
+      () => finish(() => resolve("moved")),
       (err: unknown) => finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
     );
   });
@@ -75,21 +73,20 @@ const engine = createQueueEngine({
     ).reportOk,
   classify: (paths) => classifyPaths(paths),
   trash: async (paths, signal) => {
-    const moved: string[] = [];
-    const failed: Array<{ path: string; message: string }> = [];
+    const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };
     for (const p of paths) {
       if (signal.aborted) {
-        failed.push({ path: p, message: "cancelled before Trash" });
+        result.failed.push({ path: p, message: "cancelled before Trash" });
         continue;
       }
       try {
-        await trashPath(p, signal);
-        moved.push(p);
+        if ((await trashPath(p, signal)) === "moved") result.moved.push(p);
+        else result.unconfirmed.push(p);
       } catch (err) {
-        failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
+        result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }
-    return { moved, failed };
+    return result;
   },
   outputInsideInputs,
   emit: (jobs) => {

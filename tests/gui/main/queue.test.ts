@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
         trash(
           paths: string[],
           signal: AbortSignal,
-        ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }> }>;
+        ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[] }>;
       },
 }));
 
@@ -38,7 +38,7 @@ vi.mock("../../../src/gui/main/queue-engine.js", () => ({
     trash(
       paths: string[],
       signal: AbortSignal,
-    ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }> }>;
+    ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[] }>;
   }) => {
     mocks.deps = deps;
     return { restore: mocks.restore };
@@ -153,14 +153,17 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
     const result = await mocks.deps!.trash(["/a", "/b"], controller.signal);
 
     expect(trashItem).not.toHaveBeenCalled();
-    expect(result.moved).toEqual([]);
-    expect(result.failed).toEqual([
-      { path: "/a", message: "cancelled before Trash" },
-      { path: "/b", message: "cancelled before Trash" },
-    ]);
+    expect(result).toEqual({
+      moved: [],
+      failed: [
+        { path: "/a", message: "cancelled before Trash" },
+        { path: "/b", message: "cancelled before Trash" },
+      ],
+      unconfirmed: [],
+    });
   });
 
-  it("reports a path whose Trash call never answers, instead of waiting forever", async () => {
+  it("reports a path whose Trash call never answers as unconfirmed, instead of waiting forever", async () => {
     vi.useFakeTimers();
     try {
       trashItem.mockReturnValue(new Promise(() => {})); // never settles
@@ -170,26 +173,52 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
       await vi.advanceTimersByTimeAsync(10_000);
       const result = await pending;
 
-      expect(result.moved).toEqual([]);
-      expect(result.failed).toHaveLength(1);
-      expect(result.failed[0]?.path).toBe("/stuck");
-      expect(result.failed[0]?.message).toContain("could not confirm Trash");
-      expect(result.failed[0]?.message).toContain("in time");
+      expect(result).toEqual({ moved: [], failed: [], unconfirmed: ["/stuck"] });
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("cancels a still-waiting Trash call as soon as the signal aborts, without waiting for the timeout", async () => {
+  it("never reports a timed-out path as kept, since its Trash call can still complete", async () => {
+    vi.useFakeTimers();
+    try {
+      let completeLate!: () => void;
+      trashItem.mockReturnValue(new Promise<void>((resolve) => { completeLate = resolve; }));
+
+      const pending = mocks.deps!.trash(["/slow"], new AbortController().signal);
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await pending;
+      completeLate(); // the OS finishes the move after the job stopped waiting
+
+      expect(result.failed).toEqual([]);
+      expect(result.unconfirmed).toEqual(["/slow"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops waiting on a Trash call as soon as the signal aborts, reporting it unconfirmed", async () => {
     trashItem.mockReturnValue(new Promise(() => {})); // never settles on its own
     const controller = new AbortController();
 
-    const pending = mocks.deps!.trash(["/a"], controller.signal);
+    const pending = mocks.deps!.trash(["/a", "/b"], controller.signal);
     controller.abort();
     const result = await pending;
 
-    expect(result.moved).toEqual([]);
-    expect(result.failed).toEqual([{ path: "/a", message: "cancelled" }]);
+    expect(trashItem).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      moved: [],
+      failed: [{ path: "/b", message: "cancelled before Trash" }],
+      unconfirmed: ["/a"],
+    });
+  });
+
+  it("reports a path the OS refuses to move as kept", async () => {
+    trashItem.mockRejectedValue(new Error("permission denied"));
+
+    const result = await mocks.deps!.trash(["/a"], new AbortController().signal);
+
+    expect(result).toEqual({ moved: [], failed: [{ path: "/a", message: "permission denied" }], unconfirmed: [] });
   });
 
   it("moves every path that resolves before the signal aborts", async () => {
@@ -198,7 +227,6 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
     const result = await mocks.deps!.trash(["/a", "/b"], new AbortController().signal);
 
     expect(trashItem).toHaveBeenCalledTimes(2);
-    expect(result.moved).toEqual(["/a", "/b"]);
-    expect(result.failed).toEqual([]);
+    expect(result).toEqual({ moved: ["/a", "/b"], failed: [], unconfirmed: [] });
   });
 });
