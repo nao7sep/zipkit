@@ -148,7 +148,7 @@
   "result.alreadyInJob": { "one": "{count} entrada já está neste trabalho.", "many": "{count} de entradas já estão neste trabalho.", "other": "{count} entradas já estão neste trabalho." },
   "result.addInputsFailed": "Não foi possível adicionar as entradas. Verifique se elas ainda estão disponíveis e tente novamente.",
   "result.dropAddFailed": "Não foi possível adicionar as entradas soltas. Verifique se elas ainda estão disponíveis e tente novamente.",
-  "result.runFailed": "Não foi possível iniciar o arquivo compactado. O trabalho não foi alterado; tente novamente.",
+  "result.runFailed": "Não foi possível iniciar a criação do arquivo compactado. O trabalho não foi alterado; tente novamente.",
   "result.removeJobFailed": "Não foi possível remover o trabalho. Ele continua na fila; tente novamente.",
   "result.cancelJobFailed": "Não foi possível cancelar o trabalho. Ele pode ainda estar em andamento; tente novamente.",
   "result.optionsSaveFailed": "Não foi possível salvar a alteração dos parâmetros. Os valores anteriores foram restaurados; tente novamente.",

@@ -203,7 +203,7 @@ describe("selected-job IPC ownership", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Create archive" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("archive could not be started");
+    expect(alert.textContent).toContain("Archive creation could not start");
     expect(alert.textContent).not.toContain("ZIPKIT_RUN_SENTINEL");
     expect(bridge.reportError).toHaveBeenCalledWith("run job", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_RUN_SENTINEL") }));
   });

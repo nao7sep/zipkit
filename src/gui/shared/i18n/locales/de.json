@@ -148,7 +148,7 @@
   "result.alreadyInJob": { "one": "{count} Eingabe ist bereits in diesem Auftrag.", "other": "{count} Eingaben sind bereits in diesem Auftrag." },
   "result.addInputsFailed": "Eingaben konnten nicht hinzugefügt werden. Prüfen Sie, ob sie noch vorhanden sind, und versuchen Sie es dann erneut.",
   "result.dropAddFailed": "Die abgelegten Eingaben konnten nicht hinzugefügt werden. Prüfen Sie, ob sie noch vorhanden sind, und versuchen Sie es dann erneut.",
-  "result.runFailed": "Das Archiv konnte nicht gestartet werden. Der Auftrag ist unverändert; versuchen Sie es erneut.",
+  "result.runFailed": "Die Archiverstellung konnte nicht gestartet werden. Der Auftrag ist unverändert; versuchen Sie es erneut.",
   "result.removeJobFailed": "Der Auftrag konnte nicht entfernt werden. Er bleibt in der Warteschlange; versuchen Sie es erneut.",
   "result.cancelJobFailed": "Der Auftrag konnte nicht abgebrochen werden. Er läuft möglicherweise noch; versuchen Sie es erneut.",
   "result.optionsSaveFailed": "Die Parameteränderung konnte nicht gespeichert werden. Die vorherigen Werte wurden wiederhergestellt; versuchen Sie es erneut.",

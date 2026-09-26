@@ -148,7 +148,7 @@
   "result.alreadyInJob": { "one": "{count} elemento di input è già in questa operazione.", "many": "{count} di elementi di input sono già in questa operazione.", "other": "{count} elementi di input sono già in questa operazione." },
   "result.addInputsFailed": "Impossibile aggiungere gli input. Controlla che siano ancora disponibili, poi riprova.",
   "result.dropAddFailed": "Impossibile aggiungere gli input trascinati. Controlla che siano ancora disponibili, poi riprova.",
-  "result.runFailed": "Impossibile avviare l’archivio. L’operazione non è cambiata; riprova.",
+  "result.runFailed": "Impossibile avviare la creazione dell’archivio. L’operazione non è cambiata; riprova.",
   "result.removeJobFailed": "Impossibile rimuovere l’operazione. Rimane in coda; riprova.",
   "result.cancelJobFailed": "Impossibile annullare l’operazione. Potrebbe essere ancora in corso; riprova.",
   "result.optionsSaveFailed": "Impossibile salvare la modifica dei parametri. Sono stati ripristinati i valori precedenti; riprova.",

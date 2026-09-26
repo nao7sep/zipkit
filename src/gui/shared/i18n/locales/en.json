@@ -148,7 +148,7 @@
   "result.alreadyInJob": { "one": "{count} input is already in this job.", "other": "{count} inputs are already in this job." },
   "result.addInputsFailed": "Inputs could not be added. Check that they are still available, then try again.",
   "result.dropAddFailed": "The dropped inputs could not be added. Check that they are still available, then try again.",
-  "result.runFailed": "The archive could not be started. The job is unchanged; try again.",
+  "result.runFailed": "Archive creation could not start. The job is unchanged; try again.",
   "result.removeJobFailed": "The job could not be removed. It remains in the queue; try again.",
   "result.cancelJobFailed": "The job could not be cancelled. It may still be running; try again.",
   "result.optionsSaveFailed": "The parameter change could not be saved. The previous values were restored; try again.",

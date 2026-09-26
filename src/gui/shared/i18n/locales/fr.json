@@ -148,7 +148,7 @@
   "result.alreadyInJob": { "one": "{count} entrée figure déjà dans cette tâche.", "many": "{count} d’entrées figurent déjà dans cette tâche.", "other": "{count} entrées figurent déjà dans cette tâche." },
   "result.addInputsFailed": "Les entrées n’ont pas pu être ajoutées. Vérifiez qu’elles sont toujours disponibles, puis réessayez.",
   "result.dropAddFailed": "Les entrées déposées n’ont pas pu être ajoutées. Vérifiez qu’elles sont toujours disponibles, puis réessayez.",
-  "result.runFailed": "L’archive n’a pas pu démarrer. La tâche est inchangée\u00a0; réessayez.",
+  "result.runFailed": "La création de l’archive n’a pas pu démarrer. La tâche est inchangée\u00a0; réessayez.",
   "result.removeJobFailed": "La tâche n’a pas pu être retirée. Elle reste dans la file\u00a0; réessayez.",
   "result.cancelJobFailed": "La tâche n’a pas pu être annulée. Elle est peut-être toujours en cours\u00a0; réessayez.",
   "result.optionsSaveFailed": "La modification des paramètres n’a pas pu être enregistrée. Les valeurs précédentes ont été rétablies\u00a0; réessayez.",

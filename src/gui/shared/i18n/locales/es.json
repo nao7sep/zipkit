@@ -148,7 +148,7 @@
   "result.alreadyInJob": { "one": "{count} entrada ya está en este trabajo.", "many": "{count} de entradas ya están en este trabajo.", "other": "{count} entradas ya están en este trabajo." },
   "result.addInputsFailed": "No se pudieron agregar las entradas. Comprueba que sigan disponibles y vuelve a intentarlo.",
   "result.dropAddFailed": "No se pudieron agregar las entradas soltadas. Comprueba que sigan disponibles y vuelve a intentarlo.",
-  "result.runFailed": "No se pudo iniciar el archivo comprimido. El trabajo no ha cambiado; vuelve a intentarlo.",
+  "result.runFailed": "No se pudo iniciar la creación del archivo comprimido. El trabajo no ha cambiado; vuelve a intentarlo.",
   "result.removeJobFailed": "No se pudo quitar el trabajo. Sigue en la cola; vuelve a intentarlo.",
   "result.cancelJobFailed": "No se pudo cancelar el trabajo. Es posible que siga en curso; vuelve a intentarlo.",
   "result.optionsSaveFailed": "No se pudo guardar el cambio de parámetros. Se restauraron los valores anteriores; vuelve a intentarlo.",
