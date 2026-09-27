@@ -397,6 +397,7 @@ input[type="checkbox"] {
  * surface 1001), per the modal-dialog layering order — no accidental shared z. */
 .menu-content {
   min-width: 12rem;
+  max-width: calc(100vw - 16px);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -411,6 +412,9 @@ input[type="checkbox"] {
   cursor: pointer;
   user-select: none;
   outline: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .menu-item[data-highlighted] {
   background: var(--utility-hover);
