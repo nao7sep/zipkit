@@ -11,6 +11,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EntryCompressor, ZipWriter } from "../../src/sdk/write/zipWriter.js";
+import { realVolume } from "./volume.js";
 import { DEFAULT_DEFLATE_LEVEL } from "../../src/sdk/policy.js";
 import type { WriteEntryInput, ZipWriterOptions } from "../../src/sdk/write/zipWriter.js";
 
@@ -49,7 +50,7 @@ export async function buildZipFile(
   const { zip64: forceZip64 = false, comment, ...writerOptions } = options;
   const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-"));
   const output = path.join(dir, "a.zip");
-  const writer = new ZipWriter(output, writerOptions);
+  const writer = new ZipWriter(output, writerOptions, realVolume());
   await writer.open();
   try {
     for (const entry of entries) {

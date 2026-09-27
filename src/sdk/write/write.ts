@@ -14,9 +14,9 @@
  */
 
 import { createHash, type Hash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { throwIfAborted, toAbortError, WriteError } from "../errors.js";
+import { StallError, throwIfAborted, toAbortError, WriteError, ZipKitError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
+import type { Volume } from "../internal/volume.js";
 import { machineTimeZone } from "../internal/timeZone.js";
 import type { Unlogged, WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
@@ -39,6 +39,8 @@ export interface WriteDeps {
   logger: Logger;
   chunkSize: number;
   signal?: AbortSignal;
+  /** The run's bounded file access, built with the same signal. */
+  volume: Volume;
 }
 
 /** What each streamed entry contributed, gathered for the metadata record. */
@@ -73,21 +75,32 @@ async function streamFile(
   chunkSize: number,
   level: number,
   hasher: Hash | null,
-  signal: AbortSignal | undefined,
+  deps: WriteDeps,
 ): Promise<StreamResult> {
   const input = toWriteEntryInput(source);
   return writer.streamEntry(input, async (sink) => {
     const compressor = new EntryCompressor(source.method, sink, chunkSize, level);
-    const reader = createReadStream(source.absolutePath, { highWaterMark: chunkSize });
     try {
-      for await (const chunk of reader) {
-        throwIfAborted(signal);
-        const buf = chunk as Buffer;
-        if (hasher) hasher.update(buf);
-        await compressor.update(buf);
+      const file = await deps.volume.open(source.absolutePath, "r");
+      try {
+        let position = 0;
+        for (;;) {
+          throwIfAborted(deps.signal);
+          const buf = Buffer.allocUnsafe(chunkSize);
+          const bytesRead = await file.read(buf, 0, chunkSize, position);
+          if (bytesRead === 0) break;
+          position += bytesRead;
+          const chunk = bytesRead === chunkSize ? buf : buf.subarray(0, bytesRead);
+          if (hasher) hasher.update(chunk);
+          await compressor.update(chunk);
+        }
+      } finally {
+        await file.release();
       }
     } catch (err) {
-      reader.destroy();
+      // A cancel, a stall, or a destination fault surfacing through the
+      // compressor is already classified; only a raw source error is wrapped.
+      if (err instanceof ZipKitError) throw err;
       throw new WriteError("write.read-failed", `cannot read source for ${source.archivePath}`, {
         cause: err,
       });
@@ -147,11 +160,11 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   // only forces Zip64 on when the estimate already requires it.
   const zip64Needed = plan.summary.zip64;
 
-  const writer = new ZipWriter(plan.output, {
-    timeZone: effectiveTimeZone,
-    chunkSize: deps.chunkSize,
-    overwrite,
-  });
+  const writer = new ZipWriter(
+    plan.output,
+    { timeZone: effectiveTimeZone, chunkSize: deps.chunkSize, overwrite },
+    deps.volume,
+  );
 
   let zip64 = false;
   let bytes = 0;
@@ -189,7 +202,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       }
 
       const hasher = hash ? createHash("sha256") : null;
-      const result = await streamFile(writer, source, deps.chunkSize, level, hasher, signal);
+      const result = await streamFile(writer, source, deps.chunkSize, level, hasher, deps);
       const entry: StreamedEntry = {
         source,
         crc32: result.crc32,
@@ -272,6 +285,9 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     };
   } catch (err) {
     await writer.abort();
+    // A stall is reported even when a cancel followed it: it is the real cause,
+    // and a stalled publication may still make the archive appear.
+    if (err instanceof StallError) throw err;
     if (signal?.aborted) throw toAbortError(signal.reason);
     if (err instanceof WriteError) throw err;
     throw new WriteError("write.failed", `failed to write ${plan.output}`, { cause: err });

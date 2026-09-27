@@ -38,8 +38,11 @@ export {
   PolicyError,
   ReadError,
   ScanError,
+  StallError,
   WriteError,
   ZipKitError,
 } from "./errors.js";
 
 export type { ZipKitErrorType } from "./errors.js";
+
+export type { Volume, VolumeFile } from "./internal/volume.js";

@@ -5,7 +5,7 @@
  * `errorType` without importing the concrete classes.
  */
 
-export type ZipKitErrorType = "scan" | "policy" | "write" | "read" | "abort";
+export type ZipKitErrorType = "scan" | "policy" | "write" | "read" | "abort" | "stall";
 
 export abstract class ZipKitError extends Error {
   abstract readonly errorType: ZipKitErrorType;
@@ -50,6 +50,36 @@ export class AbortError extends ZipKitError {
   constructor(message = "operation aborted", options?: { cause?: unknown }) {
     super("aborted", message, options);
     this.name = "AbortError";
+  }
+}
+
+/**
+ * A file operation did not settle within the SDK's per-operation time budget,
+ * so the verb stopped waiting on it: the volume it touches (a network share, a
+ * removable drive) has stalled. Branchable on `errorType` from any verb, and it
+ * names the operation and the path. The operation itself cannot be killed and
+ * may still settle later; the SDK never acts on that late outcome. When the
+ * operation was the publication of a finished file (`committing`), that late
+ * outcome may still make the file appear at `path`.
+ */
+export class StallError extends ZipKitError {
+  readonly errorType = "stall" as const;
+  readonly operation: string;
+  readonly path: string;
+  readonly timeoutMs: number;
+  readonly committing: boolean;
+
+  constructor(operation: string, path: string, timeoutMs: number, committing: boolean) {
+    super(
+      "io.stalled",
+      committing
+        ? `${operation} did not finish within ${timeoutMs} ms and may still complete: ${path}`
+        : `${operation} did not respond within ${timeoutMs} ms: ${path}`,
+    );
+    this.operation = operation;
+    this.path = path;
+    this.timeoutMs = timeoutMs;
+    this.committing = committing;
   }
 }
 

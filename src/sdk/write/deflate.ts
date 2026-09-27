@@ -71,6 +71,9 @@ export class EntryCompressor {
 
   /** Feed one source chunk: hash it, then store-forward or deflate it. */
   async update(chunk: Buffer): Promise<void> {
+    // A sink failure (the destination stalled or failed) ends the entry now,
+    // rather than after the rest of the source has been read for nothing.
+    if (this.#error !== undefined) throw this.#error;
     this.#crc = zlib.crc32(chunk, this.#crc);
     this.#uncompressedSize += chunk.length;
     if (this.#deflate === null) {

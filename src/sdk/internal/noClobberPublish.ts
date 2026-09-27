@@ -1,6 +1,6 @@
 /** Portable no-clobber publication for a completed same-directory temp file. */
 
-import { link, lstat, open, unlink } from "node:fs/promises";
+import type { Volume } from "./volume.js";
 
 const LINK_UNSUPPORTED = new Set(["EACCES", "EMLINK", "ENOSYS", "ENOTSUP", "EOPNOTSUPP", "EPERM"]);
 
@@ -24,32 +24,37 @@ export interface PublishOperations {
   unlink(tempPath: string): Promise<void>;
 }
 
-const realOperations: PublishOperations = {
-  link,
-  openRead: (path) => open(path, "r"),
-  openExclusive: async (path) => {
-    const handle = await open(path, "wx");
-    return {
-      write: (buffer, offset, length, position) => handle.write(buffer, offset, length, position),
-      sync: () => handle.sync(),
-      close: () => handle.close(),
-      identity: async () => {
-        const stat = await handle.stat({ bigint: true });
-        return `${stat.dev}:${stat.ino}`;
-      },
-    };
-  },
-  pathIdentity: async (path) => {
-    try {
-      const stat = await lstat(path, { bigint: true });
-      return `${stat.dev}:${stat.ino}`;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw err;
-    }
-  },
-  unlink,
-};
+/** The publication operations over the run's bounded {@link Volume}: the link
+ *  is a commit call, the copy fallback is ordinary work, and the identity check
+ *  and claim removal are cleanup, so a cancelled copy still removes its claim. */
+export function volumePublishOperations(volume: Volume): PublishOperations {
+  return {
+    link: (tempPath, output) => volume.publishLink(tempPath, output),
+    openRead: async (path) => {
+      const file = await volume.open(path, "r");
+      return {
+        read: async (buffer, offset, length, position) => ({
+          bytesRead: await file.read(buffer, offset, length, position),
+        }),
+        close: () => file.close(),
+      };
+    },
+    openExclusive: async (path) => {
+      const file = await volume.open(path, "wx");
+      return {
+        write: async (buffer, offset, length) => {
+          await file.writeAll(buffer.subarray(offset, offset + length), null);
+          return { bytesWritten: length };
+        },
+        sync: () => file.sync(),
+        close: () => file.close(),
+        identity: () => file.identity(),
+      };
+    },
+    pathIdentity: (path) => volume.identity(path),
+    unlink: (path) => volume.unlink(path),
+  };
+}
 
 const COPY_CHUNK_BYTES = 256 * 1024;
 
@@ -126,8 +131,8 @@ function destinationChanged(output: string): NodeJS.ErrnoException {
 export async function publishNoOverwrite(
   tempPath: string,
   output: string,
-  signal?: AbortSignal,
-  operations: PublishOperations = realOperations,
+  signal: AbortSignal | undefined,
+  operations: PublishOperations,
 ): Promise<void> {
   signal?.throwIfAborted();
   try {

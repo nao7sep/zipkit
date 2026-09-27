@@ -6,7 +6,7 @@
  */
 
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { existsSync, readdirSync, openSync, closeSync, statSync, fstatSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AbortError, ZipKit } from "../../src/sdk/index.js";
 import { ZipWriter } from "../../src/sdk/write/zipWriter.js";
 import { parseZip, readEntryData } from "../../src/sdk/extract/zipReader.js";
+import { openRead, realVolume } from "../helpers/volume.js";
 
 let dir: string;
 
@@ -158,10 +159,14 @@ describe("abort boundaries (unit)", () => {
     // into place. There is no progress event in this window, so the guarantee is
     // pinned at the writer seam with an already-aborted signal.
     const output = path.join(dir, "finalize-abort.zip");
-    const writer = new ZipWriter(output, {
-      timeZone: "UTC",
-      chunkSize: 65536,
-    });
+    const writer = new ZipWriter(
+      output,
+      {
+        timeZone: "UTC",
+        chunkSize: 65536,
+      },
+      realVolume(),
+    );
     await writer.open();
     const controller = new AbortController();
     controller.abort();
@@ -183,9 +188,9 @@ describe("abort boundaries (unit)", () => {
     const archive = path.join(dir, "deflated.zip");
     await new ZipKit().create({ inputs: [big], output: archive });
 
-    const fd = openSync(archive, "r");
+    const file = await openRead(archive);
     try {
-      const parsed = await parseZip(fd, statSync(archive).size);
+      const parsed = await parseZip(file, statSync(archive).size);
       const entry = parsed.entries.find((e) => e.archivePath.endsWith("big.txt"));
       expect(entry?.method).toBe(8); // guard the assumption: this is the deflate path
 
@@ -194,15 +199,15 @@ describe("abort boundaries (unit)", () => {
         calls++;
         throw new AbortError();
       };
-      await expect(readEntryData(fd, entry!, sink, 65536)).rejects.toBeInstanceOf(AbortError);
+      await expect(readEntryData(file, entry!, sink, 65536)).rejects.toBeInstanceOf(AbortError);
       expect(calls).toBeLessThan(8); // tore down at the aborting chunk, not ~256
 
-      // The archive fd is shared across concurrent entries: the teardown must
-      // stop the source without closing it, or a sibling entry's read would
-      // EBADF. fstat proves the fd is still open.
-      expect(() => fstatSync(fd)).not.toThrow();
+      // The archive handle is shared across concurrent entries: the teardown
+      // must stop the source without closing it, or a sibling entry's read
+      // would fail. A further stat proves the handle is still open.
+      await expect(file.stat()).resolves.toBeDefined();
     } finally {
-      closeSync(fd);
+      await file.close();
     }
   });
 });

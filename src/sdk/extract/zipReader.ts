@@ -1,6 +1,6 @@
 /**
  * The ZIP reader: parse a container's directory and stream an entry's bytes,
- * all through positioned reads on an open file descriptor so the whole archive
+ * all through positioned reads on an open, bounded file handle so the whole archive
  * is never held in memory. It is the shared substrate beneath extraction and
  * validation — this layer turns a file into structured entries and pipes
  * inflated content to a sink; the filesystem destination is the caller's job.
@@ -13,10 +13,11 @@
  */
 
 import { constants as bufferConstants } from "node:buffer";
-import { createReadStream, read as fsRead } from "node:fs";
-import { promisify } from "node:util";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import zlib from "node:zlib";
-import { ReadError } from "../errors.js";
+import { ReadError, ZipKitError } from "../errors.js";
+import type { VolumeFile } from "../internal/volume.js";
 
 const EOCD_SIG = 0x06054b50;
 const EOCD_MIN = 22;
@@ -32,14 +33,8 @@ const U32 = 0xffffffff;
 // in-memory search window.
 const MAX_EOCD_SEARCH = EOCD_MIN + U16 + 20;
 
-const readFd = promisify(
-  (fd: number, buffer: Buffer, offset: number, length: number, position: number,
-   cb: (err: NodeJS.ErrnoException | null, bytesRead: number) => void) =>
-    fsRead(fd, buffer, offset, length, position, (err, bytesRead) => cb(err, bytesRead)),
-);
-
 /** Read exactly `length` bytes at `position`, erroring on a short read. */
-async function readExact(fd: number, position: number, length: number): Promise<Buffer> {
+async function readExact(file: VolumeFile, position: number, length: number): Promise<Buffer> {
   if (
     !Number.isSafeInteger(position) ||
     position < 0 ||
@@ -52,7 +47,7 @@ async function readExact(fd: number, position: number, length: number): Promise<
   const buf = Buffer.alloc(length);
   let got = 0;
   while (got < length) {
-    const n = await readFd(fd, buf, got, length - got, position + got);
+    const n = await file.read(buf, got, length - got, position + got);
     if (n === 0) throw new ReadError("read.malformed", "unexpected end of archive");
     got += n;
   }
@@ -127,7 +122,7 @@ function findEocdInTail(tail: Buffer): number {
 }
 
 async function locateCentralDir(
-  fd: number,
+  file: VolumeFile,
   tail: Buffer,
   tailStart: number,
   eocdInTail: number,
@@ -153,7 +148,7 @@ async function locateCentralDir(
     const locatorOffset = tailStart + locInTail;
     const minimumRecordEnd = safeAdd(z64, 56, "Zip64 end-record range");
     if (z64 >= 0 && minimumRecordEnd <= locatorOffset) {
-      const record = await readExact(fd, z64, 56);
+      const record = await readExact(file, z64, 56);
       if (record.readUInt32LE(0) !== ZIP64_EOCD_SIG) {
         throw new ReadError("read.malformed", "Zip64 end-of-central-directory not found");
       }
@@ -244,18 +239,18 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
 }
 
 /**
- * Parse a ZIP's directory from an open fd: positioned-read the archive tail to
+ * Parse a ZIP's directory from an open file: positioned-read the archive tail to
  * find the EOCD (and any Zip64 records), then read the central-directory region
  * and decode each record. Nothing but the directory ever enters memory.
  */
-export async function parseZip(fd: number, fileSize: number): Promise<ParsedZip> {
+export async function parseZip(file: VolumeFile, fileSize: number): Promise<ParsedZip> {
   if (fileSize < EOCD_MIN) throw new ReadError("read.not-zip", "file is too small to be a ZIP");
   const tailLen = Math.min(fileSize, MAX_EOCD_SEARCH);
   const tailStart = fileSize - tailLen;
-  const tail = await readExact(fd, tailStart, tailLen);
+  const tail = await readExact(file, tailStart, tailLen);
   const eocdInTail = findEocdInTail(tail);
   const { count, cdOffset, cdEnd, zip64 } = await locateCentralDir(
-    fd,
+    file,
     tail,
     tailStart,
     eocdInTail,
@@ -275,13 +270,13 @@ export async function parseZip(fd: number, fileSize: number): Promise<ParsedZip>
   ) {
     throw new ReadError("read.malformed", "central directory location is out of range");
   }
-  const cd = await readExact(fd, cdOffset, cdLen);
+  const cd = await readExact(file, cdOffset, cdLen);
   return { entries: parseCentral(cd, count), zip64 };
 }
 
 /** The byte offset of an entry's data, after its local header, name, and extra. */
-async function entryDataOffset(fd: number, entry: ReadEntry): Promise<number> {
-  const header = await readExact(fd, entry.localOffset, 30);
+async function entryDataOffset(file: VolumeFile, entry: ReadEntry): Promise<number> {
+  const header = await readExact(file, entry.localOffset, 30);
   if (header.readUInt32LE(0) !== LOCAL_SIG) {
     throw new ReadError("read.malformed", `bad local header for ${entry.archivePath}`);
   }
@@ -302,12 +297,12 @@ export interface EntryReadResult {
 /**
  * Stream one entry's decompressed bytes to `sink`, computing the CRC-32 as it
  * goes (the caller compares it to the stored value before trusting any output).
- * The compressed data is read from the fd in `chunkSize` pieces and inflated (or
+ * The compressed data is read from the handle in `chunkSize` pieces and inflated (or
  * passed through for stored entries) so memory stays bounded for any size. A
  * directory yields nothing.
  */
 export async function readEntryData(
-  fd: number,
+  file: VolumeFile,
   entry: ReadEntry,
   sink: DataSink,
   chunkSize: number,
@@ -331,15 +326,8 @@ export async function readEntryData(
     }
     return { crc32: 0, uncompressedSize: 0 };
   }
-  const start = await entryDataOffset(fd, entry);
+  const start = await entryDataOffset(file, entry);
   const endExclusive = safeAdd(start, entry.compSize, `compressed data range for ${entry.archivePath}`);
-  const reader = createReadStream("", {
-    fd,
-    autoClose: false,
-    start,
-    end: endExclusive - 1,
-    highWaterMark: chunkSize,
-  });
 
   let crc = 0;
   let uncompressedSize = 0;
@@ -355,60 +343,31 @@ export async function readEntryData(
     await sink(chunk);
   };
 
+  const source = compressedChunks(file, start, endExclusive, chunkSize);
   if (entry.method === 0) {
-    for await (const chunk of reader) await consume(chunk as Buffer);
-    if (uncompressedSize !== entry.uncompSize) {
-      throw new ReadError(
-        "read.size-mismatch",
-        `uncompressed size does not match the declared size for ${entry.archivePath}`,
+    for await (const chunk of source) await consume(chunk);
+  } else {
+    // The pipeline tears every stage down on the first failure from any of them
+    // — a read that stalled or was cancelled, a corrupt stream, or the sink's own
+    // throw (an abort, a size overrun) — so a large entry stops at the failing
+    // chunk rather than draining. The handle is shared across concurrent
+    // entries and is never closed here.
+    try {
+      await pipeline(
+        Readable.from(source),
+        zlib.createInflateRaw({ chunkSize }),
+        async (inflated: AsyncIterable<Buffer>) => {
+          for await (const chunk of inflated) await consume(chunk);
+        },
       );
+    } catch (err) {
+      // An already-classified failure (abort, stall, the sink's own ReadError)
+      // propagates unwrapped; a genuine inflate/read failure is a corrupt stream.
+      if (err instanceof ZipKitError) throw err;
+      throw new ReadError("read.inflate-failed", `cannot inflate ${entry.archivePath}`, {
+        cause: err,
+      });
     }
-    return { crc32: crc >>> 0, uncompressedSize };
-  }
-
-  const inflate = zlib.createInflateRaw({ chunkSize });
-  // Serialize sink writes so inflated bytes reach the destination in order; the
-  // sink may pause on backpressure, and overlapping writes would interleave.
-  let chain: Promise<void> = Promise.resolve();
-  let sinkError: unknown;
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      // A sink failure (e.g. an abort raised in the sink) must stop the pipeline
-      // at the next inflated chunk, not after the whole entry drains, so a large
-      // entry cancels promptly. Stop the source by unhooking and pausing it —
-      // never `destroy()`, which would close the archive fd that is shared across
-      // concurrent entries — and tear down the (fd-less) inflate. The error is
-      // recorded so the catch propagates it unwrapped, not as a corrupt-stream
-      // fault.
-      const onSinkError = (err: unknown): void => {
-        sinkError ??= err;
-        reader.removeAllListeners("data");
-        reader.pause();
-        inflate.destroy();
-        reject(err);
-      };
-      inflate.on("data", (chunk: Buffer) => {
-        chain = chain.then(() => consume(chunk)).catch(onSinkError);
-      });
-      inflate.on("end", () => void chain.then(resolve, () => {}));
-      inflate.on("error", reject);
-      reader.on("error", reject);
-      reader.on("data", (chunk) => {
-        if (!inflate.write(chunk)) {
-          reader.pause();
-          inflate.once("drain", () => reader.resume());
-        }
-      });
-      reader.on("end", () => inflate.end());
-    });
-  } catch (err) {
-    // The sink's own throw (e.g. AbortError) propagates unwrapped; a genuine
-    // inflate/read failure is a corrupt-stream fault.
-    if (sinkError !== undefined) throw sinkError;
-    throw new ReadError("read.inflate-failed", `cannot inflate ${entry.archivePath}`, {
-      cause: err,
-    });
   }
   if (uncompressedSize !== entry.uncompSize) {
     throw new ReadError(
@@ -419,19 +378,37 @@ export async function readEntryData(
   return { crc32: crc >>> 0, uncompressedSize };
 }
 
+/** An entry's compressed bytes, read from the handle in `chunkSize` pieces. */
+async function* compressedChunks(
+  file: VolumeFile,
+  start: number,
+  endExclusive: number,
+  chunkSize: number,
+): AsyncGenerator<Buffer> {
+  let position = start;
+  while (position < endExclusive) {
+    const length = Math.min(chunkSize, endExclusive - position);
+    const buf = Buffer.allocUnsafe(length);
+    const bytesRead = await file.read(buf, 0, length, position);
+    if (bytesRead === 0) throw new ReadError("read.malformed", "unexpected end of archive");
+    position += bytesRead;
+    yield bytesRead === length ? buf : buf.subarray(0, bytesRead);
+  }
+}
+
 /**
  * Read one entry's full decompressed bytes into a buffer. Reserved for small,
  * structural entries — the embedded manifest — where the content must be parsed
  * whole; the extraction path streams instead so it never buffers an entry.
  */
-export async function readEntryBuffer(fd: number, entry: ReadEntry, maxBytes: number): Promise<Buffer> {
+export async function readEntryBuffer(file: VolumeFile, entry: ReadEntry, maxBytes: number): Promise<Buffer> {
   if (entry.uncompSize > maxBytes) {
     throw new ReadError("read.entry-too-large", `${entry.archivePath} exceeds the in-memory size limit`);
   }
   const chunks: Buffer[] = [];
   let bytes = 0;
   await readEntryData(
-    fd,
+    file,
     entry,
     async (chunk) => {
       bytes += chunk.length;

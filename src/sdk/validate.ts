@@ -201,6 +201,24 @@ export function validateChunkSize(chunkSize: number): number {
   return chunkSize;
 }
 
+/** The largest delay a timer can hold (2^31 - 1 ms, about 24.8 days). */
+const MAX_TIMER_MS = 2_147_483_647;
+
+/**
+ * Validate the per-operation filesystem budget: a positive integer number of
+ * milliseconds a timer can represent. Like {@link validateChunkSize} it is a
+ * runtime knob whose bound the SDK owns.
+ */
+export function validateIoTimeout(ioTimeoutMs: number): number {
+  if (!Number.isInteger(ioTimeoutMs) || ioTimeoutMs <= 0 || ioTimeoutMs > MAX_TIMER_MS) {
+    throw new PolicyError(
+      "options.invalid",
+      `ioTimeoutMs must be a positive integer number of milliseconds up to ${MAX_TIMER_MS} (got ${ioTimeoutMs})`,
+    );
+  }
+  return ioTimeoutMs;
+}
+
 /**
  * Validate the concurrency limit: a positive integer count of in-flight file
  * operations. Like {@link validateChunkSize} this is a runtime knob, not policy,

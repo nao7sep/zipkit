@@ -2,7 +2,7 @@
  * The in-house ZIP container framing — local file headers, the central
  * directory, the end-of-central-directory record, and Zip64 structures — driven
  * as a streaming writer. The archive is one ordered byte stream, so entries are
- * written sequentially through a single seekable file descriptor: a temp file
+ * written sequentially through a single seekable file handle: a temp file
  * in the output's directory and fsync'd; publication either atomically replaces
  * the destination (authorized overwrite) or claims an absent destination with
  * an exclusive hard-link/copy operation (no overwrite). The
@@ -37,20 +37,14 @@
  * the bytes match what a same-archive reader and `unzip` expect.
  */
 
-import { close, fsync, open, rename, write as fsWrite } from "node:fs";
 import { dirname, join, parse } from "node:path";
-import { promisify } from "node:util";
 import { nanoid } from "nanoid";
 import { throwIfAborted } from "../errors.js";
 import { wallClockInZone } from "../internal/timeZone.js";
-import { publishNoOverwrite } from "../internal/noClobberPublish.js";
+import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobberPublish.js";
+import type { Volume, VolumeFile } from "../internal/volume.js";
 import { deflateBound } from "../plan/zip64.js";
 import { EntryCompressor, type ChunkSink } from "./deflate.js";
-
-const openAsync = promisify(open);
-const closeAsync = promisify(close);
-const fsyncAsync = promisify(fsync);
-const renameAsync = promisify(rename);
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
@@ -318,12 +312,6 @@ function centralRecord(p: {
   return b;
 }
 
-const writeFd = promisify(
-  (fd: number, buffer: Buffer, offset: number, length: number, position: number | null,
-   cb: (err: NodeJS.ErrnoException | null) => void) =>
-    fsWrite(fd, buffer, offset, length, position, (err) => cb(err)),
-);
-
 /**
  * A streaming ZIP writer. Open it on an output path, append entries in order —
  * each `file`/`symlink` streams its bytes through `streamEntry`, a `dir` through
@@ -335,16 +323,20 @@ export class ZipWriter {
   readonly #output: string;
   readonly #tempPath: string;
   readonly #options: ZipWriterOptions;
-  #fd = -1;
+  /** The run's bounded file access; every call on the temp file and the
+   *  publication go through it. */
+  readonly #volume: Volume;
+  #file: VolumeFile | null = null;
   /** Append position in the temp file (also each entry's local-header offset). */
   #offset = 0;
   readonly #central: Buffer[] = [];
   #count = 0;
   #anyEntryZip64 = false;
 
-  constructor(output: string, options: ZipWriterOptions) {
+  constructor(output: string, options: ZipWriterOptions, volume: Volume) {
     this.#output = output;
     this.#options = options;
+    this.#volume = volume;
     // A temp file in the output's own directory, so the closing rename is a
     // same-filesystem atomic replace — the same atomic guarantee, kept without
     // buffering the whole archive in memory. `<stem>-<nanoid>.tmp` (derived-filename
@@ -357,13 +349,18 @@ export class ZipWriter {
   }
 
   async open(): Promise<void> {
-    this.#fd = await openAsync(this.#tempPath, "w");
+    this.#file = await this.#volume.open(this.#tempPath, "w");
+  }
+
+  #openFile(): VolumeFile {
+    if (this.#file === null) throw new Error("the archive temp file is not open");
+    return this.#file;
   }
 
   /** Append raw bytes at the current offset, advancing it. */
   async #append(buffer: Buffer): Promise<void> {
     if (buffer.length === 0) return;
-    await writeFd(this.#fd, buffer, 0, buffer.length, this.#offset);
+    await this.#openFile().writeAll(buffer, this.#offset);
     this.#offset += buffer.length;
   }
 
@@ -456,7 +453,7 @@ export class ZipWriter {
     patch.writeUInt32LE(result.crc32 >>> 0, 0);
     patch.writeUInt32LE(g.useZip64 ? U32 : result.compressedSize, 4);
     patch.writeUInt32LE(g.useZip64 ? U32 : result.uncompressedSize, 8);
-    await writeFd(this.#fd, patch, 0, patch.length, g.headerOffset + 14);
+    await this.#openFile().writeAll(patch, g.headerOffset + 14);
 
     if (g.useZip64) {
       // The Zip64 local extra sits right after the name; overwrite its two
@@ -466,7 +463,7 @@ export class ZipWriter {
       sizes.writeBigUInt64LE(BigInt(result.compressedSize), 8);
       // local header(30) + name + extra-id(2) + extra-size(2) = start of values.
       const valuesOffset = g.headerOffset + 30 + g.nameBuf.length + 4;
-      await writeFd(this.#fd, sizes, 0, sizes.length, valuesOffset);
+      await this.#openFile().writeAll(sizes, valuesOffset);
     }
   }
 
@@ -588,42 +585,35 @@ export class ZipWriter {
     await this.#append(commentBuf);
 
     const bytes = this.#offset;
-    await fsyncAsync(this.#fd);
-    await closeAsync(this.#fd);
-    this.#fd = -1;
+    const file = this.#openFile();
+    await file.sync();
+    this.#file = null;
+    await file.close();
     // Publication is the commit point: a cancellation that arrived during the
     // central-directory write or fsync must stop here, before the archive
-    // becomes visible. The fd is already closed, so the caller's writer.abort()
-    // removes the orphaned temp file.
+    // becomes visible. The handle is already closed, so the caller's
+    // writer.abort() removes the orphaned temp file. Once publication starts,
+    // only its time budget can abandon it (see `Volume`).
     throwIfAborted(signal);
     // not recorded: this is the ZIP archive the user asked to create — the app's binary output written
     // to the user's chosen destination, not managed state under `~/.zipkit/`. It is out of scope for the
     // data-backup layer (data-backup conventions: binary output is never recorded), and the SDK has no
     // dependency on the GUI's backup store.
     if (this.#options.overwrite === true) {
-      await renameAsync(this.#tempPath, this.#output);
+      await this.#volume.publishRename(this.#tempPath, this.#output);
     } else {
-      await publishNoOverwrite(this.#tempPath, this.#output, signal);
+      await publishNoOverwrite(this.#tempPath, this.#output, signal, volumePublishOperations(this.#volume));
     }
     return { zip64: needZip64, bytes };
   }
 
-  /** Close and remove the temp file after a failed write, best-effort. */
+  /** Close and remove the temp file after a failed write: best-effort and
+   *  bounded, and still attempted after a cancel or a stall. */
   async abort(): Promise<void> {
-    if (this.#fd >= 0) {
-      try {
-        await closeAsync(this.#fd);
-      } catch {
-        /* the fd may already be closed */
-      }
-      this.#fd = -1;
-    }
-    try {
-      const { rm } = await import("node:fs/promises");
-      await rm(this.#tempPath, { force: true });
-    } catch {
-      /* the temp file may not exist */
-    }
+    const file = this.#file;
+    this.#file = null;
+    if (file !== null) await file.release();
+    await this.#volume.discard(this.#tempPath);
   }
 }
 

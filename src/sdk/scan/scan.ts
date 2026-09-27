@@ -1,5 +1,5 @@
 /**
- * The scan edge. It walks the source tree with `fdir`, pruning
+ * The scan edge. It walks the source tree, pruning
  * excluded directory subtrees through the shared matcher during the walk, and
  * reads each entry's nanosecond timestamps, mode, and symlink target with a
  * direct stat call. It also performs the two I/O facts the pure planner needs
@@ -11,15 +11,20 @@
  * are dereferenced here, guarded against cycles (a visited real-path set) and
  * against escaping the input tree unless `followExternal` is set. A symlink
  * given directly as a top-level input is always followed, as it is explicit.
+ *
+ * Every filesystem call goes through the run's bounded {@link Volume}, so a
+ * source on a stalled volume fails the scan with a `StallError` naming the
+ * path instead of hanging it. The places that deliberately tolerate a failed
+ * call (an unreadable link, a broken link, an unreadable subdirectory) tolerate
+ * only a filesystem refusal, never a stall or a cancel.
  */
 
-import { fdir } from "fdir";
 import type { BigIntStats } from "node:fs";
-import { lstat, readlink, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { ScanError, throwIfAborted } from "../errors.js";
+import { ScanError, throwIfAborted, ZipKitError } from "../errors.js";
 import type { FilterMatcher } from "../filter/match.js";
 import { toForwardSlash } from "../internal/path.js";
+import type { Volume } from "../internal/volume.js";
 import type { PrunedDir, ScanEntry, ScanResult } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import {
@@ -36,6 +41,8 @@ export interface ScanDeps {
   limit: <T>(fn: () => Promise<T>) => Promise<T>;
   logger: Logger;
   signal: AbortSignal | undefined;
+  /** The run's bounded file access, built with the same signal. */
+  volume: Volume;
 }
 
 interface ScanContext {
@@ -45,6 +52,7 @@ interface ScanContext {
   limit: <T>(fn: () => Promise<T>) => Promise<T>;
   signal: AbortSignal | undefined;
   logger: Logger;
+  volume: Volume;
   /**
    * File identity (`dev:ino`) of this run's own output archive, when it already
    * exists on disk. Compared against the identity of each walked entry so the
@@ -112,22 +120,15 @@ function makeEntry(
   return entry;
 }
 
-function stripTrailingSlash(p: string): string {
-  return p.length > 1 ? p.replace(/\/+$/, "") : p;
-}
-
 function isWithin(root: string, target: string): boolean {
   if (root === "") return true;
   const rel = path.relative(root, target);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-async function statBig(p: string): Promise<BigIntStats> {
-  return stat(p, { bigint: true });
-}
-
-async function lstatBig(p: string): Promise<BigIntStats> {
-  return lstat(p, { bigint: true });
+/** Rethrow a stall or a cancel from a call whose ordinary failure is tolerated. */
+function rethrowClassified(err: unknown): void {
+  if (err instanceof ZipKitError) throw err;
 }
 
 async function handleSymlink(
@@ -139,8 +140,9 @@ async function handleSymlink(
 ): Promise<void> {
   let target = "";
   try {
-    target = await readlink(abs);
-  } catch {
+    target = await ctx.volume.readlink(abs);
+  } catch (err) {
+    rethrowClassified(err);
     // Unreadable link target; record the entry with an empty target. Trace it at
     // debug — a recovered-from anomaly during the walk, not a fault worth a sink.
     ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.symlink-unreadable", path: abs });
@@ -153,8 +155,9 @@ async function handleSymlink(
 
   let real: string;
   try {
-    real = await realpath(abs);
-  } catch {
+    real = await ctx.volume.realpath(abs);
+  } catch (err) {
+    rethrowClassified(err);
     return; // broken link: nothing to follow
   }
 
@@ -163,8 +166,9 @@ async function handleSymlink(
 
   let resolved: BigIntStats;
   try {
-    resolved = await statBig(real);
-  } catch {
+    resolved = await ctx.volume.stat(real);
+  } catch (err) {
+    rethrowClassified(err);
     return;
   }
   // A followed symlink carries the target's bytes, so self-exclusion must compare
@@ -191,8 +195,9 @@ async function processPath(
 ): Promise<void> {
   let st: BigIntStats;
   try {
-    st = await lstatBig(abs);
+    st = await ctx.volume.lstat(abs);
   } catch (err) {
+    rethrowClassified(err);
     throw new ScanError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
   }
   // This run's own output archive, reached under any casing: skip it so the
@@ -208,48 +213,73 @@ async function processPath(
   // sockets, fifos, and devices are not archivable and are skipped silently.
 }
 
+/** How many directories the walk lists at once. */
+const WALK_BATCH = 16;
+
+/**
+ * Walk a directory tree breadth-first, listing each directory through the
+ * bounded volume and pruning excluded subtrees through the shared matcher
+ * before descending into them. Returns every path under `absDir` (not
+ * `absDir` itself). A symlink is listed, never descended into; following one
+ * is `handleSymlink`'s decision. A subdirectory that cannot be listed is
+ * skipped, while a stall or a cancel ends the scan. Only the input root
+ * itself failing to list is a scan fault.
+ */
+async function walkTree(ctx: ScanContext, absDir: string, anchors: EntryPaths): Promise<string[]> {
+  const found: string[] = [];
+  let level = [absDir];
+  while (level.length > 0) {
+    const next: string[] = [];
+    for (let i = 0; i < level.length; i += WALK_BATCH) {
+      throwIfAborted(ctx.signal);
+      const batch = level.slice(i, i + WALK_BATCH);
+      const listings = await Promise.all(
+        batch.map(async (dir) => {
+          try {
+            return { dir, entries: await ctx.volume.readdir(dir) };
+          } catch (err) {
+            rethrowClassified(err);
+            if (dir === absDir) {
+              throw new ScanError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err });
+            }
+            return { dir, entries: [] };
+          }
+        }),
+      );
+      for (const { dir, entries } of listings) {
+        for (const entry of entries) {
+          const abs = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            const archive = joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, abs)));
+            const rule = archive === "" ? null : ctx.matcher.match(archive, true);
+            if (rule) {
+              const pruned: PrunedDir = { archivePath: archive, reason: rule.describe };
+              if (rule.junkRule) pruned.rule = rule.junkRule;
+              ctx.prunedDirs.push(pruned);
+              continue;
+            }
+            next.push(abs);
+          }
+          found.push(abs);
+        }
+      }
+    }
+    level = next;
+  }
+  return found;
+}
+
 async function crawlDirectory(
   ctx: ScanContext,
   absDir: string,
   anchors: EntryPaths,
   inputIndex: number,
 ): Promise<void> {
-  const crawler = new fdir()
-    .withFullPaths()
-    .withDirs()
-    .exclude((_name, dirPath) => {
-      // fdir's walk is a single batch with no abort hook; pruning every
-      // directory once the signal fires stops descent promptly (the result
-      // loop then throws). Granularity is one directory level.
-      if (ctx.signal?.aborted) return true;
-      const abs = stripTrailingSlash(dirPath);
-      if (abs === absDir) return false;
-      const rel = path.relative(absDir, abs);
-      const archive = joinArchivePath(anchors.archive, toForwardSlash(rel));
-      if (archive === "") return false;
-      const rule = ctx.matcher.match(archive, true);
-      if (rule) {
-        const pruned: PrunedDir = { archivePath: archive, reason: rule.describe };
-        if (rule.junkRule) pruned.rule = rule.junkRule;
-        ctx.prunedDirs.push(pruned);
-        return true;
-      }
-      return false;
-    })
-    .crawl(absDir);
-
-  let results: string[];
-  try {
-    results = await crawler.withPromise();
-  } catch (err) {
-    throw new ScanError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err });
-  }
+  const results = await walkTree(ctx, absDir, anchors);
 
   const tasks: Promise<void>[] = [];
-  for (const raw of results) {
+  for (const abs of results) {
     throwIfAborted(ctx.signal);
-    const abs = stripTrailingSlash(raw);
-    if (abs === absDir) continue; // the run's own output is excluded by identity in processPath
     const fwdRel = toForwardSlash(path.relative(absDir, abs));
     const archive = joinArchivePath(anchors.archive, fwdRel);
     if (archive === "") continue;
@@ -277,8 +307,9 @@ export async function scan(
   for (const input of inputs) {
     let link: BigIntStats;
     try {
-      link = await lstatBig(input.path);
+      link = await deps.volume.lstat(input.path);
     } catch (err) {
+      rethrowClassified(err);
       throw new ScanError("scan.input-missing", `cannot stat input: ${input.path}`, {
         cause: err,
       });
@@ -286,16 +317,18 @@ export async function scan(
     if (link.isSymbolicLink()) {
       let real: string;
       try {
-        real = await realpath(input.path);
+        real = await deps.volume.realpath(input.path);
       } catch (err) {
+        rethrowClassified(err);
         throw new ScanError("scan.input-missing", `cannot resolve symlink input: ${input.path}`, {
           cause: err,
         });
       }
       let resolved: BigIntStats;
       try {
-        resolved = await statBig(real);
+        resolved = await deps.volume.stat(real);
       } catch (err) {
+        rethrowClassified(err);
         throw new ScanError("scan.input-missing", `cannot stat symlink target: ${input.path}`, {
           cause: err,
         });
@@ -319,9 +352,9 @@ export async function scan(
   const artifactIds = new Set<string>();
   let outputExists = false;
   try {
-    const outputLink = await lstatBig(output);
+    const outputLink = await deps.volume.lstat(output);
     outputExists = true;
-    const outputStats = outputLink.isSymbolicLink() ? await statBig(output) : outputLink;
+    const outputStats = outputLink.isSymbolicLink() ? await deps.volume.stat(output) : outputLink;
     const outputId = fileId(outputStats);
     const sameInput = inputStats.findIndex((input) => fileId(input) === outputId);
     if (sameInput !== -1) {
@@ -332,7 +365,7 @@ export async function scan(
     }
     artifactIds.add(outputId);
   } catch (err) {
-    if (err instanceof ScanError) throw err;
+    rethrowClassified(err);
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       throw new ScanError("scan.output-stat-failed", `cannot inspect output path: ${output}`, {
         cause: err,
@@ -357,8 +390,9 @@ export async function scan(
       continue;
     }
     try {
-      canonicalRoots.push(await realpath(real));
-    } catch {
+      canonicalRoots.push(await deps.volume.realpath(real));
+    } catch (err) {
+      rethrowClassified(err);
       canonicalRoots.push(real);
     }
   }
@@ -370,6 +404,7 @@ export async function scan(
     limit: deps.limit,
     signal,
     logger: deps.logger,
+    volume: deps.volume,
     artifactIds,
     entries: [],
     prunedDirs: [],
@@ -397,8 +432,9 @@ export async function scan(
     } else {
       let fileStats: BigIntStats;
       try {
-        fileStats = await statBig(real);
+        fileStats = await deps.volume.stat(real);
       } catch (err) {
+        rethrowClassified(err);
         throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, {
           cause: err,
         });

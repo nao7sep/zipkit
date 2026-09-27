@@ -19,6 +19,7 @@ import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpe
 import { findExtra, readZipFile } from "../../helpers/readZip.js";
 import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../../src/sdk/plan/zip64.js";
 import { ZipWriter } from "../../../src/sdk/write/zipWriter.js";
+import { realVolume } from "../../helpers/volume.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 // 100-ns ticks between 1601 (FILETIME epoch) and 1970, for decoding NTFS times.
@@ -239,7 +240,7 @@ describe("temp file shape", () => {
   it("uses <outputStem>-<nanoid>.tmp beside the output, not a hidden pid/epoch dotfile", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-shape-"));
     const output = path.join(dir, "archive.zip");
-    const writer = new ZipWriter(output, baseOptions);
+    const writer = new ZipWriter(output, baseOptions, realVolume());
     await writer.open();
 
     // While open, the only file in the directory is the temp — assert its shape

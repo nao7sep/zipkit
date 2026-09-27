@@ -171,6 +171,16 @@ export interface ZipKitOptions {
    * Peak memory is roughly this times `concurrency`. Defaults to 65536 (64 KB).
    */
   chunkSize?: number;
+  /**
+   * The inactivity budget, in milliseconds, for each filesystem operation a
+   * verb performs: one stat, directory listing, open, chunk read or write,
+   * sync, or rename. An operation that has not settled within it is treated as
+   * a stalled volume (a dropped network share, a removed drive): the verb stops
+   * waiting and fails with a `StallError` naming the operation and the path.
+   * It bounds each operation, not the whole verb, so a large archive on a
+   * healthy volume is never cut short. Defaults to 30000 (30 s).
+   */
+  ioTimeoutMs?: number;
 }
 
 /**

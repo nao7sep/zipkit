@@ -15,6 +15,7 @@ import { createLogger } from "../../../src/sdk/log/logger.js";
 import { resolvePolicy } from "../../../src/sdk/policy.js";
 import { scan } from "../../../src/sdk/scan/scan.js";
 import type { ArchivePolicy, ArchiveSpec } from "../../../src/sdk/types.js";
+import { realVolume } from "../../helpers/volume.js";
 import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 let dir: string;
@@ -33,6 +34,7 @@ function deps(policy: ArchivePolicy) {
     limit: <T>(fn: () => Promise<T>): Promise<T> => fn(),
     logger: createLogger(),
     signal: undefined,
+    volume: realVolume(),
   };
 }
 

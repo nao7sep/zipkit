@@ -5,7 +5,7 @@
  * the manifest and its recorded SHA-256; and unless `dryRun` is set, verified
  * entries are written to disk with their times restored.
  *
- * Reads are positioned against an open fd, never a whole-archive buffer, and an
+ * Reads are positioned against an open handle, never a whole-archive buffer, and an
  * entry's content streams through inflate to its own output file — so memory
  * stays bounded and entries run CONCURRENTLY (bounded by the pool), each writing
  * an independent file. CRC governs writing: an entry streams to a temp file in
@@ -13,33 +13,30 @@
  * exclusion, and overwrite gates is renamed into place; a corrupt entry's temp
  * file is discarded. Completeness (missing/extra) is computed from the entry-name
  * sets, independent of the decompression loop.
+ *
+ * Every filesystem call goes through the run's bounded {@link Volume}, so an
+ * archive or destination on a stalled volume fails the run with a
+ * `StallError` instead of hanging it.
  */
 
 import { createHash } from "node:crypto";
-import { close, open, stat as fsStat } from "node:fs";
-import { lstat, mkdir, rename, rm, symlink, utimes } from "node:fs/promises";
-import { createWriteStream } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import { nanoid } from "nanoid";
-import { ReadError, throwIfAborted, toAbortError } from "../errors.js";
+import { AbortError, ReadError, StallError, throwIfAborted, toAbortError, ZipKitError } from "../errors.js";
 import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
 import type { Unlogged } from "../internal/types.js";
 import { reportFindings } from "../log/findings.js";
 import type { Logger } from "../log/logger.js";
-import { awaitDrain } from "../internal/drain.js";
-import { publishNoOverwrite } from "../internal/noClobberPublish.js";
+import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobberPublish.js";
+import type { Volume, VolumeFile } from "../internal/volume.js";
 import { finding } from "../registry.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
 import { findTargetCollision } from "./targetCollision.js";
 import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipReader.js";
 
-const openAsync = promisify(open);
-const closeAsync = promisify(close);
-const statAsync = promisify(fsStat);
 const MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
 const MAX_SYMLINK_TARGET_BYTES = 64 * 1024;
 
@@ -48,6 +45,8 @@ export interface ExtractDeps {
   logger: Logger;
   chunkSize: number;
   signal?: AbortSignal;
+  /** The run's bounded file access, built with the same signal. */
+  volume: Volume;
 }
 
 interface WriteOptions {
@@ -93,19 +92,19 @@ type CommitOutcome = "written" | "exists" | "unsafe";
  * and would write outside `dest`. A real file occupying a directory slot is a
  * genuine conflict and is thrown, surfacing as a write fault as before.
  */
-async function ensureRealDirs(dest: string, segments: string[]): Promise<boolean> {
+async function ensureRealDirs(volume: Volume, dest: string, segments: string[]): Promise<boolean> {
   let current = dest;
   for (const segment of segments) {
     current = path.join(current, segment);
     try {
-      await mkdir(current);
+      await volume.mkdir(current);
       continue; // freshly created as a real directory
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
     // It already existed (or a sibling entry just created it): it must be a real
     // directory, not a symlink an earlier entry or the pre-existing tree planted.
-    const st = await lstat(current);
+    const st = await volume.lstat(current);
     if (st.isSymbolicLink()) return false;
     if (!st.isDirectory()) {
       throw new Error(`cannot create directory ${current}: a non-directory already exists`);
@@ -137,7 +136,8 @@ interface VerifyResult {
  * symlink's small target is captured in memory regardless, for the symlink call.
  */
 async function verifyEntry(
-  fd: number,
+  volume: Volume,
+  archive: VolumeFile,
   entry: ReadEntry,
   chunkSize: number,
   checkSha: boolean,
@@ -158,39 +158,31 @@ async function verifyEntry(
 
   const hasher = checkSha ? createHash("sha256") : null;
   const linkChunks: Buffer[] = [];
-  const out = stageTo ? createWriteStream(stageTo) : null;
+  const out = stageTo ? await volume.open(stageTo, "w") : null;
 
   const sink = async (chunk: Buffer): Promise<void> => {
     throwIfAborted(signal);
     if (hasher) hasher.update(chunk);
     if (captureLink) linkChunks.push(chunk);
-    if (out) {
-      if (!out.write(chunk)) await awaitDrain(out, signal);
-    }
+    if (out) await out.writeAll(chunk, null);
   };
 
   let crc32: number;
   try {
-    ({ crc32 } = await readEntryData(fd, entry, sink, chunkSize));
+    ({ crc32 } = await readEntryData(archive, entry, sink, chunkSize));
+    if (out) await out.close();
   } catch (err) {
     if (out) {
-      // The staging stream is being discarded (the read aborted or failed). A
-      // write queued before the failure may complete after destroy and emit
-      // ERR_STREAM_DESTROYED — swallow it, since the temp file is removed anyway.
-      out.on("error", () => {});
-      out.destroy();
-      await rm(stageTo as string, { force: true });
+      // The staged bytes are discarded (the read or a write failed, stalled, or
+      // was cancelled); the cleanup is bounded and still runs after a cancel.
+      await out.release();
+      await volume.discard(stageTo as string);
     }
     throw err;
   }
-  if (out) {
-    await new Promise<void>((resolve, reject) => {
-      out.end((err?: Error | null) => (err ? reject(err) : resolve()));
-    });
-  }
 
   const crcOk = crc32 === (entry.crc32 >>> 0);
-  if (!crcOk && stageTo) await rm(stageTo, { force: true });
+  if (!crcOk && stageTo) await volume.discard(stageTo);
   const result: VerifyResult = { crcOk };
   if (checkSha) {
     if (storedSha === null) result.sha = "absent";
@@ -202,13 +194,14 @@ async function verifyEntry(
 }
 
 /** Create a directory entry: its whole chain, as real directories. */
-async function commitDir(dest: string, segments: string[]): Promise<CommitOutcome> {
-  return (await ensureRealDirs(dest, segments)) ? "written" : "unsafe";
+async function commitDir(volume: Volume, dest: string, segments: string[]): Promise<CommitOutcome> {
+  return (await ensureRealDirs(volume, dest, segments)) ? "written" : "unsafe";
 }
 
 /** Move a verified temp file into its final place, restoring times. The parent
  *  chain is created as real directories first; a symlinked ancestor is `unsafe`. */
 async function commitFile(
+  volume: Volume,
   dest: string,
   parentSegments: string[],
   entry: ReadEntry,
@@ -217,8 +210,8 @@ async function commitFile(
   options: WriteOptions,
   signal: AbortSignal | undefined,
 ): Promise<CommitOutcome> {
-  if (!(await ensureRealDirs(dest, parentSegments))) {
-    await rm(tempPath, { force: true });
+  if (!(await ensureRealDirs(volume, dest, parentSegments))) {
+    await volume.discard(tempPath);
     return "unsafe";
   }
   // not recorded: this is extracted archive content written to the user's chosen destination — output
@@ -226,13 +219,13 @@ async function commitFile(
   // reloads. It lives outside `~/.zipkit/` and is not captured by the data-backup layer (data-backup
   // conventions). The SDK is also a separate layer with no dependency on the GUI's backup store.
   if (options.overwrite) {
-    await rename(tempPath, target);
+    await volume.publishRename(tempPath, target);
   } else {
     try {
-      await publishNoOverwrite(tempPath, target, signal);
+      await publishNoOverwrite(tempPath, target, signal, volumePublishOperations(volume));
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") {
-        await rm(tempPath, { force: true });
+        await volume.discard(tempPath);
         return "exists";
       }
       throw err;
@@ -241,9 +234,11 @@ async function commitFile(
   if (options.restore) {
     const t = restoreTimes(entry, options.timeZone);
     // Best-effort: a filesystem that rejects the times must not fail the write.
+    // A stall or a cancel is not such a rejection and still ends the run.
     try {
-      await utimes(target, new Date(t.atimeMs), new Date(t.mtimeMs));
-    } catch {
+      await volume.utimes(target, new Date(t.atimeMs), new Date(t.mtimeMs));
+    } catch (err) {
+      if (err instanceof ZipKitError) throw err;
       /* times are advisory; the content is what matters */
     }
   }
@@ -276,19 +271,28 @@ export async function extractArchive(
   const matcher = buildMatcher(spec.exclude ?? [], false);
   const dest = spec.dest !== undefined ? path.resolve(spec.dest) : undefined;
 
-  let fd: number;
-  let fileSize: number;
+  const volume = deps.volume;
+  let archive: VolumeFile;
   try {
-    fd = await openAsync(spec.archive, "r");
-    fileSize = (await statAsync(spec.archive)).size;
+    archive = await volume.open(spec.archive, "r");
   } catch (err) {
+    if (err instanceof ZipKitError) throw err;
     throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, {
       cause: err,
     });
   }
 
   try {
-    const parsed = await parseZip(fd, fileSize);
+    let fileSize: number;
+    try {
+      fileSize = Number((await archive.stat()).size);
+    } catch (err) {
+      if (err instanceof ZipKitError) throw err;
+      throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, {
+        cause: err,
+      });
+    }
+    const parsed = await parseZip(archive, fileSize);
     deps.logger.emit({
       stage: "extract",
       level: "info",
@@ -323,8 +327,9 @@ export async function extractArchive(
       manifestEntryPath = inside.archivePath;
       let doc: { entries?: unknown };
       try {
-        doc = JSON.parse((await readEntryBuffer(fd, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
+        doc = JSON.parse((await readEntryBuffer(archive, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
       } catch (err) {
+        if (err instanceof StallError || err instanceof AbortError) throw err;
         throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
           cause: err,
         });
@@ -336,7 +341,7 @@ export async function extractArchive(
       }
     }
 
-    if (write && dest !== undefined) await mkdir(dest, { recursive: true });
+    if (write && dest !== undefined) await volume.mkdir(dest, true);
 
     // Per-entry processing runs concurrently — each entry streams to its own
     // output file. `aborted` short-circuits the pool once an `onUnsafe: abort`
@@ -344,7 +349,9 @@ export async function extractArchive(
     const abort: { entry: ReadEntry | null } = { entry: null };
     // `allSettled`, not `all`: every task runs to completion so none is abandoned
     // mid-stream — which would orphan its temp file and keep reading the archive
-    // descriptor the `finally` is about to close. Failures are surfaced after.
+    // handle the `finally` is about to close. Each task's calls are bounded, and
+    // once one stalls the volume refuses the rest, so this wait is bounded too.
+    // Failures are surfaced after, a stall ahead of the refusals it caused.
     const settled = await Promise.allSettled(
       parsed.entries.map((entry) =>
         deps.limit(async () => {
@@ -354,9 +361,9 @@ export async function extractArchive(
         }),
       ),
     );
-    for (const s of settled) {
-      if (s.status === "rejected") throw s.reason;
-    }
+    const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
+    const failure = failures.find((f) => f instanceof StallError) ?? failures[0];
+    if (failure !== undefined) throw failure;
     if (abort.entry) {
       throw new ReadError(
         "read.unsafe-path",
@@ -402,7 +409,8 @@ export async function extractArchive(
       const captureLink = entry.type === "symlink";
 
       const verified = await verifyEntry(
-        fd,
+        volume,
+        archive,
         entry,
         deps.chunkSize,
         checkSha,
@@ -418,7 +426,7 @@ export async function extractArchive(
         // A corrupt entry is never written. CRC failure outranks every reason
         // except a dry run, where writing was never on the table.
         if (skip !== "dry-run") skip = "crc-fail";
-        if (verified.tempPath) await rm(verified.tempPath, { force: true });
+        if (verified.tempPath) await volume.discard(verified.tempPath);
       } else if (target !== null) {
         let outcome: CommitOutcome;
         try {
@@ -428,9 +436,10 @@ export async function extractArchive(
           // entry may still be streaming.
           throwIfAborted(signal);
           if (entry.type === "dir") {
-            outcome = await commitDir(dest as string, segments);
+            outcome = await commitDir(volume, dest as string, segments);
           } else if (entry.type === "symlink") {
             outcome = await commitSymlink(
+              volume,
               dest as string,
               segments.slice(0, -1),
               target,
@@ -439,6 +448,7 @@ export async function extractArchive(
             );
           } else {
             outcome = await commitFile(
+              volume,
               dest as string,
               segments.slice(0, -1),
               entry,
@@ -449,9 +459,11 @@ export async function extractArchive(
             );
           }
         } catch (err) {
-          if (verified.tempPath) await rm(verified.tempPath, { force: true });
-          // An abort is control flow, not a write fault: let it propagate as an
-          // AbortError rather than mislabeling it read.write-failed (exit 5).
+          if (verified.tempPath) await volume.discard(verified.tempPath);
+          // A stall, and an abort (control flow, not a write fault), propagate
+          // classified rather than mislabeled read.write-failed (exit 5); a
+          // stall first, since a stalled publication may still land.
+          if (err instanceof StallError) throw err;
           if (signal?.aborted) throw toAbortError(signal.reason);
           throw new ReadError("read.write-failed", `cannot write ${entry.archivePath}`, {
             cause: err,
@@ -591,7 +603,7 @@ export async function extractArchive(
       findings,
     };
   } finally {
-    await closeAsync(fd).catch(() => {});
+    await archive.release();
   }
 }
 
@@ -600,6 +612,7 @@ export async function extractArchive(
  *  would leave an escape hatch a later entry (or the user) could write through.
  *  `exists` means an existing target was preserved. */
 async function commitSymlink(
+  volume: Volume,
   dest: string,
   parentSegments: string[],
   target: string,
@@ -608,10 +621,10 @@ async function commitSymlink(
 ): Promise<CommitOutcome> {
   const resolved = path.resolve(path.dirname(target), linkTarget);
   if (escapesDest(dest, resolved)) return "unsafe";
-  if (!(await ensureRealDirs(dest, parentSegments))) return "unsafe";
-  if (options.overwrite) await rm(target, { force: true });
+  if (!(await ensureRealDirs(volume, dest, parentSegments))) return "unsafe";
+  if (options.overwrite) await volume.remove(target);
   try {
-    await symlink(linkTarget, target);
+    await volume.symlink(linkTarget, target);
   } catch (err) {
     if (!options.overwrite && (err as NodeJS.ErrnoException).code === "EEXIST") return "exists";
     throw err;

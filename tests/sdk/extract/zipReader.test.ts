@@ -5,11 +5,13 @@
  * cleanly and diagnosably rather than mis-parsing.
  */
 
-import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "../../../src/sdk/extract/zipReader.js";
+import type { VolumeFile } from "../../../src/sdk/internal/volume.js";
+import { openRead } from "../../helpers/volume.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -57,9 +59,9 @@ function central(opts: {
 async function parse(bytes: Buffer) {
   const file = path.join(dir, "a.zip");
   await writeFile(file, bytes);
-  const fh = await open(file, "r");
+  const fh = await openRead(file);
   try {
-    return await parseZip(fh.fd, bytes.length);
+    return await parseZip(fh, bytes.length);
   } finally {
     await fh.close();
   }
@@ -119,12 +121,12 @@ describe("parseZip rejects malformed archives", () => {
 });
 
 describe("readEntryData rejects unreadable entries", () => {
-  async function parsedFirst(bytes: Buffer): Promise<{ fd: number; entry: ReadEntry; close: () => Promise<void> }> {
+  async function parsedFirst(bytes: Buffer): Promise<{ fd: VolumeFile; entry: ReadEntry; close: () => Promise<void> }> {
     const file = path.join(dir, "b.zip");
     await writeFile(file, bytes);
-    const fh = await open(file, "r");
-    const parsed = await parseZip(fh.fd, bytes.length);
-    return { fd: fh.fd, entry: parsed.entries[0]!, close: () => fh.close() };
+    const fh = await openRead(file);
+    const parsed = await parseZip(fh, bytes.length);
+    return { fd: fh, entry: parsed.entries[0]!, close: () => fh.close() };
   }
 
   it("rejects an unsupported compression method", async () => {
@@ -166,7 +168,7 @@ describe("readEntryData rejects unreadable entries", () => {
     const data = Buffer.from("12345");
     const file = path.join(dir, "bounded.zip");
     await writeFile(file, Buffer.concat([local, data]));
-    const fh = await open(file, "r");
+    const fh = await openRead(file);
     const entry: ReadEntry = {
       archivePath: "_metadata.json",
       type: "file",
@@ -182,7 +184,7 @@ describe("readEntryData rejects unreadable entries", () => {
       extra: Buffer.alloc(0),
     };
     try {
-      await expect(readEntryBuffer(fh.fd, entry, 4)).rejects.toMatchObject({
+      await expect(readEntryBuffer(fh, entry, 4)).rejects.toMatchObject({
         code: "read.entry-too-large",
       });
     } finally {

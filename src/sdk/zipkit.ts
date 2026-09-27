@@ -37,6 +37,7 @@ import {
   type SessionLog,
 } from "./log/session.js";
 import { extractArchive } from "./extract/extract.js";
+import { nodeFileSystem, Volume } from "./internal/volume.js";
 import { planArchive } from "./plan/plan.js";
 import { resolvePolicy } from "./policy.js";
 import { scan } from "./scan/scan.js";
@@ -44,6 +45,7 @@ import {
   validateChunkSize,
   validateConcurrency,
   validateExtractSpec,
+  validateIoTimeout,
   validatePolicy,
   validateSpec,
 } from "./validate.js";
@@ -88,6 +90,14 @@ const MAX_DEFAULT_CONCURRENCY = 16;
 /** Default chunk size (64 KB) for all streamed I/O — see {@link ZipKitOptions.chunkSize}. */
 const DEFAULT_CHUNK_SIZE = 65536;
 
+/**
+ * Default per-operation filesystem budget — see {@link ZipKitOptions.ioTimeoutMs}.
+ * One operation moves at most a chunk, so on any working volume it settles in
+ * well under a second; 30 s leaves room for a sleeping network drive or a disk
+ * spinning up while still ending a job on a volume that has gone away.
+ */
+const DEFAULT_IO_TIMEOUT_MS = 30_000;
+
 function defaultConcurrency(): number {
   return Math.max(MIN_DEFAULT_CONCURRENCY, Math.min(os.availableParallelism(), MAX_DEFAULT_CONCURRENCY));
 }
@@ -96,6 +106,7 @@ export class ZipKit {
   readonly #policy: DeepPartial<ArchivePolicy> | undefined;
   readonly #concurrency: number;
   readonly #chunkSize: number;
+  readonly #ioTimeoutMs: number;
   /** This session's log path, stamped at construction (the session start). */
   readonly #sessionPath: string;
   /** The session log, opened lazily on the first verb call and reused so its
@@ -112,6 +123,8 @@ export class ZipKit {
         : defaultConcurrency();
     this.#chunkSize =
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
+    this.#ioTimeoutMs =
+      options.ioTimeoutMs !== undefined ? validateIoTimeout(options.ioTimeoutMs) : DEFAULT_IO_TIMEOUT_MS;
     const logDir = options.logDir ?? process.env.ZIPKIT_LOG_DIR ?? defaultLogDir();
     this.#sessionPath = path.join(logDir, `${defaultSessionTimestamp()}.log`);
   }
@@ -124,7 +137,7 @@ export class ZipKit {
    * copy cannot be written — inspect freely, but write from the original.
    */
   async plan(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<PlanData> {
-    return this.#run(options, (logger) => this.#plan(spec, logger, options.signal));
+    return this.#run(options, (logger) => this.#plan(spec, logger, options.signal, this.volume(options.signal)));
   }
 
   /** Execute a plan produced by {@link ZipKit.plan}. Must be the exact object
@@ -132,7 +145,12 @@ export class ZipKit {
    *  out-of-band writer instructions and fails with `write.no-internals`. */
   async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData> {
     return this.#run(options, (logger) =>
-      this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal }),
+      this.#runWrite(plan, {
+        logger,
+        chunkSize: this.#chunkSize,
+        signal: options.signal,
+        volume: this.volume(options.signal),
+      }),
     );
   }
 
@@ -141,8 +159,9 @@ export class ZipKit {
    *  cancellation stops it at whichever phase it is in. */
   async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData> {
     return this.#run(options, async (logger) => {
-      const plan = await this.#plan(spec, logger, options.signal);
-      return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal });
+      const volume = this.volume(options.signal);
+      const plan = await this.#plan(spec, logger, options.signal, volume);
+      return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume });
     });
   }
 
@@ -162,12 +181,23 @@ export class ZipKit {
           chunkSize: this.#chunkSize,
           logger,
           signal: options.signal,
+          volume: this.volume(options.signal),
         });
       } catch (err) {
         this.#reportError(logger, err);
         throw err;
       }
     });
+  }
+
+  /**
+   * The SDK's bounded file access, for a caller that must touch the same user
+   * volumes outside a verb (checking an input or an output location). Each call
+   * is bounded by this instance's `ioTimeoutMs` and answers to `signal`, and
+   * fails with a `StallError` naming the path when the volume stops responding.
+   */
+  volume(signal?: AbortSignal): Volume {
+    return new Volume(nodeFileSystem, this.#ioTimeoutMs, signal);
   }
 
   /** The instance's session log, opened lazily on first use so an instance that
@@ -217,6 +247,7 @@ export class ZipKit {
     spec: ArchiveSpec,
     logger: Logger,
     signal: AbortSignal | undefined,
+    volume: Volume,
   ): Promise<Unlogged<PlanData>> {
     try {
       const validated = validateSpec(spec);
@@ -224,7 +255,7 @@ export class ZipKit {
       const matcher = matcherFor(policy);
       const limit = pLimit(this.#concurrency);
 
-      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal });
+      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal, volume });
       const plan = planArchive(scanResult, policy);
       this.#reportPlan(logger, plan);
       return plan;
@@ -239,7 +270,7 @@ export class ZipKit {
    *  double-report when its inner plan throws. */
   async #runWrite(
     plan: Unlogged<PlanData>,
-    deps: { logger: Logger; chunkSize: number; signal?: AbortSignal },
+    deps: { logger: Logger; chunkSize: number; signal?: AbortSignal; volume: Volume },
   ): Promise<Unlogged<WriteData>> {
     try {
       return await writeArchive(plan, deps);
@@ -310,4 +341,5 @@ const STAGE_FOR_ERROR_TYPE: Record<ZipKitErrorType, LogStage> = {
   write: "write",
   read: "extract",
   abort: "plan",
+  stall: "plan",
 };
