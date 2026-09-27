@@ -69,6 +69,7 @@
 
   "error.readFailed": "L’archive n’a pas pu être lue. Vérifiez qu’elle est toujours disponible et qu’il s’agit d’un fichier ZIP valide.",
   "error.verifyIncomplete": "La vérification n’a pas pu aboutir. Vérifiez que l’archive est toujours disponible, puis réessayez.",
+  "error.stalled": "Le disque ou le partage réseau contenant {path} ne répond plus.",
 
   "job.blocking": { "one": "{count} problème bloquant", "many": "{count} de problèmes bloquants", "other": "{count} problèmes bloquants" },
   "job.prepareFailed": "Cette tâche n’a pas pu être préparée. Vérifiez que ses entrées sont toujours disponibles, puis réessayez.",

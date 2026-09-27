@@ -69,6 +69,7 @@
 
   "error.readFailed": "The archive could not be read. Check that it is still available and is a valid ZIP file.",
   "error.verifyIncomplete": "Verification could not be completed. Check that the archive is still available, then try again.",
+  "error.stalled": "The drive or network share holding {path} stopped responding.",
 
   "job.blocking": { "one": "{count} blocking finding", "other": "{count} blocking findings" },
   "job.prepareFailed": "This job could not be prepared. Check that its inputs are still available, then try again.",

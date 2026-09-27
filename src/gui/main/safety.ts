@@ -5,16 +5,17 @@
  * it is unit-tested directly. The destructive flow can't know this is unsafe from
  * any SDK verdict — it is the GUI's own action — so the check lives here. Both
  * sides are resolved to their physical identities so symlink aliases cannot
- * bypass the containment decision.
+ * bypass the containment decision. The lookups go through the SDK's bounded
+ * volume, so a stalled drive fails the check instead of hanging the job.
  */
 
-import { realpath } from "node:fs/promises";
 import path from "node:path";
+import type { Volume } from "../../sdk/index.js";
 
 /** Whether `output` resolves to a location at or inside any of `inputs`. */
-export async function outputInsideInputs(output: string, inputs: string[]): Promise<boolean> {
-  const out = await realpath(output);
-  const roots = await Promise.all(inputs.map((input) => realpath(input)));
+export async function outputInsideInputs(output: string, inputs: string[], volume: Volume): Promise<boolean> {
+  const out = await volume.realpath(output);
+  const roots = await Promise.all(inputs.map((input) => volume.realpath(input)));
   return roots.some((root) => {
     if (out === root) return true;
     const rel = path.relative(root, out);

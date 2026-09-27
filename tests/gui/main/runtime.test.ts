@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ BrowserWindow: class {} }));
-vi.mock("../../../src/sdk/index.js", () => ({
-  ZipKit: class {},
-  ZipKitError: class extends Error {},
-}));
+vi.mock("../../../src/sdk/index.js", () => {
+  class ZipKitError extends Error {}
+  class StallError extends ZipKitError {
+    readonly errorType = "stall";
+    readonly code = "io.stalled";
+    constructor(readonly path: string) {
+      super(`read did not respond within 30000 ms: ${path}`);
+    }
+  }
+  return { ZipKit: class {}, ZipKitError, StallError };
+});
 vi.mock("../../../src/gui/main/log.js", () => ({ createAppLog: () => ({}) }));
 
+import { StallError } from "../../../src/sdk/index.js";
 import {
   clearMainWindow,
   ensureMainWindow,
@@ -65,5 +73,14 @@ describe("GUI error presentation", () => {
       presentation: { key: "error.verifyIncomplete" },
     });
     expect(JSON.stringify(result)).not.toContain("HOSTILE-SENTINEL");
+  });
+
+  it("names the path that stopped responding for a stalled volume", () => {
+    const StallErrorMock = StallError as unknown as new (path: string) => Error;
+    expect(toGuiError(new StallErrorMock("/Volumes/NAS/a.zip"))).toEqual({
+      type: "stall",
+      code: "io.stalled",
+      presentation: { key: "error.stalled", values: { path: "/Volumes/NAS/a.zip" } },
+    });
   });
 });

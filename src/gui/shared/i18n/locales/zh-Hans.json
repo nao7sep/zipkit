@@ -69,6 +69,7 @@
 
   "error.readFailed": "无法读取归档。请确认它仍然存在并且是有效的 ZIP 文件。",
   "error.verifyIncomplete": "无法完成校验。请确认归档仍然存在，然后重试。",
+  "error.stalled": "{path} 所在的驱动器或网络共享已停止响应。",
 
   "job.blocking": { "other": "{count} 个阻止创建的问题" },
   "job.prepareFailed": "无法准备此任务。请确认其输入项仍然存在，然后重试。",

@@ -69,6 +69,7 @@
 
   "error.readFailed": "No se pudo leer el archivo comprimido. Comprueba que siga disponible y que sea un archivo ZIP válido.",
   "error.verifyIncomplete": "No se pudo completar la verificación. Comprueba que el archivo comprimido siga disponible y vuelve a intentarlo.",
+  "error.stalled": "La unidad o el recurso compartido de red que contiene {path} dejó de responder.",
 
   "job.blocking": { "one": "{count} problema bloqueante", "many": "{count} de problemas bloqueantes", "other": "{count} problemas bloqueantes" },
   "job.prepareFailed": "No se pudo preparar este trabajo. Comprueba que sus entradas sigan disponibles y vuelve a intentarlo.",

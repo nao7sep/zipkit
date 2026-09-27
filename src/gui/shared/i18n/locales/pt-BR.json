@@ -69,6 +69,7 @@
 
   "error.readFailed": "Não foi possível ler o arquivo compactado. Verifique se ele ainda está disponível e se é um arquivo ZIP válido.",
   "error.verifyIncomplete": "Não foi possível concluir a verificação. Verifique se o arquivo compactado ainda está disponível e tente novamente.",
+  "error.stalled": "A unidade ou o compartilhamento de rede que contém {path} parou de responder.",
 
   "job.blocking": { "one": "{count} problema que impede a criação", "many": "{count} de problemas que impedem a criação", "other": "{count} problemas que impedem a criação" },
   "job.prepareFailed": "Não foi possível preparar este trabalho. Verifique se as entradas dele ainda estão disponíveis e tente novamente.",

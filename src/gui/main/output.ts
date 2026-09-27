@@ -21,9 +21,9 @@
  * `spec.ts`: the renderer typechecks `shared/` without `@types/node`.
  */
 
-import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { ZipKitError, type Volume } from "../../sdk/index.js";
 
 /** Expand a leading `~`/`~/` to the home directory (the convention's expansion
  *  for a user-supplied path); leave any other string unchanged. */
@@ -86,11 +86,13 @@ export function composeOutputPath(
 }
 
 /** Whether a path is a directory on disk; false (treat as a file) if it cannot be
- *  stat'd, so a vanished input still composes a name rather than throwing here. */
-async function isDirectory(p: string): Promise<boolean> {
+ *  stat'd, so a vanished input still composes a name rather than throwing here.
+ *  A stalled volume or a cancel is not a vanished input and rejects. */
+async function isDirectory(p: string, volume: Volume): Promise<boolean> {
   try {
-    return (await stat(p)).isDirectory();
-  } catch {
+    return (await volume.stat(p)).isDirectory();
+  } catch (err) {
+    if (err instanceof ZipKitError) throw err;
     return false;
   }
 }
@@ -104,8 +106,9 @@ export async function resolveOutputPath(
   outputDir: string,
   fileName: string,
   inputs: string[],
+  volume: Volume,
 ): Promise<string> {
   const needsDefaultName = fileName.trim() === "" && outputDir !== "" && inputs.length > 0;
-  const firstIsDir = needsDefaultName ? await isDirectory(inputs[0]!) : false;
+  const firstIsDir = needsDefaultName ? await isDirectory(inputs[0]!, volume) : false;
   return composeOutputPath(outputDir, fileName, inputs, firstIsDir);
 }

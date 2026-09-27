@@ -69,6 +69,7 @@
 
   "error.readFailed": "Impossibile leggere l’archivio. Controlla che sia ancora disponibile e che sia un file ZIP valido.",
   "error.verifyIncomplete": "Impossibile completare la verifica. Controlla che l’archivio sia ancora disponibile, poi riprova.",
+  "error.stalled": "L’unità o la condivisione di rete che contiene {path} ha smesso di rispondere.",
 
   "job.blocking": { "one": "{count} problema bloccante", "many": "{count} di problemi bloccanti", "other": "{count} problemi bloccanti" },
   "job.prepareFailed": "Impossibile preparare questa operazione. Controlla che i suoi elementi di input siano ancora disponibili, poi riprova.",

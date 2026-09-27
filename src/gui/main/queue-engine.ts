@@ -21,7 +21,8 @@ import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
-import { message } from "../shared/i18n/translate.js";
+import { message, sentences, type Message } from "../shared/i18n/translate.js";
+import type { MessageKey } from "../shared/i18n/catalogues.js";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -40,8 +41,9 @@ export interface EngineDeps {
    *  still running when `signal` aborted or its time ran out is reported in
    *  `unconfirmed`, because that call may still move it. */
   trash(paths: string[], signal: AbortSignal): Promise<TrashResult>;
-  /** Physical-identity containment guard for every destructive action. */
-  outputInsideInputs(output: string, inputs: string[]): Promise<boolean>;
+  /** Physical-identity containment guard for every destructive action; bounded,
+   *  and cancellable through `signal` when a job is waiting on it. */
+  outputInsideInputs(output: string, inputs: string[], signal?: AbortSignal): Promise<boolean>;
   /** Push the current job list to observers (renderer + persistence). */
   emit(jobs: Job[]): void;
   /** Forward one (job-tagged) progress event to the renderer. */
@@ -93,6 +95,24 @@ function errCode(err: unknown): string | undefined {
     if (typeof code === "string") return code;
   }
   return undefined;
+}
+
+/** The path a stalled volume stopped responding at, when the SDK reports one
+ *  (a `stall` error names the operation's path). */
+function stalledPath(err: unknown): string | undefined {
+  if (err instanceof Error && (err as { errorType?: unknown }).errorType === "stall") {
+    const path = (err as { path?: unknown }).path;
+    if (typeof path === "string") return path;
+  }
+  return undefined;
+}
+
+/** A failed step's job message: the step's own sentence, led by the path that
+ *  stopped responding when the failure was a stalled volume. */
+function failureMessage(err: unknown, key: MessageKey): Message {
+  const path = stalledPath(err);
+  if (path === undefined) return message(key);
+  return sentences([message("error.stalled", { path }), message(key)]) ?? message(key);
 }
 
 export function createQueueEngine(deps: EngineDeps): QueueEngine {
@@ -169,7 +189,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     } catch (err) {
       if (!current()) return; // superseded (often via the abort above) — discard
       rec.plan = null;
-      set(rec, { state: "needs-attention", writable: false, message: message("job.prepareFailed"), errorCode: errCode(err) });
+      set(rec, { state: "needs-attention", writable: false, message: failureMessage(err, "job.prepareFailed"), errorCode: errCode(err) });
       deps.log.error("job plan failed", { jobId: id, error: errorInfo(err) });
     } finally {
       // Only the current run owns the aborter and the post-plan emit; a superseded
@@ -200,7 +220,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         rec.plan = plan;
         set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
       } catch (err) {
-        set(rec, { state: "needs-attention", writable: false, message: message("job.prepareFailed"), errorCode: errCode(err) });
+        // The earlier plan no longer describes this job, so the report explains
+        // the failure rather than that stale plan.
+        rec.plan = null;
+        set(rec, { state: "needs-attention", writable: false, message: failureMessage(err, "job.prepareFailed"), errorCode: errCode(err) });
         deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
         return;
       }
@@ -215,7 +238,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       try {
         bytes = await deps.write(plan, signal, onProgress);
       } catch (err) {
-        set(rec, { state: "failed", message: message("job.writeFailed") });
+        set(rec, { state: "failed", message: failureMessage(err, "job.writeFailed") });
         deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
         return;
       }
@@ -229,13 +252,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
 
       // archive-and-trash: guard, verify, then Trash — originals kept on any failure.
       try {
-        if (await deps.outputInsideInputs(plan.output, rec.job.inputs)) {
+        if (await deps.outputInsideInputs(plan.output, rec.job.inputs, signal)) {
           set(rec, { state: "failed", message: message("job.insideSource") });
           deps.log.error("job trash blocked: archive inside source", { jobId: id, output: plan.output });
           return;
         }
       } catch (err) {
-        set(rec, { state: "failed", message: message("job.locationUnverified") });
+        set(rec, { state: "failed", message: failureMessage(err, "job.locationUnverified") });
         deps.log.error("job trash blocked: physical identity check failed", { jobId: id, error: errorInfo(err) });
         return;
       }
@@ -246,7 +269,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           return;
         }
       } catch (err) {
-        set(rec, { state: "failed", message: message("job.verifyErrored") });
+        set(rec, { state: "failed", message: failureMessage(err, "job.verifyErrored") });
         deps.log.error("job verification errored; originals kept", { jobId: id, error: errorInfo(err) });
         return;
       }

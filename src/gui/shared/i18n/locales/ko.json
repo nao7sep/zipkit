@@ -69,6 +69,7 @@
 
   "error.readFailed": "아카이브를 읽을 수 없습니다. 아카이브가 아직 있고 유효한 ZIP 파일인지 확인하십시오.",
   "error.verifyIncomplete": "검증을 완료할 수 없습니다. 아카이브가 아직 있는지 확인한 다음 다시 시도하십시오.",
+  "error.stalled": "{path}이(가) 있는 드라이브 또는 네트워크 공유가 응답하지 않습니다.",
 
   "job.blocking": { "other": "생성을 막는 문제 {count}개" },
   "job.prepareFailed": "이 작업을 준비할 수 없습니다. 입력 항목이 아직 있는지 확인한 다음 다시 시도하십시오.",

@@ -13,6 +13,7 @@ import { nullLog } from "../../../src/gui/main/log.js";
 import type { PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator, type Message } from "../../../src/gui/shared/i18n/translate.js";
+import { StallError } from "../../../src/sdk/errors.js";
 
 const en = createTranslator("en");
 /** A job or action message as the English reader sees it. */
@@ -70,6 +71,78 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
 }
 
 describe("queue engine", () => {
+  it("names the stalled path when a write stops responding", async () => {
+    const { deps } = makeDeps({
+      write: async () => {
+        throw new StallError("write", "/Volumes/NAS/out-x.tmp", 30_000, false);
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(say(engine.snapshot()[0]?.message)).toBe(
+      "The drive or network share holding /Volumes/NAS/out-x.tmp stopped responding. " +
+        "The archive could not be written. Check the output location and available storage, then try again.",
+    );
+  });
+
+  it("names the stalled path when planning stops responding, and keeps no stale plan", async () => {
+    let stall = false;
+    const { deps } = makeDeps({
+      plan: async (inputs) => {
+        if (stall) throw new StallError("readdir", "/Volumes/NAS/src", 30_000, false);
+        return planData(inputs[0] !== "bad");
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    stall = true;
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    const job = engine.snapshot()[0];
+    expect(job?.errorCode).toBe("io.stalled");
+    expect(say(job?.message)).toContain("/Volumes/NAS/src stopped responding");
+    expect(engine.getPlan(id)).toBeNull();
+  });
+
+  it("keeps the originals and names the stalled path when verification stops responding", async () => {
+    const { deps, calls } = makeDeps({
+      verify: async () => {
+        throw new StallError("read", "/tmp/out.zip", 30_000, false);
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/good"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(say(engine.snapshot()[0]?.message)).toBe(
+      "The drive or network share holding /tmp/out.zip stopped responding. " +
+        "The archive could not be verified. The originals were kept.",
+    );
+    expect(calls.trash).toEqual([]);
+  });
+
+  it("passes the job's signal to the containment check", async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const { deps } = makeDeps({
+      outputInsideInputs: async (_output, _inputs, signal) => {
+        seen.push(signal);
+        return false;
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/good"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeInstanceOf(AbortSignal);
+  });
+
   it("plans a job to ready, then writes it to done when run", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);

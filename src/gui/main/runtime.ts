@@ -6,7 +6,7 @@
  */
 
 import { BrowserWindow } from "electron";
-import { ZipKit, ZipKitError } from "../../sdk/index.js";
+import { StallError, ZipKit, ZipKitError } from "../../sdk/index.js";
 import type { GuiError, GuiLogEvent, Job } from "../shared/api.js";
 import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
@@ -57,6 +57,9 @@ export function sendQueue(jobs: Job[]): void {
 }
 
 export function toGuiError(err: unknown): GuiError {
+  if (err instanceof StallError) {
+    return { type: err.errorType, code: err.code, presentation: message("error.stalled", { path: err.path }) };
+  }
   if (err instanceof ZipKitError) {
     return { type: err.errorType, code: err.code, presentation: guiErrorPresentation(err.errorType) };
   }

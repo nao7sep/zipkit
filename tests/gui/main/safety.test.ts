@@ -9,7 +9,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { outputInsideInputs } from "../../../src/gui/main/safety.js";
+import { outputInsideInputs as check } from "../../../src/gui/main/safety.js";
+import { realVolume } from "../../helpers/volume.js";
+
+const outputInsideInputs = (output: string, inputs: string[]): Promise<boolean> =>
+  check(output, inputs, realVolume());
 import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 async function fixture(): Promise<string> {

@@ -59,7 +59,7 @@ const engine = createQueueEngine({
   // job-tagging `onProgress`, so progress reaches the right job's Progress stream.
   plan: async (inputs, options, signal, onProgress) => {
     const spec = buildSpec(inputs, options);
-    const output = await resolveOutputPath(options.outputDir, options.fileName, inputs);
+    const output = await resolveOutputPath(options.outputDir, options.fileName, inputs, zip.volume(signal));
     if (output) spec.output = output;
     return zip.plan(spec, { signal, onProgress });
   },
@@ -71,7 +71,7 @@ const engine = createQueueEngine({
         { signal, onProgress },
       )
     ).reportOk,
-  classify: (paths) => classifyPaths(paths),
+  classify: (paths) => classifyPaths(paths, zip.volume()),
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };
     for (const p of paths) {
@@ -88,7 +88,7 @@ const engine = createQueueEngine({
     }
     return result;
   },
-  outputInsideInputs,
+  outputInsideInputs: (output, inputs, signal) => outputInsideInputs(output, inputs, zip.volume(signal)),
   emit: (jobs) => {
     pendingJobs = toResumable(jobs);
     clearTimeout(saveTimer);
