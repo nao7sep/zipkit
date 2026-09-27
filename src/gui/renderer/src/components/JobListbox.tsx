@@ -351,7 +351,21 @@ const S: Record<string, CSSProperties> = {
     marginTop: "0.15rem",
   },
   dim: { color: "var(--text-2)", fontSize: "0.8rem" },
-  rowAction: { flexShrink: 0, marginTop: "-0.1rem" },
+  // name is a single line (nowrap + ellipsis), so it IS the row's first text
+  // line, always flush on the row's top edge (the row stays flex-start, and
+  // name gets no special treatment). `position: relative` nudges the button
+  // there too, without resizing anything: a plain `margin-top` would instead
+  // shrink the amount of height this (otherwise tallest) item contributes to
+  // the row, shrinking the row itself. name has no font-size of its own
+  // here, so its line height is the shell's base 14px body font-size * the
+  // body's 1.5 line-height (index.css) — the same (button height - text line
+  // height) / 2 convention as InputList's remove X, .receiver-result's
+  // dismiss, and LayoutPersistenceNotice's.
+  rowAction: {
+    flexShrink: 0,
+    position: "relative",
+    top: "calc((14px * 1.5 - var(--control-h)) / 2)",
+  },
   empty: { padding: "0.75rem", color: "var(--text-2)", fontSize: "0.85rem", cursor: "default" },
   srOnly: {
     position: "absolute",

@@ -14,7 +14,7 @@
  * denial boundary only prevents navigation outside owned receivers.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
 import {
@@ -24,10 +24,11 @@ import {
   type ReceiverOutcome,
   type ReceiverResult,
 } from "../externalDropBoundary";
+import { useDismissAlignOffset } from "../dismissAlign";
 import { COLOR, orderedEntries } from "../view";
 import { CloseIcon } from "./Icon";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
-import { useI18n } from "../i18n/I18nContext";
+import { useI18n, type Translator } from "../i18n/I18nContext";
 import type { MessageKey } from "../../../shared/i18n/catalogues";
 import { message } from "../../../shared/i18n/translate";
 
@@ -42,6 +43,63 @@ function kindColor(kind: PathKind): string {
   if (kind === "nonexistent") return COLOR.bad;
   if (kind === "other") return COLOR.warn;
   return "var(--text-2)";
+}
+
+/** One row: path text plus its remove X. A row of its own (rather than an
+ * inline `.map`) so the X's first-line alignment (useDismissAlignOffset) can
+ * measure THIS row's own path text — every row's path can wrap to a
+ * different number of lines.
+ *
+ * This is a `position: relative` runtime measurement, not pure CSS, and that
+ * is deliberate: the row keeps its original `alignItems: "center"`, so a
+ * one-line path is already correctly centered on the button for free, while
+ * a wrapped path needs the X pulled up by a fixed amount once its own
+ * rendered height passes the button's. A single static CSS value (e.g.
+ * `align-self: flex-start` + a constant `margin-block`) cannot serve both:
+ * the flex-start reference that makes the wrapped case's shift independent
+ * of line count also decouples the button from the row's own height, so it
+ * no longer benefits from the centering that already made the one-line case
+ * correct — verified empirically (scratchpad/redesign/xalign/zipkit):
+ * `align-self: flex-start; margin-block: calc((line-height - control-h)/2)`
+ * fixes the wrapped case (offset ~0.2px, matching HEAD's row height and path
+ * position exactly) but regresses the one-line case to ~5.6px off (from
+ * ~0.2px before). Measuring the path's actual rendered height at runtime is
+ * what lets a single formula, `(line height - rendered height) / 2`, cover
+ * both cases (it evaluates to 0 exactly when the path is one line). */
+function InputRow({
+  path,
+  kind,
+  canRemove,
+  onRemove,
+  t,
+}: {
+  path: string;
+  kind?: PathKind;
+  canRemove: boolean;
+  onRemove: (path: string) => void;
+  t: Translator["t"];
+}) {
+  const pathRef = useRef<HTMLSpanElement>(null);
+  const dismissOffset = useDismissAlignOffset(pathRef);
+
+  return (
+    <li className="input-row" style={S.row}>
+      {kind && <span style={{ ...S.kind, color: kindColor(kind) }}>{t(KIND_LABEL[kind])}</span>}
+      <span ref={pathRef} style={S.path} title={path}>
+        {path}
+      </span>
+      <button
+        className="icon"
+        style={{ position: "relative", top: dismissOffset }}
+        onClick={() => onRemove(path)}
+        disabled={!canRemove}
+        title={t(canRemove ? "inputs.removeFromJob" : "inputs.needsOne")}
+        aria-label={t("inputs.removePath", { path })}
+      >
+        <CloseIcon />
+      </button>
+    </li>
+  );
 }
 
 export function InputList({
@@ -182,21 +240,7 @@ export function InputList({
       </div>
       <ul style={S.list}>
         {rows.map(({ path, kind }) => (
-          <li key={path} className="input-row" style={S.row}>
-            {kind && <span style={{ ...S.kind, color: kindColor(kind) }}>{t(KIND_LABEL[kind])}</span>}
-            <span style={S.path} title={path}>
-              {path}
-            </span>
-            <button
-              className="icon"
-              onClick={() => onRemove(path)}
-              disabled={!canRemove}
-              title={t(canRemove ? "inputs.removeFromJob" : "inputs.needsOne")}
-              aria-label={t("inputs.removePath", { path })}
-            >
-              <CloseIcon />
-            </button>
-          </li>
+          <InputRow key={path} path={path} kind={kind} canRemove={canRemove} onRemove={onRemove} t={t} />
         ))}
       </ul>
       {result && (
@@ -235,6 +279,12 @@ const S: Record<string, CSSProperties> = {
   title: { fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
   // Enough room that neighboring rows' hover highlights never touch.
   list: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.25rem" },
+  // Unchanged from plain centering: the row's height and the path's own
+  // position come entirely from this (kind/path get no special treatment),
+  // so wrapped copy sizes and sits exactly as it would with no X at all. The
+  // X's own first-line alignment is a `position: relative` nudge on the
+  // button itself (InputRow, above, via useDismissAlignOffset) — a paint-only
+  // offset, so it never feeds back into this centering or the row's height.
   row: {
     display: "flex",
     alignItems: "center",

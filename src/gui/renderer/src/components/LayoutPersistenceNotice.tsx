@@ -38,5 +38,19 @@ const S: Record<string, CSSProperties> = {
     fontSize: "0.85rem",
   },
   message: { flex: 1, minWidth: 0 },
-  dismiss: { flexShrink: 0, margin: "-0.25rem -0.35rem -0.25rem 0", padding: 4 },
+  // The row is flex-start and the message is untouched (above), so its first
+  // line always sits flush on the row's top edge, one line or wrapped alike —
+  // a `position: relative` nudge (paint-only; nothing is resized to make room
+  // for it) is all the X needs to land there instead of on its own center.
+  // Constant regardless of how many lines the message wraps to, since both it
+  // and the message start from the same flush-top point. Same convention as
+  // InputList's remove X (useDismissAlignOffset) and .receiver-result's
+  // dismiss (index.css).
+  dismiss: {
+    flexShrink: 0,
+    margin: "0 -0.35rem 0 0",
+    padding: 4,
+    position: "relative",
+    top: "calc((0.85rem * 1.5 - var(--control-h)) / 2)",
+  },
 };

@@ -295,9 +295,19 @@ button.danger-confirm:active:not(:disabled) {
   border-color: var(--status-error);
 }
 .receiver-result .receiver-result__dismiss {
-  margin: -0.25rem -0.3rem -0.25rem 0;
+  margin: 0 -0.3rem 0 0;
   padding: 4px;
   flex-shrink: 0;
+  /* The row is flex-start (above) and the message span is untouched, so its
+   * first line always sits flush on the row's top edge, one line or wrapped
+   * alike — a `position: relative` nudge (paint-only; nothing is resized to
+   * make room for it) is all the dismiss X needs to land there instead of on
+   * its own center. Constant regardless of how many lines the message wraps
+   * to, since both it and the message start from the same flush-top point.
+   * Same convention as InputList's remove X (useDismissAlignOffset) and
+   * LayoutPersistenceNotice's dismiss, below. */
+  position: relative;
+  top: calc((0.8rem * 1.5 - var(--control-h)) / 2);
 }
 
 /* Bare icon/affordance buttons (hamburger, row actions): no filled chrome. */
