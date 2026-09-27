@@ -6,7 +6,11 @@ import { resolve } from "node:path";
 // Single source of truth for the app version: package.json, injected as
 // __APP_VERSION__. Asking Electron for it instead answers about the running
 // binary, so an unpackaged run reported Electron's own version in About.
+// src/gui/shared/identity.ts reads it at module load, and shared code may be
+// imported by any part (main and the renderer both do), so every part gets the
+// same define: a part without it throws a ReferenceError on loading that module.
 const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+const define = { __APP_VERSION__: JSON.stringify(version) };
 
 // The GUI lives under src/gui/{main,preload,renderer,shared} (peers to src/sdk),
 // so each electron-vite part is pointed at its entry there rather than the
@@ -27,13 +31,14 @@ export default defineConfig({
       },
     },
     plugins: [externalizeDepsPlugin()],
-    define: { __APP_VERSION__: JSON.stringify(version) },
+    define,
   },
   preload: {
     build: {
       rollupOptions: { input: { index: resolve(import.meta.dirname, "src/gui/preload/index.ts") } },
     },
     plugins: [externalizeDepsPlugin()],
+    define,
   },
   renderer: {
     root: resolve(import.meta.dirname, "src/gui/renderer"),
@@ -49,5 +54,6 @@ export default defineConfig({
       },
     },
     plugins: [react()],
+    define,
   },
 });
