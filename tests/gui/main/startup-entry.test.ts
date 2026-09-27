@@ -23,6 +23,7 @@ vi.mock("../../../src/sdk/storage.js", () => {
     storageRoot: () => {
       throw new StorageRootError('hostile EACCES /private/tmp/sentinel "$SECRET"');
     },
+    secureStorageRoot: vi.fn(),
   };
 });
 

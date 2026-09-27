@@ -15,10 +15,10 @@ import { app } from "electron";
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  const { storageRoot, StorageRootError } = await import("../../sdk/storage.js");
+  const { storageRoot, secureStorageRoot, StorageRootError } = await import("../../sdk/storage.js");
   let storageReady = false;
   try {
-    storageRoot();
+    secureStorageRoot(storageRoot());
     storageReady = true;
   } catch (err) {
     const message =

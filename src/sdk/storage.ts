@@ -20,6 +20,7 @@
  * `defaultLogDir`).
  */
 
+import { chmodSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -80,4 +81,42 @@ export function storageRoot(
     return resolved;
   }
   return path.join(home, ".zipkit");
+}
+
+/**
+ * Creates the storage root if missing and, on POSIX, tightens it to owner-only
+ * (0700) — created that way, and tightened at each launch when an existing
+ * root is broader, per the storage-path convention: derived data and logs
+ * must never be readable by accounts that cannot read their sources. Windows
+ * uses its own permission model and is unaffected. `mkdirSync`'s own `mode`
+ * is masked by umask and never changes an *existing* directory's mode, so
+ * this always re-checks after creation rather than relying on the mkdir call
+ * alone. Only the root itself is touched, never its contents.
+ *
+ * Called once at the defined startup point (see gui/main/index.ts) so every
+ * launch goes through it; it does not replace each writer's own `mkdir -p`
+ * for its subpath (logs/, backups.sqlite3, ...), which still runs on demand
+ * regardless of whether this succeeded. A failure to create or tighten the
+ * root is reported to stderr and never stops the app.
+ */
+export function secureStorageRoot(root: string): void {
+  try {
+    mkdirSync(root, { recursive: true, mode: 0o700 });
+  } catch (err) {
+    process.stderr.write(
+      `zipkit: could not create storage root "${root}": ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return;
+  }
+  if (process.platform === "win32") return;
+  try {
+    const mode = statSync(root).mode & 0o777;
+    if ((mode & 0o077) !== 0) {
+      chmodSync(root, 0o700);
+    }
+  } catch (err) {
+    process.stderr.write(
+      `zipkit: could not tighten storage root "${root}" to owner-only (0700): ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+  }
 }

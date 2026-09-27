@@ -9,8 +9,10 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { storageRoot, StorageRootError } from "../../src/sdk/storage.js";
+import { secureStorageRoot, storageRoot, StorageRootError } from "../../src/sdk/storage.js";
 
 const ROOT = path.parse(path.resolve(".")).root;
 const HOME = path.join(ROOT, "home", "tester");
@@ -58,5 +60,35 @@ describe("storageRoot", () => {
   it("throws StorageRootError when the override expands to empty", () => {
     // An unknown variable expands to "", per shell semantics; the result is unusable.
     expect(() => storageRoot({ ZIPKIT_HOME: "$UNSET" }, HOME)).toThrow(StorageRootError);
+  });
+});
+
+// Storage-path-conventions: the root is owner-only (0700) on POSIX — created
+// that way, and tightened to 0700 at each launch when an existing root is
+// broader. Windows uses its own permission model, so this is skipped there.
+(process.platform === "win32" ? describe.skip : describe)("secureStorageRoot", () => {
+  it("creates a fresh storage root as owner-only (0700)", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "zipkit-root-"));
+    const root = path.join(base, "profile", ".zipkit");
+    try {
+      secureStorageRoot(root);
+      expect(statSync(root).mode & 0o777).toBe(0o700);
+    } finally {
+      rmSync(base, { force: true, recursive: true });
+    }
+  });
+
+  it("tightens an existing broader storage root to 0700 on launch", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "zipkit-root-"));
+    const root = path.join(base, ".zipkit");
+    mkdirSync(root, { recursive: true });
+    chmodSync(root, 0o755);
+    expect(statSync(root).mode & 0o777).toBe(0o755);
+    try {
+      secureStorageRoot(root);
+      expect(statSync(root).mode & 0o777).toBe(0o700);
+    } finally {
+      rmSync(base, { force: true, recursive: true });
+    }
   });
 });
