@@ -105,7 +105,7 @@
   "header.menu": "Menu",
   "header.settings": "Réglages",
   "header.shortcuts": "Raccourcis clavier",
-  "header.about": "À propos",
+  "header.about": "À propos de ZipKit",
   "layout.notSaved": "La disposition des volets n’a pas été enregistrée. Votre disposition actuelle reste utilisée\u00a0; redimensionnez un volet pour réessayer de l’enregistrer.",
   "layout.close": "Fermer le résultat de l’enregistrement de la disposition",
   "result.close": "Fermer le résultat",

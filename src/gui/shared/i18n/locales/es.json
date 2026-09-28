@@ -105,7 +105,7 @@
   "header.menu": "Menú",
   "header.settings": "Configuración",
   "header.shortcuts": "Atajos de teclado",
-  "header.about": "Acerca de",
+  "header.about": "Acerca de ZipKit",
   "layout.notSaved": "No se guardó la distribución de los paneles. Tu distribución actual sigue en uso; cambia el tamaño de un panel para volver a intentar guardarla.",
   "layout.close": "Cerrar el resultado del guardado de la distribución",
   "result.close": "Cerrar el resultado",

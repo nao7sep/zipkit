@@ -105,7 +105,7 @@
   "header.menu": "Menu",
   "header.settings": "Configurações",
   "header.shortcuts": "Atalhos de teclado",
-  "header.about": "Sobre",
+  "header.about": "Sobre o ZipKit",
   "layout.notSaved": "O layout dos painéis não foi salvo. Seu layout atual continua em uso; redimensione um painel para tentar salvá-lo de novo.",
   "layout.close": "Fechar o resultado do salvamento do layout",
   "result.close": "Fechar o resultado",

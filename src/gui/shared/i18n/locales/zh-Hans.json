@@ -105,7 +105,7 @@
   "header.menu": "菜单",
   "header.settings": "设置",
   "header.shortcuts": "快捷键",
-  "header.about": "关于",
+  "header.about": "关于 ZipKit",
   "layout.notSaved": "面板布局未能保存。当前布局仍在使用；调整任一面板的大小即可再次尝试保存。",
   "layout.close": "关闭面板布局保存结果",
   "result.close": "关闭结果",

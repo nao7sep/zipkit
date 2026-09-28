@@ -146,4 +146,12 @@ describe("catalogues", () => {
     const names = LANGUAGES.map((language) => catalogues[language]["language.name"]);
     expect(new Set(names).size).toBe(LANGUAGES.length);
   });
+
+  // Every control that opens About — the in-window hamburger menu's item here —
+  // reads exactly like the macOS app-menu item, so the two can never drift apart
+  // in any language (app-chrome-conventions, App identity).
+  it.each(LANGUAGES)("%s: header.about reads exactly like nativeMenu.about", (language) => {
+    const nativeAbout = catalogues[language]["nativeMenu.about"] as string;
+    expect(catalogues[language]["header.about"]).toBe(nativeAbout.replace("{app}", "ZipKit"));
+  });
 });

@@ -105,7 +105,7 @@
   "header.menu": "Menu",
   "header.settings": "Settings",
   "header.shortcuts": "Shortcut keys",
-  "header.about": "About",
+  "header.about": "About ZipKit",
   "layout.notSaved": "The pane layout wasn’t saved. Your current layout is still in use; resize a pane to try saving it again.",
   "layout.close": "Close pane layout save result",
   "result.close": "Close result",
