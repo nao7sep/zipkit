@@ -147,7 +147,7 @@ const ST: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: "0.75rem",
     padding: "0.7rem 1.25rem",
-    borderBottom: "1px solid var(--border)",
+    borderBottom: "1px solid var(--separator)",
   },
   titleBarBare: {
     flexShrink: 0,
@@ -188,6 +188,6 @@ const ST: Record<string, CSSProperties> = {
     justifyContent: "flex-end",
     gap: "0.75rem",
     padding: "0.85rem 1.25rem",
-    borderTop: "1px solid var(--border)",
+    borderTop: "1px solid var(--separator)",
   },
 };

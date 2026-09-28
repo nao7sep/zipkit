@@ -111,7 +111,7 @@ describe("theme token contrast", () => {
     });
 
     it("keeps field outlines, the accent ring, and the scroll-bar thumb at 3:1 or more", () => {
-      for (const mark of ["--field-border", "--accent-strong", "--scrollbar-thumb"]) {
+      for (const mark of ["--field-border", "--separator", "--accent-strong", "--scrollbar-thumb"]) {
         for (const surface of SURFACES) check(hexOf(block, mark), hexOf(block, surface), 3, `${mark} on ${surface}`);
       }
     });

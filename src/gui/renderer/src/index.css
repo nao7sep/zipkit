@@ -25,6 +25,11 @@
   /* A text field or select sits on a fill close to its surroundings, so its
      outline alone identifies it and stays at 3:1 against both. */
   --field-border: #7d826c;
+  /* A dialog's header/footer band line (modal-dialog-conventions): buttons have
+     no border of their own here, so the field outline is the app's control
+     border, and the band line must be at least as visible — never the quieter
+     --border used for plain panel dividers. */
+  --separator: #7d826c;
   --text: #1f2117;
   --text-2: #555b47;
   --scrollbar-thumb: #7d826c;
@@ -67,6 +72,7 @@
     --surface-2: #292c20;
     --border: #3a3f2e;
     --field-border: #7a8268;
+    --separator: #7a8268;
     --text: #f0f2e6;
     --text-2: #a5ad94;
     --scrollbar-thumb: #737b68;
