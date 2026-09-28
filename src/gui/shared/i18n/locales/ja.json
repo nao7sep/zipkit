@@ -352,7 +352,7 @@
   "about.version": "バージョン {version}",
   "about.loading": "読み込み中…",
   "about.loadFailed": "アプリの情報を読み込めませんでした。もう一度お試しください。",
-  "about.description": "macOS と Windows のための、クリーンで移植性の高い ZIP アーカイブ。",
+  "about.description": "Mac で作った ZIP アーカイブが Windows でも問題なく開けるように、ファイル名を直し、Mac 特有の不要ファイルを取り除いて、結果を検証しましょう。",
   "about.repository": "リポジトリ",
   "about.issues": "問題の報告",
   "about.repositoryFailed": "リポジトリのリンクをブラウザで開けませんでした。もう一度お試しください。",

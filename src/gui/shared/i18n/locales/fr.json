@@ -352,7 +352,7 @@
   "about.version": "Version {version}",
   "about.loading": "Chargement…",
   "about.loadFailed": "Les informations de l’application n’ont pas pu être chargées. Réessayez.",
-  "about.description": "Des archives ZIP propres et portables pour macOS et Windows.",
+  "about.description": "Créez sur un Mac des archives ZIP qui s’ouvrent proprement sous Windows\u00a0: corrigez les noms de fichiers, éliminez les fichiers parasites propres au Mac et vérifiez le résultat.",
   "about.repository": "Dépôt",
   "about.issues": "Signalements",
   "about.repositoryFailed": "Le lien vers le dépôt n’a pas pu s’ouvrir dans votre navigateur. Réessayez.",

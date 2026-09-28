@@ -352,7 +352,7 @@
   "about.version": "Versión {version}",
   "about.loading": "Cargando…",
   "about.loadFailed": "No se pudo cargar la información de la app. Vuelve a intentarlo.",
-  "about.description": "Archivos ZIP limpios y portables para macOS y Windows.",
+  "about.description": "Crea archivos ZIP en un Mac que se abran sin problemas en Windows: corrige los nombres de archivo, elimina la basura exclusiva de Mac y verifica el resultado.",
   "about.repository": "Repositorio",
   "about.issues": "Incidencias",
   "about.repositoryFailed": "No se pudo abrir el enlace del repositorio en tu navegador. Vuelve a intentarlo.",

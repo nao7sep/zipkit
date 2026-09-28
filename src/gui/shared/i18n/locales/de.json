@@ -352,7 +352,7 @@
   "about.version": "Version {version}",
   "about.loading": "Wird geladen …",
   "about.loadFailed": "Die App-Informationen konnten nicht geladen werden. Versuchen Sie es erneut.",
-  "about.description": "Saubere, portable ZIP-Archive für macOS und Windows.",
+  "about.description": "Erstellen Sie auf einem Mac ZIP-Archive, die sich unter Windows einwandfrei öffnen lassen: Korrigieren Sie Dateinamen, entfernen Sie reine Mac-Müll-Dateien und prüfen Sie das Ergebnis.",
   "about.repository": "Repository",
   "about.issues": "Fehlermeldungen",
   "about.repositoryFailed": "Der Link zum Repository konnte nicht im Browser geöffnet werden. Versuchen Sie es erneut.",

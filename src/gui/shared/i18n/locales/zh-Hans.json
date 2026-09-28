@@ -352,7 +352,7 @@
   "about.version": "版本 {version}",
   "about.loading": "正在载入…",
   "about.loadFailed": "无法载入应用信息。请重试。",
-  "about.description": "适用于 macOS 和 Windows 的干净、可移植的 ZIP 归档。",
+  "about.description": "在 Mac 上制作能在 Windows 上正常打开的 ZIP 压缩包：修正文件名，清除 Mac 专属垃圾文件，并校验结果。",
   "about.repository": "代码仓库",
   "about.issues": "问题反馈",
   "about.repositoryFailed": "无法在浏览器中打开代码仓库链接。请重试。",

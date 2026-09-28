@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "npm@12.0.2",
-  "description": "Cross-platform ZIP archiver and portability linter/fixer: a desktop app and the SDK engine it is built on.",
+  "description": "Make ZIP archives on a Mac that open cleanly on Windows: fix file names, drop Mac-only junk, and verify the result.",
   "license": "GPL-3.0-or-later",
   "author": {
     "name": "Yoshinao Inoguchi",

@@ -1,6 +1,6 @@
 # ZipKit
 
-ZipKit is a cross-platform **ZIP archiver and portability linter/fixer** for macOS and Windows, with a TypeScript SDK underneath. It produces archives that carry nothing a recipient on another OS will trip over, and it reads them back — `extract` verifies an archive's CRC integrity (and, against an embedded manifest, its completeness and per-file content identity), then unpacks it.
+Make ZIP archives on a Mac that open cleanly on Windows: fix file names, drop Mac-only junk, and verify the result. ZipKit is a cross-platform **ZIP archiver and portability linter/fixer**, with a TypeScript SDK underneath. It produces archives that carry nothing a recipient on another OS will trip over, and it reads them back — `extract` verifies an archive's CRC integrity (and, against an embedded manifest, its completeness and per-file content identity), then unpacks it.
 
 The compression is the small part; the value is the **portability checks and the policy** that decides each one — NFD-decomposed names, Windows-illegal characters, reserved device names, OS junk files, and Unix-only attributes — each fixed, warned, or made a hard build-failing error per your settings. The planning core is pure (a dry run is faithful to the real write by construction), and the desktop app drives that same SDK. Out of scope: repairing existing archives, encryption, compression methods beyond Store and Deflate, and split/multi-volume archives.
 
