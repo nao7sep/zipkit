@@ -57,6 +57,11 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
       titleHidden
       onClose={onClose}
       describedById="about-description"
+      // Chosen by eye against real renders in en/de/ja/ru: German and Russian
+      // land at 3 balanced lines and English at 2, without a short fragment
+      // stranded alone on a last line, while staying a comfortable card
+      // rather than a banner; the shared 34rem default read too tall in de/ru.
+      maxWidth="31.375rem"
       footer={<button onClick={onClose}>{t("common.close")}</button>}
     >
       <p className="about-name">{info?.name ?? APP_NAME}</p>
