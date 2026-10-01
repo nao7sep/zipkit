@@ -7,7 +7,7 @@ import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
 import type { Job, ZipKitGuiApi } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
-import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
+import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -32,7 +32,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const })),
     getLanguageEnvironment: vi.fn(async () => ({ language: "en" as const, locale: "en" })),
     onLanguageChanged: vi.fn(() => () => {}),
-    setSettings: vi.fn(async () => {}),
+    setSettings: vi.fn(async () => DEFAULT_SETTINGS),
     getLayout: vi.fn(async () => DEFAULT_LAYOUT),
     setLayout: vi.fn(async () => {}),
     addJob: vi.fn(async () => "new"),

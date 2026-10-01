@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Behavior tests for the Settings dialog's reset control. These pin the
- * config-seeding contract this control has to hold: the button names its target
+ * config-sets contract this control has to hold: the button names its target
  * in the app's own vocabulary ("default parameters" — the same phrase the main
  * window's per-job toggle uses), it restores the built-in option defaults, and
  * it leaves the UI font alone. The font is the user's personal cosmetic
@@ -28,7 +28,7 @@ Object.defineProperty(window, "zipkit", {
  *  a chosen UI font, a chosen theme, and a chosen language — so a reset's reach
  *  is visible on each. */
 const CUSTOM: GuiSettings = {
-  defaults: { ...DEFAULT_OPTIONS, level: 9, junk: false, comment: "mine" },
+  defaults: { ...DEFAULT_OPTIONS, level: 9, junk: false, comment: "mine", fileName: "mine.zip" },
   uiFontFamily: "Iosevka, monospace",
   theme: "dark",
   language: "fr",
@@ -65,14 +65,14 @@ describe("SettingsDialog theme", () => {
     fireEvent.click(radios[1]!);
     expect(onSave).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, theme: "light" });
+    expect(onSave).toHaveBeenCalledWith({ theme: "light" });
   });
 
   it("leaves the theme alone when the default parameters are reset", () => {
     const onSave = renderDialog();
     fireEvent.click(reset());
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark" }));
+    expect(onSave).toHaveBeenCalledWith({ defaults: null });
   });
 });
 
@@ -87,6 +87,29 @@ describe("SettingsDialog footer order", () => {
 });
 
 describe("SettingsDialog reset", () => {
+  it("can delete a stored defaults copy even when it equals the built-in", () => {
+    const onSave = renderDialog({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(reset());
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith({ defaults: null });
+  });
+
+  it("edits after reset save the whole new copy", () => {
+    const onSave = renderDialog();
+    fireEvent.click(reset());
+    fireEvent.change(levelInput(), { target: { value: "4" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith({ defaults: { ...DEFAULT_OPTIONS, level: 4 } });
+  });
+
+  it("saves a changed language independently", () => {
+    const onSave = renderDialog();
+    fireEvent.change(screen.getByLabelText("Language"), { target: { value: "ja" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith({ language: "ja" });
+  });
+
   it("shows human labels while preserving the option values saved to settings", () => {
     const onSave = renderDialog();
     const symlinks = screen.getByLabelText("Symlinks") as HTMLSelectElement;
@@ -103,9 +126,6 @@ describe("SettingsDialog reset", () => {
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledWith({
       defaults: { ...CUSTOM.defaults, symlinks: "follow", emptyDirs: "prune" },
-      uiFontFamily: CUSTOM.uiFontFamily,
-      theme: CUSTOM.theme,
-      language: CUSTOM.language,
     });
   });
 
@@ -132,15 +152,11 @@ describe("SettingsDialog reset", () => {
     // The font survives the reset in the draft...
     expect(fontInput().value).toBe("Iosevka, monospace");
 
-    // ...and in what Save actually commits: defaults back to the built-ins,
-    // font untouched.
+    // Save removes the defaults copy and leaves the font set untouched.
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith({
-      defaults: DEFAULT_OPTIONS,
-      uiFontFamily: "Iosevka, monospace",
-      theme: "dark",
-      language: "fr",
+      defaults: null,
     });
   });
 
@@ -151,7 +167,7 @@ describe("SettingsDialog reset", () => {
 
     expect(fontInput().value).toBe("Menlo");
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo", theme: "dark", language: "fr" });
+    expect(onSave).toHaveBeenCalledWith({ defaults: null, uiFontFamily: "Menlo" });
   });
 
   it("keeps the dialog open and reports a failed durable save", async () => {

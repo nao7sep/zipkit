@@ -25,10 +25,8 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Parse the shared versioned document envelope. Future versions are not
- * quarantined: preserving their live bytes is safer than treating newer data as
- * corrupt and replacing it with this build's defaults. */
-export function parseManagedObject(text: string, store: string): Record<string, unknown> {
+/** Parse a managed JSON object independently of a store's envelope policy. */
+export function parseJsonObject(text: string, store: string): Record<string, unknown> {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -36,6 +34,12 @@ export function parseManagedObject(text: string, store: string): Record<string, 
     throw new InvalidManagedJsonError(store, "not valid JSON");
   }
   if (!isPlainObject(value)) throw new InvalidManagedJsonError(store, "root must be an object");
+  return value;
+}
+
+/** Versioned queue/layout documents preserve unsupported future versions. */
+export function parseManagedObject(text: string, store: string): Record<string, unknown> {
+  const value = parseJsonObject(text, store);
   if (value.version !== 1) {
     if (typeof value.version === "number" && value.version > 1) {
       throw new UnsupportedManagedJsonVersionError(store, value.version);
@@ -45,7 +49,7 @@ export function parseManagedObject(text: string, store: string): Record<string, 
   return value;
 }
 
-/** Move an invalid v1 store aside with its original bytes intact. */
+/** Move an invalid store aside with its original bytes intact. */
 async function quarantineInvalid(
   file: string,
   logger: AppLog = nullLog,
@@ -55,7 +59,7 @@ async function quarantineInvalid(
   const stem = path.parse(file).name;
   const quarantined = path.join(dir, `${stem}-${defaultSessionTimestamp(now)}.invalid`);
   // not recorded: a move-aside of an already-unreadable managed file, not a managed-text write. The
-  // subsequent fresh save through writeManagedJson is what records the recovered-to-defaults content.
+  // next user write through writeManagedJson records the new managed content.
   await rename(file, quarantined);
   logger.warn("quarantined a corrupt managed file; falling back to defaults", {
     original: file,

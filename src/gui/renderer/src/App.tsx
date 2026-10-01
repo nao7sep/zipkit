@@ -19,7 +19,7 @@ import type { GuiLogEvent, Job, JobIntent, PlanData, VerifyResult } from "../../
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable } from "../../shared/queue";
-import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
+import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettingsChanges, type ThemePreference } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_MIN_HEIGHT,
@@ -290,8 +290,8 @@ export function App() {
 
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
-  async function saveSettings(next: GuiSettings): Promise<void> {
-    await window.zipkit.setSettings(next);
+  async function saveSettings(changes: GuiSettingsChanges): Promise<void> {
+    const next = await window.zipkit.setSettings(changes);
     setDefaults(next.defaults);
     setUiFontFamily(next.uiFontFamily);
     setTheme(next.theme);

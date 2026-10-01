@@ -15,7 +15,7 @@
  */
 
 import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity } from "../../sdk/types.js";
-import type { GuiOptions, GuiSettings } from "./spec.js";
+import type { GuiOptions, GuiSettings, GuiSettingsChanges } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
 import type { PaneLayout } from "./layout.js";
 import type { LanguageEnvironment } from "./i18n/languages.js";
@@ -98,8 +98,8 @@ export interface ZipKitGuiApi {
 
   /** The persisted GUI settings — new-job defaults plus the UI font (built-in defaults if none saved). */
   getSettings(): Promise<GuiSettings>;
-  /** Persist the GUI settings (best-effort; never rejects). */
-  setSettings(settings: GuiSettings): Promise<void>;
+  /** Persist changed sets and return the effective settings; rejects on failure. */
+  setSettings(changes: GuiSettingsChanges): Promise<GuiSettings>;
 
   /** The persisted pane layout (the default layout if none saved). */
   getLayout(): Promise<PaneLayout>;

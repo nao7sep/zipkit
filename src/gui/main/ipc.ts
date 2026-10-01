@@ -5,7 +5,7 @@
 
 import { dialog, ipcMain, shell } from "electron";
 import type { AppInfo, VerifyResult } from "../shared/api.js";
-import type { GuiSettings } from "../shared/spec.js";
+import type { GuiSettings, GuiSettingsChanges } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
@@ -25,9 +25,10 @@ export function registerIpc(): void {
   // loader; the startup report in bootstrap covers the material case.
   ipcMain.handle("zipkit:getSettings", async (): Promise<GuiSettings> => (await loadSettings(log)).value);
 
-  ipcMain.handle("zipkit:setSettings", async (_event, settings: GuiSettings): Promise<void> => {
+  ipcMain.handle("zipkit:setSettings", async (_event, changes: GuiSettingsChanges): Promise<GuiSettings> => {
+    let settings: GuiSettings;
     try {
-      await saveSettings(settings);
+      settings = await saveSettings(changes, log);
     } catch (err) {
       log.error("failed to persist settings", { error: errorInfo(err) });
       throw err;
@@ -38,6 +39,7 @@ export function registerIpc(): void {
     applyLanguagePreference(settings.language, (error) =>
       log.warn("the interface language could not reach a native surface", { error: errorInfo(error) }),
     );
+    return settings;
   });
 
   ipcMain.handle("zipkit:getLanguageEnvironment", async () => languageEnvironment());

@@ -6,7 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { GuiOptions, GuiSettings } from "../shared/spec.js";
+import type { GuiOptions, GuiSettings, GuiSettingsChanges } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import { LANGUAGE_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type GuiLogEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
@@ -33,8 +33,8 @@ const api = {
     return () => ipcRenderer.removeListener(LANGUAGE_CHANGED_CHANNEL, handler);
   },
   getSettings: (): Promise<GuiSettings> => ipcRenderer.invoke("zipkit:getSettings"),
-  setSettings: (settings: GuiSettings): Promise<void> =>
-    ipcRenderer.invoke("zipkit:setSettings", settings),
+  setSettings: (changes: GuiSettingsChanges): Promise<GuiSettings> =>
+    ipcRenderer.invoke("zipkit:setSettings", changes),
   getLayout: (): Promise<PaneLayout> => ipcRenderer.invoke("zipkit:getLayout"),
   setLayout: (layout: PaneLayout): Promise<void> => ipcRenderer.invoke("zipkit:setLayout", layout),
   addJob: (inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string> =>

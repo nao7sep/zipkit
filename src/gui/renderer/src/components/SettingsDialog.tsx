@@ -16,29 +16,12 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
-import { DEFAULT_OPTIONS, type GuiOptions, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import { changedSettings, DEFAULT_OPTIONS, type GuiOptions, type GuiSettings, type GuiSettingsChanges, type ThemePreference } from "../../../shared/spec";
 import { reportableError } from "../externalDropBoundary";
 import { useI18n } from "../i18n/I18nContext";
 import type { MessageKey } from "../../../shared/i18n/catalogues";
 import { CATALOGUES } from "../../../shared/i18n/catalogues";
 import { LANGUAGES, normalizeLanguagePreference } from "../../../shared/i18n/languages";
-
-/** Two option sets are equal when every visible field matches — the draft's
- *  dirty check (flat record, so a key-wise compare is exact). */
-function optionsEqual(a: GuiOptions, b: GuiOptions): boolean {
-  return (Object.keys(DEFAULT_OPTIONS) as (keyof GuiOptions)[]).every((k) => a[k] === b[k]);
-}
-
-/** Settings are equal when the option defaults, the UI font, the theme, and the
- *  language all match. */
-function settingsEqual(a: GuiSettings, b: GuiSettings): boolean {
-  return (
-    a.uiFontFamily === b.uiFontFamily &&
-    a.theme === b.theme &&
-    a.language === b.language &&
-    optionsEqual(a.defaults, b.defaults)
-  );
-}
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: MessageKey }> = [
   { value: "system", label: "settings.themeSystem" },
@@ -57,23 +40,25 @@ export function SettingsDialog({
   onClose,
 }: {
   settings: GuiSettings;
-  onSave: (s: GuiSettings) => Promise<void>;
+  onSave: (changes: GuiSettingsChanges) => Promise<void>;
   onClose: () => void;
 }) {
   const { t } = useI18n();
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
+  const [resetDefaults, setResetDefaults] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
-  const dirty = !settingsEqual(draft, settings);
+  const changes = changedSettings(settings, draft, resetDefaults);
+  const dirty = Object.keys(changes).length > 0;
   const canSave = dirty && isValid(draft.defaults);
 
   async function save() {
     setSaving(true);
     setSaveError(false);
     try {
-      await onSave(draft);
+      await onSave(changes);
       onClose();
     } catch (err) {
       window.zipkit.reportError("save settings", reportableError(err));
@@ -84,15 +69,15 @@ export function SettingsDialog({
   }
 
   // Named for exactly what it resets, so the label and the code agree
-  // (config-seeding conventions) — "default parameters" is the same phrase the
-  // main window's per-job toggle uses for these knobs. It only rewrites the
-  // unsaved draft — Save commits it, closing without saving keeps the current
+  // — "default parameters" is the same phrase the main window's per-job toggle
+  // uses for these knobs. Save deletes the copy; closing without saving keeps the current
   // settings — so the label is the whole warning and no confirmation is needed.
   // The UI font, the theme, and the language are deliberately left alone: they
   // are the user's own preferences, not built-ins that go stale, so a reset
   // must not drag them along.
   function resetDefaultParameters() {
     setDraft({ ...draft, defaults: { ...DEFAULT_OPTIONS } });
+    setResetDefaults(true);
   }
 
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):
@@ -183,7 +168,7 @@ export function SettingsDialog({
       </label>
       <OptionsPanel
         options={draft.defaults}
-        onChange={(o) => setDraft({ ...draft, defaults: o })}
+        onChange={(o) => { setDraft({ ...draft, defaults: o }); setResetDefaults(false); }}
         disabled={false}
       />
       {saveError && <p role="alert" style={S.error}>{t("settings.saveFailed")}</p>}

@@ -18,7 +18,7 @@ import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { isLoopbackRendererUrl, isSameOrigin, windowOpenHandler } from "./navigation.js";
 import { registerIpc } from "./ipc.js";
 import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue } from "./queue.js";
-import { loadSettings, saveSettings, settingsFile } from "./settings.js";
+import { loadSettings, settingsFile } from "./settings.js";
 import { applyLanguagePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
 import { errorInfo } from "./log.js";
@@ -160,9 +160,6 @@ app.whenReady().then(async () => {
   // recovery stays log-only.
   const settingsLoad = await loadSettings(log);
   const { quarantinedTo: settingsQuarantinedTo } = settingsLoad;
-  // A missing or quarantined config is materialized immediately through the one
-  // serializer/backup path before the renderer can observe or save settings.
-  if (settingsLoad.missing || settingsQuarantinedTo) await saveSettings(settingsLoad.value);
   // The saved theme reaches the title bar, the renderer's prefers-color-scheme,
   // and the recovery dialogs before the window exists, so launch never shows the
   // OS appearance and then switches. A halt before this point follows the OS.

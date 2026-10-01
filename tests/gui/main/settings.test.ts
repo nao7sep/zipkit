@@ -1,93 +1,72 @@
-/**
- * Tests for the pure settings parse/serialize: a round-trip of the option defaults
- * plus the UI font, missing fields filled from the built-in defaults, and
- * corrupt/foreign input degrading to the defaults rather than throwing. The
- * filename-resolution and file-I/O edges are pinned in the last block below.
- */
-
+/** Whole-set reads, sparse read-modify-writes, and managed-file recovery. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  ensureSettingsFile,
-  loadSettings,
-  parseSettings,
-  saveSettings,
-  serializeSettings,
-  settingsFile,
-} from "../../../src/gui/main/settings";
+import { loadSettings, parseSettings, saveSettings, serializeSettings, settingsFile } from "../../../src/gui/main/settings";
 import type { AppLog } from "../../../src/gui/main/log.js";
 import { storageRoot } from "../../../src/sdk/storage.js";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { managedEntries } from "../../helpers/managedEntries.js";
 
-// This suite owns settings parsing and real filesystem persistence. The dedicated
-// backupStore suite owns the real SQLite integration, so settings tests stop at
-// the managed-write boundary rather than starting that worker for every case.
 vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: vi.fn() }));
 
-describe("settings", () => {
-  it("round-trips the settings (option defaults + UI font + theme + language)", () => {
-    const custom = {
-      defaults: { ...DEFAULT_OPTIONS, level: 9, strict: true, comment: "hi" },
-      uiFontFamily: "Iosevka, monospace",
-      theme: "dark" as const,
-      language: "pt-BR" as const,
-    };
-    expect(parseSettings(serializeSettings(custom))).toEqual(custom);
+function warningLog() {
+  const logger: AppLog = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  return logger;
+}
+
+const CUSTOM = {
+  defaults: { ...DEFAULT_OPTIONS, level: 9, strict: true, comment: "hi", fileName: "custom.zip" },
+  uiFontFamily: "Iosevka, monospace",
+  theme: "dark" as const,
+  language: "pt-BR" as const,
+};
+
+describe("settings sets", () => {
+  it("round-trips whole settings without config metadata", () => {
+    expect(parseSettings(serializeSettings(CUSTOM))).toEqual(CUSTOM);
+    expect(JSON.parse(serializeSettings(CUSTOM))).toEqual(CUSTOM);
   });
 
-  it("fills missing option fields from the built-in defaults", () => {
-    const parsed = parseSettings(JSON.stringify({ version: 1, defaults: { level: 1 } }));
-    expect(parsed.defaults.level).toBe(1);
-    expect(parsed.defaults.junk).toBe(DEFAULT_OPTIONS.junk);
-    expect(parsed.defaults.symlinks).toBe(DEFAULT_OPTIONS.symlinks);
+  it("reads one set with every absent set using its built-in", () => {
+    expect(parseSettings('{"theme":"light"}')).toEqual({ ...DEFAULT_SETTINGS, theme: "light" });
+    expect(parseSettings('{}')).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("defaults the UI font to blank, backfilling a file written before it existed", () => {
-    const parsed = parseSettings(JSON.stringify({ version: 1, defaults: { level: 1 } }));
-    expect(parsed.uiFontFamily).toBe("");
+  it.each([
+    { level: 1 }, null, 5,
+    { ...DEFAULT_OPTIONS, overwrite: "yes" },
+    { ...DEFAULT_OPTIONS, level: 10 },
+    { ...DEFAULT_OPTIONS, symlinks: "unknown" },
+  ])("falls back for the entire invalid defaults set: %j", (defaults) => {
+    const logger = warningLog();
+    expect(parseSettings(JSON.stringify({ defaults, theme: "dark" }), logger)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), { key: "defaults" });
   });
 
-  it("resolves a missing or unrecognized theme to System and rejects a non-string one", () => {
-    expect(parseSettings(JSON.stringify({ version: 1, defaults: {} })).theme).toBe("system");
-    expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, theme: "light" })).theme).toBe("light");
-    expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, theme: "sepia" })).theme).toBe("system");
-    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: {}, theme: 42 }))).toThrow(/theme/);
+  it("invalid scalar sets warn independently without affecting valid defaults", () => {
+    const logger = warningLog();
+    expect(parseSettings(JSON.stringify({ defaults: CUSTOM.defaults, uiFontFamily: 42, theme: "sepia", language: "unknown" }), logger))
+      .toEqual({ ...DEFAULT_SETTINGS, defaults: CUSTOM.defaults });
+    expect(logger.warn).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(logger.warn).mock.calls.map((call) => call[1]?.key).sort()).toEqual(["language", "theme", "uiFontFamily"]);
   });
 
-  it("resolves a missing or unknown language to System and rejects a non-string one", () => {
-    expect(parseSettings(JSON.stringify({ version: 1, defaults: {} })).language).toBe("system");
-    expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, language: "ja" })).language).toBe("ja");
-    expect(parseSettings(JSON.stringify({ version: 1, defaults: {}, language: "zh-hant" })).language).toBe("system");
-    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: {}, language: 7 }))).toThrow(/language/);
+  it("accepts any legacy version key as unknown", () => {
+    expect(parseSettings('{"version":99,"language":"ja"}')).toEqual({ ...DEFAULT_SETTINGS, language: "ja" });
   });
 
-  it("rejects a non-string UI font", () => {
-    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: {}, uiFontFamily: 42 }))).toThrow(/uiFontFamily/);
-  });
-
-  it("rejects invalid JSON", () => {
-    expect(() => parseSettings("{ not json")).toThrow(/invalid/);
-  });
-
-  it("fills an absent defaults object but rejects its wrong shape", () => {
-    expect(parseSettings(JSON.stringify({ version: 1 }))).toEqual(DEFAULT_SETTINGS);
-    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: null }))).toThrow(/options/);
-    expect(() => parseSettings(JSON.stringify({ version: 1, defaults: 5 }))).toThrow(/options/);
+  it.each(["{ not json", "[]", "null", "5"])("rejects an unreadable document: %s", (text) => {
+    expect(() => parseSettings(text)).toThrow(/invalid/);
   });
 });
 
 describe("settings file location and persistence", () => {
-  // The durable settings live at `config.json` under the resolved storage root,
-  // beside — and distinct from — `layout.json` and `queue.json`. Relocating the
-  // root via ZIPKIT_DATA_DIR to a throwaway directory keeps the suite out of the real
-  // home dir and pins the resolved filename + atomic round-trip in one place.
   let root: string;
   const prev = process.env.ZIPKIT_DATA_DIR;
-
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
     process.env.ZIPKIT_DATA_DIR = root;
@@ -98,113 +77,81 @@ describe("settings file location and persistence", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("resolves the durable settings to config.json under the storage root", () => {
+  const readStored = () => JSON.parse(readFileSync(settingsFile(), "utf8"));
+
+  it("resolves config.json separately from layout and queue", () => {
     expect(settingsFile()).toBe(path.join(storageRoot(), "config.json"));
-    expect(path.basename(settingsFile())).toBe("config.json");
+    expect(settingsFile()).not.toBe(path.join(storageRoot(), "layout.json"));
+    expect(settingsFile()).not.toBe(path.join(storageRoot(), "queue.json"));
   });
 
-  it("stays a separate file from the layout and queue stores", () => {
-    // layout.json and queue.json are distinct roles under the same root; the
-    // settings file must never collide with either.
-    const layout = path.join(storageRoot(), "layout.json");
-    const queue = path.join(storageRoot(), "queue.json");
-    expect(settingsFile()).not.toBe(layout);
-    expect(settingsFile()).not.toBe(queue);
-    expect(path.basename(settingsFile())).not.toBe("settings.json");
+  it("loads a fresh home without writing config.json", async () => {
+    expect(await loadSettings()).toEqual({ value: DEFAULT_SETTINGS, missing: true, quarantinedTo: null });
+    expect(existsSync(settingsFile())).toBe(false);
+    expect(readdirSync(root)).toEqual([]);
   });
 
-  it("creates config.json from defaults on first run", async () => {
-    const file = path.join(root, "config.json");
-    expect(() => readFileSync(file, "utf8")).toThrow();
-
-    const created = await ensureSettingsFile();
-
-    expect(created).toBe(true);
-    // Written through saveSettings, so it round-trips and carries the schema version.
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect((await loadSettings()).value).toEqual(DEFAULT_SETTINGS);
-  });
-
-  it("never overwrites an existing config.json", async () => {
-    const custom = { defaults: { ...DEFAULT_OPTIONS, level: 9 }, uiFontFamily: "Iosevka", theme: "light" as const, language: "de" as const };
-    await saveSettings(custom);
-    const before = readFileSync(path.join(root, "config.json"), "utf8");
-
-    const created = await ensureSettingsFile();
-
-    expect(created).toBe(false);
-    expect(readFileSync(path.join(root, "config.json"), "utf8")).toBe(before);
-    expect((await loadSettings()).value).toEqual(custom);
-  });
-
-  it("writes and reads back the settings as config.json, leaving no temp file", async () => {
-    const settings = {
-      defaults: { ...DEFAULT_OPTIONS, level: 9 },
-      uiFontFamily: "Iosevka, monospace",
-      theme: "dark" as const,
-      language: "ko" as const,
-    };
-    await saveSettings(settings);
-
-    const file = path.join(root, "config.json");
-    // The atomic write renames the temp (`config-<nanoid>.tmp`) over the target, so only the final
-    // `config.json` remains (no orphaned temp, no dot-appended `config.json.tmp`, no legacy
-    // `settings.json`).
+  it("changing one defaults member writes exactly the whole defaults set", async () => {
+    const defaults = { ...DEFAULT_OPTIONS, level: 3 };
+    expect(await saveSettings({ defaults })).toEqual({ ...DEFAULT_SETTINGS, defaults });
+    expect(readStored()).toEqual({ defaults });
+    expect((await loadSettings()).value).toEqual({ ...DEFAULT_SETTINGS, defaults });
     expect(managedEntries(root)).toEqual(["config.json"]);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect((await loadSettings()).value).toEqual(settings);
   });
 
-  it("quarantines a corrupt config.json aside (bytes intact) and returns the defaults", async () => {
-    const file = path.join(root, "config.json");
-    const corruptBytes = "{ not json";
-    writeFileSync(file, corruptBytes, "utf8");
-    const warnings: { message: string; fields?: Record<string, unknown> }[] = [];
-    const logger: AppLog = {
-      debug() {},
-      info() {},
-      warn: (message, fields) => warnings.push({ message, fields }),
-      error() {},
-    };
-
-    const { value: settings, quarantinedTo } = await loadSettings(logger);
-
-    expect(settings).toEqual(DEFAULT_SETTINGS);
-    expect(existsSync(file)).toBe(false); // moved aside, not left in place
-    const entries = readdirSync(root);
-    expect(entries).toHaveLength(1);
-    const quarantined = entries[0]!;
-    expect(quarantined).toMatch(/^config-\d{8}-\d{6}-\d{3}-utc\.invalid$/);
-    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(corruptBytes);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]?.fields?.original).toBe(file);
-    expect(warnings[0]?.fields?.quarantined).toBe(path.join(root, quarantined));
-    expect(quarantinedTo).toBe(path.join(root, quarantined));
+  it("re-reads the current map and preserves untouched sets", async () => {
+    await saveSettings({ language: "ja" });
+    writeFileSync(settingsFile(), JSON.stringify({ language: "de", uiFontFamily: "Menlo" }));
+    await saveSettings({ theme: "dark" });
+    expect(readStored()).toEqual({ language: "de", uiFontFamily: "Menlo", theme: "dark" });
   });
 
-  it("a save after quarantine writes a fresh config.json and never touches the quarantine file", async () => {
-    const file = path.join(root, "config.json");
-    writeFileSync(file, "{ not json", "utf8");
-    await loadSettings();
-    const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"))!;
-    const before = readFileSync(path.join(root, quarantined), "utf8");
-
-    await saveSettings({ defaults: { ...DEFAULT_OPTIONS, level: 3 }, uiFontFamily: "", theme: "system", language: "system" });
-
-    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
-    expect(managedEntries(root).sort()).toEqual(["config.json", quarantined].sort());
+  it("serializes concurrent patches so both changed sets survive", async () => {
+    await Promise.all([saveSettings({ language: "ja" }), saveSettings({ theme: "dark" })]);
+    expect(readStored()).toEqual({ language: "ja", theme: "dark" });
   });
 
-  it("quarantines a valid-JSON wrong shape but preserves a future-version file live", async () => {
-    const file = path.join(root, "config.json");
-    writeFileSync(file, JSON.stringify({ version: 1, defaults: { overwrite: "yes" } }));
-    await expect(loadSettings()).resolves.toMatchObject({ value: DEFAULT_SETTINGS });
+  it("drops version, unknown sets and unknown defaults members on the next write", async () => {
+    writeFileSync(settingsFile(), JSON.stringify({ version: 99, retired: true, defaults: { ...CUSTOM.defaults, unknown: "drop" } }));
+    expect((await loadSettings()).value.defaults).toEqual(CUSTOM.defaults);
+    await saveSettings({ theme: "light" });
+    expect(readStored()).toEqual({ defaults: CUSTOM.defaults, theme: "light" });
+  });
+
+  it("a reset deletes defaults and keeps other stored sets", async () => {
+    await saveSettings(CUSTOM);
+    expect(await saveSettings({ defaults: null })).toEqual({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
+    expect(readStored()).toEqual({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language });
+  });
+
+  it("a reset removes even a defaults copy identical to the built-in", async () => {
+    await saveSettings({ defaults: DEFAULT_OPTIONS });
+    await saveSettings({ defaults: null });
+    expect(readStored()).toEqual({});
+  });
+
+  it("a malformed set remains in place and only falls back for that set", async () => {
+    const bytes = JSON.stringify({ defaults: { level: 1 }, theme: "dark" });
+    writeFileSync(settingsFile(), bytes);
+    const logger = warningLog();
+    expect(await loadSettings(logger)).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null });
+    expect(readFileSync(settingsFile(), "utf8")).toBe(bytes);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["{ not json", "[]"])("quarantines an unreadable file without replacing it: %s", async (bytes) => {
+    const file = settingsFile();
+    writeFileSync(file, bytes);
+    const logger = warningLog();
+    const loaded = await loadSettings(logger);
+    expect(loaded.value).toEqual(DEFAULT_SETTINGS);
     expect(existsSync(file)).toBe(false);
-
-    const future = JSON.stringify({ version: 99, defaults: {} });
-    writeFileSync(file, future);
-    await expect(loadSettings()).rejects.toThrow(/unsupported schema version 99/);
-    expect(readFileSync(file, "utf8")).toBe(future);
+    expect(readdirSync(root)).toHaveLength(1);
+    expect(loaded.quarantinedTo).toMatch(/config-\d{8}-\d{6}-\d{3}-utc\.invalid$/);
+    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    await saveSettings({ theme: "light" });
+    expect(readStored()).toEqual({ theme: "light" });
+    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 });

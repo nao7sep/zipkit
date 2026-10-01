@@ -1,25 +1,16 @@
-/**
- * Settings persistence: the new-job option defaults plus app-level appearance (the
- * UI font), saved so they are configured once rather than every session. The file
- * lives at `config.json` under zipkit's storage root (`ZIPKIT_DATA_DIR` or `~/.zipkit`,
- * resolved in one place by the SDK's {@link storageRoot}, beside the queue and logs).
- * Parsing fills absent known fields but rejects wrong shapes. Invalid v1 bytes
- * are quarantined, future versions are preserved live, and non-absence I/O
- * failures propagate rather than being mistaken for first run.
+/** Settings are whole user copies of independent sets; absent sets use code defaults.
+ * Reads never create a config file. Invalid sets fall back independently, while
+ * unreadable documents follow the shared managed-store quarantine path.
  */
 
-import { access } from "node:fs/promises";
 import path from "node:path";
+import pLimit from "p-limit";
 import { storageRoot } from "../../sdk/storage.js";
-import { DEFAULT_OPTIONS, normalizeThemePreference, type GuiOptions, type GuiSettings } from "../shared/spec.js";
-import { normalizeLanguagePreference } from "../shared/i18n/languages.js";
+import { DEFAULT_OPTIONS, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings, type GuiSettingsChanges } from "../shared/spec.js";
+import { isLanguage } from "../shared/i18n/languages.js";
 import { nullLog, type AppLog } from "./log.js";
-import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseJsonObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
-/** The settings file under the resolved storage root. Computed lazily (not frozen
- *  into a module constant at import time) so `ZIPKIT_DATA_DIR` is read after the
- *  environment is set, per the storage-path convention. Exported so tests can pin
- *  the resolved filename against the actual derivation, not a duplicated literal. */
 export function settingsFile(): string {
   return path.join(storageRoot(), "config.json");
 }
@@ -28,90 +19,96 @@ function freshSettings(): GuiSettings {
   return { defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "", theme: "system", language: "system" };
 }
 
-/** Parse settings-file text: fill absent fields and reject wrong known shapes. */
+const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
+  ["junk", (v) => typeof v === "boolean"], ["strict", (v) => typeof v === "boolean"],
+  ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
+  ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
+  ["emptyDirs", (v) => v === "keep" || v === "prune"], ["metadata", (v) => typeof v === "boolean"],
+  ["hash", (v) => typeof v === "boolean"], ["comment", (v) => typeof v === "string"],
+  ["outputDir", (v) => typeof v === "string"], ["fileName", (v) => typeof v === "string"],
+  ["overwrite", (v) => typeof v === "boolean"],
+];
+
+/** Queue options retain their existing absent-field behavior. Config defaults
+ * additionally require every member before calling this parser. */
 export function parseGuiOptions(raw: unknown, store: string): GuiOptions {
   if (raw === undefined) raw = {};
   if (!isPlainObject(raw)) throw new InvalidManagedJsonError(store, "options must be an object");
-  const checks: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
-    ["junk", (v) => typeof v === "boolean"], ["strict", (v) => typeof v === "boolean"],
-    ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
-    ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
-    ["emptyDirs", (v) => v === "keep" || v === "prune"], ["metadata", (v) => typeof v === "boolean"],
-    ["hash", (v) => typeof v === "boolean"], ["comment", (v) => typeof v === "string"],
-    ["outputDir", (v) => typeof v === "string"], ["fileName", (v) => typeof v === "string"],
-    ["overwrite", (v) => typeof v === "boolean"],
-  ];
-  for (const [key, valid] of checks) {
+  for (const [key, valid] of OPTION_CHECKS) {
     if (raw[key] !== undefined && !valid(raw[key])) {
       throw new InvalidManagedJsonError(store, `options.${key} has the wrong type or value`);
     }
   }
-  return { ...DEFAULT_OPTIONS, ...raw } as GuiOptions;
+  return Object.fromEntries(OPTION_CHECKS.map(([key]) => [key, raw[key] ?? DEFAULT_OPTIONS[key]])) as unknown as GuiOptions;
 }
 
-export function parseSettings(text: string): GuiSettings {
-  const root = parseManagedObject(text, "config.json");
-  const defaults = parseGuiOptions(root.defaults, "config.json");
-  if (root.uiFontFamily !== undefined && typeof root.uiFontFamily !== "string") {
-    throw new InvalidManagedJsonError("config.json", "uiFontFamily must be a string");
+function effectiveSettings(root: Record<string, unknown>, logger: AppLog): GuiSettings {
+  const settings = freshSettings();
+  for (const key of SETTINGS_KEYS) {
+    if (!Object.hasOwn(root, key)) continue;
+    const value = root[key];
+    switch (key) {
+      case "defaults":
+        if (isPlainObject(value) && OPTION_CHECKS.every(([member, valid]) => valid(value[member]))) {
+          settings.defaults = parseGuiOptions(value, "config.json");
+          continue;
+        }
+        break;
+      case "uiFontFamily":
+        if (typeof value === "string") { settings.uiFontFamily = value; continue; }
+        break;
+      case "theme":
+        if (THEME_PREFERENCES.includes(value as GuiSettings["theme"])) {
+          settings.theme = value as GuiSettings["theme"];
+          continue;
+        }
+        break;
+      case "language":
+        if (value === "system" || isLanguage(value)) { settings.language = value; continue; }
+        break;
+    }
+    logger.warn("invalid settings set; using the built-in", { key });
   }
-  const uiFontFamily = typeof root.uiFontFamily === "string" ? root.uiFontFamily : "";
-  if (root.theme !== undefined && typeof root.theme !== "string") {
-    throw new InvalidManagedJsonError("config.json", "theme must be a string");
-  }
-  // An unrecognized theme name (a newer build's, a hand edit) resolves to System
-  // rather than setting the whole file aside.
-  const theme = normalizeThemePreference(root.theme);
-  if (root.language !== undefined && typeof root.language !== "string") {
-    throw new InvalidManagedJsonError("config.json", "language must be a string");
-  }
-  // Likewise an unknown language tag resolves to System.
-  const language = normalizeLanguagePreference(root.language);
-  return { defaults, uiFontFamily, theme, language };
+  return settings;
 }
 
-/** Serialize the GUI settings to settings-file text. Pure. */
-export function serializeSettings(settings: GuiSettings): string {
-  return JSON.stringify(
-    {
-      version: 1,
-      defaults: settings.defaults,
-      uiFontFamily: settings.uiFontFamily,
-      theme: settings.theme,
-      language: settings.language,
-    },
-    null,
-    2,
-  );
+export function parseSettings(text: string, logger: AppLog = nullLog): GuiSettings {
+  return effectiveSettings(parseJsonObject(text, "config.json"), logger);
 }
 
-/** Load settings. Absence yields defaults; invalid v1 content is quarantined;
- * future versions and real read/preservation failures propagate. */
+/** Serialize only known set keys and members, without config metadata. */
+export function serializeSettings(settings: Record<string, unknown> | GuiSettingsChanges): string {
+  const stored: Record<string, unknown> = {};
+  for (const key of SETTINGS_KEYS) {
+    if (!Object.hasOwn(settings, key)) continue;
+    const value = settings[key];
+    stored[key] = key === "defaults" && isPlainObject(value)
+      ? Object.fromEntries(OPTION_CHECKS.filter(([member]) => Object.hasOwn(value, member)).map(([member]) => [member, value[member]]))
+      : value;
+  }
+  return JSON.stringify(stored, null, 2);
+}
+
 export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJsonLoad<GuiSettings>> {
-  return loadManagedJson(settingsFile(), parseSettings, freshSettings, logger);
+  return loadManagedJson(settingsFile(), (text) => parseSettings(text, logger), freshSettings, logger);
 }
 
-/** Persist the GUI settings through the shared managed-text atomic write (temp file + rename), so a
- *  crash mid-write cannot corrupt them, and the exact bytes are recorded to the data-backup store
- *  after the rename lands. config.json is managed text and RECORDS on every save (data-backup
- *  conventions). Throws on write failure; the caller logs it. */
-export async function saveSettings(settings: GuiSettings): Promise<void> {
-  await writeManagedJson(settingsFile(), serializeSettings(settings));
-}
+// Electron's single-instance lock gives config one process owner. Serialize the
+// patch path so concurrent requests cannot overwrite one another's untouched sets.
+const settingsWrites = pLimit(1);
 
-/** Create config.json from the built-in defaults on first run — only when it does not yet exist — so
- *  the settings file is present on disk immediately rather than only after the first save
- *  (storage-path conventions, "Materializing settings on first run"). An existing file is never
- *  inspected or overwritten (F_OK succeeds iff the file exists), so a good or hand-edited file is
- *  never at risk. Produced through saveSettings — the same serializer the normal save path uses, not
- *  a hand-built literal. Returns true when a file was created. */
-export async function ensureSettingsFile(): Promise<boolean> {
-  try {
-    await access(settingsFile());
-    return false;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    await saveSettings(freshSettings());
-    return true;
-  }
+/** Read-modify-write only requested sets; null deletes a copy. */
+export function saveSettings(changes: GuiSettingsChanges, logger: AppLog = nullLog): Promise<GuiSettings> {
+  const snapshot = structuredClone(changes);
+  return settingsWrites(async () => {
+    const { value: stored } = await loadManagedJson<Record<string, unknown>>(settingsFile(), (text) => parseJsonObject(text, "config.json"), () => ({}), logger);
+    for (const key of SETTINGS_KEYS) {
+      if (!Object.hasOwn(snapshot, key)) continue;
+      if (snapshot[key] === null) delete stored[key];
+      else stored[key] = snapshot[key];
+    }
+    const text = serializeSettings(stored);
+    await writeManagedJson(settingsFile(), text);
+    return parseSettings(text, logger);
+  });
 }
