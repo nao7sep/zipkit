@@ -56,7 +56,7 @@ describe("portable no-overwrite publication", () => {
     await publishNoOverwrite("temp", "out", undefined, fixture.operations);
 
     expect(fixture.operations.openExclusive).toHaveBeenCalledWith("out");
-    expect(Buffer.concat(fixture.published)).toEqual(bytes);
+    expect(Buffer.concat(fixture.published).equals(bytes)).toBe(true);
     expect(Math.max(...fixture.readLengths)).toBeLessThanOrEqual(256 * 1024);
     expect(fixture.operations.unlink).toHaveBeenCalledWith("temp");
   });
