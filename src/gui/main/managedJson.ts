@@ -105,7 +105,8 @@ export async function loadManagedJson<T>(
  * The single managed-text atomic-write choke point, shared by config.json (settings.ts), layout.json
  * (layout.ts), and queue.json (persist.ts) — one shape, and one home for the data-backup hook. A
  * managed-text write that bypasses this helper is a silent backup gap; there is deliberately no
- * second atomic-write path in the app.
+ * second atomic-write path in the app. Volatile state that is state and nothing else (layout.json)
+ * passes `{ record: false }` to skip the backup record while keeping the same atomic write.
  *
  * Writes `text` to a same-directory temp named `<stem>-<nanoid>.tmp`, then atomically renames it
  * over `file` (storage-path conventions). Throws on failure; the caller logs it.
@@ -115,12 +116,12 @@ export async function loadManagedJson<T>(
  * (which could capture a concurrent writer's content). Best-effort: record() swallows its own
  * failures and never breaks the save (data-backup conventions).
  */
-export async function writeManagedJson(file: string, text: string): Promise<void> {
+export async function writeManagedJson(file: string, text: string, options: { record?: boolean } = {}): Promise<void> {
   const dir = path.dirname(file);
   await mkdir(dir, { recursive: true });
   const bytes = Buffer.from(text, "utf8");
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   await writeFile(tmp, bytes);
   await rename(tmp, file);
-  record(file, bytes);
+  if (options.record !== false) record(file, bytes);
 }

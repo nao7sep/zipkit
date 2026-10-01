@@ -129,8 +129,8 @@ describe("layout file quarantine-then-reset", () => {
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
     else process.env.ZIPKIT_DATA_DIR = prev;
-    // saveLayout now records through the write-through backup store (backups.sqlite3 under this root);
-    // close it so the next test re-opens against its own throwaway root and the rm below can delete it.
+    // Close the backup store so a test that opened it against this throwaway root releases it before
+    // the rm below (saveLayout itself no longer records).
     closeBackupStore();
     await rm(root, { recursive: true, force: true });
   });
@@ -174,6 +174,7 @@ describe("layout file quarantine-then-reset", () => {
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
     expect(managedEntries(root).sort()).toEqual(["layout.json", quarantined].sort());
+    expect(existsSync(path.join(root, "backups.sqlite3"))).toBe(false); // layout is volatile state: not recorded
   });
 
   it("quarantines wrong-shaped widths instead of silently rewriting them", async () => {

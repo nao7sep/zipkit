@@ -55,9 +55,9 @@ export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonL
   return loadManagedJson(layoutFile(), parseLayout, freshLayout, logger);
 }
 
-/** Persist the layout through the shared managed-text atomic write (temp file + rename), recording the
- *  exact bytes to the data-backup store after the rename lands. Throws on write failure; the caller
- *  logs it. */
+/** Persist the layout through the shared managed-text atomic write (temp file + rename). Layout is
+ *  volatile view state, so it is not recorded to the data-backup store. Throws on write failure; the
+ *  caller logs it. */
 export async function saveLayout(layout: PaneLayout): Promise<void> {
-  await writeManagedJson(layoutFile(), serializeLayout(layout));
+  await writeManagedJson(layoutFile(), serializeLayout(layout), { record: false });
 }
