@@ -1,6 +1,6 @@
 /**
  * The Electron main process entry. It resolves zipkit's storage root *first* —
- * stopping with a clear error if `ZIPKIT_HOME` is set but unusable, the startup
+ * stopping with a clear error if `ZIPKIT_DATA_DIR` is set but unusable, the startup
  * error the storage convention requires rather than a silent fallback — and only
  * then loads the rest of the main process, which derives its log and queue paths
  * from that root. The bootstrap is split out (`./bootstrap`) and pulled in by a

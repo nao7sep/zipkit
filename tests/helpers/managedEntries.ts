@@ -1,5 +1,5 @@
 /**
- * Test helper: the entries in a relocated `ZIPKIT_HOME` root that are NOT the write-through backup
+ * Test helper: the entries in a relocated `ZIPKIT_DATA_DIR` root that are NOT the write-through backup
  * store's own files. The managed-JSON suites (settings/layout/persist) assert the exact directory
  * listing to prove an atomic save leaves no orphaned `<stem>-<nanoid>.tmp` behind. Since every managed
  * save now also records through the backup store, `backups.sqlite3` (and its WAL/SHM sidecars) legitimately

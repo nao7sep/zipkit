@@ -1,7 +1,7 @@
 /**
  * Queue persistence. Only the *resumable* part of a job survives a restart —
  * inputs, options, intent — never the transient run state; restored jobs are
- * re-planned fresh. The file lives under zipkit's storage root (`ZIPKIT_HOME`
+ * re-planned fresh. The file lives under zipkit's storage root (`ZIPKIT_DATA_DIR`
  * or `~/.zipkit`, resolved in one place by the SDK's {@link storageRoot}, beside
  * the SDK's logs). Parsing defaults absent option fields but rejects malformed
  * jobs and non-unique durable identities so recoverable bytes are quarantined
@@ -16,7 +16,7 @@ import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedOb
 import { parseGuiOptions } from "./settings.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
- *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
+ *  into a module constant at import time) so `ZIPKIT_DATA_DIR` is read after the
  *  environment is set, per the convention's caution against import-time
  *  resolution. */
 function queueFile(): string {

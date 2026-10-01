@@ -61,18 +61,18 @@ function readRows(root: string): Row[] {
 }
 
 let root: string;
-const prev = process.env.ZIPKIT_HOME;
+const prev = process.env.ZIPKIT_DATA_DIR;
 
 beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), "zipkit-backupstore-"));
-  process.env.ZIPKIT_HOME = root;
+  process.env.ZIPKIT_DATA_DIR = root;
   logCalls.warn.length = 0;
   logCalls.error.length = 0;
 });
 
 afterEach(async () => {
-  if (prev === undefined) delete process.env.ZIPKIT_HOME;
-  else process.env.ZIPKIT_HOME = prev;
+  if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
+  else process.env.ZIPKIT_DATA_DIR = prev;
   const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
   closeBackupStore();
   vi.resetModules(); // fresh singleton per test so each opens against its own throwaway root
@@ -224,13 +224,13 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
   });
 
   it("logs one warn and disables recording for the session when the store cannot be opened", async () => {
-    // Point ZIPKIT_HOME at a path whose parent is a FILE, so mkdir + open cannot succeed. record must
+    // Point ZIPKIT_DATA_DIR at a path whose parent is a FILE, so mkdir + open cannot succeed. record must
     // not throw, must warn exactly once (open failure), and must no-op every subsequent call (no repeat
     // warn per save — disabled for the session).
     const { writeFileSync } = await import("node:fs");
     const blocker = path.join(root, "blocker");
     writeFileSync(blocker, "x"); // a file where a directory would need to be
-    process.env.ZIPKIT_HOME = path.join(blocker, "nested"); // parent is a file -> mkdir/open fails
+    process.env.ZIPKIT_DATA_DIR = path.join(blocker, "nested"); // parent is a file -> mkdir/open fails
 
     const { record } = await import("../../../src/gui/main/backupStore.js");
     expect(() => record("/whatever/config.json", Buffer.from("a", "utf8"))).not.toThrow();

@@ -50,20 +50,20 @@ vi.mock("node:fs/promises", async (importActual) => {
 });
 
 describe("loadManagedJson: a quarantine-rename failure propagates, never resets over corrupt bytes", () => {
-  // Each store's load resolves its file under the ZIPKIT_HOME-relocated throwaway root, matching the
+  // Each store's load resolves its file under the ZIPKIT_DATA_DIR-relocated throwaway root, matching the
   // other file-I/O suites (settings/layout/persist).
   let root: string;
-  const prev = process.env.ZIPKIT_HOME;
+  const prev = process.env.ZIPKIT_DATA_DIR;
 
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
-    process.env.ZIPKIT_HOME = root;
+    process.env.ZIPKIT_DATA_DIR = root;
     armedRenameError.current = null;
     armedReadError.current = null;
   });
   afterEach(async () => {
-    if (prev === undefined) delete process.env.ZIPKIT_HOME;
-    else process.env.ZIPKIT_HOME = prev;
+    if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
+    else process.env.ZIPKIT_DATA_DIR = prev;
     armedRenameError.current = null;
     armedReadError.current = null;
     await rm(root, { recursive: true, force: true });

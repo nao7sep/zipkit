@@ -83,18 +83,18 @@ describe("settings", () => {
 describe("settings file location and persistence", () => {
   // The durable settings live at `config.json` under the resolved storage root,
   // beside — and distinct from — `layout.json` and `queue.json`. Relocating the
-  // root via ZIPKIT_HOME to a throwaway directory keeps the suite out of the real
+  // root via ZIPKIT_DATA_DIR to a throwaway directory keeps the suite out of the real
   // home dir and pins the resolved filename + atomic round-trip in one place.
   let root: string;
-  const prev = process.env.ZIPKIT_HOME;
+  const prev = process.env.ZIPKIT_DATA_DIR;
 
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
-    process.env.ZIPKIT_HOME = root;
+    process.env.ZIPKIT_DATA_DIR = root;
   });
   afterEach(async () => {
-    if (prev === undefined) delete process.env.ZIPKIT_HOME;
-    else process.env.ZIPKIT_HOME = prev;
+    if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
+    else process.env.ZIPKIT_DATA_DIR = prev;
     await rm(root, { recursive: true, force: true });
   });
 

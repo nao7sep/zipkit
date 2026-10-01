@@ -1,6 +1,6 @@
 /**
  * The write-through data-backup store (data-backup conventions). It owns one add-only SQLite file,
- * `backups.sqlite3`, directly under zipkit's storage root (`ZIPKIT_HOME` or `~/.zipkit`, resolved in
+ * `backups.sqlite3`, directly under zipkit's storage root (`ZIPKIT_DATA_DIR` or `~/.zipkit`, resolved in
  * one place by the SDK's {@link storageRoot} — never a hardcoded path). Every managed *text* save
  * records the exact bytes it just wrote here, strictly AFTER its atomic rename lands, so the history
  * is always as current as the last save. There is no startup scan, no periodic pass, no restore path.
@@ -30,7 +30,7 @@ import { log } from "./runtime.js";
 import { errorInfo } from "./log.js";
 
 /** The store file under the resolved storage root. Computed lazily (not frozen into a module constant
- *  at import time) so `ZIPKIT_HOME` is read after the environment is set, per the storage-path
+ *  at import time) so `ZIPKIT_DATA_DIR` is read after the environment is set, per the storage-path
  *  convention's caution against import-time resolution. */
 function storeFile(): string {
   return path.join(storageRoot(), "backups.sqlite3");
@@ -155,7 +155,7 @@ export function record(absolutePath: string, bytes: Buffer): void {
 
 /** Close the store (best-effort). For tests that need to release the file handle between throwaway
  *  roots; the app itself lets the process exit close it. Resets the singleton so the next
- *  {@link record} re-opens against the current `ZIPKIT_HOME`. */
+ *  {@link record} re-opens against the current `ZIPKIT_DATA_DIR`. */
 export function closeBackupStore(): void {
   try {
     db?.close();

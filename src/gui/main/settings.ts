@@ -1,7 +1,7 @@
 /**
  * Settings persistence: the new-job option defaults plus app-level appearance (the
  * UI font), saved so they are configured once rather than every session. The file
- * lives at `config.json` under zipkit's storage root (`ZIPKIT_HOME` or `~/.zipkit`,
+ * lives at `config.json` under zipkit's storage root (`ZIPKIT_DATA_DIR` or `~/.zipkit`,
  * resolved in one place by the SDK's {@link storageRoot}, beside the queue and logs).
  * Parsing fills absent known fields but rejects wrong shapes. Invalid v1 bytes
  * are quarantined, future versions are preserved live, and non-absence I/O
@@ -17,7 +17,7 @@ import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** The settings file under the resolved storage root. Computed lazily (not frozen
- *  into a module constant at import time) so `ZIPKIT_HOME` is read after the
+ *  into a module constant at import time) so `ZIPKIT_DATA_DIR` is read after the
  *  environment is set, per the storage-path convention. Exported so tests can pin
  *  the resolved filename against the actual derivation, not a duplicated literal. */
 export function settingsFile(): string {

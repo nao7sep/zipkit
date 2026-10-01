@@ -64,18 +64,18 @@ describe("parseQueue", () => {
 
 describe("queue file location and persistence", () => {
   // The queue lives under the resolved storage root. Relocating that root via
-  // ZIPKIT_HOME to a throwaway directory keeps the suite out of the real home dir
+  // ZIPKIT_DATA_DIR to a throwaway directory keeps the suite out of the real home dir
   // and pins the relocation + atomic round-trip in one place.
   let root: string;
-  const prev = process.env.ZIPKIT_HOME;
+  const prev = process.env.ZIPKIT_DATA_DIR;
 
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
-    process.env.ZIPKIT_HOME = root;
+    process.env.ZIPKIT_DATA_DIR = root;
   });
   afterEach(async () => {
-    if (prev === undefined) delete process.env.ZIPKIT_HOME;
-    else process.env.ZIPKIT_HOME = prev;
+    if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
+    else process.env.ZIPKIT_DATA_DIR = prev;
     // saveQueue now records through the write-through backup store (backups.sqlite3 under this root);
     // close it so the next test re-opens against its own throwaway root and the rm below can delete
     // the file with no open handle.

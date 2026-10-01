@@ -7,7 +7,7 @@
  *
  * The root is `~/.zipkit` by default, resolved from `os.homedir()` and from
  * nothing about how the app was launched — never the working directory, the
- * code's own location, or a packaged-versus-dev flag. The `ZIPKIT_HOME`
+ * code's own location, or a packaged-versus-dev flag. The `ZIPKIT_DATA_DIR`
  * environment variable relocates the whole root: its value is expanded (a
  * leading `~` and `$VAR`/`%VAR%` references) and then made absolute *against the
  * home directory*, never against `process.cwd()`, so the override can never
@@ -25,7 +25,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 /**
- * The error thrown when `ZIPKIT_HOME` is set but unusable. Distinct so a startup
+ * The error thrown when `ZIPKIT_DATA_DIR` is set but unusable. Distinct so a startup
  * path can recognize a misconfiguration and stop with a clear message rather than
  * silently falling back to the default root.
  */
@@ -39,7 +39,7 @@ export class StorageRootError extends Error {
 /**
  * Expand a leading `~` (the home directory) and any `$VAR` / `%VAR%` environment
  * references in a path string, before it is made absolute. The convention's
- * pre-absolutization expansion, applied to the `ZIPKIT_HOME` value. Unknown
+ * pre-absolutization expansion, applied to the `ZIPKIT_DATA_DIR` value. Unknown
  * variables expand to the empty string (the shell's behavior), which then fails
  * the usability check rather than producing a surprising literal path.
  */
@@ -54,12 +54,12 @@ function expand(value: string, env: NodeJS.ProcessEnv, home: string): string {
 }
 
 /**
- * Resolve zipkit's storage root: `ZIPKIT_HOME` when set and non-empty (expanded
+ * Resolve zipkit's storage root: `ZIPKIT_DATA_DIR` when set and non-empty (expanded
  * and absolutized against the home directory), else `~/.zipkit`. The root is not
  * created here — the first writer under it does the `mkdir -p` — so this stays a
  * pure path computation that the SDK and the GUI both call.
  *
- * @throws StorageRootError when `ZIPKIT_HOME` is set but expands to an empty or
+ * @throws StorageRootError when `ZIPKIT_DATA_DIR` is set but expands to an empty or
  *   non-absolute path. The caller (a startup point) reports it and stops; it is
  *   never swallowed into the default.
  */
@@ -67,12 +67,12 @@ export function storageRoot(
   env: NodeJS.ProcessEnv = process.env,
   home: string = homedir(),
 ): string {
-  const override = env.ZIPKIT_HOME;
+  const override = env.ZIPKIT_DATA_DIR;
   if (override !== undefined && override.trim() !== "") {
     const expanded = expand(override.trim(), env, home);
     if (expanded === "") {
       throw new StorageRootError(
-        `ZIPKIT_HOME is set but expands to an empty path: "${override}"`,
+        `ZIPKIT_DATA_DIR is set but expands to an empty path: "${override}"`,
       );
     }
     // Relative values resolve against the home directory, never the working

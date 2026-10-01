@@ -22,7 +22,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: { index: resolve(import.meta.dirname, "src/gui/main/index.ts") },
-        // index.ts validates ZIPKIT_HOME, then `await import('./bootstrap.js')`;
+        // index.ts validates ZIPKIT_DATA_DIR, then `await import('./bootstrap.js')`;
         // that dynamic import makes Rollup split bootstrap into its own chunk.
         // Keep emitted chunks flat in out/main (not the default out/main/chunks/)
         // so bootstrap's runtime `import.meta.dirname` stays out/main and its

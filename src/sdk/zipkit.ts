@@ -10,7 +10,7 @@
  * per-session log — `<logDir>/yyyymmdd-hhmmss-fff-utc.log`, JSON Lines — lazily
  * on its first verb call, and every verb on the instance appends its events
  * there; each result's `log` field names the file. `logDir` defaults to
- * `ZIPKIT_LOG_DIR`, else `<ZIPKIT_HOME or ~/.zipkit>/logs`. Lines are appended synchronously, so
+ * `ZIPKIT_LOG_DIR`, else `<ZIPKIT_DATA_DIR or ~/.zipkit>/logs`. Lines are appended synchronously, so
  * there is no descriptor to close and nothing to flush. The SDK writes nothing
  * to stdout or stderr — progress goes only to a per-call `onProgress` hook.
  * A log-sink failure is deliberately silent so logging cannot break a verb.

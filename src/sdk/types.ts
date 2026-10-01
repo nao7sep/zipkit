@@ -159,7 +159,7 @@ export interface ZipKitOptions {
    * logging session: a single `yyyymmdd-hhmmss-fff-utc.log` (JSON Lines) is
    * opened lazily on the first verb call, every verb on the instance writes to
    * it, and the path is returned on each result's `log`. Defaults to
-   * `process.env.ZIPKIT_LOG_DIR` when set, else `<ZIPKIT_HOME or ~/.zipkit>/logs`. The `-fff`
+   * `process.env.ZIPKIT_LOG_DIR` when set, else `<ZIPKIT_DATA_DIR or ~/.zipkit>/logs`. The `-fff`
    * millisecond stamp keeps the logs of runs that start in the same second —
    * zipkit is built to fan out — distinct.
    */

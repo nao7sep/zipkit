@@ -16,7 +16,7 @@ import { storageRoot } from "../storage.js";
 import type { LogSink } from "./logger.js";
 
 /** `<root>/logs` — the `logs/` subfolder under ZipKit's storage root, where the
- *  root is `ZIPKIT_HOME` or `~/.zipkit` (resolved in one place by
+ *  root is `ZIPKIT_DATA_DIR` or `~/.zipkit` (resolved in one place by
  *  {@link storageRoot}). Created on the first write if missing. Overridable per
  *  instance via `logDir`, or for a whole process via the narrower
  *  `ZIPKIT_LOG_DIR` environment variable, which wins over this default. */

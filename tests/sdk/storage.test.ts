@@ -1,7 +1,7 @@
 /**
  * Tests for the single storage-root resolver — the one place that decides where
  * zipkit keeps its own files. The contract pinned here: the default is
- * `<home>/.zipkit`; `ZIPKIT_HOME` relocates the whole root; the override value is
+ * `<home>/.zipkit`; `ZIPKIT_DATA_DIR` relocates the whole root; the override value is
  * `~`/env-expanded and absolutized *against the home directory* (never the
  * working directory); and an unusable override throws rather than silently
  * falling back. `env` and `home` are injected so the suite never touches the real
@@ -20,46 +20,46 @@ const DATA_ROOT = path.join(ROOT, "data");
 const ABSOLUTE_OVERRIDE = path.join(ROOT, "mnt", "data", "zipkit");
 
 describe("storageRoot", () => {
-  it("defaults to <home>/.zipkit when ZIPKIT_HOME is unset", () => {
+  it("defaults to <home>/.zipkit when ZIPKIT_DATA_DIR is unset", () => {
     expect(storageRoot({}, HOME)).toBe(path.join(HOME, ".zipkit"));
   });
 
-  it("treats an empty or whitespace ZIPKIT_HOME as unset", () => {
-    expect(storageRoot({ ZIPKIT_HOME: "" }, HOME)).toBe(path.join(HOME, ".zipkit"));
-    expect(storageRoot({ ZIPKIT_HOME: "   " }, HOME)).toBe(path.join(HOME, ".zipkit"));
+  it("treats an empty or whitespace ZIPKIT_DATA_DIR as unset", () => {
+    expect(storageRoot({ ZIPKIT_DATA_DIR: "" }, HOME)).toBe(path.join(HOME, ".zipkit"));
+    expect(storageRoot({ ZIPKIT_DATA_DIR: "   " }, HOME)).toBe(path.join(HOME, ".zipkit"));
   });
 
-  it("uses an absolute ZIPKIT_HOME verbatim", () => {
-    expect(storageRoot({ ZIPKIT_HOME: ABSOLUTE_OVERRIDE }, HOME)).toBe(ABSOLUTE_OVERRIDE);
+  it("uses an absolute ZIPKIT_DATA_DIR verbatim", () => {
+    expect(storageRoot({ ZIPKIT_DATA_DIR: ABSOLUTE_OVERRIDE }, HOME)).toBe(ABSOLUTE_OVERRIDE);
   });
 
   it("expands a leading ~ against the home directory", () => {
-    expect(storageRoot({ ZIPKIT_HOME: "~/profiles/work" }, HOME)).toBe(
+    expect(storageRoot({ ZIPKIT_DATA_DIR: "~/profiles/work" }, HOME)).toBe(
       path.join(HOME, "profiles/work"),
     );
-    expect(storageRoot({ ZIPKIT_HOME: "~" }, HOME)).toBe(HOME);
+    expect(storageRoot({ ZIPKIT_DATA_DIR: "~" }, HOME)).toBe(HOME);
   });
 
   it("expands $VAR and ${VAR} references", () => {
-    const env = { ZIPKIT_HOME: "$ROOT/zk", ROOT: DATA_ROOT };
+    const env = { ZIPKIT_DATA_DIR: "$ROOT/zk", ROOT: DATA_ROOT };
     expect(storageRoot(env, HOME)).toBe(path.join(DATA_ROOT, "zk"));
-    expect(storageRoot({ ZIPKIT_HOME: "${ROOT}/zk", ROOT: DATA_ROOT }, HOME)).toBe(path.join(DATA_ROOT, "zk"));
+    expect(storageRoot({ ZIPKIT_DATA_DIR: "${ROOT}/zk", ROOT: DATA_ROOT }, HOME)).toBe(path.join(DATA_ROOT, "zk"));
   });
 
-  it("resolves a relative ZIPKIT_HOME against the home directory, never the cwd", () => {
+  it("resolves a relative ZIPKIT_DATA_DIR against the home directory, never the cwd", () => {
     // The whole point of the convention: a relative override can never reintroduce
     // a cwd dependence. It is anchored to home regardless of process.cwd().
-    expect(storageRoot({ ZIPKIT_HOME: "zipkit-data" }, HOME)).toBe(
+    expect(storageRoot({ ZIPKIT_DATA_DIR: "zipkit-data" }, HOME)).toBe(
       path.join(HOME, "zipkit-data"),
     );
-    expect(storageRoot({ ZIPKIT_HOME: "../shared/zk" }, HOME)).toBe(
+    expect(storageRoot({ ZIPKIT_DATA_DIR: "../shared/zk" }, HOME)).toBe(
       path.resolve(HOME, "../shared/zk"),
     );
   });
 
   it("throws StorageRootError when the override expands to empty", () => {
     // An unknown variable expands to "", per shell semantics; the result is unusable.
-    expect(() => storageRoot({ ZIPKIT_HOME: "$UNSET" }, HOME)).toThrow(StorageRootError);
+    expect(() => storageRoot({ ZIPKIT_DATA_DIR: "$UNSET" }, HOME)).toThrow(StorageRootError);
   });
 });
 
