@@ -42,6 +42,10 @@ export function parseGuiOptions(raw: unknown, store: string): GuiOptions {
   return Object.fromEntries(OPTION_CHECKS.map(([key]) => [key, raw[key] ?? DEFAULT_OPTIONS[key]])) as unknown as GuiOptions;
 }
 
+// Invalid copies can be read at startup, by IPC, and after saves. One process
+// reports each set key once while every read still falls back independently.
+const warnedSettingsKeys = new Set<keyof GuiSettings>();
+
 function effectiveSettings(root: Record<string, unknown>, logger: AppLog): GuiSettings {
   const settings = freshSettings();
   for (const key of SETTINGS_KEYS) {
@@ -67,7 +71,10 @@ function effectiveSettings(root: Record<string, unknown>, logger: AppLog): GuiSe
         if (value === "system" || isLanguage(value)) { settings.language = value; continue; }
         break;
     }
-    logger.warn("invalid settings set; using the built-in", { key });
+    if (!warnedSettingsKeys.has(key)) {
+      warnedSettingsKeys.add(key);
+      logger.warn("invalid settings set; using the built-in", { key });
+    }
   }
   return settings;
 }
