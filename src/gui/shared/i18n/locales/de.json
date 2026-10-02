@@ -287,7 +287,7 @@
   "finding.post2107": "Der Änderungszeitpunkt liegt nach 2107 und wird auf das DOS-Maximum gesetzt",
   "finding.outputExists": "Das Ausgabearchiv ist bereits vorhanden. Aktivieren Sie „Vorhandene Datei überschreiben“, um es zu ersetzen.",
   "finding.renamedTo": "{text} → {to}",
-  "finding.crcFail": "Der Inhalt ist beschädigt (CRC-32 stimmt nicht)",
+  "finding.crcFail": "Der Inhalt ist beschädigt (CRC-32 stimmt nicht überein)",
   "finding.extra": "Im Archiv, aber nicht im Manifest aufgeführt",
   "finding.missing": "Im Manifest aufgeführt, aber nicht im Archiv",
   "finding.shaMismatch": "Der Inhalt stimmt nicht mit dem SHA-256 im Manifest überein",

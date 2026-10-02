@@ -252,7 +252,7 @@
   "report.excludedEmptyFile": "빈 파일 건너뜀",
   "report.excludedFiltered": "필터로 제외됨",
   "report.excludedReason": "제외됨: {reason}",
-  "report.groupBlocking": "진행을 막는 문제({count})",
+  "report.groupBlocking": "생성을 막는 문제({count})",
   "report.groupExcluded": "제외됨({count})",
   "report.groupNotes": "참고({count})",
   "report.groupRenamed": "이식성을 위한 이름 변경({count})",
@@ -292,7 +292,7 @@
   "finding.missing": "매니페스트에 있지만 아카이브에는 없습니다",
   "finding.shaMismatch": "내용이 매니페스트의 SHA-256과 일치하지 않습니다",
   "finding.symlink": "심볼릭 링크",
-  "finding.unsafePath": "대상 폴더 밖에 기록됩니다",
+  "finding.unsafePath": "경로가 대상 폴더 밖을 가리킵니다",
 
   "log.debug": "디버그",
   "log.info": "정보",

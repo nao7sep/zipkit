@@ -254,7 +254,7 @@
   "report.excludedReason": "除外: {reason}",
   "report.groupBlocking": "作成を妨げる問題（{count}）",
   "report.groupExcluded": "除外（{count}）",
-  "report.groupNotes": "メモ（{count}）",
+  "report.groupNotes": "情報（{count}）",
   "report.groupRenamed": "移植性のための名前変更（{count}）",
   "report.groupWarnings": "警告（{count}）",
 
@@ -292,7 +292,7 @@
   "finding.missing": "マニフェストにありますが、アーカイブにありません",
   "finding.shaMismatch": "内容がマニフェストの SHA-256 と一致しません",
   "finding.symlink": "シンボリックリンク",
-  "finding.unsafePath": "展開先フォルダの外に書き込まれます",
+  "finding.unsafePath": "パスが展開先フォルダの外を指しています",
 
   "log.debug": "デバッグ",
   "log.info": "情報",

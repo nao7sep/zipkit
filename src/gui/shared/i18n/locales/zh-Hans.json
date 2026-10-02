@@ -252,9 +252,9 @@
   "report.excludedEmptyFile": "已跳过空文件",
   "report.excludedFiltered": "已被过滤规则排除",
   "report.excludedReason": "已排除：{reason}",
-  "report.groupBlocking": "阻止归档的问题（{count}）",
+  "report.groupBlocking": "阻止创建的问题（{count}）",
   "report.groupExcluded": "已排除（{count}）",
-  "report.groupNotes": "备注（{count}）",
+  "report.groupNotes": "提示（{count}）",
   "report.groupRenamed": "为可移植性重命名（{count}）",
   "report.groupWarnings": "警告（{count}）",
 
@@ -292,7 +292,7 @@
   "finding.missing": "在清单中，但归档中缺少",
   "finding.shaMismatch": "内容与清单中的 SHA-256 不匹配",
   "finding.symlink": "符号链接",
-  "finding.unsafePath": "将写到目标文件夹之外",
+  "finding.unsafePath": "路径指向目标文件夹之外",
 
   "log.debug": "调试",
   "log.info": "信息",

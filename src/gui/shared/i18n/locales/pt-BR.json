@@ -252,7 +252,7 @@
   "report.excludedEmptyFile": "Arquivo vazio ignorado",
   "report.excludedFiltered": "Excluído por um filtro",
   "report.excludedReason": "Excluído: {reason}",
-  "report.groupBlocking": "Problemas impeditivos ({count})",
+  "report.groupBlocking": "Problemas que impedem a criação ({count})",
   "report.groupExcluded": "Excluídos ({count})",
   "report.groupNotes": "Observações ({count})",
   "report.groupRenamed": "Renomeados para portabilidade ({count})",
