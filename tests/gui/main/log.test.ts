@@ -1,72 +1,129 @@
 /**
- * Tests for the app logger's error serializer. The trap it guards against: an
- * Error's own properties are non-enumerable, so logging a raw Error stringifies
- * to `{}` — errorInfo must capture name/message/stack and recurse the cause chain.
+ * Tests for the app log's records and fallback, and its error serializer. The
+ * serializer's trap: an Error's own properties are non-enumerable, so logging a
+ * raw Error stringifies to `{}` — errorInfo must capture name/message/stack and
+ * recurse the cause chain.
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAppLog, errorInfo } from "../../../src/gui/main/log.js";
 
+interface Row {
+  time_utc: string;
+  session_utc: string;
+  level: string;
+  message: string;
+  job_id: string | null;
+  fields: string;
+}
+
+function rows(file: string): Row[] {
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    return db.prepare("SELECT time_utc, session_utc, level, message, job_id, fields FROM logs ORDER BY id").all() as unknown as Row[];
+  } finally {
+    db.close();
+  }
+}
+
+function tempDir(): string {
+  return mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
+}
+
 describe("createAppLog", () => {
-  it("writes JSON Lines with the envelope, gates debug off by default, and keeps every field as given", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
-    const log = createAppLog(dir, new Date("2026-06-14T05:25:48.123Z"));
-    // Millisecond precision (`-fff`): a session log is machine-paced, per the timestamp conventions.
-    expect(path.basename(log.path)).toBe("20260614-052548-123-utc.log");
+  it("records each line with its session and job id, gates debug off by default, and keeps every field as given", () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const log = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z"));
     log.info("hello", { jobId: "a", password: "hunter2" });
     log.debug("noise"); // gated off — no ZIPKIT_DEBUG
     log.error("bad", { code: 7 });
 
-    const [infoLine, errorLine, ...rest] = readFileSync(log.path, "utf8").trim().split("\n");
-    expect(rest).toHaveLength(0); // debug omitted -> exactly two lines
-    const first = JSON.parse(infoLine ?? "") as Record<string, unknown>;
-    expect(first).toMatchObject({ level: "info", message: "hello", jobId: "a" });
-    expect(first.password).toBe("hunter2"); // logging conventions, Nothing is redacted
-    expect(first.time).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/); // UTC ISO-8601 ms + Z
-    expect(JSON.parse(errorLine ?? "")).toMatchObject({ level: "error", message: "bad", code: 7 });
+    const [first, second, ...rest] = rows(database);
+    expect(rest).toHaveLength(0);
+    expect(first).toMatchObject({ session_utc: "2026-06-14T05:25:48.123Z", level: "info", message: "hello", job_id: "a" });
+    expect(JSON.parse(first?.fields ?? "")).toEqual({ jobId: "a", password: "hunter2" }); // logging conventions, Nothing is redacted
+    expect(first?.time_utc).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(second).toMatchObject({ level: "error", message: "bad", job_id: null });
+    expect(JSON.parse(second?.fields ?? "")).toEqual({ code: 7 });
+    expect(existsSync(path.join(dir, "logs"))).toBe(false); // no fallback file while the database takes every entry
   });
 
-  it("never throws and keeps the message when a field cannot be JSON-serialized (e.g. a BigInt)", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
-    const log = createAppLog(dir, new Date("2026-06-14T05:25:48.123Z"));
+  it("appends to the same database across sessions, each row naming its own session", () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z")).info("first launch");
+    createAppLog(database, path.join(dir, "logs"), new Date("2026-06-15T01:00:00.000Z")).info("second launch");
+
+    expect(rows(database).map((row) => [row.session_utc, row.message])).toEqual([
+      ["2026-06-14T05:25:48.123Z", "first launch"],
+      ["2026-06-15T01:00:00.000Z", "second launch"],
+    ]);
+  });
+
+  it("never throws and keeps the line when a field cannot be JSON-serialized (e.g. a BigInt)", () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const log = createAppLog(database, path.join(dir, "logs"));
 
     expect(() => log.info("hello", { big: 10n })).not.toThrow();
 
-    const [line] = readFileSync(log.path, "utf8").trim().split("\n");
-    const parsed = JSON.parse(line ?? "") as Record<string, unknown>;
-    expect(parsed.message).toBe("hello"); // message survives even though `big` could not serialize
-    expect(parsed.level).toBe("info");
-    expect(typeof parsed.error).toBe("string"); // the serialization failure is itself surfaced
+    const [row] = rows(database);
+    expect(row).toMatchObject({ level: "info", message: "hello" });
+    expect(typeof JSON.parse(row?.fields ?? "").serializationError).toBe("string");
   });
 
-  it("keeps the real message when a caller field is named `message` (the envelope always wins)", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
-    const log = createAppLog(dir, new Date("2026-06-14T05:25:48.123Z"));
+  it("keeps the real message and a caller field named `message` side by side", () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const log = createAppLog(database, path.join(dir, "logs"));
 
-    log.info("the real message", { message: "spoofed by caller" });
+    log.info("the real message", { message: "given by caller" });
 
-    const [line] = readFileSync(log.path, "utf8").trim().split("\n");
-    const parsed = JSON.parse(line ?? "") as Record<string, unknown>;
-    expect(parsed.message).toBe("the real message"); // envelope wins; caller's `message` field is shadowed
+    const [row] = rows(database);
+    expect(row?.message).toBe("the real message");
+    expect(JSON.parse(row?.fields ?? "")).toEqual({ message: "given by caller" });
   });
 
-  it("degrades to the console instead of interleaving when the session file already exists", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
-    const now = new Date("2026-06-14T05:25:48.123Z");
-    const expectedPath = path.join(dir, "20260614-052548-123-utc.log");
-    // Simulate a same-millisecond clash: another process already claimed this exact file.
+  it("falls back to a plain text file under logs/ when the database cannot be opened, naming the failure once", () => {
+    const dir = tempDir();
+    const blocker = path.join(dir, "blocker");
+    writeFileSync(blocker, "a file, not a directory");
+    const logs = path.join(dir, "logs");
+    const log = createAppLog(path.join(blocker, "records.sqlite3"), logs, new Date("2026-06-14T05:25:48.123Z"));
+
+    log.info("first", { jobId: "a" });
+    log.warn("second");
+
+    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines.map((line) => [line.level, line.message])).toEqual([
+      ["error", "records database unavailable"],
+      ["info", "first"],
+      ["warn", "second"],
+    ]);
+    expect(lines[1]).toMatchObject({ session: "2026-06-14T05:25:48.123Z", fields: { jobId: "a" } });
+  });
+
+  it("degrades to the console instead of interleaving when the fallback file already exists", () => {
+    const dir = tempDir();
+    const blocker = path.join(dir, "blocker");
+    writeFileSync(blocker, "a file, not a directory");
+    const logs = path.join(dir, "logs");
+    const expectedPath = path.join(logs, "20260614-052548-123-utc.log");
+    mkdirSync(logs);
     writeFileSync(expectedPath, "first-process-line\n");
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    const log = createAppLog(dir, now);
+    const log = createAppLog(path.join(blocker, "records.sqlite3"), logs, new Date("2026-06-14T05:25:48.123Z"));
     log.info("second process");
 
-    // The first process's session file is untouched — no interleaved second session.
     expect(readFileSync(expectedPath, "utf8")).toBe("first-process-line\n");
-    expect(stderrSpy).toHaveBeenCalled();
+    expect(stderrSpy.mock.calls.some(([line]) => String(line).includes("second process"))).toBe(true);
     stderrSpy.mockRestore();
   });
 });
@@ -105,11 +162,12 @@ describe("errorInfo", () => {
       { message: "write failed", stack: expect.any(String), code: "EACCES", path: "/tmp/result.zip", syscall: "rename" },
     ] });
 
-    const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
-    const log = createAppLog(dir);
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const log = createAppLog(database, path.join(dir, "logs"));
     log.error("operation failed", { error: info });
-    const line = readFileSync(log.path, "utf8");
-    expect(JSON.parse(line).error.errors[1]).toMatchObject({ message: "write failed", code: "EACCES" });
+    const [row] = rows(database);
+    expect(JSON.parse(row?.fields ?? "").error.errors[1]).toMatchObject({ message: "write failed", code: "EACCES" });
   });
 
   it("contains cycles through aggregate members and causes without losing other failures", () => {

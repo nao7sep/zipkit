@@ -1,6 +1,6 @@
 /**
  * Shared main-process singletons: the one `ZipKit` instance (one app run = one
- * SDK logging session), the app's own session log (lifecycle + orchestration),
+ * SDK logging session), the app's own log (lifecycle + orchestration),
  * the target window for pushed streams, and the error mapper. Both the plain IPC
  * handlers and the queue engine use these.
  */
@@ -13,8 +13,8 @@ import { createAppLog } from "./log.js";
 
 export const zip = new ZipKit();
 
-/** The app's session log for this launch. The SDK keeps its own per-verb log; the
- *  `zip.*` results' `log` field names that companion file. */
+/** The app's log for this launch. The SDK keeps its own per-verb log file; the
+ *  `zip.*` results' `log` field names it. */
 export const log = createAppLog();
 
 let win: BrowserWindow | null = null;

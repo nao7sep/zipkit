@@ -14,9 +14,9 @@ export default defineConfig({
   // `React.createElement`. Node-side tests have no JSX and are unaffected.
   plugins: [react()],
   test: {
-    // Redirect every test's per-session log off the real `~/.zipkit/logs` (see
-    // tests/setup.ts). Every ZipKit instance now opens a session log, so this
-    // keeps the suite from writing into the developer's home directory.
+    // Redirect every test's storage root and log directory off the real
+    // `~/.zipkit` (see tests/setup.ts), so the suite never writes into the
+    // developer's home directory.
     // Every spec that mounts the interface also checks that no catalogue key
     // reaches the screen (localization-conventions, Gates).
     setupFiles: ["./tests/setup.ts", "./tests/setup/rendered-keys.ts"],

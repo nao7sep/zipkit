@@ -1,10 +1,11 @@
 /**
  * Global test setup, run before every test file. Each `ZipKit` instance opens an
- * always-on per-session log; left at the default that would be `~/.zipkit/logs`,
- * polluting the developer's home directory. Pin it to a throwaway temp directory
- * per test file and remove that directory once the file's tests finish, so the
- * suite neither writes into the home dir nor leaks temp dirs. Tests that assert
- * log *contents* override `ZIPKIT_LOG_DIR` to their own temp dir.
+ * always-on per-session log, and the app's log writes `records.sqlite3` under the
+ * storage root; left at the defaults both would land in `~/.zipkit`, polluting the
+ * developer's home directory. Pin the storage root and the log directory to a
+ * throwaway temp directory per test file and remove it once the file's tests
+ * finish, so the suite neither writes into the home dir nor leaks temp dirs.
+ * Tests that assert on stored files relocate them to their own temp dirs.
  */
 
 import { mkdtempSync } from "node:fs";
@@ -13,11 +14,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll } from "vitest";
 
-const logDir = mkdtempSync(path.join(tmpdir(), "zipkit-test-logs-"));
-process.env.ZIPKIT_LOG_DIR = logDir;
+const dataDir = mkdtempSync(path.join(tmpdir(), "zipkit-test-data-"));
+process.env.ZIPKIT_DATA_DIR = dataDir;
+process.env.ZIPKIT_LOG_DIR = path.join(dataDir, "logs");
 
 afterAll(async () => {
-  await rm(logDir, { recursive: true, force: true });
+  await rm(dataDir, { recursive: true, force: true });
 });
 
 // In the jsdom environment (the renderer-component tests), stub scrollIntoView —

@@ -33,8 +33,8 @@ import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
 import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
 
-// Last-resort hooks: record the failure before the process can die. The session
-// log appends synchronously, so the line is on disk by the time these return.
+// Last-resort hooks: record the failure before the process can die. The app log
+// writes synchronously, so the line is on disk by the time these return.
 process.on("uncaughtException", (err) => {
   log.error("uncaught exception", { error: errorInfo(err) });
 });
@@ -146,7 +146,7 @@ app.whenReady().then(async () => {
     arch: process.arch,
     electron: process.versions.electron,
     node: process.versions.node,
-    logPath: log.path,
+    records: log.database,
   });
   // Just-in-case data backup (data-backup conventions): write-through, not a startup scan. Each managed
   // text save (except volatile layout.json) records the exact bytes into `~/.zipkit/backups.sqlite3` strictly after its atomic rename
