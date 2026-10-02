@@ -8,6 +8,7 @@ function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
     onJobStopTimeout: vi.fn(),
     onFlushed: vi.fn(),
     onFlushError: vi.fn(),
+    closeLog: vi.fn(async () => {}),
     exit: vi.fn(),
     ...overrides,
   };
@@ -24,6 +25,7 @@ describe("stopFlushAndExit", () => {
     const s = steps({
       stopJob: () => new Promise<void>((resolve) => { finishJob = () => { order.push("job"); resolve(); }; }),
       flush: async () => { order.push("flush"); },
+      closeLog: async () => { order.push("log"); },
       exit: (code) => { order.push(`exit ${code}`); },
     });
 
@@ -33,7 +35,7 @@ describe("stopFlushAndExit", () => {
 
     finishJob();
     await quitting;
-    expect(order).toEqual(["job", "flush", "exit 0"]);
+    expect(order).toEqual(["job", "flush", "log", "exit 0"]);
     expect(s.onFlushed).toHaveBeenCalledOnce();
     expect(s.onJobStopTimeout).not.toHaveBeenCalled();
   });
@@ -71,6 +73,18 @@ describe("stopFlushAndExit", () => {
 
     expect(s.onFlushed).not.toHaveBeenCalled();
     expect(s.onFlushError).toHaveBeenCalledOnce();
+    expect(s.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("exits even when the log never finishes closing", async () => {
+    vi.useFakeTimers();
+    const s = steps({ closeLog: () => new Promise<void>(() => {}) });
+
+    const quitting = stopFlushAndExit(s);
+    await vi.advanceTimersByTimeAsync(QUIT_WAIT_MS);
+    await quitting;
+
+    expect(s.onFlushed).toHaveBeenCalledOnce();
     expect(s.exit).toHaveBeenCalledWith(0);
   });
 });

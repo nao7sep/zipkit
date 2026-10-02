@@ -21,7 +21,12 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        input: { index: resolve(import.meta.dirname, "src/gui/main/index.ts") },
+        // The records thread is its own entry: log.ts starts it from the file
+        // beside its chunk.
+        input: {
+          index: resolve(import.meta.dirname, "src/gui/main/index.ts"),
+          "records-worker": resolve(import.meta.dirname, "src/gui/main/records-worker.ts"),
+        },
         // index.ts validates ZIPKIT_DATA_DIR, then `await import('./bootstrap.js')`;
         // that dynamic import makes Rollup split bootstrap into its own chunk.
         // Keep emitted chunks flat in out/main (not the default out/main/chunks/)

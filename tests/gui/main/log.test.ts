@@ -35,13 +35,14 @@ function tempDir(): string {
 }
 
 describe("createAppLog", () => {
-  it("records each line with its session and job id, gates debug off by default, and keeps every field as given", () => {
+  it("records each line with its session and job id, gates debug off by default, and keeps every field as given", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const log = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z"));
     log.info("hello", { jobId: "a", password: "hunter2" });
     log.debug("noise"); // gated off — no ZIPKIT_DEBUG
     log.error("bad", { code: 7 });
+    await log.close();
 
     const [first, second, ...rest] = rows(database);
     expect(rest).toHaveLength(0);
@@ -53,11 +54,15 @@ describe("createAppLog", () => {
     expect(existsSync(path.join(dir, "logs"))).toBe(false); // no fallback file while the database takes every entry
   });
 
-  it("appends to the same database across sessions, each row naming its own session", () => {
+  it("appends to the same database across sessions, each row naming its own session", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
-    createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z")).info("first launch");
-    createAppLog(database, path.join(dir, "logs"), new Date("2026-06-15T01:00:00.000Z")).info("second launch");
+    const first = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z"));
+    first.info("first launch");
+    await first.close();
+    const second = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-15T01:00:00.000Z"));
+    second.info("second launch");
+    await second.close();
 
     expect(rows(database).map((row) => [row.session_utc, row.message])).toEqual([
       ["2026-06-14T05:25:48.123Z", "first launch"],
@@ -65,31 +70,33 @@ describe("createAppLog", () => {
     ]);
   });
 
-  it("never throws and keeps the line when a field cannot be JSON-serialized (e.g. a BigInt)", () => {
+  it("never throws and keeps the line when a field cannot be JSON-serialized (e.g. a BigInt)", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const log = createAppLog(database, path.join(dir, "logs"));
 
     expect(() => log.info("hello", { big: 10n })).not.toThrow();
+    await log.close();
 
     const [row] = rows(database);
     expect(row).toMatchObject({ level: "info", message: "hello" });
     expect(typeof JSON.parse(row?.fields ?? "").serializationError).toBe("string");
   });
 
-  it("keeps the real message and a caller field named `message` side by side", () => {
+  it("keeps the real message and a caller field named `message` side by side", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const log = createAppLog(database, path.join(dir, "logs"));
 
     log.info("the real message", { message: "given by caller" });
+    await log.close();
 
     const [row] = rows(database);
     expect(row?.message).toBe("the real message");
     expect(JSON.parse(row?.fields ?? "")).toEqual({ message: "given by caller" });
   });
 
-  it("falls back to a plain text file under logs/ when the database cannot be opened, naming the failure once", () => {
+  it("falls back to a plain text file under logs/ when the database cannot be opened, naming the failure once", async () => {
     const dir = tempDir();
     const blocker = path.join(dir, "blocker");
     writeFileSync(blocker, "a file, not a directory");
@@ -98,6 +105,7 @@ describe("createAppLog", () => {
 
     log.info("first", { jobId: "a" });
     log.warn("second");
+    await log.close();
 
     const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
@@ -109,7 +117,7 @@ describe("createAppLog", () => {
     expect(lines[1]).toMatchObject({ session: "2026-06-14T05:25:48.123Z", fields: { jobId: "a" } });
   });
 
-  it("degrades to the console instead of interleaving when the fallback file already exists", () => {
+  it("degrades to the console instead of interleaving when the fallback file already exists", async () => {
     const dir = tempDir();
     const blocker = path.join(dir, "blocker");
     writeFileSync(blocker, "a file, not a directory");
@@ -121,10 +129,43 @@ describe("createAppLog", () => {
 
     const log = createAppLog(path.join(blocker, "records.sqlite3"), logs, new Date("2026-06-14T05:25:48.123Z"));
     log.info("second process");
+    await log.close();
 
     expect(readFileSync(expectedPath, "utf8")).toBe("first-process-line\n");
     expect(stderrSpy.mock.calls.some(([line]) => String(line).includes("second process"))).toBe(true);
     stderrSpy.mockRestore();
+  });
+
+  it("hands a record still in flight to the fallback file when the database does not take it in time", async () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const lock = new DatabaseSync(database);
+    lock.exec("CREATE TABLE held (x)");
+    lock.exec("BEGIN EXCLUSIVE");
+    const logs = path.join(dir, "logs");
+    const log = createAppLog(database, logs, new Date("2026-06-14T05:25:48.123Z"));
+
+    const started = Date.now();
+    log.info("while the database is locked");
+    expect(Date.now() - started).toBeLessThan(1_000); // the caller never waits on the database
+    await log.close(200);
+    lock.exec("ROLLBACK");
+    lock.close();
+
+    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines.map((line) => line.message)).toEqual(["while the database is locked"]);
+  });
+
+  it("writes an entry made after close to the fallback file", async () => {
+    const dir = tempDir();
+    const logs = path.join(dir, "logs");
+    const log = createAppLog(path.join(dir, "records.sqlite3"), logs, new Date("2026-06-14T05:25:48.123Z"));
+    await log.close();
+    log.info("late");
+    await log.close();
+
+    expect(readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8")).toContain("\"late\"");
   });
 });
 
@@ -150,7 +191,7 @@ describe("errorInfo", () => {
     expect(errorInfo(42)).toEqual({ value: "42" });
   });
 
-  it("preserves aggregate diagnostics through JSON serialization", () => {
+  it("preserves aggregate diagnostics through JSON serialization", async () => {
     const first = new TypeError("query failed", { cause: new Error("query cause") });
     const second = Object.assign(new Error("write failed"), {
       code: "EACCES", path: "/tmp/result.zip", syscall: "rename", token: "sentinel-secret",
@@ -166,6 +207,7 @@ describe("errorInfo", () => {
     const database = path.join(dir, "records.sqlite3");
     const log = createAppLog(database, path.join(dir, "logs"));
     log.error("operation failed", { error: info });
+    await log.close();
     const [row] = rows(database);
     expect(JSON.parse(row?.fields ?? "").error.errors[1]).toMatchObject({ message: "write failed", code: "EACCES" });
   });

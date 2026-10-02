@@ -6,16 +6,17 @@
  * file. Here we record what the *app* does: startup/shutdown, IPC commands,
  * queue transitions, and failures.
  *
- * Each line is a row in `records.sqlite3` (logging and data-lifecycle
- * conventions); `debug` is gated by `ZIPKIT_DEBUG=1`. The main process is the
- * sole writer and the renderer forwards its entries over IPC.
+ * Each line is a row in `records.sqlite3`, written by the records thread
+ * (./records-worker); `debug` is gated by `ZIPKIT_DEBUG=1`. The main process is
+ * the sole writer and the renderer forwards its entries over IPC.
  */
 
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { Worker } from "node:worker_threads";
 import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { storageRoot } from "../../sdk/storage.js";
+import type { LogRow, RecordsRequest, RecordsResponse, RecordsWorkerData } from "./records-worker.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogFields = Record<string, unknown>;
@@ -52,9 +53,14 @@ function errorInfoInner(err: unknown, seen: WeakSet<Error>): LogFields {
   return info;
 }
 
+
 export interface SessionAppLog extends AppLog {
   /** The records database this session writes to. */
   readonly database: string;
+  /** Hand every record still in flight to the database, or to the fallback file
+   *  when the database does not take it within `waitMs`. Later entries go
+   *  straight to the fallback file. */
+  close(waitMs?: number): Promise<void>;
 }
 
 /** `~/.zipkit/records.sqlite3` (or under `ZIPKIT_DATA_DIR`). */
@@ -62,32 +68,9 @@ export function defaultRecordsFile(): string {
   return path.join(storageRoot(), "records.sqlite3");
 }
 
-/**
- * One row per log line (data-lifecycle conventions, Records). `session_utc` is the
- * launch's start; `job_id` is the queue job the line names, if any; `fields` is
- * the caller's structured object as JSON.
- */
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS logs (
-  id          INTEGER PRIMARY KEY,
-  time_utc    TEXT NOT NULL,
-  session_utc TEXT NOT NULL,
-  level       TEXT NOT NULL,
-  message     TEXT NOT NULL,
-  job_id      TEXT,
-  fields      TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_logs_session ON logs (session_utc, id);
-CREATE INDEX IF NOT EXISTS idx_logs_job ON logs (job_id, id) WHERE job_id IS NOT NULL;
-`;
-
-interface LogRecord {
-  time: string;
-  level: LogLevel;
-  message: string;
-  jobId: string | null;
-  fields: string;
-}
+/** How long `close` waits for the database before the fallback file takes what
+ *  it has not confirmed; inside the quit sequence's own bound. */
+export const LOG_CLOSE_WAIT_MS = 5_000;
 
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -103,10 +86,17 @@ function serializeFields(fields: LogFields | undefined): string {
   }
 }
 
+/** The bundled app runs electron-vite's `records-worker.js` beside this chunk;
+ *  the tests run the source, which Node loads with its own type stripping. */
+function workerUrl(): URL {
+  const file = import.meta.url.endsWith(".ts") ? "./records-worker.ts" : "./records-worker.js";
+  return new URL(file, import.meta.url);
+}
+
 /**
- * Open the app's log for this launch. Never throws: an entry the database cannot
- * take goes to this session's file under `logs/`, then to stderr (logging
- * conventions, When logging itself fails).
+ * Open the app's log for this launch. Never throws: the records thread writes
+ * each entry, and an entry it cannot take goes to this session's file under
+ * `logs/`, then to stderr (logging conventions, When logging itself fails).
  */
 export function createAppLog(
   databaseFile: string = defaultRecordsFile(),
@@ -116,29 +106,8 @@ export function createAppLog(
   const session = now.toISOString();
   const fallbackFile = path.join(fallbackDir, `${defaultSessionTimestamp(now)}.log`);
 
-  // Opened on the first entry, so a process that never logs creates no database.
-  let insert: StatementSync | null | undefined;
-  let databaseFailure: unknown = null;
-  const openInsert = (): StatementSync | null => {
-    if (insert !== undefined) return insert;
-    try {
-      mkdirSync(path.dirname(databaseFile), { recursive: true });
-      const db = new DatabaseSync(databaseFile);
-      db.exec("PRAGMA journal_mode = WAL");
-      db.exec("PRAGMA busy_timeout = 5000");
-      db.exec(SCHEMA);
-      insert = db.prepare(
-        "INSERT INTO logs (time_utc, session_utc, level, message, job_id, fields) VALUES (?, ?, ?, ?, ?, ?)",
-      );
-    } catch (err) {
-      databaseFailure = err;
-      insert = null;
-    }
-    return insert;
-  };
-
-  let databaseFailureReported = false;
   let fallbackState: "closed" | "open" | "stderr" = "closed";
+  let fallbackTail: Promise<void> = Promise.resolve();
 
   const toStderr = (line: string): void => {
     try {
@@ -148,13 +117,13 @@ export function createAppLog(
     }
   };
 
-  const toFallback = (line: string): void => {
+  const appendFallback = async (line: string): Promise<void> => {
     if (fallbackState === "closed") {
       try {
-        mkdirSync(fallbackDir, { recursive: true });
+        await mkdir(fallbackDir, { recursive: true });
         // Exclusive create: a same-millisecond file another session already
         // holds is never appended into (logging conventions, toolkit filename).
-        writeFileSync(fallbackFile, "", { flag: "wx" });
+        await writeFile(fallbackFile, "", { flag: "wx" });
         fallbackState = "open";
       } catch (err) {
         fallbackState = "stderr";
@@ -163,7 +132,7 @@ export function createAppLog(
     }
     if (fallbackState === "open") {
       try {
-        appendFileSync(fallbackFile, line);
+        await appendFile(fallbackFile, line);
         return;
       } catch (err) {
         fallbackState = "stderr";
@@ -173,34 +142,90 @@ export function createAppLog(
     toStderr(line);
   };
 
-  const fallbackLine = ({ time, level, message, fields }: LogRecord): string =>
-    `${JSON.stringify({ time, session, level, message, fields: JSON.parse(fields) as unknown })}\n`;
+  // One append at a time, in the order the entries were made.
+  const toFallback = (row: LogRow): void => {
+    const line = `${JSON.stringify({
+      time: row.time,
+      session,
+      level: row.level,
+      message: row.message,
+      fields: JSON.parse(row.fields) as unknown,
+    })}\n`;
+    fallbackTail = fallbackTail.then(() => appendFallback(line));
+  };
 
-  const reportDatabaseFailure = (err: unknown): void => {
+  let databaseFailureReported = false;
+  const reportDatabaseFailure = (error: unknown): void => {
     if (databaseFailureReported) return;
     databaseFailureReported = true;
-    toFallback(fallbackLine({
+    toFallback({
       time: new Date().toISOString(),
+      session,
       level: "error",
       message: "records database unavailable",
       jobId: null,
-      fields: serializeFields({ database: databaseFile, error: errorInfo(err) }),
-    }));
+      fields: serializeFields({ database: databaseFile, error }),
+    });
   };
 
-  const persist = (record: LogRecord): void => {
-    const statement = openInsert();
-    if (statement) {
-      try {
-        statement.run(record.time, session, record.level, record.message, record.jobId, record.fields);
-        return;
-      } catch (err) {
-        reportDatabaseFailure(err);
+  let worker: Worker | null = null;
+  let workerFailed = false;
+  let closing: Promise<void> | null = null;
+  let nextId = 1;
+  const pending = new Map<number, LogRow>();
+
+  // Whatever the records thread has not confirmed goes to the fallback file, so
+  // a thread that fails or does not close in time loses none of it.
+  const fallBackPending = (): void => {
+    const rows = [...pending.values()];
+    pending.clear();
+    for (const row of rows) toFallback(row);
+  };
+
+  const failWorker = (err: unknown): void => {
+    if (workerFailed) return;
+    workerFailed = true;
+    reportDatabaseFailure(errorInfo(err));
+    fallBackPending();
+    void worker?.terminate();
+    worker = null;
+  };
+
+  const ensureWorker = (): Worker => {
+    if (worker) return worker;
+    const created = new Worker(workerUrl(), { workerData: { database: databaseFile } satisfies RecordsWorkerData });
+    // The thread never keeps the process alive; `close` is what waits for it.
+    created.unref();
+    created.on("message", (response: RecordsResponse) => {
+      if (response.type === "written") {
+        pending.delete(response.id);
+      } else if (response.type === "failed") {
+        const row = pending.get(response.id);
+        pending.delete(response.id);
+        reportDatabaseFailure(response.error);
+        if (row) toFallback(row);
       }
-    } else {
-      reportDatabaseFailure(databaseFailure);
+    });
+    created.on("error", failWorker);
+    created.on("exit", (code) => {
+      if (closing === null && worker === created) failWorker(new Error(`records thread exited with code ${code}`));
+    });
+    worker = created;
+    return created;
+  };
+
+  const persist = (row: LogRow): void => {
+    if (workerFailed || closing !== null) {
+      toFallback(row);
+      return;
     }
-    toFallback(fallbackLine(record));
+    const id = nextId++;
+    pending.set(id, row);
+    try {
+      ensureWorker().postMessage({ type: "log", id, row } satisfies RecordsRequest);
+    } catch (err) {
+      failWorker(err);
+    }
   };
 
   const write = (level: LogLevel, message: string, fields?: LogFields): void => {
@@ -208,10 +233,46 @@ export function createAppLog(
     const jobId = fields?.jobId;
     persist({
       time: new Date().toISOString(),
+      session,
       level,
       message,
       jobId: typeof jobId === "string" ? jobId : null,
       fields: serializeFields(fields),
+    });
+  };
+
+  const close = (waitMs: number = LOG_CLOSE_WAIT_MS): Promise<void> => {
+    closing ??= (async () => {
+      const current = worker;
+      if (!current || workerFailed) return;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, waitMs);
+        const settle = (): void => {
+          clearTimeout(timer);
+          resolve();
+        };
+        current.once("exit", settle);
+        current.on("message", (response: RecordsResponse) => {
+          if (response.type === "closed") settle();
+        });
+        try {
+          current.postMessage({ type: "close" } satisfies RecordsRequest);
+        } catch {
+          settle();
+        }
+      });
+      worker = null;
+      // Not awaited: a thread blocked inside SQLite stops only once that call
+      // returns, and a record it then completes is also in the fallback file.
+      current.terminate().catch((err: unknown) =>
+        toStderr(`zipkit: records thread did not stop (${reason(err)})\n`),
+      );
+    })();
+    // Entries made after the first close go straight to the fallback file, so
+    // every close waits for it.
+    return closing.then(() => {
+      fallBackPending();
+      return fallbackTail;
     });
   };
 
@@ -221,5 +282,6 @@ export function createAppLog(
     info: (m, f) => write("info", m, f),
     warn: (m, f) => write("warn", m, f),
     error: (m, f) => write("error", m, f),
+    close,
   };
 }

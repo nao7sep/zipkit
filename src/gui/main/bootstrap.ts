@@ -33,8 +33,8 @@ import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
 import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
 
-// Last-resort hooks: record the failure before the process can die. The app log
-// writes synchronously, so the line is on disk by the time these return.
+// Last-resort hooks: record the failure. A handled `uncaughtException` keeps the
+// process alive, so the records thread still writes the line.
 process.on("uncaughtException", (err) => {
   log.error("uncaught exception", { error: errorInfo(err) });
 });
@@ -126,6 +126,7 @@ function activateMainWindow(): void {
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
   await notifyStartupFailure("startup.halted");
+  await log.close();
   app.exit(1);
 }
 
@@ -236,6 +237,7 @@ app.on("before-quit", (event) => {
           queueFlushedForQuit = true;
           log.error("failed to flush the queue before quit", { error: errorInfo(err) });
         },
+        closeLog: () => log.close(),
         exit: (code) => app.exit(code),
       });
     } finally {
