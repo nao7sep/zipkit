@@ -34,9 +34,10 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
   return fmt;
 }
 
-/** The host's IANA timezone — the default DOS-field zone when none is given. */
+/** The host's IANA timezone — the default DOS-field zone when none is given —
+ *  or UTC when the platform reports none (timestamp conventions). */
 export function machineTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
 /** Whether a string is an IANA zone the runtime accepts (rejects offsets too). */
