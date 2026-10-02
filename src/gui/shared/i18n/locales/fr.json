@@ -292,7 +292,7 @@
   "finding.missing": "Listé dans le manifeste mais absent de l’archive",
   "finding.shaMismatch": "Le contenu ne correspond pas au SHA-256 du manifeste",
   "finding.symlink": "Lien symbolique",
-  "finding.unsafePath": "Serait écrit hors du dossier de destination",
+  "finding.unsafePath": "Le chemin pointe en dehors du dossier de destination",
 
   "log.debug": "Débogage",
   "log.info": "Info",

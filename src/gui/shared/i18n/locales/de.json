@@ -292,7 +292,7 @@
   "finding.missing": "Im Manifest aufgeführt, aber nicht im Archiv",
   "finding.shaMismatch": "Der Inhalt stimmt nicht mit dem SHA-256 im Manifest überein",
   "finding.symlink": "Symbolischer Link",
-  "finding.unsafePath": "Würde außerhalb des Zielordners geschrieben",
+  "finding.unsafePath": "Der Pfad verweist auf einen Ort außerhalb des Zielordners",
 
   "log.debug": "Debug",
   "log.info": "Info",

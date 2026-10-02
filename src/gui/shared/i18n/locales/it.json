@@ -292,7 +292,7 @@
   "finding.missing": "Elencato nel manifesto ma assente dall’archivio",
   "finding.shaMismatch": "Il contenuto non corrisponde allo SHA-256 del manifesto",
   "finding.symlink": "Collegamento simbolico",
-  "finding.unsafePath": "Verrebbe scritto fuori dalla cartella di destinazione",
+  "finding.unsafePath": "Il percorso punta fuori dalla cartella di destinazione",
 
   "log.debug": "Debug",
   "log.info": "Informazioni",

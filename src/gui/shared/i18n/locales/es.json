@@ -292,7 +292,7 @@
   "finding.missing": "Figura en el manifiesto, pero falta en el archivo comprimido",
   "finding.shaMismatch": "El contenido no coincide con el SHA-256 del manifiesto",
   "finding.symlink": "Enlace simbólico",
-  "finding.unsafePath": "Se escribiría fuera de la carpeta de destino",
+  "finding.unsafePath": "La ruta apunta fuera de la carpeta de destino",
 
   "log.debug": "Depuración",
   "log.info": "Información",

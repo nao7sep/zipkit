@@ -292,7 +292,7 @@
   "finding.missing": "Consta no manifesto, mas falta no arquivo compactado",
   "finding.shaMismatch": "O conteúdo não corresponde ao SHA-256 do manifesto",
   "finding.symlink": "Link simbólico",
-  "finding.unsafePath": "Seria gravado fora da pasta de destino",
+  "finding.unsafePath": "O caminho aponta para fora da pasta de destino",
 
   "log.debug": "Depuração",
   "log.info": "Informação",
