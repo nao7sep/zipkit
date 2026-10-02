@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadCatalogue, type MessageKey } from "../../src/gui/shared/i18n/catalogues";
+import { loadCatalogue, loadedCatalogue, type MessageKey } from "../../src/gui/shared/i18n/catalogues";
 import { createTranslator, message, sentences } from "../../src/gui/shared/i18n/translate";
 
 await Promise.all((["de", "ru", "ja"] as const).map(loadCatalogue));
@@ -51,7 +51,18 @@ describe("createTranslator", () => {
     expect(createTranslator("en").parts("options.embedManifest")).toEqual(["Embed manifest (", "file", ")"]);
   });
 
-  it("shows a key the catalogue lacks instead of failing the render", () => {
+  it("reads a key the language's catalogue lacks in English", () => {
+    const ja = loadedCatalogue("ja") as Record<string, unknown>;
+    const held = ja["common.save"];
+    delete ja["common.save"];
+    try {
+      expect(createTranslator("ja").t("common.save")).toBe(createTranslator("en").t("common.save"));
+    } finally {
+      ja["common.save"] = held;
+    }
+  });
+
+  it("shows a key no catalogue carries instead of failing the render", () => {
     // Types keep this out of the app; a stale build or a half-merged catalogue
     // could still reach it, and a window must not go down over one string.
     const missing = "gone.missing" as unknown as MessageKey;

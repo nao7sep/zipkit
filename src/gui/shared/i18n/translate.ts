@@ -1,4 +1,4 @@
-import { loadedCatalogue, type Catalogue, type MessageKey } from "./catalogues.js";
+import { ENGLISH, loadedCatalogue, type Catalogue, type MessageKey } from "./catalogues.js";
 import type { Language } from "./languages.js";
 
 // A value filled into a placeholder: a number is formatted for the locale, and
@@ -56,13 +56,15 @@ export function createTranslator(language: Language, locale: string = language):
   const pluralRules = new Intl.PluralRules(language);
 
   function template(key: MessageKey, values: MessageValues | undefined): string {
-    const entry = catalogue[key];
+    // A key the language's catalogue does not carry reads in English, its
+    // fallback (localization conventions, Catalogues); one English lacks too
+    // shows as itself rather than taking the window down. The catalogue gate and
+    // the on-screen-key check both fail on either, so neither reaches a release
+    // unnoticed.
+    const entry = catalogue[key] ?? ENGLISH[key];
     if (typeof entry === "string") {
       return entry;
     }
-    // A key the catalogue does not carry shows as itself rather than taking the
-    // window down; the catalogue gate and the on-screen-key check both fail on
-    // it, so it cannot reach a release unnoticed.
     if (entry === undefined || entry === null) {
       return key;
     }
