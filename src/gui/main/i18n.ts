@@ -20,6 +20,7 @@ import {
   type LanguageEnvironment,
   type LanguagePreference,
 } from "../shared/i18n/languages.js";
+import { loadCatalogue } from "../shared/i18n/catalogues.js";
 import { createTranslator, type Translator } from "../shared/i18n/translate.js";
 import { LANGUAGE_CHANGED_CHANNEL } from "../shared/api.js";
 
@@ -91,8 +92,9 @@ function alignAppKit(preference: LanguagePreference, onError: (error: unknown) =
   }
 }
 
-function build(systemLanguage: Language, systemLocale: string | null, preference: LanguagePreference): LanguageState {
+async function build(systemLanguage: Language, systemLocale: string | null, preference: LanguagePreference): Promise<LanguageState> {
   const language = effectiveLanguage(preference, systemLanguage);
+  await loadCatalogue(language);
   return {
     systemLanguage,
     systemLocale,
@@ -110,20 +112,27 @@ function readComputer(): { systemLanguage: Language; systemLocale: string | null
 
 /** Settles the language once the app is ready, before any window or native
  *  menu exists. Called once per launch. */
-export function settleLanguage(preference: LanguagePreference, onError: (error: unknown) => void): void {
+export async function settleLanguage(preference: LanguagePreference, onError: (error: unknown) => void): Promise<void> {
   const computer = readComputer();
-  state = build(computer.systemLanguage, computer.systemLocale, preference);
+  state = await build(computer.systemLanguage, computer.systemLocale, preference);
   alignAppKit(preference, onError);
 }
 
-/** The translator main draws its own surfaces with. A failure reported before
- *  the saved choice could be read speaks the computer's language, and leaves
- *  AppKit's entry alone for the launch that can read it. */
-export function mainTranslator(): Translator {
+/** The translator for a failure reported before the language was settled: it
+ *  speaks the computer's language, and leaves AppKit's entry alone for the
+ *  launch that can read the saved choice. */
+export async function settledTranslator(): Promise<Translator> {
   if (!state) {
     const computer = readComputer();
-    state = build(computer.systemLanguage, computer.systemLocale, "system");
+    const built = await build(computer.systemLanguage, computer.systemLocale, "system");
+    state ??= built;
   }
+  return state.translator;
+}
+
+/** The translator main draws its own surfaces with, once the language is settled. */
+export function mainTranslator(): Translator {
+  if (!state) throw new Error("The interface language is not settled yet");
   return state.translator;
 }
 
@@ -140,14 +149,20 @@ export function onLanguageChanged(listener: (translator: Translator) => void): (
   };
 }
 
-/** Applies a saved choice: the window and every native surface follow at once. */
-export function applyLanguagePreference(value: unknown, onError: (error: unknown) => void): void {
-  mainTranslator(); // settles on the computer's language if nothing has yet
-  const current = state!;
+let applying = 0;
+
+/** Applies a saved choice: the window and every native surface follow at once.
+ *  Of overlapping calls, the last one wins. */
+export async function applyLanguagePreference(value: unknown, onError: (error: unknown) => void): Promise<void> {
+  const request = ++applying;
+  await settledTranslator();
   const preference = normalizeLanguagePreference(value);
-  if (preference === current.preference) return;
-  const previous = current.translator.language;
-  state = build(current.systemLanguage, current.systemLocale, preference);
+  if (preference === state!.preference) return;
+  const { systemLanguage, systemLocale } = state!;
+  const next = await build(systemLanguage, systemLocale, preference);
+  if (request !== applying) return;
+  const previous = state!.translator.language;
+  state = next;
   alignAppKit(preference, onError);
   if (state.translator.language === previous) return;
   const translator = state.translator;

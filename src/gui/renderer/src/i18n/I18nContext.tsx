@@ -1,5 +1,5 @@
 import { createContext, createElement, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { MessageKey } from "../../../shared/i18n/catalogues";
+import { loadCatalogue, type MessageKey } from "../../../shared/i18n/catalogues";
 import { isLanguage, type Language, type LanguageEnvironment } from "../../../shared/i18n/languages";
 import { createTranslator, type Translator as BaseTranslator } from "../../../shared/i18n/translate";
 
@@ -20,6 +20,8 @@ export function rendererTranslator(language: Language, locale?: string): Transla
       ),
   };
 }
+
+const ENGLISH_ENVIRONMENT: LanguageEnvironment = { language: "en", locale: "en" };
 
 // English until a provider says otherwise, so a component rendered on its own
 // (in a test, say) still has text.
@@ -49,23 +51,36 @@ export function I18nProvider({
 /**
  * The language the main process settled on, followed live: main resolves the
  * saved choice and the computer's language, and tells the window when a saved
- * change moves it. Nothing renders until the language is known, so the first
- * words on screen are already in it.
+ * change moves it. Nothing renders until the language and its catalogue are
+ * loaded, so the first words on screen are already in it.
  */
 export function MainProcessLanguage({ children }: { children: ReactNode }) {
   const [environment, setEnvironment] = useState<LanguageEnvironment | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const unsubscribe = window.zipkit.onLanguageChanged((next) => setEnvironment(next));
+    let announced = false;
+    let requested = 0;
+    // A failed read or load leaves English in its own format rather than no window.
+    const show = (next: LanguageEnvironment): void => {
+      const request = ++requested;
+      void loadCatalogue(next.language)
+        .then(() => next, () => ENGLISH_ENVIRONMENT)
+        .then((shown) => {
+          if (!cancelled && request === requested) setEnvironment(shown);
+        });
+    };
+    const unsubscribe = window.zipkit.onLanguageChanged((next) => {
+      announced = true;
+      show(next);
+    });
     void window.zipkit
       .getLanguageEnvironment()
       .then((next) => {
-        if (!cancelled) setEnvironment((current) => current ?? next);
+        if (!announced) show(next);
       })
-      // A failed read leaves English in its own format rather than no window.
       .catch(() => {
-        if (!cancelled) setEnvironment((current) => current ?? { language: "en", locale: "en" });
+        if (!announced) show(ENGLISH_ENVIRONMENT);
       });
     return () => {
       cancelled = true;

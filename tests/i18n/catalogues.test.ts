@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CATALOGUES } from "../../src/gui/shared/i18n/catalogues";
+import { loadCatalogue } from "../../src/gui/shared/i18n/catalogues";
 import { LANGUAGES, type Language } from "../../src/gui/shared/i18n/languages";
 
 // The catalogue gate. English defines the key set; every other language must
@@ -13,7 +13,9 @@ type Entry = string | Record<string, string>;
 type Catalogue = Record<string, Entry>;
 
 // Read through the app's own imports, the ones both processes use.
-const catalogues = CATALOGUES as unknown as Record<Language, Catalogue>;
+const catalogues = Object.fromEntries(
+  await Promise.all(LANGUAGES.map(async (language) => [language, await loadCatalogue(language)] as const)),
+) as unknown as Record<Language, Catalogue>;
 
 const english = catalogues.en;
 const LOCALES = "src/gui/shared/i18n/locales";
@@ -140,11 +142,6 @@ describe("catalogues", () => {
       ),
     );
     expect(literal).toEqual([]);
-  });
-
-  it("names every language differently, in its own words", () => {
-    const names = LANGUAGES.map((language) => catalogues[language]["language.name"]);
-    expect(new Set(names).size).toBe(LANGUAGES.length);
   });
 
   // Every control that opens About — the in-window hamburger menu's item here —

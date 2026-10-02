@@ -36,7 +36,7 @@ export function registerIpc(): void {
     // Settings apply on Save, the theme and the language included (app-chrome
     // conventions, Theme; localization conventions).
     applyThemePreference(settings.theme);
-    applyLanguagePreference(settings.language, (error) =>
+    await applyLanguagePreference(settings.language, (error) =>
       log.warn("the interface language could not reach a native surface", { error: errorInfo(error) }),
     );
     return settings;

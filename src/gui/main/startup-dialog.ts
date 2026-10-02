@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
-import { mainTranslator } from "./i18n.js";
+import { mainTranslator, settledTranslator } from "./i18n.js";
 import { windowBackground } from "./theme.js";
 
 export interface AppMessageDialogOptions {
@@ -125,8 +125,8 @@ export async function showAppMessageDialog({
 
 /** The fatal launch message, in the interface language (the computer's when
  *  the saved choice could not be read). */
-export function notifyStartupFailure(message: MessageKey): Promise<void> {
-  const translator = mainTranslator();
+export async function notifyStartupFailure(message: MessageKey): Promise<void> {
+  const translator = await settledTranslator();
   return showAppMessageDialog({
     title: translator.t("startup.title"),
     message: translator.t(message),

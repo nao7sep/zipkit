@@ -137,7 +137,7 @@ app.whenReady().then(async () => {
   // The language is settled before anything draws: the saved choice is read
   // straight from config.json so the menu that replaces Electron's default in
   // this same turn is already in it. The store's load below can still reset it.
-  settleLanguage(readSavedPreference(readConfigText(settingsFile())), logLanguageError);
+  await settleLanguage(readSavedPreference(readConfigText(settingsFile())), logLanguageError);
   installAppMenu(mainTranslator());
   onLanguageChanged(installAppMenu);
   log.info("app started", {
@@ -167,7 +167,7 @@ app.whenReady().then(async () => {
   followOsThemeChanges();
   // A quarantined or hand-edited file may settle on another language than the
   // raw read above; the store's value wins before the window opens.
-  applyLanguagePreference(settingsLoad.value.language, logLanguageError);
+  await applyLanguagePreference(settingsLoad.value.language, logLanguageError);
   await loadLayout(log);
 
   windowCreationReady = true;

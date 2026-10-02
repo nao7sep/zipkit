@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { describeOriginalsTrash, trashConfirmed } from "../../../src/gui/main/trash-outcome.js";
+import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues.js";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
+
+await loadCatalogue("ru");
 
 const en = createTranslator("en");
 

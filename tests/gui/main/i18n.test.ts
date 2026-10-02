@@ -67,7 +67,7 @@ describe("AppKit language alignment", () => {
 
   it("clears its own entry before reading the computer, then writes the saved choice", async () => {
     const i18n = await load();
-    i18n.settleLanguage("fr", vi.fn());
+    await i18n.settleLanguage("fr", vi.fn());
     expect(electron.calls).toContain("remove");
     expect(electron.calls.indexOf("remove")).toBeLessThan(electron.calls.indexOf("read"));
     expect(electron.defaults.get("AppleLanguages")).toEqual(["fr"]);
@@ -76,21 +76,37 @@ describe("AppKit language alignment", () => {
   it("removes the entry when System is chosen", async () => {
     electron.defaults.set("AppleLanguages", ["fr"]);
     const i18n = await load();
-    i18n.settleLanguage("system", vi.fn());
+    await i18n.settleLanguage("system", vi.fn());
     expect(electron.defaults.has("AppleLanguages")).toBe(false);
   });
 
   it("touches no defaults off macOS", async () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
     const i18n = await load();
-    i18n.settleLanguage("fr", vi.fn());
+    await i18n.settleLanguage("fr", vi.fn());
     expect(electron.calls.filter((call) => call !== "read")).toEqual([]);
   });
 
   it("touches no defaults on an unpackaged macOS run", async () => {
     electron.isPackaged = false;
     const i18n = await load();
-    i18n.settleLanguage("fr", vi.fn());
+    await i18n.settleLanguage("fr", vi.fn());
     expect(electron.calls.filter((call) => call !== "read")).toEqual([]);
+  });
+});
+
+describe("applyLanguagePreference", () => {
+  it("keeps the last of overlapping saved choices, whichever catalogue loads first", async () => {
+    vi.resetModules();
+    const i18n = await import("../../../src/gui/main/i18n.js");
+    const { loadCatalogue } = await import("../../../src/gui/shared/i18n/catalogues.js");
+    await i18n.settleLanguage("en", vi.fn());
+    await loadCatalogue("de");
+
+    const first = i18n.applyLanguagePreference("fr", vi.fn());
+    const second = i18n.applyLanguagePreference("de", vi.fn());
+    await Promise.all([first, second]);
+
+    expect(i18n.mainTranslator().language).toBe("de");
   });
 });

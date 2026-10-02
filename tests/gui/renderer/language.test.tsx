@@ -13,6 +13,9 @@ import { planReport } from "../../../src/gui/renderer/src/view";
 import { ZipKit } from "../../../src/sdk/index";
 import type { LanguageEnvironment, PlanData } from "../../../src/gui/shared/api";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate";
+import en from "../../../src/gui/shared/i18n/locales/en.json";
+import ja from "../../../src/gui/shared/i18n/locales/ja.json";
+import ko from "../../../src/gui/shared/i18n/locales/ko.json";
 
 afterEach(cleanup);
 
@@ -43,10 +46,35 @@ describe("the interface language main settles on", () => {
     expect(screen.getByRole("button", { name: "Menu" })).toBeTruthy();
     expect(document.documentElement.lang).toBe("en");
 
-    const ja = createTranslator("ja");
     await act(async () => announce({ language: "ja", locale: "ja" }));
-    expect(screen.getByRole("button", { name: ja.t("header.menu") })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: ja["header.menu"] })).toBeTruthy();
     expect(document.documentElement.lang).toBe("ja");
+  });
+
+  it("loads the interface language's catalogue before the first render", async () => {
+    let answer: (environment: LanguageEnvironment) => void = () => {};
+    Object.defineProperty(window, "zipkit", {
+      configurable: true,
+      value: {
+        getLanguageEnvironment: () => new Promise<LanguageEnvironment>((resolve) => { answer = resolve; }),
+        onLanguageChanged: () => () => {},
+      },
+    });
+    const rendered: string[] = [];
+    const observer = new MutationObserver(() => rendered.push(document.body.innerHTML));
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+
+    render(
+      <MainProcessLanguage>
+        <AppHeader onOpenSettings={() => {}} onOpenShortcuts={() => {}} onOpenAbout={() => {}} />
+      </MainProcessLanguage>,
+    );
+    await act(async () => answer({ language: "ko", locale: "ko" }));
+    expect(await screen.findByRole("button", { name: ko["header.menu"] })).toBeTruthy();
+    observer.disconnect();
+    // The English label never reached the screen on the way.
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered.some((html) => html.includes(`aria-label="${en["header.menu"]}"`))).toBe(false);
   });
 });
 

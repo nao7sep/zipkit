@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   effectiveLanguage,
   formattingLocale,
+  LANGUAGE_NAMES,
+  LANGUAGES,
   normalizeLanguagePreference,
   systemLanguage,
 } from "../../src/gui/shared/i18n/languages";
@@ -61,5 +63,12 @@ describe("formattingLocale", () => {
     expect(formattingLocale("zh-Hans", "zh-TW")).toBe("zh-Hans");
     expect(formattingLocale("en", null)).toBe("en");
     expect(formattingLocale("en", "not a locale")).toBe("en");
+  });
+});
+
+describe("LANGUAGE_NAMES", () => {
+  it("names every language differently, in its own words", () => {
+    const names = LANGUAGES.map((language) => LANGUAGE_NAMES[language]);
+    expect(new Set(names).size).toBe(LANGUAGES.length);
   });
 });

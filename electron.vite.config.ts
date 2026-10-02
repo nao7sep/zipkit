@@ -20,10 +20,6 @@ const define = { __APP_VERSION__: JSON.stringify(version) };
 export default defineConfig({
   main: {
     build: {
-      // Loaded from disk, not over a network: the default 500 kB warning measures
-      // transfer cost. 2000 keeps a runaway bundle loud without flagging the
-      // ten-language catalogues on every build.
-      chunkSizeWarningLimit: 2000,
       rollupOptions: {
         input: { index: resolve(import.meta.dirname, "src/gui/main/index.ts") },
         // index.ts validates ZIPKIT_DATA_DIR, then `await import('./bootstrap.js')`;
@@ -53,7 +49,6 @@ export default defineConfig({
     },
     build: {
       minify: true,
-      chunkSizeWarningLimit: 2000, // see the main build block
       rollupOptions: {
         input: { index: resolve(import.meta.dirname, "src/gui/renderer/index.html") },
       },

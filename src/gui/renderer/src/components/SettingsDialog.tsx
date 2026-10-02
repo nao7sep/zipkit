@@ -21,8 +21,7 @@ import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
 import { useI18n } from "../i18n/I18nContext";
 import type { MessageKey } from "../../../shared/i18n/catalogues";
-import { CATALOGUES } from "../../../shared/i18n/catalogues";
-import { LANGUAGES, normalizeLanguagePreference } from "../../../shared/i18n/languages";
+import { LANGUAGE_NAMES, LANGUAGES, normalizeLanguagePreference } from "../../../shared/i18n/languages";
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: MessageKey }> = [
   { value: "system", label: "settings.themeSystem" },
@@ -130,7 +129,7 @@ export function SettingsDialog({
           <option value="system">{t("settings.languageSystem")}</option>
           {LANGUAGES.map((language) => (
             <option key={language} value={language} lang={language}>
-              {CATALOGUES[language]["language.name"] as string}
+              {LANGUAGE_NAMES[language]}
             </option>
           ))}
         </select>

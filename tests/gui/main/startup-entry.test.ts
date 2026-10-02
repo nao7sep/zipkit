@@ -32,7 +32,7 @@ vi.mock("../../../src/gui/main/startup-dialog.js", () => ({
 }));
 
 vi.mock("../../../src/gui/main/i18n.js", () => ({
-  mainTranslator: () => ({ language: "en" }),
+  settledTranslator: async () => ({ language: "en" }),
 }));
 
 vi.mock("../../../src/gui/main/menu.js", () => ({

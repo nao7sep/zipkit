@@ -1,8 +1,10 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
-import { CATALOGUES } from "../../../src/gui/shared/i18n/catalogues";
+import { ENGLISH, loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
 import { LANGUAGES } from "../../../src/gui/shared/i18n/languages";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate";
+
+await Promise.all(LANGUAGES.map(loadCatalogue));
 
 vi.mock("electron", () => ({ Menu: {} }));
 
@@ -15,7 +17,7 @@ function labels(items: MenuItemConstructorOptions[]): string[] {
   ]);
 }
 
-const KEYS = new Set(Object.keys(CATALOGUES.en));
+const KEYS = new Set(Object.keys(ENGLISH));
 
 describe("application menu", () => {
   it.each(["darwin", "win32"] as const)("labels every item from the catalogue on %s", (platform) => {

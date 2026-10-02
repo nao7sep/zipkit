@@ -1,4 +1,4 @@
-import { CATALOGUES, type Catalogue, type MessageKey } from "./catalogues.js";
+import { loadedCatalogue, type Catalogue, type MessageKey } from "./catalogues.js";
 import type { Language } from "./languages.js";
 
 // A value filled into a placeholder: a number is formatted for the locale, and
@@ -46,8 +46,9 @@ export type Translator = {
   list: (items: readonly string[]) => string;
 };
 
+// The language's catalogue must already be loaded (loadCatalogue).
 export function createTranslator(language: Language, locale: string = language): Translator {
-  const catalogue: Catalogue = CATALOGUES[language];
+  const catalogue: Catalogue = loadedCatalogue(language);
   const numberFormat = new Intl.NumberFormat(locale);
   const dateTimeFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
   const logTimeFormat = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "medium" });

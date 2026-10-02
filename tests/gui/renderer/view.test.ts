@@ -33,7 +33,10 @@ import {
 } from "../../../src/gui/renderer/src/view";
 import type { ExtractData, Job, LogEvent, PlanData } from "../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
+import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
 import { createTranslator, message } from "../../../src/gui/shared/i18n/translate";
+
+await Promise.all((["ru", "de", "ja"] as const).map(loadCatalogue));
 
 const en = createTranslator("en");
 

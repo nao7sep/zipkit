@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { MessageKey } from "../../src/gui/shared/i18n/catalogues";
+import { loadCatalogue, type MessageKey } from "../../src/gui/shared/i18n/catalogues";
 import { createTranslator, message, sentences } from "../../src/gui/shared/i18n/translate";
+
+await Promise.all((["de", "ru", "ja"] as const).map(loadCatalogue));
 
 describe("createTranslator", () => {
   it("fills placeholders and formats numbers for the locale", () => {
