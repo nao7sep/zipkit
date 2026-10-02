@@ -79,7 +79,7 @@ describe("queue file location and persistence", () => {
     // saveQueue now records through the write-through backup store (backups.sqlite3 under this root);
     // close it so the next test re-opens against its own throwaway root and the rm below can delete
     // the file with no open handle.
-    closeBackupStore();
+    await closeBackupStore();
     await rm(root, { recursive: true, force: true });
   });
 

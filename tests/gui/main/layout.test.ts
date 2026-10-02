@@ -131,7 +131,7 @@ describe("layout file quarantine-then-reset", () => {
     else process.env.ZIPKIT_DATA_DIR = prev;
     // Close the backup store so a test that opened it against this throwaway root releases it before
     // the rm below (saveLayout itself no longer records).
-    closeBackupStore();
+    await closeBackupStore();
     await rm(root, { recursive: true, force: true });
   });
 

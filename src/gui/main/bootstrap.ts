@@ -29,6 +29,7 @@ import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js"
 import { confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
 import { QUIT_WAIT_MS, stopFlushAndExit } from "./quit.js";
+import { closeBackupStore } from "./backupStore.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
 import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
@@ -126,6 +127,7 @@ function activateMainWindow(): void {
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
   await notifyStartupFailure("startup.halted");
+  await closeBackupStore();
   await log.close();
   app.exit(1);
 }
@@ -237,6 +239,7 @@ app.on("before-quit", (event) => {
           queueFlushedForQuit = true;
           log.error("failed to flush the queue before quit", { error: errorInfo(err) });
         },
+        closeBackups: () => closeBackupStore(),
         closeLog: () => log.close(),
         exit: (code) => app.exit(code),
       });

@@ -117,8 +117,9 @@ export async function loadManagedJson<T>(
  *
  * The data-backup record fires strictly AFTER the rename lands, from the same `bytes` buffer just
  * written — never before the rename (a backup of a save that never happened) and never a re-read
- * (which could capture a concurrent writer's content). Best-effort: record() swallows its own
- * failures and never breaks the save (data-backup conventions).
+ * (which could capture a concurrent writer's content). Best-effort and not awaited: record() hands the
+ * bytes to the backups thread, swallows its own failures and never breaks or delays the save
+ * (data-backup conventions).
  */
 export async function writeManagedJson(file: string, text: string, options: { record?: boolean } = {}): Promise<void> {
   const dir = path.dirname(file);
@@ -127,5 +128,5 @@ export async function writeManagedJson(file: string, text: string, options: { re
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   await writeFile(tmp, bytes);
   await rename(tmp, file);
-  if (options.record !== false) record(file, bytes);
+  if (options.record !== false) void record(file, bytes);
 }

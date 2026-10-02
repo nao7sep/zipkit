@@ -1,11 +1,11 @@
 /**
  * The quit sequence after the user has decided to quit: stop the running job,
- * persist the queue, hand the log's last records to disk, then terminate
- * Electron.
+ * persist the queue, let the backup history record that save, hand the log's
+ * last records to disk, then terminate Electron.
  *
  * Each wait is bounded by `QUIT_WAIT_MS`. Stopping a job waits for its writer's
- * own cleanup (closing and removing its temp file), and the flush and the log
- * write to the storage root; any of them can stall on a stuck volume, and an unbounded wait would
+ * own cleanup (closing and removing its temp file), and the flush, the backup
+ * history and the log write to the storage root; any of them can stall on a stuck volume, and an unbounded wait would
  * leave quit silently doing nothing. When a bound elapses the sequence reports
  * it and moves on, so quitting always ends in `exit`.
  *
@@ -27,6 +27,8 @@ export interface QuitSteps {
   onFlushed(): void;
   /** The flush failed or did not finish within the bound. */
   onFlushError(error: unknown): void;
+  /** Write the backup history's records still in flight. */
+  closeBackups(): Promise<void>;
   /** Write the log's records still in flight. */
   closeLog(): Promise<void>;
   exit(code: number): void;
@@ -55,6 +57,8 @@ export async function stopFlushAndExit(steps: QuitSteps, waitMs = QUIT_WAIT_MS):
     } catch (error) {
       steps.onFlushError(error);
     }
+    // The backup history may log a failure, so the log closes last.
+    await settlesWithin(steps.closeBackups(), waitMs);
     await settlesWithin(steps.closeLog(), waitMs);
   } finally {
     steps.exit(0);

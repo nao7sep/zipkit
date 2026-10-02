@@ -8,12 +8,14 @@
  *    that shape and explicitly NOT the `yyyymmdd-hhmmss-fff-utc` filename stamp.
  *  - dedup: an unchanged re-save of the same path writes no new row; a changed save writes one; a revert
  *    to earlier content writes one (it differs from the immediately-preceding row).
- *  - best-effort: an injected insert failure never throws out of record, logs exactly one warn, and
- *    leaves prior rows untouched (the save it follows is unaffected).
+ *  - best-effort: an insert failure (raised by a real SQLite trigger inside the backups thread) never
+ *    rejects out of record, logs exactly one warn, leaves prior rows untouched, and is rolled back so
+ *    the next record lands.
  *  - write-through: after a REAL managed save (saveSettings), the exact bytes on disk are in the store.
  *
- * Rows are read back with an INDEPENDENT node:sqlite connection so the store's own writes — not a mock —
- * are what the assertions see. `runtime.log` is mocked with a capturing logger so warn counts are exact
+ * The store is written by its own thread, so each test waits for `record`'s promise (or closes the
+ * store) before reading. Rows are read back with an INDEPENDENT node:sqlite connection so the store's
+ * own writes — not a mock — are what the assertions see. `runtime.log` is mocked with a capturing logger so warn counts are exact
  * and no test writes into the developer's home dir.
  */
 
@@ -23,7 +25,7 @@ import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 
 // Capturing logger swapped in for runtime.log so warn/ error lines are asserted exactly and nothing is
 // written to the real session log. Hoisted so the vi.mock factory can close over it.
@@ -74,9 +76,8 @@ afterEach(async () => {
   if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
   else process.env.ZIPKIT_DATA_DIR = prev;
   const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
-  closeBackupStore();
+  await closeBackupStore();
   vi.resetModules(); // fresh singleton per test so each opens against its own throwaway root
-  vi.doUnmock("node:sqlite");
   await rm(root, { recursive: true, force: true });
 });
 
@@ -88,7 +89,7 @@ describe("record: BLOB fidelity, hash, size, path, and timestamp shape", () => {
     const bytes = Buffer.from([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62, 0xff, 0x00, 0x63]);
     const file = path.join(root, "config.json");
 
-    record(file, bytes);
+    await record(file, bytes);
 
     const rows = readRows(root);
     expect(rows).toHaveLength(1);
@@ -119,11 +120,11 @@ describe("dedup by content hash, per path", () => {
     const v1 = Buffer.from("alpha", "utf8");
     const v2 = Buffer.from("beta", "utf8");
 
-    record(file, v1);
-    record(file, v1); // identical — deduped, no new row
+    await record(file, v1);
+    await record(file, v1); // identical — deduped, no new row
     expect(readRows(root)).toHaveLength(1);
 
-    record(file, v2); // changed — recorded
+    await record(file, v2); // changed — recorded
     const rows = readRows(root);
     expect(rows).toHaveLength(2);
     expect(Buffer.from(rows[1]!.content).toString("utf8")).toBe("beta");
@@ -135,9 +136,9 @@ describe("dedup by content hash, per path", () => {
     const a = Buffer.from("A", "utf8");
     const b = Buffer.from("B", "utf8");
 
-    record(file, a); // row 1: A
-    record(file, b); // row 2: B
-    record(file, a); // row 3: A again — a revert, differs from the preceding row (B), so it IS recorded
+    await record(file, a); // row 1: A
+    await record(file, b); // row 2: B
+    await record(file, a); // row 3: A again — a revert, differs from the preceding row (B), so it IS recorded
 
     const rows = readRows(root);
     expect(rows).toHaveLength(3);
@@ -150,9 +151,9 @@ describe("dedup by content hash, per path", () => {
     const p1 = path.join(root, "config.json");
     const p2 = path.join(root, "queue.json");
 
-    record(p1, same);
-    record(p2, same); // same content, DIFFERENT path — recorded (dedup is per path)
-    record(p1, same); // same content, same path as row 1 — deduped
+    await record(p1, same);
+    await record(p2, same); // same content, DIFFERENT path — recorded (dedup is per path)
+    await record(p1, same); // same content, same path as row 1 — deduped
 
     const rows = readRows(root);
     expect(rows).toHaveLength(2);
@@ -161,62 +162,35 @@ describe("dedup by content hash, per path", () => {
 });
 
 describe("best-effort: a record failure never throws, logs one warn, and does not disturb prior rows", () => {
-  it("swallows an injected insert failure, logs exactly one warn, and leaves the earlier row intact", async () => {
-    // First record a good row through the real binding so there is prior history to prove is untouched.
-    {
-      const { record } = await import("../../../src/gui/main/backupStore.js");
-      record(path.join(root, "config.json"), Buffer.from("good", "utf8"));
-      const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
-      closeBackupStore();
-    }
+  it("swallows an insert failure, logs exactly one warn, rolls back, and leaves the earlier row intact", async () => {
+    const { record } = await import("../../../src/gui/main/backupStore.js");
+    const file = path.join(root, "config.json");
+    await record(file, Buffer.from("good", "utf8"));
     expect(readRows(root)).toHaveLength(1);
 
-    // Now make the NEXT open's insert throw: wrap DatabaseSync so prepare() of the INSERT yields a
-    // statement whose run() throws. get()/exec() still work, so open + dedup lookup succeed and the
-    // failure is isolated to the insert — exactly the "an insert throws" case the convention names.
-    vi.resetModules();
-    vi.doMock("node:sqlite", async (importActual) => {
-      const actual = await importActual<typeof import("node:sqlite")>();
-      let failNextInsert = true;
-      class FailingInsertDb extends actual.DatabaseSync {
-        override prepare(sql: string): StatementSync {
-          const stmt = super.prepare(sql);
-          if (/^\s*INSERT/i.test(sql)) {
-            return new Proxy(stmt, {
-              get(target, prop, receiver) {
-                if (prop === "run") {
-                  return (...args: SQLInputValue[]) => {
-                    if (failNextInsert) {
-                      failNextInsert = false;
-                      throw new Error("disk full: simulated insert failure");
-                    }
-                    return target.run(...args);
-                  };
-                }
-                return Reflect.get(target, prop, receiver);
-              },
-            }) as typeof stmt;
-          }
-          return stmt;
-        }
-      }
-      return { ...actual, DatabaseSync: FailingInsertDb };
-    });
+    // A real insert failure inside the backups thread: a trigger aborts the insert of one content.
+    // The dedup lookup still runs, so the failure is isolated to the insert — exactly the "an insert
+    // throws" case the convention names.
+    const db = new DatabaseSync(path.join(root, "backups.sqlite3"));
+    db.exec(
+      "CREATE TRIGGER fail_changed BEFORE INSERT ON backups WHEN NEW.content = CAST('changed' AS BLOB) " +
+        "BEGIN SELECT RAISE(ABORT, 'simulated insert failure'); END",
+    );
+    db.close();
 
-    const { record } = await import("../../../src/gui/main/backupStore.js");
     // A DIFFERENT content so dedup does not short-circuit before the insert is attempted.
-    expect(() => record(path.join(root, "config.json"), Buffer.from("changed", "utf8"))).not.toThrow();
+    await expect(record(file, Buffer.from("changed", "utf8"))).resolves.toBeUndefined();
 
     // Exactly one warn, naming the file and carrying a reason; no error line.
     expect(logCalls.warn).toHaveLength(1);
     expect(logCalls.warn[0]!.message).toMatch(/failed to record/i);
-    expect(logCalls.warn[0]!.fields?.file).toBe(path.join(root, "config.json"));
-    expect(logCalls.warn[0]!.fields?.error).toBeDefined();
+    expect(logCalls.warn[0]!.fields?.file).toBe(file);
+    expect(logCalls.warn[0]!.fields?.error).toMatchObject({ message: expect.stringMatching(/simulated insert failure/) });
     expect(logCalls.error).toHaveLength(0);
 
     // The failed transaction was rolled back, so the same live store can record
     // the next save instead of remaining stuck inside an open transaction.
-    record(path.join(root, "config.json"), Buffer.from("recovered", "utf8"));
+    await record(file, Buffer.from("recovered", "utf8"));
     const rows = readRows(root);
     expect(rows).toHaveLength(2);
     expect(Buffer.from(rows[0]!.content).toString("utf8")).toBe("good");
@@ -233,8 +207,8 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
     process.env.ZIPKIT_DATA_DIR = path.join(blocker, "nested"); // parent is a file -> mkdir/open fails
 
     const { record } = await import("../../../src/gui/main/backupStore.js");
-    expect(() => record("/whatever/config.json", Buffer.from("a", "utf8"))).not.toThrow();
-    expect(() => record("/whatever/config.json", Buffer.from("b", "utf8"))).not.toThrow();
+    await expect(record("/whatever/config.json", Buffer.from("a", "utf8"))).resolves.toBeUndefined();
+    await expect(record("/whatever/config.json", Buffer.from("b", "utf8"))).resolves.toBeUndefined();
 
     // Exactly one warn total (the open failure), not one per record — disabled for the session.
     expect(logCalls.warn).toHaveLength(1);
@@ -249,7 +223,10 @@ describe("write-through: a real managed save records the exact bytes after the r
     const { saveSettings } = await import("../../../src/gui/main/settings.js");
     const { DEFAULT_OPTIONS, DEFAULT_SETTINGS } = await import("../../../src/gui/shared/spec.js");
 
+    const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
+
     await saveSettings({ ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 7 } });
+    await closeBackupStore(); // the save does not wait for its record; closing does
 
     const file = path.join(root, "config.json");
     const onDisk = readFileSync(file); // the exact bytes the atomic write landed
@@ -269,8 +246,11 @@ describe("write-through: a real managed save records the exact bytes after the r
     const { DEFAULT_OPTIONS, DEFAULT_SETTINGS } = await import("../../../src/gui/shared/spec.js");
     const settings = { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 3 } };
 
+    const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
+
     await saveSettings(settings);
     await saveSettings(settings); // the file would not change -> no write
+    await closeBackupStore();
 
     expect(readRows(root)).toHaveLength(1);
   });

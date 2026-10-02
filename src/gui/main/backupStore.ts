@@ -5,163 +5,172 @@
  * records the exact bytes it just wrote here, strictly AFTER its atomic rename lands, so the history
  * is always as current as the last save. There is no startup scan, no periodic pass, no restore path.
  *
- * SQLite binding: Node's built-in `node:sqlite` (`DatabaseSync`), not better-sqlite3. In an Electron
- * main process better-sqlite3 is a native addon that must be rebuilt against Electron's Node ABI on
- * every Electron bump — real, recurring packaging drag. `node:sqlite` is built into Node 22.5+ (zipkit
- * targets Node >=22.12 and runs on 26), needs no native build, no `node-gyp`, no `electron-rebuild`,
- * and is synchronous exactly like better-sqlite3 — which is what a record-after-rename hook wants. It
- * returns a BLOB as a `Uint8Array`, wrapped in a Buffer here for byte-identical hashing and compare.
+ * The database is written by the backups thread (./backups-worker), so a slow or locked store never
+ * holds the main process; this module posts each record and hears back how it went.
  *
  * Two absolute musts drive every line below (they are not best-effort aspirations):
  *
  *  - It never breaks a save and never crashes the app. The save has already succeeded — the file is on
  *    disk before {@link record} is called — so any failure here (the DB is locked, the disk is full, an
- *    insert throws) is caught, logged once at `warn`, and swallowed. A lost record self-heals on the
- *    next save of that file, whose content will differ from the last recorded row.
+ *    insert throws, the thread dies) is logged once at `warn` and swallowed. A lost record self-heals on
+ *    the next save of that file, whose content will differ from the last recorded row.
  *  - It logs only failures. A successful record logs NOTHING; a line per save would flood the log.
  */
 
-import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { Worker } from "node:worker_threads";
 import { storageRoot } from "../../sdk/storage.js";
 import { log } from "./runtime.js";
 import { errorInfo } from "./log.js";
+import type { BackupsRequest, BackupsResponse, BackupsWorkerData } from "./backups-worker.js";
 
-/** The store file under the resolved storage root. Computed lazily (not frozen into a module constant
- *  at import time) so `ZIPKIT_DATA_DIR` is read after the environment is set, per the storage-path
- *  convention's caution against import-time resolution. */
+/** The store file under the resolved storage root. Computed when the thread starts (not frozen into a
+ *  module constant at import time) so `ZIPKIT_DATA_DIR` is read after the environment is set, per the
+ *  storage-path convention's caution against import-time resolution. */
 function storeFile(): string {
   return path.join(storageRoot(), "backups.sqlite3");
 }
 
-/**
- * The one add-only table. `content` is a BLOB of the exact bytes written — never decoded text, so
- * CR/LF, a BOM, and non-UTF-8 bytes are stored byte-identically. `written_at_utc` is the serialized
- * ISO-8601-ms form (`2026-07-06T04:05:12.345Z`), a data value — NEVER the `yyyymmdd-hhmmss-fff-utc`
- * filename stamp. The `(path, id)` index serves the latest-row-per-path dedup lookup.
- */
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS backups (
-  id             INTEGER PRIMARY KEY,
-  path           TEXT NOT NULL,
-  content        BLOB NOT NULL,
-  content_sha256 TEXT NOT NULL,
-  byte_size      INTEGER NOT NULL,
-  written_at_utc TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_backups_path_id ON backups (path, id);
-`;
+/** How long {@link closeBackupStore} waits for the thread to finish what it holds; inside the quit
+ *  sequence's own bound. */
+export const BACKUP_CLOSE_WAIT_MS = 5_000;
 
-/** Module-level singleton, resolved once. `null` DB means recording is disabled for this session
- *  because the store could not be opened — a single warn was already logged; every later `record`
- *  becomes a no-op rather than retrying (and re-logging) a broken open on every save. */
-let db: DatabaseSync | null = null;
-let initialized = false;
-
-/**
- * Open and initialize the store once (create the table if absent, switch on WAL). Best-effort: on any
- * failure it logs ONE warn, leaves recording disabled for the session, and never throws. The app's
- * OS-owned single-instance lock gives this store one process owner; WAL remains useful for independent
- * diagnostic readers.
- */
-function ensureOpen(): DatabaseSync | null {
-  if (initialized) return db;
-  initialized = true;
-  try {
-    const file = storeFile();
-    // not recorded: backups.sqlite3 is the store itself — binary, and written by this backup layer, not
-    // through the managed-text atomic-write path — so it never records itself. No recursion, no special
-    // case (data-backup conventions: "A binary store, excluded from itself").
-    // The first writer under the root does the `mkdir -p` (storage-path convention); the store may be
-    // the first thing written on a fresh root.
-    mkdirSync(path.dirname(file), { recursive: true });
-    const opened = new DatabaseSync(file);
-    opened.exec("PRAGMA journal_mode = WAL");
-    // Independent diagnostic readers may briefly contend with a checkpoint/write.
-    opened.exec("PRAGMA busy_timeout = 5000");
-    opened.exec(SCHEMA);
-    db = opened;
-  } catch (err) {
-    log.warn("backup store: could not open; recording disabled for this session", {
-      file: storeFile(),
-      error: errorInfo(err),
-    });
-    db = null;
-  }
-  return db;
+/** The bundled app runs electron-vite's `backups-worker.js` beside this chunk; the tests run the
+ *  source, which Node loads with its own type stripping. */
+function workerUrl(): URL {
+  const file = import.meta.url.endsWith(".ts") ? "./backups-worker.ts" : "./backups-worker.js";
+  return new URL(file, import.meta.url);
 }
 
-/** SHA-256 of the exact bytes, lowercase hex. */
-function sha256(bytes: Buffer): string {
-  return createHash("sha256").update(bytes).digest("hex");
+/** The session's thread and the records it has not answered yet, by request id. `disabled` means
+ *  recording is off for this session because the store could not be opened or the thread failed — a
+ *  single warn was already logged; every later {@link record} becomes a no-op rather than retrying (and
+ *  re-logging). */
+let worker: Worker | null = null;
+let file = "";
+let disabled = false;
+let closing: Promise<void> | null = null;
+let nextId = 1;
+const pending = new Map<number, { path: string; settle: () => void }>();
+
+function settlePending(): void {
+  const waiting = [...pending.values()];
+  pending.clear();
+  for (const { settle } of waiting) settle();
+}
+
+const THREAD_FAILED = "backup store: the recording thread failed; recording disabled for this session";
+
+function disable(message: string, error: unknown): void {
+  if (disabled) return;
+  disabled = true;
+  log.warn(message, { file, error });
+  settlePending();
+  void worker?.terminate();
+  worker = null;
+}
+
+function ensureWorker(): Worker {
+  if (worker) return worker;
+  file = storeFile();
+  const created = new Worker(workerUrl(), { workerData: { database: file } satisfies BackupsWorkerData });
+  // The thread never keeps the process alive; closeBackupStore is what waits for it.
+  created.unref();
+  // A thread that closeBackupStore has already let go of no longer speaks for the store.
+  created.on("message", (response: BackupsResponse) => {
+    if (worker !== created || response.type === "closed") return;
+    const entry = pending.get(response.id);
+    pending.delete(response.id);
+    if (response.type === "failed") {
+      if (response.stage === "open") {
+        disable("backup store: could not open; recording disabled for this session", response.error);
+      } else {
+        log.warn("backup store: failed to record a managed write", { file: entry?.path, error: response.error });
+      }
+    }
+    entry?.settle();
+  });
+  created.on("error", (err) => {
+    if (worker === created) disable(THREAD_FAILED, errorInfo(err));
+  });
+  created.on("exit", (code) => {
+    if (closing === null && worker === created) disable(THREAD_FAILED, { message: `exited with code ${code}` });
+  });
+  worker = created;
+  return created;
 }
 
 /**
  * Record one managed-text write: `absolutePath` is the FULL absolute path of the file as written;
  * `bytes` is the exact raw bytes just written (the caller already holds them — never re-read the file).
+ * The thread dedups by content hash per path, so an unchanged re-save writes no row.
  *
- * Dedup by content hash per path: the new content's SHA-256 is compared against the latest row for the
- * same `path`, and the insert is SKIPPED when they are equal. This collapses consecutive identical
- * saves (an autosave with no real change writes no row) while still recording every genuinely distinct
- * version — including a revert, whose content differs from the immediately preceding row.
- *
- * Best-effort and silent on success; any failure is caught, logged once at `warn` (file + reason), and
- * swallowed. It never throws, never crashes the app, and never breaks the save.
+ * Best-effort and silent on success. It never throws and never breaks the save; the returned promise
+ * never rejects and settles once the thread has answered (or recording has stopped), so a caller that
+ * must see the row can wait for it.
  */
-export function record(absolutePath: string, bytes: Buffer): void {
-  const store = ensureOpen();
-  if (!store) return; // open failed earlier; disabled for the session (already warned once)
-  let transactionOpen = false;
-  try {
-    const hash = sha256(bytes);
-    // Latest-read + conditional insert is one immediate transaction. There is one
-    // app process owner, and this also makes the dedup invariant self-contained at
-    // the database boundary rather than depending on that lifecycle fact.
-    store.exec("BEGIN IMMEDIATE");
-    transactionOpen = true;
-    const latest = store
-      .prepare("SELECT content_sha256 AS h FROM backups WHERE path = ? ORDER BY id DESC LIMIT 1")
-      .get(absolutePath) as { h: string } | undefined;
-    if (latest?.h === hash) {
-      store.exec("COMMIT");
-      transactionOpen = false;
-      return;
-    }
-
-    store
-      .prepare(
-        "INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc) VALUES (?, ?, ?, ?, ?)",
-      )
-      .run(absolutePath, bytes, hash, bytes.byteLength, new Date().toISOString());
-    store.exec("COMMIT");
-    transactionOpen = false;
-  } catch (err) {
-    if (transactionOpen) {
-      try {
-        store.exec("ROLLBACK");
-      } catch {
-        // The original record failure is the actionable one; backup remains
-        // best-effort and a rollback failure must not break the managed save.
-      }
-    }
-    log.warn("backup store: failed to record a managed write", {
-      file: absolutePath,
-      error: errorInfo(err),
-    });
+export function record(absolutePath: string, bytes: Buffer): Promise<void> {
+  if (disabled) return Promise.resolve(); // disabled for the session (already warned once)
+  if (closing !== null) {
+    log.warn("backup store: closing; a managed write was not recorded", { file: absolutePath });
+    return Promise.resolve();
   }
+  const id = nextId++;
+  const request: BackupsRequest = {
+    type: "record",
+    id,
+    // Copied, not transferred: a small Buffer is a view into Node's shared pool.
+    record: { path: absolutePath, content: bytes, writtenAt: new Date().toISOString() },
+  };
+  return new Promise<void>((resolve) => {
+    pending.set(id, { path: absolutePath, settle: resolve });
+    try {
+      ensureWorker().postMessage(request);
+    } catch (err) {
+      disable(THREAD_FAILED, errorInfo(err));
+    }
+  });
 }
 
-/** Close the store (best-effort). For tests that need to release the file handle between throwaway
- *  roots; the app itself lets the process exit close it. Resets the singleton so the next
- *  {@link record} re-opens against the current `ZIPKIT_DATA_DIR`. */
-export function closeBackupStore(): void {
-  try {
-    db?.close();
-  } catch {
-    // best-effort: a close failure on shutdown/teardown is harmless
+/**
+ * Let the thread finish the records it holds, within `waitMs`, then stop it. A record it has not
+ * answered by then is reported once at `warn`: its outcome is unknown, as the thread may still
+ * complete it. Resets the store so the next {@link record} re-opens against the current
+ * `ZIPKIT_DATA_DIR` (tests use throwaway roots).
+ */
+export function closeBackupStore(waitMs: number = BACKUP_CLOSE_WAIT_MS): Promise<void> {
+  // The reset runs in `finally`, after `closing` is assigned, so a close with no thread still clears it.
+  closing ??= stopThread(waitMs).finally(() => {
+    settlePending();
+    worker = null;
+    disabled = false;
+    closing = null;
+  });
+  return closing;
+}
+
+async function stopThread(waitMs: number): Promise<void> {
+  const current = worker;
+  if (!current) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, waitMs);
+    const settle = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    current.once("exit", settle);
+    current.on("message", (response: BackupsResponse) => {
+      if (response.type === "closed") settle();
+    });
+    try {
+      current.postMessage({ type: "close" } satisfies BackupsRequest);
+    } catch {
+      settle();
+    }
+  });
+  if (pending.size > 0) {
+    log.warn("backup store: closed before the thread confirmed every record", { file, unconfirmed: pending.size });
   }
-  db = null;
-  initialized = false;
+  // Not awaited: a thread blocked inside SQLite stops only once that call returns.
+  current.terminate().catch(() => {});
 }
