@@ -7,10 +7,9 @@
  * queue transitions, and failures.
  *
  * One file per launch under `~/.zipkit/logs/`, JSON Lines, four levels with
- * `debug` developer-only (`ZIPKIT_DEBUG=1`), the mandatory non-destructive
- * redaction backstop. The generic, event-agnostic primitives (UTC session
- * timestamp, the data dir, the redactor) are reused from the SDK; the file sink
- * is owned here because the SDK's is typed to the SDK's event catalog. Per the
+ * `debug` developer-only (`ZIPKIT_DEBUG=1`). The generic, event-agnostic
+ * primitives (UTC session timestamp, the data dir) are reused from the SDK; the
+ * file sink is owned here because the SDK's is typed to the SDK's event catalog. Per the
  * convention a sandboxed renderer never opens a file — it forwards structured
  * objects to main, the sole writer. The append is synchronous, so the last lines
  * before a crash reach disk; if the file is unusable it degrades to stderr and
@@ -20,7 +19,6 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
-import { redact } from "../../sdk/log/redact.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogFields = Record<string, unknown>;
@@ -151,7 +149,7 @@ export function createAppLog(
     // Caller fields are spread FIRST so the envelope keys always win: a field
     // accidentally (or maliciously) named `time`/`level`/`message` can never
     // overwrite the line's own envelope (tapebox's formatter is the fleet model).
-    const event = redact({ ...fields, time: new Date().toISOString(), level, message });
+    const event = { ...fields, time: new Date().toISOString(), level, message };
     append(event);
   };
 

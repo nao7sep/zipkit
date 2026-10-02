@@ -1,11 +1,10 @@
 /**
  * The logger seam: it stamps the `time`/`message` envelope, gates `debug` behind
- * ZIPKIT_DEBUG, redacts before any sink sees the event, and fans out to every
- * sink with per-sink isolation.
+ * ZIPKIT_DEBUG, and fans out to every sink with per-sink isolation.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { createLogger, type EmittedEvent, type LogSink } from "../../../src/sdk/log/logger.js";
+import { createLogger, type LogSink } from "../../../src/sdk/log/logger.js";
 import type { LogEvent } from "../../../src/sdk/types.js";
 
 function collect(): { sink: LogSink; events: LogEvent[] } {
@@ -40,17 +39,6 @@ describe("createLogger", () => {
     logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });
     expect(events).toHaveLength(1);
     expect(events[0]!.event).toBe("scan.dir");
-  });
-
-  it("redacts denied keys before any sink sees the event", () => {
-    const { sink, events } = collect();
-    // No typed event variant carries a secret, so smuggle one in to prove the
-    // logger runs the redactor over the whole event before fan-out.
-    const smuggled = { stage: "scan", level: "info", event: "scan.dir", path: "a", token: "sk-secret" };
-    createLogger([sink]).emit(smuggled as unknown as EmittedEvent);
-
-    expect((events[0] as unknown as { token: string }).token).toBe("[redacted]");
-    expect((events[0] as unknown as { path: string }).path).toBe("a");
   });
 
   it("fans out to every sink and isolates a throwing one", () => {

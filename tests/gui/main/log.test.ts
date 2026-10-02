@@ -11,7 +11,7 @@ import path from "node:path";
 import { createAppLog, errorInfo } from "../../../src/gui/main/log.js";
 
 describe("createAppLog", () => {
-  it("writes JSON Lines with the envelope, gates debug off by default, and redacts denied keys", () => {
+  it("writes JSON Lines with the envelope, gates debug off by default, and keeps every field as given", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
     const log = createAppLog(dir, new Date("2026-06-14T05:25:48.123Z"));
     // Millisecond precision (`-fff`): a session log is machine-paced, per the timestamp conventions.
@@ -24,7 +24,7 @@ describe("createAppLog", () => {
     expect(rest).toHaveLength(0); // debug omitted -> exactly two lines
     const first = JSON.parse(infoLine ?? "") as Record<string, unknown>;
     expect(first).toMatchObject({ level: "info", message: "hello", jobId: "a" });
-    expect(first.password).toBe("[redacted]"); // denied key value replaced
+    expect(first.password).toBe("hunter2"); // logging conventions, Nothing is redacted
     expect(first.time).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/); // UTC ISO-8601 ms + Z
     expect(JSON.parse(errorLine ?? "")).toMatchObject({ level: "error", message: "bad", code: 7 });
   });
@@ -109,8 +109,7 @@ describe("errorInfo", () => {
     const log = createAppLog(dir);
     log.error("operation failed", { error: info });
     const line = readFileSync(log.path, "utf8");
-    expect(line).not.toContain("sentinel-secret");
-    expect(JSON.parse(line).error.errors[1]).toMatchObject({ token: "[redacted]" });
+    expect(JSON.parse(line).error.errors[1]).toMatchObject({ message: "write failed", code: "EACCES" });
   });
 
   it("contains cycles through aggregate members and causes without losing other failures", () => {

@@ -1,6 +1,6 @@
 /**
  * The one log/progress seam. A single `EmittedEvent` stream from the SDK core is
- * stamped, gated, redacted, and fanned out in one place; the `onProgress` hook
+ * stamped, gated, and fanned out in one place; the `onProgress` hook
  * and the instance's per-session log are both just sinks. The logger is the edge
  * that turns a typed body into a convention {@link LogEvent}, in order:
  *
@@ -8,9 +8,7 @@
  *    firehose reaches no sink (and never an end-user's session log);
  * 2. **stamp the envelope** — `time` (UTC ISO-8601 ms) and a `message` derived
  *    from the typed `event`;
- * 3. **redact** — the mandatory non-destructive backstop, run before the event
- *    reaches any sink, so a secret is scrubbed before it leaves the SDK;
- * 4. **fan out** — to every sink, each isolated, so one sink's failure never
+ * 3. **fan out** — to every sink, each isolated, so one sink's failure never
  *    starves the others or aborts the run it is reporting on.
  *
  * With no sinks the logger does no work, so a pure SDK call with no `onProgress`
@@ -18,7 +16,6 @@
  */
 
 import { messageFor } from "./messages.js";
-import { redact } from "./redact.js";
 import type { LogEvent, LogEventBody, LogMeta } from "../types.js";
 
 export type LogSink = (event: LogEvent) => void;
@@ -41,11 +38,11 @@ export function createLogger(sinks: LogSink[] = []): Logger {
     emit(event) {
       if (sinks.length === 0) return;
       if (event.level === "debug" && !debugEnabled()) return;
-      const stamped: LogEvent = redact({
+      const stamped: LogEvent = {
         time: new Date().toISOString(),
         message: messageFor(event),
         ...event,
-      });
+      };
       for (const sink of sinks) {
         try {
           sink(stamped);
