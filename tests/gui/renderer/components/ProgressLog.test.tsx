@@ -3,53 +3,50 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { ProgressLog } from "../../../../src/gui/renderer/src/components/ProgressLog";
-import type { LogEvent } from "../../../../src/gui/shared/api";
+import type { JobEvent, LogEvent } from "../../../../src/gui/shared/api";
 
 afterEach(cleanup);
 
+const recorded = (seq: number, event: Record<string, unknown>): JobEvent => ({
+  jobId: "job",
+  session: "2026-06-14T05:00:00.000Z",
+  seq,
+  event: { time: "not-a-time", stage: "plan", level: "info", message: "", ...event } as LogEvent,
+});
+
 describe("ProgressLog", () => {
-  it("renders typed events with presentation labels while retaining payload data", () => {
+  it("shows each run's time once, a level only where it is worth stopping at, and findings by kind", () => {
     const events = [
-      {
-        time: "not-a-time",
-        level: "debug",
-        event: "session.start",
-        version: "0.1.0",
-        concurrency: 2,
-        chunkSize: 1024,
-        message: "zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)",
-      },
-      {
-        time: "not-a-time",
-        level: "warn",
-        event: "entry.flagged",
-        rule: "name.reserved",
-        path: "CON.txt",
-        severity: "warning",
-        message: "warning: name.reserved at CON.txt",
-      },
-    ] as LogEvent[];
+      recorded(1, { event: "session.start", version: "0.1.0", concurrency: 2, chunkSize: 1024 }),
+      recorded(2, { event: "scan.start", inputs: 1 }),
+      recorded(3, { event: "entry.flagged", level: "warn", rule: "name.reserved", path: "CON.txt", severity: "warning", message: "warning: name.reserved at CON.txt" }),
+      recorded(4, { event: "entry.flagged", level: "warn", rule: "name.reserved", path: "PRN.txt", severity: "warning" }),
+      recorded(5, { event: "write.start", entries: 2 }),
+    ];
 
     render(<ProgressLog events={events} />);
     const region = screen.getByRole("region", { name: "Progress log" });
-    const log = region.textContent ?? "";
-    // The level sits in a fixed column, so the messages start at one column.
-    expect(log).toContain("Debug    ZipKit 0.1.0");
-    expect(log).toContain("Warning  Finding name.reserved at CON.txt");
-    expect(log).not.toContain("  debug  ");
-    expect(log).not.toContain("warning: name.reserved");
-    // One line per event, still copyable as plain lines.
-    expect(log.split("\n")).toHaveLength(2);
-    expect(events[0]!.message).toBe("zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)");
-    // A level worth stopping at is painted and bold; a routine one is neither.
-    const warning = screen.getByText(/^Warning/);
+    const lines = [...region.querySelectorAll("section > div")].map((line) => line.textContent);
+    expect(lines).toEqual([
+      "not-a-time",
+      "Scanning 1 input",
+      "WarningThe name is a reserved device name: 2 entries",
+      "not-a-time",
+      "Writing 2 entries",
+    ]);
+    // The SDK's own startup line belongs to no job.
+    expect(region.textContent).not.toContain("ZipKit 0.1.0");
+    const warning = screen.getByText("Warning");
     expect(warning.style.color).toBe("var(--status-warning)");
     expect(warning.style.fontWeight).toBe("700");
-    const debug = screen.getByText(/^Debug/);
-    expect(debug.style.color).toBe("var(--text-2)");
-    expect(debug.style.fontWeight).toBe("400");
+    expect(screen.queryByText("Info")).toBeNull();
     expect(region.getAttribute("aria-live")).toBe("off");
     expect(region.getAttribute("tabindex")).toBe("0");
     expect(screen.queryByRole("log")).toBeNull();
+  });
+
+  it("says there is nothing to show before the first run", () => {
+    render(<ProgressLog events={[recorded(1, { event: "session.start", version: "0.1.0", concurrency: 2, chunkSize: 1024 })]} />);
+    expect(screen.getByText("Nothing to show yet.")).toBeTruthy();
   });
 });

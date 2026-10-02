@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   COLOR,
   containingDir,
-  eventLineParts,
+  findingKind,
   humanSentence,
   intentLabel,
   isCancelable,
@@ -20,18 +20,23 @@ import {
   logLevelLabel,
   jobAdvisories,
   manifestRequiredButMissing,
+  mergeJobEvents,
   orderedEntries,
   originalsPresent,
   outputPreview,
   planReport,
+  progressLineText,
   progressMessage,
+  progressRuns,
+  progressTime,
+  reportRowPath,
   reportSummary,
   severityColor,
   stateColor,
   stateLabel,
   verifySummary,
 } from "../../../src/gui/renderer/src/view";
-import type { ExtractData, Job, LogEvent, PlanData } from "../../../src/gui/shared/api";
+import { JOB_EVENT_LIMIT, type ExtractData, type Job, type JobEvent, type LogEvent, type PlanData } from "../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
 import { createTranslator, message } from "../../../src/gui/shared/i18n/translate";
@@ -347,100 +352,163 @@ describe("jobAdvisories", () => {
   });
 });
 
+type Entry = PlanData["entries"][number];
+const entry = (over: Partial<Entry> & { archivePath: string }): Entry => ({
+  originalPath: over.archivePath,
+  type: "file",
+  method: "deflate",
+  excluded: false,
+  findings: [],
+  ...over,
+});
+const planOf = (entries: Entry[], globals: PlanData["findings"] = []): PlanData =>
+  ({ entries, findings: [...entries.flatMap((e) => e.findings), ...globals] }) as unknown as PlanData;
+
 describe("planReport", () => {
-  it("renders findings as severity-tagged lines, most-severe first, with renames showing the new name", () => {
-    const plan = {
-      findings: [
-        { rule: "name.nfd", severity: "info", path: "a/café", message: "name normalized from NFD to NFC", fix: { kind: "rename", to: "café" } },
-        { rule: "collision.case", severity: "error", path: "b/X", message: "case-only collision" },
-        { rule: "macos.junk", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" },
-      ],
-      entries: [],
-    } as unknown as PlanData;
-    const lines = planReport(plan, en);
-    expect(lines[0]).toEqual({
-      level: "error",
-      text: "The path differs from another only by case, so the two collide on case-insensitive file systems",
-      path: "b/X",
-    });
-    expect(lines[1]).toEqual({
-      level: "info",
-      text: "Name normalized from NFD to NFC → café",
-      path: "a/café",
-    });
-    expect(lines[2]?.text).toBe("Excluded by the junk preset");
+  it("gives each file one row with every change, grouped by kind, most severe first", () => {
+    const plan = planOf([
+      entry({
+        archivePath: "a/café.txt",
+        originalPath: "a/cafe\u0301.txt",
+        findings: [
+          { rule: "name.nfd", severity: "info", path: "a/cafe\u0301.txt", message: "name normalized", fix: { kind: "rename", to: "a/café.txt" } },
+          { rule: "name.suspicious", severity: "warning", path: "a/cafe\u0301.txt", message: "suspicious" },
+        ],
+      }),
+      entry({ archivePath: "b/X", findings: [{ rule: "collision.case", severity: "error", path: "b/X", message: "case-only collision" }] }),
+      entry({ archivePath: "b/CON_.txt", originalPath: "b/CON.txt", findings: [{ rule: "name.reserved", severity: "info", path: "b/CON.txt", message: "suffixed", fix: { kind: "rename", to: "b/CON_.txt" } }] }),
+      entry({ archivePath: "a/.DS_Store", excluded: true, excludeReason: "junk: .DS_Store", findings: [{ rule: "macos.junk", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" }] }),
+      entry({ archivePath: "a/kept.txt" }),
+    ]);
+    expect(planReport(plan, en)).toEqual([
+      { kind: "blocking", rows: [{ path: "b/X", changes: ["The path differs from another only by case, so the two collide on case-insensitive file systems"] }] },
+      {
+        kind: "warnings",
+        rows: [{
+          path: "a/café.txt",
+          from: "a/cafe\u0301.txt",
+          changes: ["Name normalized from NFD to NFC", "Zero-width or bidirectional-override characters present (kept)"],
+        }],
+      },
+      { kind: "renamed", rows: [{ path: "b/CON_.txt", from: "b/CON.txt", changes: ["Reserved device name given a suffix"] }] },
+      { kind: "excluded", rows: [{ path: "a/.DS_Store", changes: ["Excluded by the junk preset"] }] },
+    ]);
+  });
+  it("shows a renamed row by its name on disk, then its name in the archive", () => {
+    expect(reportRowPath({ path: "b/CON_.txt", from: "b/CON.txt", changes: [] }, en)).toBe("b/CON.txt → b/CON_.txt");
+    expect(reportRowPath({ path: "a.txt", changes: [] }, en)).toBe("a.txt");
   });
   it("reads a name finding as repaired only when the SDK gave it a rename target", () => {
-    const plan = {
-      findings: [{ rule: "name.reserved", severity: "error", path: "CON", message: "name is a reserved device name" }],
-      entries: [],
-    } as unknown as PlanData;
-    expect(planReport(plan, en)[0]?.text).toBe("The name is a reserved device name");
+    const plan = planOf([entry({ archivePath: "CON", findings: [{ rule: "name.reserved", severity: "error", path: "CON", message: "reserved" }] })]);
+    expect(planReport(plan, en)[0]?.rows[0]?.changes).toEqual(["The name is a reserved device name"]);
   });
   it("tells a kept symlink from an ignored one by whether the plan excluded it", () => {
-    const plan = {
-      findings: [
-        { rule: "entry.symlink", severity: "warning", path: "kept", message: "symlink preserved" },
-        { rule: "entry.symlink", severity: "warning", path: "dropped", message: "symlink ignored" },
-      ],
-      entries: [
-        { archivePath: "kept", excluded: false },
-        { archivePath: "dropped", excluded: true, excludeReason: "symlink ignored" },
-      ],
-    } as unknown as PlanData;
-    expect(planReport(plan, en).map((line) => line.text)).toEqual([
-      "Symlink kept as a Unix link entry; Windows extracts it as a text file",
-      "Symlink ignored",
+    const plan = planOf([
+      entry({ archivePath: "kept", findings: [{ rule: "entry.symlink", severity: "warning", path: "kept", message: "symlink preserved" }] }),
+      entry({ archivePath: "dropped", excluded: true, excludeReason: "symlink ignored", findings: [{ rule: "entry.symlink", severity: "warning", path: "dropped", message: "symlink ignored" }] }),
+    ]);
+    expect(planReport(plan, en)[0]?.rows.map((row) => row.changes)).toEqual([
+      ["Symlink kept as a Unix link entry; Windows extracts it as a text file"],
+      ["Symlink ignored"],
     ]);
   });
   it("shows a rule the GUI does not know as the SDK wrote it", () => {
-    const plan = {
-      findings: [{ rule: "future.rule", severity: "warning", path: "x", message: "something new" }],
-      entries: [],
-    } as unknown as PlanData;
-    expect(planReport(plan, en)[0]?.text).toBe("Something new");
+    const plan = planOf([entry({ archivePath: "x", findings: [{ rule: "future.rule", severity: "warning", path: "x", message: "something new" }] })]);
+    expect(planReport(plan, en)[0]?.rows[0]?.changes).toEqual(["Something new"]);
+  });
+  it("gives a finding no entry carries a row of its own", () => {
+    const plan = planOf([], [{ rule: "output.exists", severity: "error", path: "/out/a.zip", message: "exists" }]);
+    expect(planReport(plan, en)).toEqual([
+      { kind: "blocking", rows: [{ path: "/out/a.zip", changes: ["The output archive already exists. Turn on “Overwrite an existing file” to replace it."] }] },
+    ]);
   });
   it("surfaces an excluded entry that has no finding (custom exclude, pruned empty dir)", () => {
-    const plan = {
-      findings: [],
-      entries: [
-        { archivePath: "keep.txt", excluded: false },
-        { archivePath: "build/", excluded: true, excludeReason: "exclude rule: build/" },
-        { archivePath: "empty/", excluded: true, excludeReason: "empty directory pruned" },
-      ],
-    } as unknown as PlanData;
+    const plan = planOf([
+      entry({ archivePath: "keep.txt" }),
+      entry({ archivePath: "build/", type: "dir", excluded: true, excludeReason: "exclude rule: build/" }),
+      entry({ archivePath: "empty/", type: "dir", excluded: true, excludeReason: "empty directory pruned" }),
+    ]);
     expect(planReport(plan, en)).toEqual([
-      { level: "info", text: "Excluded: exclude rule: build/", path: "build/" },
-      { level: "info", text: "Empty directory pruned", path: "empty/" },
+      {
+        kind: "excluded",
+        rows: [
+          { path: "build/", changes: ["Excluded: exclude rule: build/"] },
+          { path: "empty/", changes: ["Empty directory pruned"] },
+        ],
+      },
     ]);
   });
 });
 
-describe("eventLineParts", () => {
-  it("renders the local time in the locale's format, then a human level and message", () => {
-    // The time is rendered in the viewer's local zone, so assert the shape
-    // (a short date, then the time to the second) rather than an exact value.
-    const e = { time: "2026-06-14T05:00:00.000Z", level: "info", event: "scan.dir", path: "/x", message: "scanning /x" } as unknown as LogEvent;
-    expect(eventLineParts(e, createTranslator("en", "en-US"))).toEqual({
-      time: expect.stringMatching(/^\d{1,2}\/\d{1,2}\/\d{2}, \d{1,2}:\d{2}:\d{2}\s?[AP]M$/),
-      level: "Info",
-      message: "Scanning /x",
-    });
-    expect(eventLineParts(e, createTranslator("de")).time).toMatch(/^\d{2}\.\d{2}\.\d{2}, \d{2}:\d{2}:\d{2}$/);
+const jobEvent = (seq: number, event: Partial<LogEvent> & { event: LogEvent["event"] }, session = "2026-06-14T05:00:00.000Z"): JobEvent => ({
+  jobId: "job",
+  session,
+  seq,
+  event: { time: "2026-06-14T05:00:00.000Z", level: "info", stage: "plan", message: "", ...event } as LogEvent,
+});
+
+describe("progressRuns", () => {
+  it("starts a run at each stage, leaves out the SDK's startup line, and folds findings by kind", () => {
+    const events = [
+      jobEvent(1, { event: "session.start", version: "0.1.0", concurrency: 2, chunkSize: 1 }),
+      jobEvent(2, { event: "scan.start", inputs: 1, time: "2026-06-14T05:00:01.000Z" }),
+      jobEvent(3, { event: "entry.flagged", rule: "macos.junk", path: "a", severity: "info" }),
+      jobEvent(4, { event: "entry.flagged", rule: "name.reserved", path: "b", severity: "warning", level: "warn" }),
+      jobEvent(5, { event: "entry.flagged", rule: "macos.junk", path: "c", severity: "info" }),
+      jobEvent(6, { event: "write.start", entries: 3, time: "2026-06-14T05:00:02.000Z" }),
+    ];
+    const runs = progressRuns(events);
+    expect(runs.map((run) => [run.key, run.time, run.lines.map((line) => progressLineText(line, en))])).toEqual([
+      [
+        "2026-06-14T05:00:00.000Z:2",
+        "2026-06-14T05:00:01.000Z",
+        ["Scanning 1 input", "Excluded by the junk preset: 2 entries", "The name is a reserved device name: 1 entry"],
+      ],
+      ["2026-06-14T05:00:00.000Z:6", "2026-06-14T05:00:02.000Z", ["Writing 3 entries"]],
+    ]);
+    expect(runs[0]?.lines[2]?.level).toBe("warn");
   });
-  it("falls back to the raw value when the time cannot be parsed", () => {
-    const e = { time: "not-a-time", level: "warn", event: "scan.dir", path: "x", message: "scanning x" } as unknown as LogEvent;
-    expect(eventLineParts(e, en)).toEqual({ time: "not-a-time", level: "Warning", message: "Scanning x" });
+  it("shows each run's start time in the locale's format, or the raw value when it cannot be parsed", () => {
+    const [run] = progressRuns([jobEvent(1, { event: "scan.start", inputs: 1 })]);
+    expect(progressTime(run!, createTranslator("de"))).toMatch(/^\d{2}\.\d{2}\.\d{2}, \d{2}:\d{2}:\d{2}$/);
+    const [bad] = progressRuns([jobEvent(1, { event: "scan.start", inputs: 1, time: "not-a-time" })]);
+    expect(progressTime(bad!, en)).toBe("not-a-time");
   });
+  it("names a kind of finding in plain words, by whether the run repaired it", () => {
+    expect(findingKind("name.nfd", "info", en)).toBe("Name normalized from NFD to NFC");
+    expect(findingKind("name.nfd", "warning", en)).toBe("The name is not in NFC form");
+    expect(findingKind("entry.symlink", "warning", en)).toBe("Symbolic link");
+    expect(findingKind("extract.crc-fail", "error", en)).toBe("The content is corrupt (CRC-32 mismatch)");
+    expect(findingKind("future.rule", "info", en)).toBe("future.rule");
+  });
+});
+
+describe("mergeJobEvents", () => {
+  it("keeps each event once, in the order it happened, across launches", () => {
+    const earlier = jobEvent(9, { event: "scan.start", inputs: 1 }, "2026-06-13T00:00:00.000Z");
+    const a = jobEvent(1, { event: "scan.start", inputs: 1 });
+    const b = jobEvent(2, { event: "plan.done", total: 0, included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, writable: true });
+    expect(mergeJobEvents([a], [b])).toEqual([a, b]);
+    expect(mergeJobEvents([earlier, a, b], [a, b])).toEqual([earlier, a, b]);
+    expect(mergeJobEvents([earlier, a], [b])).toEqual([earlier, a, b]);
+    expect(mergeJobEvents([b], [earlier, a])).toEqual([earlier, a, b]);
+  });
+  it("holds only the newest events", () => {
+    const many = Array.from({ length: JOB_EVENT_LIMIT + 5 }, (_, i) => jobEvent(i + 1, { event: "scan.start", inputs: 1 }));
+    const merged = mergeJobEvents([], many);
+    expect(merged).toHaveLength(JOB_EVENT_LIMIT);
+    expect(merged[0]?.seq).toBe(6);
+  });
+});
+
+describe("progress presentation", () => {
   it("paints only the levels worth stopping at, and keeps the rest quiet", () => {
     expect(logLevelColor("error")).toBe("var(--status-error)");
     expect(logLevelColor("warn")).toBe("var(--status-warning)");
     expect(logLevelColor("info")).toBe("var(--text-2)");
     expect(logLevelColor("debug")).toBe("var(--text-2)");
   });
-});
 
-describe("progress presentation", () => {
   it("labels every machine log level without leaking raw values", () => {
     expect((["debug", "info", "warn", "error"] as LogEvent["level"][]).map((level) => en.t(logLevelLabel(level)))).toEqual([
       "Debug",
@@ -485,7 +553,7 @@ describe("progress presentation", () => {
       severity: "warning",
       message: "warning: name.reserved at CON.txt",
     } as LogEvent;
-    expect(progressMessage(event, en)).toBe("Finding name.reserved at CON.txt");
+    expect(progressMessage(event, en)).toBe("The name is a reserved device name: 1 entry");
     expect(event.message).toBe("warning: name.reserved at CON.txt");
   });
 

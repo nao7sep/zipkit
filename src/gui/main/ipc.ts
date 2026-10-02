@@ -4,7 +4,7 @@
  */
 
 import { dialog, ipcMain, shell } from "electron";
-import type { AppInfo, VerifyResult } from "../shared/api.js";
+import type { AppInfo, JobEvent, VerifyResult } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
@@ -88,7 +88,7 @@ export function registerIpc(): void {
       try {
         const data = await zip.extract(
           { archive, dryRun: true, checkMetadata },
-          { onProgress: (e) => sendEvent({ ...e, jobId }) },
+          { onProgress: (e) => sendEvent(jobId, e) },
         );
         log.info("verify done", { jobId, archive, reportOk: data.reportOk });
         return { ok: true, data };
@@ -98,6 +98,8 @@ export function registerIpc(): void {
       }
     },
   );
+
+  ipcMain.handle("zipkit:getJobEvents", (_event, jobId: string): Promise<JobEvent[]> => log.jobEvents(jobId));
 
   ipcMain.handle("zipkit:reveal", async (_event, path: string): Promise<void> => {
     shell.showItemInFolder(path);

@@ -47,6 +47,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     onQueue: vi.fn(() => () => {}),
     verify: vi.fn(),
     reveal: vi.fn(),
+    getJobEvents: vi.fn(async () => []),
     onEvent: vi.fn(() => () => {}),
     appInfo: vi.fn(async () => ({ name: "ZipKit", version: "0.1.0" })),
     openExternal: vi.fn(),

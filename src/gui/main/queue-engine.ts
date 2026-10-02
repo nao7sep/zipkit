@@ -17,7 +17,7 @@
  */
 
 import { isEditable, type InputEntry, type Job, type JobIntent, type SavedJob } from "../shared/queue.js";
-import type { GuiLogEvent, LogEvent, PlanData } from "../shared/api.js";
+import type { LogEvent, PlanData } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
@@ -46,8 +46,8 @@ export interface EngineDeps {
   outputInsideInputs(output: string, inputs: string[], signal?: AbortSignal): Promise<boolean>;
   /** Push the current job list to observers (renderer + persistence). */
   emit(jobs: Job[]): void;
-  /** Forward one (job-tagged) progress event to the renderer. */
-  sendEvent(event: GuiLogEvent): void;
+  /** Record one progress event under its job and forward it to the renderer. */
+  sendEvent(jobId: string, event: LogEvent): void;
   /** Mint a job id. */
   newId(): string;
   /** The app session log — one line per orchestration intent/outcome. */
@@ -133,7 +133,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   }
   /** A progress sink that tags every SDK event with the running job's id. */
   function progressFor(id: string): (e: LogEvent) => void {
-    return (e) => deps.sendEvent({ ...e, jobId: id });
+    return (e) => deps.sendEvent(id, e);
   }
 
   /** Classify a job's inputs on disk and store the result as `entries`, so the

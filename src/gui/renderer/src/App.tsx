@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { GuiLogEvent, Job, JobIntent, PlanData, VerifyResult } from "../../shared/api";
+import type { Job, JobEvent, JobIntent, PlanData, VerifyResult } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable } from "../../shared/queue";
@@ -74,6 +74,7 @@ import {
   type JobCommand,
   label,
   manifestRequiredButMissing,
+  mergeJobEvents,
   outputPreview,
 } from "./view";
 
@@ -110,7 +111,6 @@ export function App() {
   // The saved language choice, likewise kept only to seed the Settings draft:
   // the main process resolves it and tells the window which language to speak.
   const [language, setLanguage] = useState<LanguagePreference>("system");
-  const [events, setEvents] = useState<GuiLogEvent[]>([]);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
   // when Add creates a job (focus/selection policy: Add pulls focus to its result).
@@ -221,11 +221,6 @@ export function App() {
     setContainerWidth(el.clientWidth);
     return () => observer.disconnect();
   }, [loadState]);
-  useEffect(
-    () => window.zipkit.onEvent((e) => setEvents((prev) => [...prev.slice(-999), e])),
-    [],
-  );
-
   useEffect(() => {
     window.addEventListener("blur", clearJobsDrop);
     window.addEventListener("dragend", clearJobsDrop);
@@ -590,7 +585,6 @@ export function App() {
             key={selected.id}
             job={selected}
             defaults={defaults}
-            events={events}
             splitter={progressSplitter}
             inputResult={inputResults[selected.id] ?? null}
             operationResult={jobResults[selected.id] ?? null}
@@ -638,7 +632,6 @@ export function App() {
 function JobView({
   job,
   defaults,
-  events,
   splitter,
   inputResult,
   onInputResult,
@@ -647,7 +640,6 @@ function JobView({
 }: {
   job: Job;
   defaults: GuiOptions;
-  events: GuiLogEvent[];
   splitter: ReactNode;
   inputResult: ReceiverResult | null;
   onInputResult: (outcome: ReceiverOutcome) => void;
@@ -662,6 +654,9 @@ function JobView({
   const [verify, setVerify] = useState<VerifyResult | null>(null);
   const [planLoadFailed, setPlanLoadFailed] = useState(false);
   const [planAttempt, setPlanAttempt] = useState(0);
+  // The job's progress: its recorded events, from this and earlier launches,
+  // joined by the live ones as they arrive.
+  const [events, setEvents] = useState<JobEvent[]>([]);
   const confirm = useConfirm();
   // "Use default parameters" is DERIVED from whether the job's options still equal
   // the defaults — not a free-floating flag that could claim "defaults" while the
@@ -700,6 +695,22 @@ function JobView({
       live = false;
     };
   }, [job.id, job.state, job.summary, planAttempt]);
+
+  useEffect(() => {
+    let live = true;
+    const unsubscribe = window.zipkit.onEvent((event) => {
+      if (event.jobId === job.id) setEvents((held) => mergeJobEvents(held, [event]));
+    });
+    void window.zipkit.getJobEvents(job.id).then((recorded) => {
+      if (live) setEvents((held) => mergeJobEvents(recorded, held));
+    }).catch((error) => {
+      window.zipkit.reportError("load job progress", reportableError(error));
+    });
+    return () => {
+      live = false;
+      unsubscribe();
+    };
+  }, [job.id]);
 
   function beginOperation(): number {
     const attempt = ++operationAttempt.current;
@@ -932,7 +943,6 @@ function JobView({
 
   // Destination preview (directory + file name), derived in one place — see view.ts.
   const { dir: destDir, name: target } = outputPreview(job, opts, t);
-  const jobEvents = events.filter((e) => e.jobId === job.id);
 
   return (
     <>
@@ -1032,7 +1042,7 @@ function JobView({
       {splitter}
 
       <Pane title={t.t("pane.progress")} rootStyle={GROW} bodyStyle={S.progressBody}>
-        <ProgressLog events={jobEvents} />
+        <ProgressLog events={events} />
       </Pane>
     </>
   );

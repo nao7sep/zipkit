@@ -58,6 +58,7 @@ describe("a job that finishes mid-edit", () => {
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,
         getPlan: async () => null,
+        getJobEvents: async () => [],
         onEvent: () => () => {},
         updateJob,
         reportError: vi.fn(),

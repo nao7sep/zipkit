@@ -1,11 +1,11 @@
 /**
- * The job report: a context-aware, human-readable log of what the archive will do
- * (or did) for the user — names normalized, junk excluded, issues that block —
- * each line colored by level (info / warning / error). No corner "verdict" badge,
- * nothing folded: a dropped or renamed path is exactly what the user must see, so
- * every line is always visible. The verify result, when present, joins the same
- * log. Verdict/derivations are pure (`reportSummary` / `planReport` in view); this
- * just renders. The parent clears stale state (verify, the plan) at the right
+ * The job report: a context-aware, human-readable account of what the archive will
+ * do (or did) for the user — one row per file with every change to it, grouped by
+ * kind (issues that block, warnings, renames, exclusions), each group colored by
+ * level. No corner "verdict" badge, nothing folded: a dropped or renamed path is
+ * exactly what the user must see, so every row is always visible. The verify
+ * result, when present, follows. Verdict/derivations are pure (`reportSummary` /
+ * `planReport` in view); this just renders. The parent clears stale state (verify, the plan) at the right
  * times, so the report never shows a result that no longer holds.
  */
 
@@ -16,9 +16,13 @@ import { useI18n } from "../i18n/I18nContext";
 import {
   jobAdvisories,
   planReport,
+  reportGroupLevel,
+  reportGroupTitle,
+  reportRowPath,
   reportSummary,
   severityColor,
   verifySummary,
+  type ReportGroup,
   type ReportLine,
 } from "../view";
 
@@ -37,7 +41,7 @@ export function Report({
   // are relevant before any plan exists, so they keep the report from reading
   // "No report yet" when there's genuinely something to say.
   const advisories = jobAdvisories(job, t);
-  const lines = plan ? planReport(plan, t) : [];
+  const groups = plan ? planReport(plan, t) : [];
 
   const noReport = !plan && !summary && advisories.length === 0;
 
@@ -143,19 +147,23 @@ export function Report({
           {verificationResult.text}
         </p>
       )}
-      {plan && lines.length === 0 && plan.writable && (
+      {plan && groups.length === 0 && plan.writable && (
         <p style={S.note}>{t.t("report.clean")}</p>
       )}
-      {(advisories.length > 0 || lines.length > 0 || verifyLines.length > 0) && (
+      {advisories.length > 0 && (
         <ul style={S.log}>
           {advisories.map((line, i) => (
-            <LogRow key={`a${i}`} line={line} />
+            <LogRow key={i} line={line} />
           ))}
-          {lines.map((line, i) => (
-            <LogRow key={`f${i}`} line={line} />
-          ))}
+        </ul>
+      )}
+      {groups.map((group) => (
+        <Group key={group.kind} group={group} />
+      ))}
+      {verifyLines.length > 0 && (
+        <ul style={S.log}>
           {verifyLines.map((line, i) => (
-            <LogRow key={`v${i}`} line={line} />
+            <LogRow key={i} line={line} />
           ))}
         </ul>
       )}
@@ -172,11 +180,28 @@ export function Report({
 function LogRow({ line }: { line: ReportLine }) {
   return (
     <li style={{ ...S.row, borderColor: severityColor(line.level) }}>
-      <span style={S.text}>
-        {line.text}
-        {line.path && <span style={S.path}> {line.path}</span>}
-      </span>
+      <span style={S.text}>{line.text}</span>
     </li>
+  );
+}
+
+function Group({ group }: { group: ReportGroup }) {
+  const t = useI18n();
+  const color = severityColor(reportGroupLevel(group.kind));
+  return (
+    <section style={S.group}>
+      <h3 style={S.groupTitle}>{t.t(reportGroupTitle(group.kind), { count: group.rows.length })}</h3>
+      <ul style={S.log}>
+        {group.rows.map((row, i) => (
+          <li key={i} style={{ ...S.fileRow, borderColor: color }}>
+            <span style={S.path}>{reportRowPath(row, t)}</span>
+            {row.changes.map((change, j) => (
+              <span key={j} style={S.change}>{change}</span>
+            ))}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -184,7 +209,17 @@ const S: Record<string, CSSProperties> = {
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
   summary: { margin: "0 0 0.5rem", fontSize: "0.95rem", fontWeight: 600 },
   note: { color: "var(--text-2)", margin: "0 0 0.5rem", fontSize: "0.85rem" },
-  log: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.3rem" },
+  log: { listStyle: "none", margin: "0 0 0.6rem", padding: 0, display: "grid", gap: "0.3rem" },
+  group: { margin: 0 },
+  groupTitle: { margin: "0 0 0.35rem", fontSize: "0.85rem", fontWeight: 600 },
+  fileRow: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    borderLeft: "2px solid",
+    paddingLeft: "0.55rem",
+  },
+  change: { fontSize: "0.85rem", wordBreak: "break-word" },
   row: {
     display: "flex",
     alignItems: "baseline",
@@ -193,7 +228,7 @@ const S: Record<string, CSSProperties> = {
     paddingLeft: "0.55rem",
   },
   text: { flex: 1, minWidth: 0, fontSize: "0.85rem", wordBreak: "break-word" },
-  path: { color: "var(--text-2)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" },
+  path: { fontFamily: "var(--font-mono)", fontSize: "0.8rem", wordBreak: "break-all" },
   srOnly: {
     position: "absolute",
     width: 1,

@@ -42,9 +42,19 @@ export type GuiPlatform =
 export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity };
 export type { LanguageEnvironment, Message, PaneLayout };
 
-/** An SDK progress event tagged with the job it belongs to, so the renderer can
- *  show each job its own Progress stream. `jobId` is absent for any untagged event. */
-export type GuiLogEvent = LogEvent & { jobId?: string };
+/** An SDK progress event under the job it ran for, as main records it in
+ *  `records.sqlite3` and sends it to the window. `session` (the launch's start)
+ *  and `seq` (its order in that launch) identify it, so a recorded copy and the
+ *  live one are recognised as the same event. */
+export interface JobEvent {
+  jobId: string;
+  session: string;
+  seq: number;
+  event: LogEvent;
+}
+
+/** How many of a job's newest events its Progress pane holds. */
+export const JOB_EVENT_LIMIT = 2000;
 
 /** A structured SDK fault surfaced to the renderer. `presentation` is authored
  * by main as a catalogue message; arbitrary exception prose has no field on
@@ -137,8 +147,11 @@ export interface ZipKitGuiApi {
   verify(jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult>;
   /** Reveal a file in the OS file manager (Finder / Explorer). */
   reveal(path: string): Promise<void>;
-  /** Subscribe to the live, job-tagged SDK event stream; returns an unsubscribe fn. */
-  onEvent(callback: (event: GuiLogEvent) => void): () => void;
+  /** A job's recorded progress events, oldest first, from this and earlier
+   *  launches. */
+  getJobEvents(jobId: string): Promise<JobEvent[]>;
+  /** Subscribe to the live progress events of every job; returns an unsubscribe fn. */
+  onEvent(callback: (event: JobEvent) => void): () => void;
 
   /** App name + version for the About dialog. */
   appInfo(): Promise<AppInfo>;

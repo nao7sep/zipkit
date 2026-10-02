@@ -11,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAppLog, errorInfo } from "../../../src/gui/main/log.js";
+import type { LogEvent } from "../../../src/gui/shared/api.js";
 
 interface Row {
   time_utc: string;
@@ -166,6 +167,47 @@ describe("createAppLog", () => {
     await log.close();
 
     expect(readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8")).toContain("\"late\"");
+  });
+});
+
+describe("job events", () => {
+  const event = (time: string, extra: Record<string, unknown>): LogEvent =>
+    ({ time, stage: "plan", level: "info", message: "m", ...extra }) as LogEvent;
+
+  it("numbers each event in its launch and reads a job's events back across launches, oldest first", async () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const first = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z"));
+    const sent = first.jobEvent("a", event("2026-06-14T05:25:49.000Z", { event: "scan.start", inputs: 1 }));
+    first.jobEvent("b", event("2026-06-14T05:25:49.500Z", { event: "scan.start", inputs: 2 }));
+    await first.close();
+    const second = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-15T01:00:00.000Z"));
+    second.jobEvent("a", event("2026-06-15T01:00:01.000Z", { event: "write.start", entries: 3 }));
+
+    expect(sent).toMatchObject({ jobId: "a", session: "2026-06-14T05:25:48.123Z", seq: 1 });
+    const read = await second.jobEvents("a");
+    await second.close();
+    expect(read.map((e) => [e.session, e.seq, e.event.event])).toEqual([
+      ["2026-06-14T05:25:48.123Z", 1, "scan.start"],
+      ["2026-06-15T01:00:00.000Z", 1, "write.start"],
+    ]);
+    expect(read[0]?.event).toEqual(sent.event);
+  });
+
+  it("writes an event the database cannot take to the fallback file and reads nothing", async () => {
+    const dir = tempDir();
+    const blocker = path.join(dir, "blocker");
+    writeFileSync(blocker, "a file, not a directory");
+    const logs = path.join(dir, "logs");
+    const log = createAppLog(path.join(blocker, "records.sqlite3"), logs, new Date("2026-06-14T05:25:48.123Z"));
+
+    log.jobEvent("a", event("2026-06-14T05:25:49.000Z", { event: "scan.start", inputs: 1 }));
+    expect(await log.jobEvents("a")).toEqual([]);
+    await log.close();
+
+    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines[1]).toMatchObject({ jobId: "a", seq: 1, event: { event: "scan.start", inputs: 1 } });
   });
 });
 

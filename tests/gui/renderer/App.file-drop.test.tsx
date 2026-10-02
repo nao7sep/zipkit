@@ -54,6 +54,7 @@ describe("App file-drop receivers", () => {
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,
         getPlan: async () => null,
+        getJobEvents: async () => [],
         onEvent: () => () => {},
         pathForFile: () => "/tmp/ZIPKIT-DRAG-ME",
         chooseInputs,

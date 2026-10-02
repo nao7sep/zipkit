@@ -13,7 +13,8 @@
  * wrote it.
  */
 
-import type { ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
+import { JOB_EVENT_LIMIT } from "../../shared/api";
+import type { ExtractData, Finding, InputEntry, Job, JobEvent, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
 import type { GuiOptions } from "../../shared/spec";
@@ -213,12 +214,12 @@ export function intentLabel(intent: JobIntent, t: Translator): string {
   return intent === "archive-and-trash" ? t.t("jobs.trashTag") : "";
 }
 
-/** One line of the report — a severity level, a human sentence, and the path it
- *  concerns (omitted for the summary line). The renderer colors by `level`. */
+/** One line of the report outside the plan's files — the summary, an advisory,
+ *  a verify result — as a severity level and a human sentence. The renderer
+ *  colors by `level`. */
 export interface ReportLine {
   level: Severity;
   text: string;
-  path?: string;
 }
 
 /** Plain, actionable GUI guidance for the SDK error codes a user can hit while
@@ -310,6 +311,15 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
   "output.exists": "finding.outputExists",
 };
 
+/** The verify stage's rules, which only a verify reports. */
+const VERIFY_FINDINGS: Record<string, MessageKey> = {
+  "extract.crc-fail": "finding.crcFail",
+  "extract.sha-mismatch": "finding.shaMismatch",
+  "extract.unsafe-path": "finding.unsafePath",
+  "extract.missing": "finding.missing",
+  "extract.extra": "finding.extra",
+};
+
 /** The catalogue entry for a plan finding, keyed on its stable rule, or null
  *  for a rule the GUI does not know (shown as the SDK wrote it). A symlink
  *  finding reads from the plan whether the link was kept or dropped: the SDK
@@ -324,12 +334,11 @@ export function findingKey(f: Finding, plan: PlanData): MessageKey | null {
   return RULE_FINDINGS[f.rule] ?? null;
 }
 
-/** A finding as a human sentence; a rename also shows the new name (what we did). */
+/** A finding as a human sentence; one the GUI does not know reads as the SDK
+ *  wrote it. */
 function findingText(f: Finding, plan: PlanData, t: Translator): string {
   const key = findingKey(f, plan);
-  const text = key ? t.t(key) : humanSentence(f.message);
-  if (f.fix?.kind === "rename" && f.fix.to) return t.t("finding.renamedTo", { text, to: f.fix.to });
-  return text;
+  return key ? t.t(key) : humanSentence(f.message);
 }
 
 /** The SDK's reasons for an exclusion no finding explains. The SDK writes them
@@ -346,27 +355,104 @@ function excludedText(reason: string | undefined, t: Translator): string {
   return key ? t.t(key) : t.t("report.excludedReason", { reason });
 }
 
-/** The report log: every finding as a natural-language, severity-tagged line,
- *  plus any excluded entry not already covered by a finding (custom excludes,
- *  pruned empty dirs/files) so a dropped path is never hidden. Ordered most-severe
- *  first (errors, warnings, info), stable within a tier. Pure and testable. */
-export function planReport(plan: PlanData, t: Translator): ReportLine[] {
-  const lines: ReportLine[] = plan.findings.map((f) => ({
-    level: f.severity,
-    text: findingText(f, plan, t),
-    path: f.path,
-  }));
-  const covered = new Set(plan.findings.map((f) => f.path));
-  for (const e of plan.entries) {
-    if (e.excluded && !covered.has(e.archivePath)) {
-      lines.push({ level: "info", text: excludedText(e.excludeReason, t), path: e.archivePath });
-    }
+/** The rules whose finding already says why its entry was left out. */
+const EXCLUDING_RULES = new Set([
+  "macos.junk",
+  "windows.junk",
+  "linux.junk",
+  "path.traversal",
+  "entry.symlink",
+  "entry.duplicate",
+]);
+
+/** One file of the Report (or the archive itself, for a finding about the
+ *  output): its path in the archive, its name on disk when the plan renamed
+ *  it, and each change the plan makes to it or finds in it, in plain words. */
+export interface ReportRow {
+  path: string;
+  from?: string;
+  changes: string[];
+}
+
+/** The kinds the Report groups its rows by, in the order they are shown. A row
+ *  goes to the first kind it qualifies for. */
+export const REPORT_GROUPS = ["blocking", "warnings", "renamed", "excluded", "notes"] as const;
+export type ReportGroupKind = (typeof REPORT_GROUPS)[number];
+
+export interface ReportGroup {
+  kind: ReportGroupKind;
+  rows: ReportRow[];
+}
+
+/** The severity a group's rows are painted in. */
+export function reportGroupLevel(kind: ReportGroupKind): Severity {
+  return kind === "blocking" ? "error" : kind === "warnings" ? "warning" : "info";
+}
+
+/** The group heading, with the group's row count. */
+export function reportGroupTitle(kind: ReportGroupKind): MessageKey {
+  switch (kind) {
+    case "blocking":
+      return "report.groupBlocking";
+    case "warnings":
+      return "report.groupWarnings";
+    case "renamed":
+      return "report.groupRenamed";
+    case "excluded":
+      return "report.groupExcluded";
+    case "notes":
+      return "report.groupNotes";
   }
-  const rank: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
-  return lines
-    .map((line, i) => ({ line, i }))
-    .sort((a, b) => rank[a.line.level] - rank[b.line.level] || a.i - b.i)
-    .map(({ line }) => line);
+}
+
+function severityGroup(findings: readonly Finding[]): ReportGroupKind | null {
+  if (findings.some((f) => f.severity === "error")) return "blocking";
+  if (findings.some((f) => f.severity === "warning")) return "warnings";
+  return null;
+}
+
+/** The Report's files: one row per file the plan changes or has a finding on,
+ *  with every change it makes to that file, grouped by kind. Each entry's own
+ *  findings are its changes; a finding no entry carries (the output already
+ *  existing) is a row of its own. Pure and testable. */
+export function planReport(plan: PlanData, t: Translator): ReportGroup[] {
+  const rows: Record<ReportGroupKind, ReportRow[]> = { blocking: [], warnings: [], renamed: [], excluded: [], notes: [] };
+  const findingId = (f: Finding): string => `${f.rule}\0${f.path}\0${f.message}`;
+  const onEntries = new Set<string>();
+
+  for (const entry of plan.entries) {
+    const findings = entry.findings;
+    for (const f of findings) onEntries.add(findingId(f));
+    const changes = [...new Set(findings.map((f) => findingText(f, plan, t)))];
+    if (entry.excluded && !findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
+      changes.push(excludedText(entry.excludeReason, t));
+    }
+    const renamed = entry.originalPath !== entry.archivePath;
+    if (changes.length === 0 && !renamed) continue;
+    const kind = severityGroup(findings) ?? (entry.excluded ? "excluded" : renamed ? "renamed" : "notes");
+    rows[kind].push(renamed ? { path: entry.archivePath, from: entry.originalPath, changes } : { path: entry.archivePath, changes });
+  }
+  for (const f of plan.findings) {
+    if (onEntries.has(findingId(f))) continue;
+    rows[severityGroup([f]) ?? "notes"].push({ path: f.path, changes: [findingText(f, plan, t)] });
+  }
+  return REPORT_GROUPS.filter((kind) => rows[kind].length > 0).map((kind) => ({ kind, rows: rows[kind] }));
+}
+
+/** A row's path line: the archive path, led by its name on disk when renamed. */
+export function reportRowPath(row: ReportRow, t: Translator): string {
+  return row.from === undefined ? row.path : t.t("finding.renamedTo", { text: row.from, to: row.path });
+}
+
+/** The plain words for a kind of finding, from its rule and the severity the
+ *  run gave it — a progress event carries no fix, and a name rule is reported
+ *  at `info` exactly when it was repaired. A rule the GUI does not know shows
+ *  its code. */
+export function findingKind(rule: string, severity: Severity, t: Translator): string {
+  const name = NAME_FINDINGS[rule];
+  if (name) return t.t(severity === "info" ? name.fixed : name.found);
+  const key = rule === "entry.symlink" ? "finding.symlink" : (RULE_FINDINGS[rule] ?? VERIFY_FINDINGS[rule]);
+  return key ? t.t(key) : rule;
 }
 
 /** A user-facing timestamp in the viewer's zone and the interface's locale
@@ -379,16 +465,92 @@ function formatLocalTime(iso: string, t: Translator): string {
   return t.logTime(d);
 }
 
-/** One Progress-log line, in the three parts the log paints separately: the time
- *  in local (not raw UTC) form, the human level, and the message. They stay
- *  apart rather than being joined here, because the log gives each its own
- *  weight and colour. */
-export function eventLineParts(event: LogEvent, t: Translator): { time: string; level: string; message: string } {
-  return {
-    time: formatLocalTime(event.time, t),
-    level: t.t(logLevelLabel(event.level)),
-    message: progressMessage(event, t),
-  };
+/** The time a Progress run started, in local form. */
+export function progressTime(run: ProgressRun, t: Translator): string {
+  return formatLocalTime(run.time, t);
+}
+
+/** A Progress line: one SDK event, or a run's findings of one kind folded into
+ *  a count. */
+export type ProgressLine =
+  | { kind: "event"; level: LogEvent["level"]; event: LogEvent }
+  | { kind: "findings"; level: LogEvent["level"]; rule: string; severity: Severity; count: number };
+
+/** One SDK run for a job — a plan, a write, a verify — with its start time
+ *  shown once and its lines below. `key` is its first event's identity. */
+export interface ProgressRun {
+  key: string;
+  time: string;
+  lines: ProgressLine[];
+}
+
+const RUN_STARTS: ReadonlySet<LogEvent["event"]> = new Set(["scan.start", "write.start", "extract.start"]);
+
+/** A job's events as Progress runs: each run starts at a stage's start event,
+ *  and its findings fold into one line per kind. The SDK's once-per-launch
+ *  startup line belongs to no job and is left out. */
+export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
+  const runs: ProgressRun[] = [];
+  let run: ProgressRun | null = null;
+  let folded = new Map<string, Extract<ProgressLine, { kind: "findings" }>>();
+  for (const { session, seq, event } of events) {
+    if (event.event === "session.start") continue;
+    if (!run || RUN_STARTS.has(event.event)) {
+      run = { key: `${session}:${seq}`, time: event.time, lines: [] };
+      runs.push(run);
+      folded = new Map();
+    }
+    if (event.event === "entry.flagged") {
+      const kind = `${event.rule}\0${event.severity}`;
+      const line = folded.get(kind);
+      if (line) {
+        line.count += 1;
+      } else {
+        const created: Extract<ProgressLine, { kind: "findings" }> = {
+          kind: "findings",
+          level: event.level,
+          rule: event.rule,
+          severity: event.severity,
+          count: 1,
+        };
+        folded.set(kind, created);
+        run.lines.push(created);
+      }
+      continue;
+    }
+    run.lines.push({ kind: "event", level: event.level, event });
+  }
+  return runs;
+}
+
+/** A Progress line's text. */
+export function progressLineText(line: ProgressLine, t: Translator): string {
+  return line.kind === "event"
+    ? progressMessage(line.event, t)
+    : t.t("progress.findings", { kind: findingKind(line.rule, line.severity, t), count: line.count });
+}
+
+function eventOrder(a: JobEvent, b: JobEvent): number {
+  return a.session < b.session ? -1 : a.session > b.session ? 1 : a.seq - b.seq;
+}
+
+/** The events of `held` and `arriving` as one list, each event once, in the
+ *  order they happened, keeping the newest `JOB_EVENT_LIMIT`. */
+export function mergeJobEvents(held: readonly JobEvent[], arriving: readonly JobEvent[]): JobEvent[] {
+  const last = held[held.length - 1];
+  const first = arriving[0];
+  const appends =
+    (!last || !first || eventOrder(last, first) < 0) &&
+    arriving.every((event, i) => i === 0 || eventOrder(arriving[i - 1]!, event) < 0);
+  let merged: JobEvent[];
+  if (appends) {
+    merged = [...held, ...arriving];
+  } else {
+    const byId = new Map<string, JobEvent>();
+    for (const event of [...held, ...arriving]) byId.set(`${event.session}:${event.seq}`, event);
+    merged = [...byId.values()].sort(eventOrder);
+  }
+  return merged.length > JOB_EVENT_LIMIT ? merged.slice(-JOB_EVENT_LIMIT) : merged;
 }
 
 /** The colour the Progress log paints a level in. A log is mostly routine, so
@@ -460,7 +622,7 @@ export function progressMessage(event: LogEvent, t: Translator): string {
     case "entry.renamed":
       return t.t("event.renamed", { from: event.from, path: event.path });
     case "entry.flagged":
-      return t.t("event.flagged", { rule: event.rule, path: event.path });
+      return t.t("progress.findings", { kind: findingKind(event.rule, event.severity, t), count: 1 });
     case "write.start":
       return t.t("event.writeStart", { count: event.entries });
     case "entry.written":

@@ -7,14 +7,14 @@
 
 import { BrowserWindow } from "electron";
 import { StallError, ZipKit, ZipKitError } from "../../sdk/index.js";
-import type { GuiError, GuiLogEvent, Job } from "../shared/api.js";
+import type { GuiError, Job, LogEvent } from "../shared/api.js";
 import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
 
 export const zip = new ZipKit();
 
-/** The app's log for this launch. The SDK keeps its own per-verb log file; the
- *  `zip.*` results' `log` field names it. */
+/** The app's records for this launch. The SDK keeps its own per-verb log file;
+ *  the `zip.*` results' `log` field names it. */
 export const log = createAppLog();
 
 let win: BrowserWindow | null = null;
@@ -47,9 +47,10 @@ function liveWindow(): BrowserWindow | null {
   return current;
 }
 
-/** Forward one job-tagged progress event to the renderer's Progress stream. */
-export function sendEvent(event: GuiLogEvent): void {
-  liveWindow()?.webContents.send("zipkit:event", event);
+/** Record one SDK progress event under its job, then send it to the window's
+ *  Progress pane. */
+export function sendEvent(jobId: string, event: LogEvent): void {
+  liveWindow()?.webContents.send("zipkit:event", log.jobEvent(jobId, event));
 }
 
 export function sendQueue(jobs: Job[]): void {

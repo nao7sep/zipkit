@@ -8,7 +8,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
-import { LANGUAGE_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type GuiLogEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
+import { LANGUAGE_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
@@ -60,8 +60,9 @@ const api = {
   verify: (jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> =>
     ipcRenderer.invoke("zipkit:verify", jobId, archive, checkMetadata),
   reveal: (path: string): Promise<void> => ipcRenderer.invoke("zipkit:reveal", path),
-  onEvent: (callback: (event: GuiLogEvent) => void): (() => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, event: GuiLogEvent): void => callback(event);
+  getJobEvents: (jobId: string): Promise<JobEvent[]> => ipcRenderer.invoke("zipkit:getJobEvents", jobId),
+  onEvent: (callback: (event: JobEvent) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, event: JobEvent): void => callback(event);
     ipcRenderer.on("zipkit:event", handler);
     return () => {
       ipcRenderer.removeListener("zipkit:event", handler);

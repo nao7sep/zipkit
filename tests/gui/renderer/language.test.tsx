@@ -89,9 +89,9 @@ describe("the SDK's words at the GUI boundary", () => {
         output: path.join(root, "out.zip"),
         policy: { emptyDirs: "prune" },
       })) as PlanData;
-      const lines = planReport(plan, createTranslator("en"));
+      const changes = planReport(plan, createTranslator("en")).flatMap((group) => group.rows.flatMap((row) => row.changes));
       // A drifted SDK phrase would fall back to "Excluded: <phrase>".
-      expect(lines.map((line) => line.text)).toContain("Empty directory pruned");
+      expect(changes).toContain("Empty directory pruned");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

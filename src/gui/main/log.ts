@@ -6,9 +6,10 @@
  * file. Here we record what the *app* does: startup/shutdown, IPC commands,
  * queue transitions, and failures.
  *
- * Each line is a row in `records.sqlite3`, written by the records thread
- * (./records-worker); `debug` is gated by `ZIPKIT_DEBUG=1`. The main process is
- * the sole writer and the renderer forwards its entries over IPC.
+ * Each line is a row in `records.sqlite3`, beside each job's SDK progress
+ * events, written by the records thread (./records-worker); `debug` is gated by
+ * `ZIPKIT_DEBUG=1`. The main process is the sole writer and the renderer
+ * forwards its entries over IPC.
  */
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
@@ -16,7 +17,8 @@ import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { storageRoot } from "../../sdk/storage.js";
-import type { LogRow, RecordsRequest, RecordsResponse, RecordsWorkerData } from "./records-worker.js";
+import { JOB_EVENT_LIMIT, type JobEvent, type LogEvent } from "../shared/api.js";
+import type { JobEventRow, LogRow, RecordsRequest, RecordsResponse, RecordsWorkerData, StoredJobEventRow } from "./records-worker.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogFields = Record<string, unknown>;
@@ -57,6 +59,12 @@ function errorInfoInner(err: unknown, seen: WeakSet<Error>): LogFields {
 export interface SessionAppLog extends AppLog {
   /** The records database this session writes to. */
   readonly database: string;
+  /** Record one SDK progress event under the job it ran for, numbered in this
+   *  launch; returns it as the window receives it. */
+  jobEvent(jobId: string, event: LogEvent): JobEvent;
+  /** The job's newest recorded events, oldest first; none when the database
+   *  cannot be read. */
+  jobEvents(jobId: string): Promise<JobEvent[]>;
   /** Hand every record still in flight to the database, or to the fallback file
    *  when the database does not take it within `waitMs`. Later entries go
    *  straight to the fallback file. */
@@ -93,10 +101,12 @@ function workerUrl(): URL {
   return new URL(file, import.meta.url);
 }
 
+type Write = { type: "log"; row: LogRow } | { type: "jobEvent"; row: JobEventRow };
+
 /**
- * Open the app's log for this launch. Never throws: the records thread writes
- * each entry, and an entry it cannot take goes to this session's file under
- * `logs/`, then to stderr (logging conventions, When logging itself fails).
+ * Open the app's records for this launch. Never throws: the records thread
+ * writes each entry, and an entry it cannot take goes to this session's file
+ * under `logs/`, then to stderr (logging conventions, When logging itself fails).
  */
 export function createAppLog(
   databaseFile: string = defaultRecordsFile(),
@@ -142,15 +152,26 @@ export function createAppLog(
     toStderr(line);
   };
 
+  const fallbackLine = (write: Write): string =>
+    write.type === "log"
+      ? JSON.stringify({
+          time: write.row.time,
+          session,
+          level: write.row.level,
+          message: write.row.message,
+          fields: JSON.parse(write.row.fields) as unknown,
+        })
+      : JSON.stringify({
+          time: write.row.time,
+          session,
+          jobId: write.row.jobId,
+          seq: write.row.seq,
+          event: JSON.parse(write.row.body) as unknown,
+        });
+
   // One append at a time, in the order the entries were made.
-  const toFallback = (row: LogRow): void => {
-    const line = `${JSON.stringify({
-      time: row.time,
-      session,
-      level: row.level,
-      message: row.message,
-      fields: JSON.parse(row.fields) as unknown,
-    })}\n`;
+  const toFallback = (write: Write): void => {
+    const line = `${fallbackLine(write)}\n`;
     fallbackTail = fallbackTail.then(() => appendFallback(line));
   };
 
@@ -159,12 +180,15 @@ export function createAppLog(
     if (databaseFailureReported) return;
     databaseFailureReported = true;
     toFallback({
-      time: new Date().toISOString(),
-      session,
-      level: "error",
-      message: "records database unavailable",
-      jobId: null,
-      fields: serializeFields({ database: databaseFile, error }),
+      type: "log",
+      row: {
+        time: new Date().toISOString(),
+        session,
+        level: "error",
+        message: "records database unavailable",
+        jobId: null,
+        fields: serializeFields({ database: databaseFile, error }),
+      },
     });
   };
 
@@ -172,21 +196,26 @@ export function createAppLog(
   let workerFailed = false;
   let closing: Promise<void> | null = null;
   let nextId = 1;
-  const pending = new Map<number, LogRow>();
+  const pending = new Map<number, Write>();
+  const reads = new Map<number, (rows: StoredJobEventRow[] | Error) => void>();
 
   // Whatever the records thread has not confirmed goes to the fallback file, so
-  // a thread that fails or does not close in time loses none of it.
-  const fallBackPending = (): void => {
-    const rows = [...pending.values()];
+  // a thread that fails or does not close in time loses none of it; a read it
+  // has not answered finds nothing.
+  const settleInFlight = (): void => {
+    const writes = [...pending.values()];
     pending.clear();
-    for (const row of rows) toFallback(row);
+    for (const write of writes) toFallback(write);
+    const waiting = [...reads.values()];
+    reads.clear();
+    for (const resolve of waiting) resolve([]);
   };
 
   const failWorker = (err: unknown): void => {
     if (workerFailed) return;
     workerFailed = true;
     reportDatabaseFailure(errorInfo(err));
-    fallBackPending();
+    settleInFlight();
     void worker?.terminate();
     worker = null;
   };
@@ -197,13 +226,19 @@ export function createAppLog(
     // The thread never keeps the process alive; `close` is what waits for it.
     created.unref();
     created.on("message", (response: RecordsResponse) => {
-      if (response.type === "written") {
-        pending.delete(response.id);
-      } else if (response.type === "failed") {
-        const row = pending.get(response.id);
-        pending.delete(response.id);
+      if (response.type === "closed") return;
+      const read = reads.get(response.id);
+      if (read) {
+        reads.delete(response.id);
+        if (response.type === "read") read(response.rows);
+        else if (response.type === "failed") read(Object.assign(new Error("records read failed"), response.error));
+        return;
+      }
+      const write = pending.get(response.id);
+      pending.delete(response.id);
+      if (response.type === "failed") {
         reportDatabaseFailure(response.error);
-        if (row) toFallback(row);
+        if (write) toFallback(write);
       }
     });
     created.on("error", failWorker);
@@ -214,31 +249,70 @@ export function createAppLog(
     return created;
   };
 
-  const persist = (row: LogRow): void => {
-    if (workerFailed || closing !== null) {
-      toFallback(row);
-      return;
-    }
-    const id = nextId++;
-    pending.set(id, row);
+  const post = (request: RecordsRequest): void => {
     try {
-      ensureWorker().postMessage({ type: "log", id, row } satisfies RecordsRequest);
+      ensureWorker().postMessage(request);
     } catch (err) {
       failWorker(err);
     }
+  };
+
+  const persist = (write: Write): void => {
+    if (workerFailed || closing !== null) {
+      toFallback(write);
+      return;
+    }
+    const id = nextId++;
+    pending.set(id, write);
+    post({ ...write, id } as RecordsRequest);
   };
 
   const write = (level: LogLevel, message: string, fields?: LogFields): void => {
     if (level === "debug" && process.env.ZIPKIT_DEBUG !== "1") return;
     const jobId = fields?.jobId;
     persist({
-      time: new Date().toISOString(),
-      session,
-      level,
-      message,
-      jobId: typeof jobId === "string" ? jobId : null,
-      fields: serializeFields(fields),
+      type: "log",
+      row: {
+        time: new Date().toISOString(),
+        session,
+        level,
+        message,
+        jobId: typeof jobId === "string" ? jobId : null,
+        fields: serializeFields(fields),
+      },
     });
+  };
+
+  let nextSeq = 1;
+  const jobEvent = (jobId: string, event: LogEvent): JobEvent => {
+    const recorded: JobEvent = { jobId, session, seq: nextSeq++, event };
+    persist({
+      type: "jobEvent",
+      row: {
+        time: event.time,
+        session,
+        seq: recorded.seq,
+        jobId,
+        event: event.event,
+        level: event.level,
+        body: JSON.stringify(event),
+      },
+    });
+    return recorded;
+  };
+
+  const jobEvents = async (jobId: string): Promise<JobEvent[]> => {
+    if (workerFailed || closing !== null) return [];
+    const id = nextId++;
+    const rows = await new Promise<StoredJobEventRow[] | Error>((resolve) => {
+      reads.set(id, resolve);
+      post({ type: "readJobEvents", id, jobId, limit: JOB_EVENT_LIMIT });
+    });
+    if (rows instanceof Error) {
+      write("warn", "job progress could not be read", { jobId, error: errorInfo(rows) });
+      return [];
+    }
+    return rows.map((row) => ({ jobId, session: row.session, seq: row.seq, event: JSON.parse(row.body) as LogEvent }));
   };
 
   const close = (waitMs: number = LOG_CLOSE_WAIT_MS): Promise<void> => {
@@ -271,7 +345,7 @@ export function createAppLog(
     // Entries made after the first close go straight to the fallback file, so
     // every close waits for it.
     return closing.then(() => {
-      fallBackPending();
+      settleInFlight();
       return fallbackTail;
     });
   };
@@ -282,6 +356,8 @@ export function createAppLog(
     info: (m, f) => write("info", m, f),
     warn: (m, f) => write("warn", m, f),
     error: (m, f) => write("error", m, f),
+    jobEvent,
+    jobEvents,
     close,
   };
 }
