@@ -5,20 +5,21 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import pLimit from "p-limit";
 import { storageRoot } from "../../sdk/storage.js";
-import { DEFAULT_OPTIONS, DEFAULT_SETTINGS, optionsEqual, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings } from "../shared/spec.js";
+import { changedSettings, DEFAULT_OPTIONS, DEFAULT_SETTINGS, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
 import { multiline, singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseJsonObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
+/** Computed on each call, not frozen at import, so `ZIPKIT_DATA_DIR` is read after
+ * the environment is set (storage-path conventions). */
 export function settingsFile(): string {
   return path.join(storageRoot(), "config.json");
 }
 
 function freshSettings(): GuiSettings {
-  return { defaults: { ...DEFAULT_OPTIONS }, uiFontFamily: "", theme: "system", language: "system" };
+  return { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS } };
 }
 
 const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
@@ -31,8 +32,7 @@ const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
   ["overwrite", (v) => typeof v === "boolean"],
 ];
 
-/** Queue options retain their existing absent-field behavior. Config defaults
- * additionally require every member before calling this parser. */
+/** Parse a queued job's options: fill absent members and reject wrong known shapes. */
 export function parseGuiOptions(raw: unknown, store: string): GuiOptions {
   if (raw === undefined) raw = {};
   if (!isPlainObject(raw)) throw new InvalidManagedJsonError(store, "options must be an object");
@@ -44,10 +44,6 @@ export function parseGuiOptions(raw: unknown, store: string): GuiOptions {
   return Object.fromEntries(OPTION_CHECKS.map(([key]) => [key, raw[key] ?? DEFAULT_OPTIONS[key]])) as unknown as GuiOptions;
 }
 
-// Invalid copies can be read at startup, by IPC, and after saves. One process
-// reports each set key once while every read still falls back independently.
-const warnedSettingsKeys = new Set<keyof GuiSettings>();
-
 function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, logger: AppLog): GuiSettings {
   const settings = freshSettings();
   for (const key of SETTINGS_KEYS) {
@@ -56,7 +52,7 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
     switch (key) {
       case "defaults":
         if (isPlainObject(value) && OPTION_CHECKS.every(([member, valid]) => valid(value[member]))) {
-          settings.defaults = parseGuiOptions(value, "config.json");
+          settings.defaults = Object.fromEntries(OPTION_CHECKS.map(([member]) => [member, value[member]])) as unknown as GuiOptions;
           continue;
         }
         break;
@@ -73,10 +69,7 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
         if (value === "system" || isLanguage(value)) { settings.language = value; continue; }
         break;
     }
-    if (!warnedSettingsKeys.has(key)) {
-      warnedSettingsKeys.add(key);
-      logger.warn("invalid settings set; using the built-in", { key });
-    }
+    logger.warn("invalid settings set; using the built-in", { key });
   }
   return settings;
 }
@@ -85,16 +78,7 @@ export function parseSettings(text: string, logger: AppLog = nullLog): GuiSettin
   return effectiveSettings(parseJsonObject(text, "config.json"), logger);
 }
 
-/** Serialize only known set keys and members, without config metadata. */
-export function serializeSettings(settings: Record<string, unknown>): string {
-  const stored: Record<string, unknown> = {};
-  for (const key of SETTINGS_KEYS) {
-    if (!Object.hasOwn(settings, key)) continue;
-    const value = settings[key];
-    stored[key] = key === "defaults" && isPlainObject(value)
-      ? Object.fromEntries(OPTION_CHECKS.filter(([member]) => Object.hasOwn(value, member)).map(([member]) => [member, value[member]]))
-      : value;
-  }
+export function serializeSettings(stored: Partial<GuiSettings>): string {
   return JSON.stringify(stored, null, 2);
 }
 
@@ -111,32 +95,21 @@ async function storedText(): Promise<string | null> {
   }
 }
 
-// Electron's single-instance lock gives config one process owner. Serialize the
-// patch path so concurrent requests cannot overwrite one another's untouched sets.
-const settingsWrites = pLimit(1);
-
 /** The one owner of what config.json holds (config-sets conventions, Reading and
  * healing): the dialog's settings, checked by the reader's validator and compared
  * cleaned (text-cleanup conventions). Returns the effective settings. */
-export function saveSettings(settings: GuiSettings, logger: AppLog = nullLog): Promise<GuiSettings> {
-  const snapshot = structuredClone(settings);
-  return settingsWrites(async () => {
-    const checked = effectiveSettings(snapshot, logger);
-    const effective: GuiSettings = {
-      ...checked,
-      uiFontFamily: singleLine(checked.uiFontFamily),
-      defaults: { ...checked.defaults, comment: multiline(checked.defaults.comment) },
-    };
-    const stored: Record<string, unknown> = {};
-    for (const key of SETTINGS_KEYS) {
-      const builtIn = key === "defaults" ? optionsEqual(effective.defaults, DEFAULT_OPTIONS) : effective[key] === DEFAULT_SETTINGS[key];
-      if (!builtIn) stored[key] = effective[key];
-    }
-    const text = serializeSettings(stored);
-    const current = await storedText();
-    if (current === null ? Object.keys(stored).length > 0 : current !== text) {
-      await writeManagedJson(settingsFile(), text);
-    }
-    return effective;
-  });
+export async function saveSettings(settings: GuiSettings, logger: AppLog = nullLog): Promise<GuiSettings> {
+  const checked = effectiveSettings(settings, logger);
+  const effective: GuiSettings = {
+    ...checked,
+    uiFontFamily: singleLine(checked.uiFontFamily),
+    defaults: { ...checked.defaults, comment: multiline(checked.defaults.comment) },
+  };
+  const stored = changedSettings(DEFAULT_SETTINGS, effective);
+  const text = serializeSettings(stored);
+  const current = await storedText();
+  if (current === null ? Object.keys(stored).length > 0 : current !== text) {
+    await writeManagedJson(settingsFile(), text);
+  }
+  return effective;
 }

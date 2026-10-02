@@ -67,13 +67,9 @@ export function SettingsDialog({
     }
   }
 
-  // Named for exactly what it resets, so the label and the code agree
-  // — "default parameters" is the same phrase the main window's per-job toggle
-  // uses for these knobs. Save deletes the copy; closing without saving keeps the current
-  // settings — so the label is the whole warning and no confirmation is needed.
-  // The UI font, the theme, and the language are deliberately left alone: they
-  // are the user's own preferences, not built-ins that go stale, so a reset
-  // must not drag them along.
+  // A draft action (config-sets conventions, Reset). "Default parameters" is the
+  // main window's own phrase for these knobs. The language, the theme and the UI
+  // font are the user's preferences, not tuned built-ins, so they stay as they are.
   function resetDefaultParameters() {
     setDraft({ ...draft, defaults: { ...DEFAULT_OPTIONS } });
   }

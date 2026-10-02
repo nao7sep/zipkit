@@ -10,15 +10,10 @@ import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec"
 import { multiline, singleLine } from "../../../src/gui/shared/textCleanup";
 import { managedEntries } from "../../helpers/managedEntries.js";
 
-vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: vi.fn() }));
+import * as settings from "../../../src/gui/main/settings";
+import { record } from "../../../src/gui/main/backupStore.js";
 
-let settings: typeof import("../../../src/gui/main/settings");
-beforeEach(async () => {
-  // Each test gets a fresh process-lifetime warning owner without a production
-  // reset hook; repeated calls within a test share that owner.
-  vi.resetModules();
-  settings = await import("../../../src/gui/main/settings");
-});
+vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: vi.fn() }));
 
 function warningLog() {
   const logger: AppLog = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -61,18 +56,6 @@ describe("settings sets", () => {
       .toEqual({ ...DEFAULT_SETTINGS, defaults: CUSTOM.defaults });
     expect(logger.warn).toHaveBeenCalledTimes(3);
     expect(vi.mocked(logger.warn).mock.calls.map((call) => call[1]?.key).sort()).toEqual(["language", "theme", "uiFontFamily"]);
-  });
-
-  it("warns once per key across parses, logger instances, and later malformed copies", () => {
-    const firstLogger = warningLog();
-    const laterLogger = warningLog();
-    const invalid = JSON.stringify({ defaults: { level: 1 }, theme: "sepia" });
-    expect(settings.parseSettings(invalid, firstLogger)).toEqual(DEFAULT_SETTINGS);
-    expect(settings.parseSettings(invalid, firstLogger)).toEqual(DEFAULT_SETTINGS);
-    expect(settings.parseSettings(settings.serializeSettings(CUSTOM), laterLogger)).toEqual(CUSTOM);
-    expect(settings.parseSettings('{"defaults":null,"theme":42,"language":7}', laterLogger)).toEqual(DEFAULT_SETTINGS);
-    expect(vi.mocked(firstLogger.warn).mock.calls.map((call) => call[1]?.key)).toEqual(["theme", "defaults"]);
-    expect(laterLogger.warn).toHaveBeenCalledExactlyOnceWith(expect.any(String), { key: "language" });
   });
 
   it("accepts any legacy version key as unknown", () => {
@@ -130,11 +113,6 @@ describe("settings file location and persistence", () => {
     expect(readStored()).toEqual({ theme: "dark" });
   });
 
-  it("serializes concurrent saves so the last one is stored", async () => {
-    await Promise.all([settings.saveSettings({ ...DEFAULT_SETTINGS, language: "ja" }), settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "dark" })]);
-    expect(readStored()).toEqual({ theme: "dark" });
-  });
-
   it("drops version, unknown sets and unknown defaults members on the next write", async () => {
     writeFileSync(settings.settingsFile(), JSON.stringify({ version: 99, retired: true, defaults: { ...CUSTOM.defaults, unknown: "drop" } }));
     const loaded = (await settings.loadSettings()).value;
@@ -156,7 +134,6 @@ describe("settings file location and persistence", () => {
   });
 
   it("writes nothing when the file would not change", async () => {
-    const { record } = await import("../../../src/gui/main/backupStore.js");
     vi.mocked(record).mockClear();
     await settings.saveSettings(CUSTOM);
     await settings.saveSettings(CUSTOM);
@@ -191,15 +168,6 @@ describe("settings file location and persistence", () => {
     const loaded = (await settings.loadSettings()).value;
     await settings.saveSettings({ ...loaded, theme: "dark" });
     expect(readStored()).toEqual({ theme: "dark" });
-  });
-
-  it("does not repeat a set warning during repeated loads or a save", async () => {
-    writeFileSync(settings.settingsFile(), '{"defaults":{"level":1}}');
-    const logger = warningLog();
-    expect((await settings.loadSettings(logger)).value).toEqual(DEFAULT_SETTINGS);
-    expect((await settings.loadSettings(logger)).value).toEqual(DEFAULT_SETTINGS);
-    expect(await settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "dark" }, logger)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
-    expect(logger.warn).toHaveBeenCalledExactlyOnceWith(expect.any(String), { key: "defaults" });
   });
 
   it.each(["{ not json", "[]"])("quarantines an unreadable file without replacing it: %s", async (bytes) => {

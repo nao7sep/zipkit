@@ -75,12 +75,8 @@ export const SETTINGS_KEYS = ["language", "theme", "uiFontFamily", "defaults"] a
 
 /** The sets the draft changed from the saved settings. */
 export function changedSettings(before: GuiSettings, draft: GuiSettings): Partial<GuiSettings> {
-  const changes: Partial<GuiSettings> = {};
-  if (before.language !== draft.language) changes.language = draft.language;
-  if (before.theme !== draft.theme) changes.theme = draft.theme;
-  if (before.uiFontFamily !== draft.uiFontFamily) changes.uiFontFamily = draft.uiFontFamily;
-  if (!optionsEqual(before.defaults, draft.defaults)) changes.defaults = draft.defaults;
-  return changes;
+  const changed = SETTINGS_KEYS.filter((key) => (key === "defaults" ? !optionsEqual(before.defaults, draft.defaults) : before[key] !== draft[key]));
+  return Object.fromEntries(changed.map((key) => [key, draft[key]])) as Partial<GuiSettings>;
 }
 
 export const DEFAULT_SETTINGS: GuiSettings = {
