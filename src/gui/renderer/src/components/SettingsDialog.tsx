@@ -16,7 +16,8 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
-import { changedSettings, DEFAULT_OPTIONS, type GuiOptions, type GuiSettings, type GuiSettingsChanges, type ThemePreference } from "../../../shared/spec";
+import { changedSettings, DEFAULT_OPTIONS, type GuiOptions, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
 import { useI18n } from "../i18n/I18nContext";
 import type { MessageKey } from "../../../shared/i18n/catalogues";
@@ -40,25 +41,23 @@ export function SettingsDialog({
   onClose,
 }: {
   settings: GuiSettings;
-  onSave: (changes: GuiSettingsChanges) => Promise<void>;
+  onSave: (settings: GuiSettings) => Promise<void>;
   onClose: () => void;
 }) {
   const { t } = useI18n();
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
-  const [resetDefaults, setResetDefaults] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
-  const changes = changedSettings(settings, draft, resetDefaults);
-  const dirty = Object.keys(changes).length > 0;
+  const dirty = Object.keys(changedSettings(settings, draft)).length > 0;
   const canSave = dirty && isValid(draft.defaults);
 
   async function save() {
     setSaving(true);
     setSaveError(false);
     try {
-      await onSave(changes);
+      await onSave(draft);
       onClose();
     } catch (err) {
       window.zipkit.reportError("save settings", reportableError(err));
@@ -77,7 +76,6 @@ export function SettingsDialog({
   // must not drag them along.
   function resetDefaultParameters() {
     setDraft({ ...draft, defaults: { ...DEFAULT_OPTIONS } });
-    setResetDefaults(true);
   }
 
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):
@@ -163,12 +161,13 @@ export function SettingsDialog({
           value={draft.uiFontFamily}
           placeholder={t("settings.uiFontDefault")}
           onChange={(e) => setDraft({ ...draft, uiFontFamily: e.target.value })}
+          onBlur={(e) => setDraft({ ...draft, uiFontFamily: singleLine(e.target.value) })}
         />
         <span style={S.fontHint}>{t("settings.uiFontHint")}</span>
       </label>
       <OptionsPanel
         options={draft.defaults}
-        onChange={(o) => { setDraft({ ...draft, defaults: o }); setResetDefaults(false); }}
+        onChange={(o) => setDraft({ ...draft, defaults: o })}
         disabled={false}
       />
       {saveError && <p role="alert" style={S.error}>{t("settings.saveFailed")}</p>}

@@ -1,13 +1,17 @@
-/**
- * Tests for the renderer's text-cleanup helper (the `multiline` pattern, used by
- * the archive comment). Pins the behaviors the convention specifies: newline
- * normalization, trailing-whitespace removal, edge-blank dropping with interior
- * runs kept, the trimmed-empty definition of "blank" (spaces and full-width
- * U+3000), indentation preservation, and opt-in interior collapse.
- */
+/** Tests for the app's text-cleanup helper (text-cleanup-conventions). */
 
 import { describe, expect, it } from "vitest";
-import { multiline } from "../../../src/gui/renderer/src/textCleanup";
+import { multiline, singleLine } from "../../../src/gui/shared/textCleanup";
+
+describe("singleLine", () => {
+  it("trims the ends and flattens a pasted line break to one space", () => {
+    expect(singleLine("  Iosevka,\r\n  monospace\u3000")).toBe("Iosevka, monospace");
+  });
+
+  it("keeps interior spacing typed within a line", () => {
+    expect(singleLine("Iosevka  Term")).toBe("Iosevka  Term");
+  });
+});
 
 describe("multiline", () => {
   it("normalizes CRLF and lone CR to LF", () => {

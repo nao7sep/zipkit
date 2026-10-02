@@ -5,7 +5,7 @@
 
 import { dialog, ipcMain, shell } from "electron";
 import type { AppInfo, VerifyResult } from "../shared/api.js";
-import type { GuiSettings, GuiSettingsChanges } from "../shared/spec.js";
+import type { GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
@@ -25,10 +25,10 @@ export function registerIpc(): void {
   // loader; the startup report in bootstrap covers the material case.
   ipcMain.handle("zipkit:getSettings", async (): Promise<GuiSettings> => (await loadSettings(log)).value);
 
-  ipcMain.handle("zipkit:setSettings", async (_event, changes: GuiSettingsChanges): Promise<GuiSettings> => {
+  ipcMain.handle("zipkit:setSettings", async (_event, draft: GuiSettings): Promise<GuiSettings> => {
     let settings: GuiSettings;
     try {
-      settings = await saveSettings(changes, log);
+      settings = await saveSettings(draft, log);
     } catch (err) {
       log.error("failed to persist settings", { error: errorInfo(err) });
       throw err;

@@ -1,4 +1,4 @@
-/** Whole-set reads, sparse read-modify-writes, and managed-file recovery. */
+/** Whole-set reads, writes from the dialog's settings, and managed-file recovery. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -7,6 +7,7 @@ import path from "node:path";
 import type { AppLog } from "../../../src/gui/main/log.js";
 import { storageRoot } from "../../../src/sdk/storage.js";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
+import { multiline, singleLine } from "../../../src/gui/shared/textCleanup";
 import { managedEntries } from "../../helpers/managedEntries.js";
 
 vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: vi.fn() }));
@@ -112,41 +113,68 @@ describe("settings file location and persistence", () => {
 
   it("changing one defaults member writes exactly the whole defaults set", async () => {
     const defaults = { ...DEFAULT_OPTIONS, level: 3 };
-    expect(await settings.saveSettings({ defaults })).toEqual({ ...DEFAULT_SETTINGS, defaults });
+    expect(await settings.saveSettings({ ...DEFAULT_SETTINGS, defaults })).toEqual({ ...DEFAULT_SETTINGS, defaults });
     expect(readStored()).toEqual({ defaults });
     expect((await settings.loadSettings()).value).toEqual({ ...DEFAULT_SETTINGS, defaults });
     expect(managedEntries(root)).toEqual(["config.json"]);
   });
 
-  it("re-reads the current map and preserves untouched sets", async () => {
-    await settings.saveSettings({ language: "ja" });
-    writeFileSync(settings.settingsFile(), JSON.stringify({ language: "de", uiFontFamily: "Menlo" }));
-    await settings.saveSettings({ theme: "dark" });
-    expect(readStored()).toEqual({ language: "de", uiFontFamily: "Menlo", theme: "dark" });
+  it("a reset on a fresh data directory creates no file", async () => {
+    expect(await settings.saveSettings(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
+    expect(readdirSync(root)).toEqual([]);
   });
 
-  it("serializes concurrent patches so both changed sets survive", async () => {
-    await Promise.all([settings.saveSettings({ language: "ja" }), settings.saveSettings({ theme: "dark" })]);
-    expect(readStored()).toEqual({ language: "ja", theme: "dark" });
+  it("writes the file from the settings it is given, every set that differs", async () => {
+    writeFileSync(settings.settingsFile(), JSON.stringify({ language: "de", uiFontFamily: "Menlo" }));
+    await settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "dark" });
+    expect(readStored()).toEqual({ theme: "dark" });
+  });
+
+  it("serializes concurrent saves so the last one is stored", async () => {
+    await Promise.all([settings.saveSettings({ ...DEFAULT_SETTINGS, language: "ja" }), settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "dark" })]);
+    expect(readStored()).toEqual({ theme: "dark" });
   });
 
   it("drops version, unknown sets and unknown defaults members on the next write", async () => {
     writeFileSync(settings.settingsFile(), JSON.stringify({ version: 99, retired: true, defaults: { ...CUSTOM.defaults, unknown: "drop" } }));
-    expect((await settings.loadSettings()).value.defaults).toEqual(CUSTOM.defaults);
-    await settings.saveSettings({ theme: "light" });
+    const loaded = (await settings.loadSettings()).value;
+    expect(loaded.defaults).toEqual(CUSTOM.defaults);
+    await settings.saveSettings({ ...loaded, theme: "light" });
     expect(readStored()).toEqual({ defaults: CUSTOM.defaults, theme: "light" });
   });
 
-  it("a reset deletes defaults and keeps other stored sets", async () => {
+  it("a reset removes defaults and keeps other stored sets", async () => {
     await settings.saveSettings(CUSTOM);
-    expect(await settings.saveSettings({ defaults: null })).toEqual({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
+    expect(await settings.saveSettings({ ...CUSTOM, defaults: DEFAULT_OPTIONS })).toEqual({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
     expect(readStored()).toEqual({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language });
   });
 
-  it("a reset removes even a defaults copy identical to the built-in", async () => {
-    await settings.saveSettings({ defaults: DEFAULT_OPTIONS });
-    await settings.saveSettings({ defaults: null });
+  it("removes a stored copy identical to the built-in and keeps the file as {}", async () => {
+    writeFileSync(settings.settingsFile(), JSON.stringify({ defaults: DEFAULT_OPTIONS }));
+    await settings.saveSettings(DEFAULT_SETTINGS);
     expect(readStored()).toEqual({});
+  });
+
+  it("writes nothing when the file would not change", async () => {
+    const { record } = await import("../../../src/gui/main/backupStore.js");
+    vi.mocked(record).mockClear();
+    await settings.saveSettings(CUSTOM);
+    await settings.saveSettings(CUSTOM);
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
+  it("compares and stores the font and the comment cleaned", async () => {
+    const blank = { ...DEFAULT_SETTINGS, uiFontFamily: " \n ", defaults: { ...DEFAULT_OPTIONS, comment: "\n  \n" } };
+    expect(await settings.saveSettings(blank)).toEqual(DEFAULT_SETTINGS);
+    expect(readdirSync(root)).toEqual([]);
+    const typed = { ...DEFAULT_SETTINGS, uiFontFamily: " Menlo\n", defaults: { ...DEFAULT_OPTIONS, comment: "\nhi  \n" } };
+    await settings.saveSettings(typed);
+    expect(readStored()).toEqual({ uiFontFamily: "Menlo", defaults: { ...DEFAULT_OPTIONS, comment: "hi" } });
+  });
+
+  it("keeps the built-in texts in cleaned form", () => {
+    expect(singleLine(DEFAULT_SETTINGS.uiFontFamily)).toBe(DEFAULT_SETTINGS.uiFontFamily);
+    expect(multiline(DEFAULT_OPTIONS.comment)).toBe(DEFAULT_OPTIONS.comment);
   });
 
   it("a malformed set remains in place and only falls back for that set", async () => {
@@ -158,14 +186,20 @@ describe("settings file location and persistence", () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
-  it("does not repeat a set warning during repeated loads or the post-write parse", async () => {
+  it("a set that read as its built-in loses its key at the next save", async () => {
+    writeFileSync(settings.settingsFile(), '{"defaults":{"level":1}}');
+    const loaded = (await settings.loadSettings()).value;
+    await settings.saveSettings({ ...loaded, theme: "dark" });
+    expect(readStored()).toEqual({ theme: "dark" });
+  });
+
+  it("does not repeat a set warning during repeated loads or a save", async () => {
     writeFileSync(settings.settingsFile(), '{"defaults":{"level":1}}');
     const logger = warningLog();
     expect((await settings.loadSettings(logger)).value).toEqual(DEFAULT_SETTINGS);
     expect((await settings.loadSettings(logger)).value).toEqual(DEFAULT_SETTINGS);
-    expect(await settings.saveSettings({ theme: "dark" }, logger)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
+    expect(await settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "dark" }, logger)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
     expect(logger.warn).toHaveBeenCalledExactlyOnceWith(expect.any(String), { key: "defaults" });
-    expect(readStored()).toEqual({ defaults: { level: 1 }, theme: "dark" });
   });
 
   it.each(["{ not json", "[]"])("quarantines an unreadable file without replacing it: %s", async (bytes) => {
@@ -179,7 +213,7 @@ describe("settings file location and persistence", () => {
     expect(loaded.quarantinedTo).toMatch(/config-\d{8}-\d{6}-\d{3}-utc\.invalid$/);
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    await settings.saveSettings({ theme: "light" });
+    await settings.saveSettings({ ...loaded.value, theme: "light" });
     expect(readStored()).toEqual({ theme: "light" });
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });

@@ -3,11 +3,13 @@
  * unreadable documents follow the shared managed-store quarantine path.
  */
 
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
 import { storageRoot } from "../../sdk/storage.js";
-import { DEFAULT_OPTIONS, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings, type GuiSettingsChanges } from "../shared/spec.js";
+import { DEFAULT_OPTIONS, DEFAULT_SETTINGS, optionsEqual, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
+import { multiline, singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseJsonObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
@@ -46,7 +48,7 @@ export function parseGuiOptions(raw: unknown, store: string): GuiOptions {
 // reports each set key once while every read still falls back independently.
 const warnedSettingsKeys = new Set<keyof GuiSettings>();
 
-function effectiveSettings(root: Record<string, unknown>, logger: AppLog): GuiSettings {
+function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, logger: AppLog): GuiSettings {
   const settings = freshSettings();
   for (const key of SETTINGS_KEYS) {
     if (!Object.hasOwn(root, key)) continue;
@@ -84,7 +86,7 @@ export function parseSettings(text: string, logger: AppLog = nullLog): GuiSettin
 }
 
 /** Serialize only known set keys and members, without config metadata. */
-export function serializeSettings(settings: Record<string, unknown> | GuiSettingsChanges): string {
+export function serializeSettings(settings: Record<string, unknown>): string {
   const stored: Record<string, unknown> = {};
   for (const key of SETTINGS_KEYS) {
     if (!Object.hasOwn(settings, key)) continue;
@@ -100,22 +102,41 @@ export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJso
   return loadManagedJson(settingsFile(), (text) => parseSettings(text, logger), freshSettings, logger);
 }
 
+async function storedText(): Promise<string | null> {
+  try {
+    return await readFile(settingsFile(), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
+}
+
 // Electron's single-instance lock gives config one process owner. Serialize the
 // patch path so concurrent requests cannot overwrite one another's untouched sets.
 const settingsWrites = pLimit(1);
 
-/** Read-modify-write only requested sets; null deletes a copy. */
-export function saveSettings(changes: GuiSettingsChanges, logger: AppLog = nullLog): Promise<GuiSettings> {
-  const snapshot = structuredClone(changes);
+/** The one owner of what config.json holds (config-sets conventions, Reading and
+ * healing): the dialog's settings, checked by the reader's validator and compared
+ * cleaned (text-cleanup conventions). Returns the effective settings. */
+export function saveSettings(settings: GuiSettings, logger: AppLog = nullLog): Promise<GuiSettings> {
+  const snapshot = structuredClone(settings);
   return settingsWrites(async () => {
-    const { value: stored } = await loadManagedJson<Record<string, unknown>>(settingsFile(), (text) => parseJsonObject(text, "config.json"), () => ({}), logger);
+    const checked = effectiveSettings(snapshot, logger);
+    const effective: GuiSettings = {
+      ...checked,
+      uiFontFamily: singleLine(checked.uiFontFamily),
+      defaults: { ...checked.defaults, comment: multiline(checked.defaults.comment) },
+    };
+    const stored: Record<string, unknown> = {};
     for (const key of SETTINGS_KEYS) {
-      if (!Object.hasOwn(snapshot, key)) continue;
-      if (snapshot[key] === null) delete stored[key];
-      else stored[key] = snapshot[key];
+      const builtIn = key === "defaults" ? optionsEqual(effective.defaults, DEFAULT_OPTIONS) : effective[key] === DEFAULT_SETTINGS[key];
+      if (!builtIn) stored[key] = effective[key];
     }
     const text = serializeSettings(stored);
-    await writeManagedJson(settingsFile(), text);
-    return parseSettings(text, logger);
+    const current = await storedText();
+    if (current === null ? Object.keys(stored).length > 0 : current !== text) {
+      await writeManagedJson(settingsFile(), text);
+    }
+    return effective;
   });
 }

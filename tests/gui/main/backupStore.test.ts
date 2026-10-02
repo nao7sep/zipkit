@@ -247,9 +247,9 @@ describe("write-through: a real managed save records the exact bytes after the r
   it("saveSettings records config.json's exact on-disk bytes into the store", async () => {
     const { readFileSync } = await import("node:fs");
     const { saveSettings } = await import("../../../src/gui/main/settings.js");
-    const { DEFAULT_OPTIONS } = await import("../../../src/gui/shared/spec.js");
+    const { DEFAULT_OPTIONS, DEFAULT_SETTINGS } = await import("../../../src/gui/shared/spec.js");
 
-    await saveSettings({ defaults: { ...DEFAULT_OPTIONS, level: 7 }, uiFontFamily: "Iosevka", theme: "system", language: "system" });
+    await saveSettings({ ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 7 } });
 
     const file = path.join(root, "config.json");
     const onDisk = readFileSync(file); // the exact bytes the atomic write landed
@@ -264,13 +264,13 @@ describe("write-through: a real managed save records the exact bytes after the r
     expect(logCalls.warn).toHaveLength(0); // silent on success
   });
 
-  it("a second saveSettings with identical settings is deduped (write-through respects the content skip)", async () => {
+  it("a second saveSettings with identical settings records no new row", async () => {
     const { saveSettings } = await import("../../../src/gui/main/settings.js");
-    const { DEFAULT_OPTIONS } = await import("../../../src/gui/shared/spec.js");
-    const settings = { defaults: { ...DEFAULT_OPTIONS, level: 3 }, uiFontFamily: "", theme: "system" as const, language: "system" as const };
+    const { DEFAULT_OPTIONS, DEFAULT_SETTINGS } = await import("../../../src/gui/shared/spec.js");
+    const settings = { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 3 } };
 
     await saveSettings(settings);
-    await saveSettings(settings); // identical serialized bytes -> deduped
+    await saveSettings(settings); // the file would not change -> no write
 
     expect(readRows(root)).toHaveLength(1);
   });

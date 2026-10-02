@@ -65,14 +65,14 @@ describe("SettingsDialog theme", () => {
     fireEvent.click(radios[1]!);
     expect(onSave).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ theme: "light" });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, theme: "light" });
   });
 
   it("leaves the theme alone when the default parameters are reset", () => {
     const onSave = renderDialog();
     fireEvent.click(reset());
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ defaults: null });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
   });
 });
 
@@ -87,12 +87,13 @@ describe("SettingsDialog footer order", () => {
 });
 
 describe("SettingsDialog reset", () => {
-  it("can delete a stored defaults copy even when it equals the built-in", () => {
-    const onSave = renderDialog({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
-    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+  it("a reset that changes nothing leaves Save disabled and closes without asking", () => {
+    const onClose = vi.fn();
+    render(<SettingsDialog settings={{ ...CUSTOM, defaults: DEFAULT_OPTIONS }} onSave={vi.fn()} onClose={onClose} />);
     fireEvent.click(reset());
-    fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ defaults: null });
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("edits after reset save the whole new copy", () => {
@@ -100,14 +101,14 @@ describe("SettingsDialog reset", () => {
     fireEvent.click(reset());
     fireEvent.change(levelInput(), { target: { value: "4" } });
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ defaults: { ...DEFAULT_OPTIONS, level: 4 } });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...DEFAULT_OPTIONS, level: 4 } });
   });
 
   it("saves a changed language independently", () => {
     const onSave = renderDialog();
     fireEvent.change(screen.getByLabelText("Language"), { target: { value: "ja" } });
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ language: "ja" });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, language: "ja" });
   });
 
   it("shows human labels while preserving the option values saved to settings", () => {
@@ -125,6 +126,7 @@ describe("SettingsDialog reset", () => {
     fireEvent.change(emptyDirs, { target: { value: "prune" } });
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledWith({
+      ...CUSTOM,
       defaults: { ...CUSTOM.defaults, symlinks: "follow", emptyDirs: "prune" },
     });
   });
@@ -152,12 +154,10 @@ describe("SettingsDialog reset", () => {
     // The font survives the reset in the draft...
     expect(fontInput().value).toBe("Iosevka, monospace");
 
-    // Save removes the defaults copy and leaves the font set untouched.
+    // ...and in what Save hands over.
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave).toHaveBeenCalledWith({
-      defaults: null,
-    });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
   });
 
   it("keeps a font edited in the same session (the reset never blanks the field)", () => {
@@ -167,7 +167,14 @@ describe("SettingsDialog reset", () => {
 
     expect(fontInput().value).toBe("Menlo");
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ defaults: null, uiFontFamily: "Menlo" });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo" });
+  });
+
+  it("cleans the font field on blur", () => {
+    renderDialog();
+    fireEvent.change(fontInput(), { target: { value: "  Menlo,\n monospace " } });
+    fireEvent.blur(fontInput());
+    expect(fontInput().value).toBe("Menlo, monospace");
   });
 
   it("keeps the dialog open and reports a failed durable save", async () => {

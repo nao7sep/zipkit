@@ -10,7 +10,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { GuiOptions } from "../../../shared/spec";
-import { multiline } from "../textCleanup";
+import { multiline } from "../../../shared/textCleanup";
 import { DirectoryField } from "./DirectoryField";
 import { useI18n } from "../i18n/I18nContext";
 

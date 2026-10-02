@@ -70,19 +70,16 @@ export interface GuiSettings {
   language: LanguagePreference;
 }
 
-/** The config file's set keys. A null update removes the user's copy. */
+/** The config file's set keys. */
 export const SETTINGS_KEYS = ["language", "theme", "uiFontFamily", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
-export type GuiSettingsChanges = { [K in keyof GuiSettings]?: GuiSettings[K] | null };
 
-/** Save only changed sets; an explicit reset deletes the defaults copy even
- * when its effective value already equals the built-in. */
-export function changedSettings(before: GuiSettings, draft: GuiSettings, resetDefaults = false): GuiSettingsChanges {
-  const changes: GuiSettingsChanges = {};
+/** The sets the draft changed from the saved settings. */
+export function changedSettings(before: GuiSettings, draft: GuiSettings): Partial<GuiSettings> {
+  const changes: Partial<GuiSettings> = {};
   if (before.language !== draft.language) changes.language = draft.language;
   if (before.theme !== draft.theme) changes.theme = draft.theme;
   if (before.uiFontFamily !== draft.uiFontFamily) changes.uiFontFamily = draft.uiFontFamily;
-  if (resetDefaults) changes.defaults = null;
-  else if (!optionsEqual(before.defaults, draft.defaults)) changes.defaults = draft.defaults;
+  if (!optionsEqual(before.defaults, draft.defaults)) changes.defaults = draft.defaults;
   return changes;
 }
 
