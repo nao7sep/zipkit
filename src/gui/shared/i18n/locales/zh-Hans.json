@@ -323,7 +323,6 @@
   "settings.themeDark": "深色",
   "settings.themeHint": "“跟随系统”会随操作系统的外观而变化。",
   "settings.uiFont": "界面字体",
-  "settings.uiFontDefault": "默认",
   "settings.uiFontHint": "应用界面使用的字体。填写以逗号分隔的字体系列，将使用系统中第一个可用的字体。留空则使用内置默认字体。",
   "settings.resetDefaults": "恢复默认参数",
   "settings.saving": "正在保存…",

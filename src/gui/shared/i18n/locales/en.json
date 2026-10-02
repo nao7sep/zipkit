@@ -323,7 +323,6 @@
   "settings.themeDark": "Dark",
   "settings.themeHint": "System follows the OS appearance.",
   "settings.uiFont": "UI font",
-  "settings.uiFontDefault": "Default",
   "settings.uiFontHint": "The app interface font. Comma-separated families; the first one your system has is used. Blank uses the built-in default.",
   "settings.resetDefaults": "Reset default parameters",
   "settings.saving": "Saving…",

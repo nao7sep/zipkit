@@ -40,19 +40,10 @@ function renderDialog(settings: GuiSettings = CUSTOM) {
   return onSave;
 }
 
-const fontInput = () => screen.getByPlaceholderText("Default") as HTMLInputElement;
+const fontInput = () => screen.getByLabelText(/^UI font/) as HTMLInputElement;
 const levelInput = () => screen.getByLabelText("Compression level (1–9)") as HTMLInputElement;
 const reset = () => screen.getByText("Reset default parameters");
 
-// ModalShell gives the footer's FIRST DOM control the safe-default focus, so a
-// stray Enter on open must land on Cancel. The footer is deliberately written in
-// a different order than it renders: the reset is pulled to the visual far left
-// with `order: -1`, but stays SECOND in the DOM. Until now the only thing
-// recording that was a comment above the JSX, and a comment does not fail a
-// build — reordering the JSX to match what the eye sees (the natural tidy-up,
-// since a reader will ask why Cancel is written first when it renders second)
-// would silently move the open-then-Enter target onto "Reset default
-// parameters". This asserts the DOM order that safety rides on.
 describe("SettingsDialog theme", () => {
   it("offers System, Light, and Dark as one radio group, applied only by Save", () => {
     const onSave = renderDialog();
@@ -76,13 +67,25 @@ describe("SettingsDialog theme", () => {
   });
 });
 
-describe("SettingsDialog footer order", () => {
-  it("puts Cancel first in the DOM so footer-first focus is the safe default", () => {
+describe("SettingsDialog initial focus", () => {
+  it("names Cancel as the control that takes focus on open", async () => {
     renderDialog();
-    const footer = document.querySelector("[data-modal-footer]");
-    expect(footer).toBeTruthy();
-    const labels = Array.from(footer!.querySelectorAll("button")).map((b) => b.textContent);
-    expect(labels).toEqual(["Cancel", "Reset default parameters", "Save"]);
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Cancel"));
+    expect(screen.getByText("Cancel").hasAttribute("data-modal-autofocus")).toBe(true);
+  });
+});
+
+describe("SettingsDialog UI font", () => {
+  it("shows the built-in font stack as the empty field's placeholder", () => {
+    const style = document.createElement("style");
+    style.textContent = ':root { --font-ui-default: Avenir, sans-serif; }';
+    document.head.append(style);
+    try {
+      renderDialog({ ...CUSTOM, uiFontFamily: "" });
+      expect(fontInput().placeholder).toMatch(/^Avenir,\s*sans-serif$/);
+    } finally {
+      style.remove();
+    }
   });
 });
 

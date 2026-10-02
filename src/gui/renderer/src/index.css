@@ -13,9 +13,11 @@
 :root {
   color-scheme: light;
   /* Fonts. --font-ui is the UI (chrome) font: the Settings "UI font" field overrides it at runtime
-     with a verbatim family string; blank reverts to this default. System fonts only — the renderer
-     CSP forbids web fonts. --font-mono is the read-only log/report face. Family only — no UI size knob. */
-  --font-ui: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+     with a verbatim family string; blank reverts to --font-ui-default, which that field also shows as
+     its placeholder. System fonts only — the renderer CSP forbids web fonts. --font-mono is the
+     read-only log/report face. Family only — no UI size knob. */
+  --font-ui-default: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui: var(--font-ui-default);
   --font-mono: ui-monospace, "Menlo", "Consolas", monospace;
   --radius: 8px;
   --bg: #f3f2ea;

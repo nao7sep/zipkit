@@ -323,7 +323,6 @@
   "settings.themeDark": "Sombre",
   "settings.themeHint": "Système suit l’apparence du système d’exploitation.",
   "settings.uiFont": "Police de l’interface",
-  "settings.uiFontDefault": "Par défaut",
   "settings.uiFontHint": "La police de l’interface de l’application. Familles séparées par des virgules\u00a0; la première présente sur votre système est utilisée. Vide\u00a0: la police intégrée par défaut.",
   "settings.resetDefaults": "Rétablir les paramètres par défaut",
   "settings.saving": "Enregistrement…",

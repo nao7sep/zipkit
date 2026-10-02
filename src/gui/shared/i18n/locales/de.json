@@ -323,7 +323,6 @@
   "settings.themeDark": "Dunkel",
   "settings.themeHint": "System folgt dem Erscheinungsbild des Betriebssystems.",
   "settings.uiFont": "Oberflächenschrift",
-  "settings.uiFontDefault": "Standard",
   "settings.uiFontHint": "Die Schrift der App-Oberfläche. Durch Kommas getrennte Schriftfamilien; die erste auf Ihrem System vorhandene wird verwendet. Leer bedeutet den eingebauten Standard.",
   "settings.resetDefaults": "Standardparameter zurücksetzen",
   "settings.saving": "Wird gespeichert …",

@@ -323,7 +323,6 @@
   "settings.themeDark": "Oscuro",
   "settings.themeHint": "Sistema sigue la apariencia del sistema operativo.",
   "settings.uiFont": "Fuente de la interfaz",
-  "settings.uiFontDefault": "Predeterminada",
   "settings.uiFontHint": "La fuente de la interfaz de la app. Familias separadas por comas; se usa la primera que tenga tu sistema. En blanco se usa la predeterminada integrada.",
   "settings.resetDefaults": "Restablecer los parámetros predeterminados",
   "settings.saving": "Guardando…",

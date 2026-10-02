@@ -323,7 +323,6 @@
   "settings.themeDark": "ダーク",
   "settings.themeHint": "「システム」は OS の外観に合わせます。",
   "settings.uiFont": "UI フォント",
-  "settings.uiFontDefault": "既定",
   "settings.uiFontHint": "アプリの画面に使うフォントです。フォントファミリをカンマ区切りで指定すると、システムにある最初のフォントが使われます。空欄にすると内蔵の既定値を使います。",
   "settings.resetDefaults": "既定のパラメータに戻す",
   "settings.saving": "保存中…",

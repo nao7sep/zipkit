@@ -323,7 +323,6 @@
   "settings.themeDark": "다크",
   "settings.themeHint": "시스템은 OS의 모양을 따릅니다.",
   "settings.uiFont": "UI 서체",
-  "settings.uiFontDefault": "기본값",
   "settings.uiFontHint": "앱 화면에 쓰는 서체입니다. 서체 모음을 쉼표로 구분해 적으면 시스템에 있는 첫 번째 서체가 사용됩니다. 비워 두면 내장 기본값을 사용합니다.",
   "settings.resetDefaults": "기본 매개변수로 재설정",
   "settings.saving": "저장 중…",

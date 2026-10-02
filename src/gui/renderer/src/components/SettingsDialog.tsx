@@ -30,6 +30,12 @@ const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: MessageKey }
   { value: "dark", label: "settings.themeDark" },
 ];
 
+/** The built-in UI font stack, read from the stylesheet that owns it, shown as the
+ *  empty field's placeholder (config-sets conventions, In the interface). */
+function builtInFontStack(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue("--font-ui-default").trim();
+}
+
 /** The only field that can be made invalid from the UI: the compression level. */
 function isValid(o: GuiOptions): boolean {
   return Number.isInteger(o.level) && o.level >= 1 && o.level <= 9;
@@ -47,6 +53,7 @@ export function SettingsDialog({
   const { t } = useI18n();
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
+  const [fontStack] = useState(builtInFontStack);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
@@ -96,13 +103,11 @@ export function SettingsDialog({
       onClose={() => void requestClose()}
       maxWidth="44rem"
       footer={
-        // Cancel is first in DOM so the shell's footer-first focus lands on the
-        // safe default, never on the reset (which would rewrite the draft on a
-        // stray Enter) or the primary Save. The reset button is visually pulled
-        // to the far left (flex order + auto margin); Save stays last per the
-        // conventions' order.
+        // Initial focus is named on Cancel (modal-dialog conventions), never the
+        // reset or Save. The reset is pulled to the far left (flex order + auto
+        // margin); Save stays last.
         <>
-          <button onClick={() => void requestClose()}>{t("common.cancel")}</button>
+          <button data-modal-autofocus onClick={() => void requestClose()}>{t("common.cancel")}</button>
           <button style={S.resetDefaultParameters} onClick={resetDefaultParameters}>
             {t("settings.resetDefaults")}
           </button>
@@ -155,7 +160,7 @@ export function SettingsDialog({
         <span style={S.fontLabel}>{t("settings.uiFont")}</span>
         <input
           value={draft.uiFontFamily}
-          placeholder={t("settings.uiFontDefault")}
+          placeholder={fontStack}
           onChange={(e) => setDraft({ ...draft, uiFontFamily: e.target.value })}
           onBlur={(e) => setDraft({ ...draft, uiFontFamily: singleLine(e.target.value) })}
         />
@@ -173,8 +178,7 @@ export function SettingsDialog({
 
 const S: Record<string, CSSProperties> = {
   // Reset sits at the far left of the footer, apart from the Cancel/Save pair:
-  // the auto margin pushes those two right, the order pulls it ahead of Cancel
-  // (which stays first in DOM for the shell's footer-first focus).
+  // the auto margin pushes those two right, the order pulls it ahead of Cancel.
   resetDefaultParameters: { order: -1, marginRight: "auto" },
   themeField: { display: "flex", flexDirection: "column", gap: "0.35rem", margin: "0 0 1rem", padding: 0, border: "none", minWidth: 0 },
   themeLegend: { fontWeight: 600, padding: 0, marginBottom: "0.35rem" },
