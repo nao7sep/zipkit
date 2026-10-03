@@ -313,7 +313,7 @@ button.danger-confirm:active:not(:disabled) {
    * its own center. Constant regardless of how many lines the message wraps
    * to, since both it and the message start from the same flush-top point.
    * Same convention as InputList's remove X (useDismissAlignOffset) and
-   * LayoutPersistenceNotice's dismiss, below. */
+   * ShellNotice's dismiss. */
   position: relative;
   top: calc((0.8rem * 1.5 - var(--control-h)) / 2);
 }
@@ -490,4 +490,194 @@ code {
 .about-version {
   margin: 2px 0 0;
   color: var(--text-2);
+}
+
+/* The Records window. Its grid tracks, body padding and filter band spacing are
+ * set inline from shared/layout.ts, which derives the window minimum from the
+ * same numbers; the rules here hold its surfaces, lines and states. Lines use
+ * the app's own kinds: --border for pane edges, band edges and the JSON block,
+ * as the main window's panes do. */
+.records-shell {
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+.records-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.records-filters {
+  flex-shrink: 0;
+  display: grid;
+  border-bottom: 1px solid var(--border);
+}
+.records-filters input,
+.records-filters select {
+  width: 100%;
+  min-width: 0;
+}
+.records-filters__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+/* The list's own scroll owner, and the containing block for anything inside. */
+.records-list-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+.records-list {
+  display: grid;
+  gap: 2px;
+}
+/* A flat row: hover and selection fill it; the keyboard cursor is drawn inside
+ * it, so the next row's hover fill cannot cover the ring. */
+.records-row {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.records-row:not(.records-row--selected):hover {
+  background: var(--surface-2);
+}
+.records-row--selected {
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+  border-color: var(--accent-strong);
+}
+.records-row:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+[data-window-inactive] .records-row:focus-visible {
+  outline-color: var(--border);
+}
+.records-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+.records-row__title {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.records-row__text {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.records-note {
+  margin: 0;
+  padding: 0.85rem;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+.records-note--error {
+  color: var(--status-error);
+}
+/* A level or kind as a pill, as the job state badge is: only the levels worth
+ * stopping at take a status colour. */
+.records-pill {
+  --pill-color: var(--text-2);
+  color: var(--pill-color);
+  background: color-mix(in srgb, var(--pill-color) 12%, transparent);
+  border: 1px solid var(--pill-color);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.records-pill--error {
+  --pill-color: var(--status-error);
+}
+.records-pill--warn {
+  --pill-color: var(--status-warning);
+}
+.records-detail__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+.records-detail__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.records-detail__pills {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.records-detail__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 0.85rem;
+}
+.records-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem 1rem;
+}
+.records-meta dt {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+.records-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.records-block {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.records-block__label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.records-block__text {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

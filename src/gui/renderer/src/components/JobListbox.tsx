@@ -360,7 +360,7 @@ const S: Record<string, CSSProperties> = {
   // here, so its line height is the shell's base 14px body font-size * the
   // body's 1.5 line-height (index.css) — the same (button height - text line
   // height) / 2 convention as InputList's remove X, .receiver-result's
-  // dismiss, and LayoutPersistenceNotice's.
+  // dismiss, and ShellNotice's.
   rowAction: {
     flexShrink: 0,
     position: "relative",

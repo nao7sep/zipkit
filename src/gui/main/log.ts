@@ -18,7 +18,16 @@ import { Worker } from "node:worker_threads";
 import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { storageRoot } from "../../sdk/storage.js";
 import { JOB_EVENT_LIMIT, type JobEvent, type LogEvent } from "../shared/api.js";
-import type { JobEventRow, LogRow, RecordsRequest, RecordsResponse, RecordsWorkerData, StoredJobEventRow } from "./records-worker.js";
+import type {
+  JobEventRow,
+  LogRow,
+  RecordsRead,
+  RecordsReadResults,
+  RecordsRequest,
+  RecordsResponse,
+  RecordsWorkerData,
+  StoredJobEventRow,
+} from "./records-worker.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogFields = Record<string, unknown>;
@@ -59,12 +68,20 @@ function errorInfoInner(err: unknown, seen: WeakSet<Error>): LogFields {
 export interface SessionAppLog extends AppLog {
   /** The records database this session writes to. */
   readonly database: string;
+  /** This launch's session, as every record of it carries. */
+  readonly session: string;
   /** Record one SDK progress event under the job it ran for, numbered in this
    *  launch; returns it as the window receives it. */
   jobEvent(jobId: string, event: LogEvent): JobEvent;
   /** The job's newest recorded events, oldest first; none when the database
    *  cannot be read. */
   jobEvents(jobId: string): Promise<JobEvent[]>;
+  /** Read the records database for the Records window, after every entry
+   *  already given; rejects when it cannot be read within `waitMs`. */
+  records<R extends RecordsRead>(read: R, waitMs?: number): Promise<RecordsReadResults[R["op"]]>;
+  /** Called after each entry the database stored; an entry that went to the
+   *  fallback file is not in the database, so it calls nothing. */
+  onStored(listener: () => void): void;
   /** Hand every record still in flight to the database, or to the fallback file
    *  when the database does not take it within `waitMs`. Later entries go
    *  straight to the fallback file. */
@@ -79,6 +96,11 @@ export function defaultRecordsFile(): string {
 /** How long `close` waits for the database before the fallback file takes what
  *  it has not confirmed; inside the quit sequence's own bound. */
 export const LOG_CLOSE_WAIT_MS = 5_000;
+
+/** How long a read waits for the records thread, which answers in the order
+ *  it was asked, behind the writes already posted; above SQLite's own 5 s
+ *  busy timeout, so a locked database fails the read before this bound. */
+export const RECORDS_READ_WAIT_MS = 10_000;
 
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -197,18 +219,19 @@ export function createAppLog(
   let closing: Promise<void> | null = null;
   let nextId = 1;
   const pending = new Map<number, Write>();
-  const reads = new Map<number, (rows: StoredJobEventRow[] | Error) => void>();
+  const reads = new Map<number, (response: RecordsResponse | Error) => void>();
+  let storedListener: (() => void) | null = null;
 
   // Whatever the records thread has not confirmed goes to the fallback file, so
   // a thread that fails or does not close in time loses none of it; a read it
-  // has not answered finds nothing.
+  // has not answered fails.
   const settleInFlight = (): void => {
     const writes = [...pending.values()];
     pending.clear();
     for (const write of writes) toFallback(write);
     const waiting = [...reads.values()];
     reads.clear();
-    for (const resolve of waiting) resolve([]);
+    for (const settle of waiting) settle(new Error("the records thread stopped before answering"));
   };
 
   const failWorker = (err: unknown): void => {
@@ -230,8 +253,7 @@ export function createAppLog(
       const read = reads.get(response.id);
       if (read) {
         reads.delete(response.id);
-        if (response.type === "read") read(response.rows);
-        else if (response.type === "failed") read(Object.assign(new Error("records read failed"), response.error));
+        read(response);
         return;
       }
       const write = pending.get(response.id);
@@ -239,6 +261,8 @@ export function createAppLog(
       if (response.type === "failed") {
         reportDatabaseFailure(response.error);
         if (write) toFallback(write);
+      } else if (response.type === "written" && write) {
+        storedListener?.();
       }
     });
     created.on("error", failWorker);
@@ -301,18 +325,50 @@ export function createAppLog(
     return recorded;
   };
 
+  // One read of the records thread, answered or failed within `waitMs`. A read
+  // given up on keeps its place, so its late answer is dropped rather than
+  // taken for a write's.
+  const read = (
+    request: (id: number) => RecordsRequest,
+    waitMs: number,
+  ): Promise<RecordsResponse> => {
+    if (workerFailed || closing !== null) return Promise.reject(new Error("the records database is closed"));
+    const id = nextId++;
+    return new Promise<RecordsResponse>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reads.set(id, () => {});
+        reject(new Error(`the records database did not answer within ${waitMs} ms`));
+      }, waitMs);
+      reads.set(id, (response) => {
+        clearTimeout(timer);
+        if (response instanceof Error) reject(response);
+        else if (response.type === "failed") reject(Object.assign(new Error("records read failed"), response.error));
+        else resolve(response);
+      });
+      post(request(id));
+    });
+  };
+
   const jobEvents = async (jobId: string): Promise<JobEvent[]> => {
     if (workerFailed || closing !== null) return [];
-    const id = nextId++;
-    const rows = await new Promise<StoredJobEventRow[] | Error>((resolve) => {
-      reads.set(id, resolve);
-      post({ type: "readJobEvents", id, jobId, limit: JOB_EVENT_LIMIT });
-    });
-    if (rows instanceof Error) {
-      write("warn", "job progress could not be read", { jobId, error: errorInfo(rows) });
+    let rows: StoredJobEventRow[];
+    try {
+      const response = await read((id) => ({ type: "readJobEvents", id, jobId, limit: JOB_EVENT_LIMIT }), RECORDS_READ_WAIT_MS);
+      rows = response.type === "read" ? response.rows : [];
+    } catch (err) {
+      write("warn", "job progress could not be read", { jobId, error: errorInfo(err) });
       return [];
     }
     return rows.map((row) => ({ jobId, session: row.session, seq: row.seq, event: JSON.parse(row.body) as LogEvent }));
+  };
+
+  const records = async <R extends RecordsRead>(
+    request: R,
+    waitMs: number = RECORDS_READ_WAIT_MS,
+  ): Promise<RecordsReadResults[R["op"]]> => {
+    const response = await read((id) => ({ type: "readRecords", id, read: request }), waitMs);
+    if (response.type !== "records") throw new Error(`unexpected records response: ${response.type}`);
+    return response.value as RecordsReadResults[R["op"]];
   };
 
   const close = (waitMs: number = LOG_CLOSE_WAIT_MS): Promise<void> => {
@@ -352,12 +408,17 @@ export function createAppLog(
 
   return {
     database: databaseFile,
+    session,
     debug: (m, f) => write("debug", m, f),
     info: (m, f) => write("info", m, f),
     warn: (m, f) => write("warn", m, f),
     error: (m, f) => write("error", m, f),
     jobEvent,
     jobEvents,
+    records,
+    onStored: (listener) => {
+      storedListener = listener;
+    },
     close,
   };
 }

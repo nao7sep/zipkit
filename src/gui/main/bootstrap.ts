@@ -13,9 +13,9 @@ import { app, BrowserWindow, nativeTheme } from "electron";
 import { APP_VERSION } from "../shared/identity.js";
 import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
-import { installContentSecurityPolicy } from "./csp.js";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
-import { isLoopbackRendererUrl, isSameOrigin, windowOpenHandler } from "./navigation.js";
+import { loadRendererPage } from "./renderer-page.js";
+import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
 import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue } from "./queue.js";
 import { loadSettings, settingsFile } from "./settings.js";
@@ -57,36 +57,18 @@ function createWindow(): BrowserWindow {
   let flushQueueOnClose = true;
   win.on("closed", () => {
     clearMainWindow(win);
-    if (!flushQueueOnClose) return;
-    void flushQueue().catch((err) =>
-      log.error("failed to flush the queue after window close", { error: errorInfo(err) }),
-    );
+    if (flushQueueOnClose) {
+      void flushQueue().catch((err) =>
+        log.error("failed to flush the queue after window close", { error: errorInfo(err) }),
+      );
+    }
+    // The main window, apart from the Records window beside it: closing it
+    // quits on Windows and Linux, and on macOS the Dock reopens it.
+    if (process.platform !== "darwin") app.quit();
   });
   log.info("main window created");
 
-  // Navigation guard (defense-in-depth alongside the CSP): the SPA stays on its
-  // own origin and opens no child windows, so deny every renderer-initiated
-  // window open and prevent any navigation that would leave the loaded origin.
-  // Same-origin navigation (reloads / in-app routing) is left to proceed.
-  win.webContents.setWindowOpenHandler(windowOpenHandler);
-  win.webContents.on("will-navigate", (event, url) => {
-    if (!isSameOrigin(win.webContents.getURL(), url)) event.preventDefault();
-  });
-
-  const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
-  let load: Promise<void>;
-  if (devUrl) {
-    if (!isLoopbackRendererUrl(devUrl)) {
-      throw new Error("ELECTRON_RENDERER_URL must be an HTTP(S) loopback URL");
-    }
-    load = win.loadURL(devUrl);
-  } else {
-    // Production path only (run-built / rebuild): enforce the strict CSP via a
-    // response header before loading the file. Dev leaves the policy unset so
-    // electron-vite's HMR keeps working.
-    installContentSecurityPolicy();
-    load = win.loadFile(path.join(import.meta.dirname, "../renderer/index.html"));
-  }
+  const load = loadRendererPage(win, "index.html");
   void load.then(() => {
     if (!win.isDestroyed()) win.show();
   }).catch((error) => {
@@ -156,6 +138,7 @@ app.whenReady().then(async () => {
   // lands (see managedJson.ts's writeManagedJson + the backup store). There is nothing to kick off here.
   registerIpc();
   registerQueueIpc();
+  log.onStored(notifyRecordsChanged);
 
   // Warm stores before the renderer can save defaults over an unreadable file.
   // This also keeps failed quarantines on the startup error path. Each load

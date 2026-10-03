@@ -33,6 +33,7 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "settings.themeSystem",
     "about.version",
     "about.repository",
+    "records.details",
   ],
   es: ["nativeMenu.zoom", "log.error", "event.errors", "shortcuts.general"],
   fr: [

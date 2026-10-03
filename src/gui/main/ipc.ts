@@ -1,19 +1,30 @@
 /**
- * The non-queue IPC handlers: the native input picker and on-demand archive
- * verification. The queue's plan/write/verify/trash live in queue.ts.
+ * The non-queue IPC handlers: the native input picker, on-demand archive
+ * verification, and the Records window's reads. The queue's
+ * plan/write/verify/trash live in queue.ts.
  */
 
 import { dialog, ipcMain, shell } from "electron";
 import type { AppInfo, JobEvent, VerifyResult } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
-import type { PaneLayout } from "../shared/layout.js";
+import { clampLayout, type PaneLayout } from "../shared/layout.js";
+import {
+  RECORDS_PAGE_SIZE,
+  isRecordKind,
+  parseRecordsQuery,
+  type RecordDetail,
+  type RecordSources,
+  type RecordsPage,
+} from "../shared/records.js";
+import type { RecordsRead, RecordsReadResults } from "./records-worker.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log, sendEvent, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { applyThemePreference } from "./theme.js";
 import { applyLanguagePreference, languageEnvironment, mainTranslator } from "./i18n.js";
-import { loadLayout, saveLayout } from "./layout.js";
+import { loadLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
+import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
 
 export function registerIpc(): void {
@@ -44,7 +55,7 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:getLanguageEnvironment", async () => languageEnvironment());
 
-  ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => (await loadLayout(log)).value);
+  ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => clampLayout((await loadLayout(log)).value));
 
   ipcMain.handle("zipkit:setLayout", async (_event, layout: PaneLayout): Promise<void> => {
     try {
@@ -100,6 +111,57 @@ export function registerIpc(): void {
   );
 
   ipcMain.handle("zipkit:getJobEvents", (_event, jobId: string): Promise<JobEvent[]> => log.jobEvents(jobId));
+
+  ipcMain.handle("zipkit:openRecordsWindow", async (): Promise<void> => {
+    try {
+      await openRecordsWindow();
+    } catch (err) {
+      log.error("records window failed to open", { error: errorInfo(err) });
+      throw err;
+    }
+  });
+
+  // The Records window's reads. A failed one is recorded here, with the full
+  // error, and rejects so the window can say the records could not be read.
+  const readRecords = async <R extends RecordsRead>(read: () => R): Promise<RecordsReadResults[R["op"]]> => {
+    try {
+      return await log.records(read());
+    } catch (err) {
+      log.warn("records read failed", { error: errorInfo(err) });
+      throw err;
+    }
+  };
+
+  ipcMain.handle("zipkit:readRecordsPage", (_event, query: unknown): Promise<RecordsPage> =>
+    readRecords(() => ({ op: "page", query: parseRecordsQuery(query), pageSize: RECORDS_PAGE_SIZE })),
+  );
+
+  ipcMain.handle("zipkit:readRecordDetail", (_event, kind: unknown, id: unknown): Promise<RecordDetail | null> =>
+    readRecords(() => {
+      if (!isRecordKind(kind)) throw new Error("Invalid record read: kind must be a record kind.");
+      if (!Number.isInteger(id)) throw new Error("Invalid record read: id must be an integer.");
+      return { op: "detail", kind, id: id as number };
+    }),
+  );
+
+  ipcMain.handle("zipkit:readRecordSources", async (): Promise<RecordSources> => ({
+    currentSession: log.session,
+    sessions: await readRecords(() => ({ op: "sessions" })),
+  }));
+
+  ipcMain.handle("zipkit:getRecordsListWidth", (): number => recordsListWidth());
+
+  ipcMain.handle("zipkit:saveRecordsListWidth", async (_event, width: unknown): Promise<number> => {
+    if (typeof width !== "number" || !Number.isFinite(width)) {
+      throw new Error("Invalid records list width: it must be a finite number.");
+    }
+    try {
+      return await saveRecordsListWidth(width);
+    } catch (err) {
+      log.error("failed to persist layout", { error: errorInfo(err) });
+      throw err;
+    }
+  });
 
   ipcMain.handle("zipkit:reveal", async (_event, path: string): Promise<void> => {
     shell.showItemInFolder(path);

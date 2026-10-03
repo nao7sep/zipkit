@@ -37,6 +37,7 @@ export default defineConfig({
         "src/gui/main/bootstrap.ts", // window creation + app lifecycle wiring
         "src/gui/preload/index.ts", // contextBridge: one-line ipcRenderer passthroughs
         "src/gui/renderer/src/main.tsx", // React DOM mount
+        "src/gui/renderer/src/records.tsx", // the Records window's React DOM mount
         "**/*.d.ts",
       ],
     },

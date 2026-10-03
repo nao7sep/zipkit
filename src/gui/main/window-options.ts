@@ -1,5 +1,5 @@
 import type { BrowserWindowConstructorOptions } from "electron";
-import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
+import { minWindowHeight, minWindowWidth, recordsWindowMinHeight, recordsWindowMinWidth } from "../shared/layout.js";
 
 /** The renderer's --bg token (index.css) in each theme. The main process can't
  *  read CSS vars, so these literals are the one place the theme bg is duplicated;
@@ -44,6 +44,37 @@ export function mainWindowOptions(preload: string, dark: boolean): BrowserWindow
       // The package is ESM, so electron-vite emits an ESM (.mjs) preload, which
       // Electron only loads with the sandbox off. contextIsolation still keeps the
       // renderer walled off from Node; the bridge is the sole crossing.
+      sandbox: false,
+    },
+  };
+}
+
+/**
+ * The Records window's options: a durable secondary window with its own stable
+ * identity, so Electron persists its placement apart from the main window's
+ * (window-conventions, Placement). Like the main window it starts hidden and is
+ * shown once its page has loaded.
+ */
+export function recordsWindowOptions(preload: string, dark: boolean, title: string): BrowserWindowConstructorOptions {
+  return {
+    name: "records",
+    windowStatePersistence: {
+      bounds: true,
+      displayMode: process.platform === "win32",
+    },
+    title,
+    width: 1240,
+    height: 820,
+    minWidth: recordsWindowMinWidth(),
+    minHeight: recordsWindowMinHeight(),
+    show: false,
+    backgroundColor: mainWindowBackground(dark),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      // The same ESM preload as the main window; see mainWindowOptions.
       sandbox: false,
     },
   };

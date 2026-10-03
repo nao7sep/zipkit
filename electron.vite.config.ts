@@ -56,7 +56,11 @@ export default defineConfig({
     build: {
       minify: true,
       rollupOptions: {
-        input: { index: resolve(import.meta.dirname, "src/gui/renderer/index.html") },
+        // The Records window is its own page beside the main one.
+        input: {
+          index: resolve(import.meta.dirname, "src/gui/renderer/index.html"),
+          records: resolve(import.meta.dirname, "src/gui/renderer/records.html"),
+        },
       },
     },
     plugins: [react()],

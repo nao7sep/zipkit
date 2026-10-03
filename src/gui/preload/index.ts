@@ -8,7 +8,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
-import { LANGUAGE_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
+import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "../shared/records.js";
+import { LANGUAGE_CHANGED_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
 const api = {
   chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
@@ -67,6 +68,18 @@ const api = {
     return () => {
       ipcRenderer.removeListener("zipkit:event", handler);
     };
+  },
+  openRecordsWindow: (): Promise<void> => ipcRenderer.invoke("zipkit:openRecordsWindow"),
+  readRecordsPage: (query: RecordsQuery): Promise<RecordsPage> => ipcRenderer.invoke("zipkit:readRecordsPage", query),
+  readRecordDetail: (kind: RecordKind, id: number): Promise<RecordDetail | null> =>
+    ipcRenderer.invoke("zipkit:readRecordDetail", kind, id),
+  readRecordSources: (): Promise<RecordSources> => ipcRenderer.invoke("zipkit:readRecordSources"),
+  getRecordsListWidth: (): Promise<number> => ipcRenderer.invoke("zipkit:getRecordsListWidth"),
+  saveRecordsListWidth: (width: number): Promise<number> => ipcRenderer.invoke("zipkit:saveRecordsListWidth", width),
+  onRecordsChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on(RECORDS_CHANGED_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(RECORDS_CHANGED_CHANNEL, handler);
   },
   appInfo: (): Promise<AppInfo> => ipcRenderer.invoke("zipkit:appInfo"),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("zipkit:openExternal", url),

@@ -1,20 +1,30 @@
-/** The app-shell owner for a failed pane-layout save. The visible layout remains
- * in memory and usable; this result persists until a later pane save succeeds or
- * the user dismisses it. */
+/** The app shell's own result for a failure no narrower surface owns: a failed
+ * pane-layout save (the visible layout remains in memory and usable), or the
+ * Records window failing to open. It persists until the same operation succeeds
+ * or the user dismisses it. */
 
 import type { CSSProperties } from "react";
 import { CloseIcon } from "./Icon";
+import type { MessageKey } from "../../../shared/i18n/catalogues";
 import { useI18n } from "../i18n/I18nContext";
 
-export function LayoutPersistenceNotice({ onDismiss }: { onDismiss: () => void }) {
+export function ShellNotice({
+  message,
+  closeLabel,
+  onDismiss,
+}: {
+  message: MessageKey;
+  closeLabel: MessageKey;
+  onDismiss: () => void;
+}) {
   const { t } = useI18n();
   return (
     <div role="alert" aria-atomic="true" style={S.root}>
-      <span style={S.message}>{t("layout.notSaved")}</span>
+      <span style={S.message}>{t(message)}</span>
       <button
         type="button"
         className="icon"
-        aria-label={t("layout.close")}
+        aria-label={t(closeLabel)}
         onClick={onDismiss}
         style={S.dismiss}
       >

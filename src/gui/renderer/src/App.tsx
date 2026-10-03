@@ -57,7 +57,7 @@ import { message, sentences } from "../../shared/i18n/translate";
 import { useConfirm, type ConfirmOptions } from "./components/DialogHost";
 import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
-import { LayoutPersistenceNotice } from "./components/LayoutPersistenceNotice";
+import { ShellNotice } from "./components/ShellNotice";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { Pane } from "./components/Pane";
 import { ProgressLog } from "./components/ProgressLog";
@@ -142,6 +142,7 @@ export function App() {
   const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [layoutSaveFailed, setLayoutSaveFailed] = useState(false);
+  const [recordsOpenFailed, setRecordsOpenFailed] = useState(false);
   const layoutSaveAttempt = useRef(0);
   const layoutSaveChain = useRef<Promise<void>>(Promise.resolve());
 
@@ -529,11 +530,27 @@ export function App() {
     <div style={S.shell}>
       <AppHeader
         onOpenSettings={() => setDialog("settings")}
+        onOpenRecords={() => {
+          window.zipkit.openRecordsWindow().then(
+            () => setRecordsOpenFailed(false),
+            (error: unknown) => {
+              window.zipkit.reportError("open the Records window", reportableError(error));
+              setRecordsOpenFailed(true);
+            },
+          );
+        }}
         onOpenShortcuts={() => setDialog("shortcuts")}
         onOpenAbout={() => setDialog("about")}
       />
       {layoutSaveFailed && (
-        <LayoutPersistenceNotice onDismiss={() => setLayoutSaveFailed(false)} />
+        <ShellNotice message="layout.notSaved" closeLabel="layout.close" onDismiss={() => setLayoutSaveFailed(false)} />
+      )}
+      {recordsOpenFailed && (
+        <ShellNotice
+          message="records.openFailed"
+          closeLabel="records.openFailedClose"
+          onDismiss={() => setRecordsOpenFailed(false)}
+        />
       )}
       <div data-app-content-viewport style={S.contentViewport}>
         <div data-app-pane-grid ref={bodyRef} style={bodyStyle}>

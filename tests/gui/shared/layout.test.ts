@@ -10,8 +10,21 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   ARCHIVE_MIN_WIDTH,
+  CONTROL_HEIGHT,
+  RECORDS_DETAIL_MIN_WIDTH,
+  RECORDS_FILTERS_GAP,
+  RECORDS_FILTERS_HEIGHT,
+  RECORDS_FILTERS_PADDING,
+  RECORDS_LIST_MIN_HEIGHT,
+  RECORDS_LIST_WIDTH,
+  clampRecordsListWidth,
+  recordsListDisplayWidth,
+  recordsWindowMinHeight,
+  recordsWindowMinWidth,
   BODY_PADDING,
   clampLayoutToWidth,
   DEFAULT_LAYOUT,
@@ -127,5 +140,37 @@ describe("clampLayoutToWidth", () => {
     const wide = clampLayoutToWidth(intent, minWindowWidth() + 1000);
     expect(wide).toEqual(snapshot);
     expect(intent).toEqual(snapshot);
+  });
+});
+
+describe("the Records window's layout", () => {
+  it("derives its minimum from both panes, the handle, their borders and the body padding", () => {
+    expect(recordsWindowMinWidth()).toBe(
+      2 * BODY_PADDING + RECORDS_LIST_WIDTH.min + SPLITTER_WIDTH + RECORDS_DETAIL_MIN_WIDTH + 2 * 2,
+    );
+    expect(recordsWindowMinHeight()).toBe(2 * BODY_PADDING + 2 + RECORDS_FILTERS_HEIGHT + RECORDS_LIST_MIN_HEIGHT);
+  });
+
+  it("sizes the filter band from the app's one control height, as index.css sets it", () => {
+    const css = readFileSync(resolve("src/gui/renderer/src/index.css"), "utf8");
+    expect(css).toMatch(new RegExp(`--control-h:\\s*${CONTROL_HEIGHT}px;`));
+    expect(RECORDS_FILTERS_HEIGHT).toBe(2 * RECORDS_FILTERS_PADDING + 3 * CONTROL_HEIGHT + 2 * RECORDS_FILTERS_GAP + 1);
+  });
+
+  it("stores the dragged list width inside its bounds, opening at the default", () => {
+    expect(RECORDS_LIST_WIDTH).toEqual({ min: 320, default: 380, max: 640 });
+    expect(clampRecordsListWidth(10)).toBe(RECORDS_LIST_WIDTH.min);
+    expect(clampRecordsListWidth(5000)).toBe(RECORDS_LIST_WIDTH.max);
+    expect(clampRecordsListWidth(450.4)).toBe(450);
+  });
+
+  it("narrows only what is shown as the window narrows, keeping the detail pane at its minimum", () => {
+    const wide = recordsWindowMinWidth() + 1000;
+    expect(recordsListDisplayWidth(600, wide)).toBe(600);
+    // At the window minimum the list shows its own minimum, whatever the intent.
+    expect(recordsListDisplayWidth(600, recordsWindowMinWidth())).toBe(RECORDS_LIST_WIDTH.min);
+    expect(recordsListDisplayWidth(600, recordsWindowMinWidth() + 100)).toBe(RECORDS_LIST_WIDTH.min + 100);
+    // Before the shell is measured, the intent shows as it is.
+    expect(recordsListDisplayWidth(600, 0)).toBe(600);
   });
 });

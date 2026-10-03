@@ -14,7 +14,7 @@
  *   *mechanism* (it reads a real lineHeight/height off the DOM and lands on
  *   `(lineHeight - blockHeight) / 2`) with a fake ResizeObserver and a
  *   measured-geometry stub, rather than a real multi-line render.
- * - ReceiverResultNotice, LayoutPersistenceNotice and JobListbox all keep
+ * - ReceiverResultNotice, ShellNotice and JobListbox all keep
  *   `align-items: flex-start`, so their text is always flush on the row's
  *   top edge regardless of how many lines it wraps to — a constant, static
  *   `top: calc((line height - button height) / 2)` on the button suffices,
@@ -34,7 +34,7 @@ import { renderHook } from "@testing-library/react";
 
 import { InputList } from "../../../../src/gui/renderer/src/components/InputList";
 import { ReceiverResultNotice } from "../../../../src/gui/renderer/src/components/ReceiverResultNotice";
-import { LayoutPersistenceNotice } from "../../../../src/gui/renderer/src/components/LayoutPersistenceNotice";
+import { ShellNotice } from "../../../../src/gui/renderer/src/components/ShellNotice";
 import { JobListbox } from "../../../../src/gui/renderer/src/components/JobListbox";
 import { useDismissAlignOffset } from "../../../../src/gui/renderer/src/dismissAlign";
 import type { Job } from "../../../../src/gui/shared/api";
@@ -134,8 +134,8 @@ describe("per-item X alignment: first line, not the wrapped block's middle", () 
     );
   });
 
-  it("LayoutPersistenceNotice keeps the row/message untouched; only the dismiss button gets a static nudge", () => {
-    render(<LayoutPersistenceNotice onDismiss={vi.fn()} />);
+  it("ShellNotice keeps the row/message untouched; only the dismiss button gets a static nudge", () => {
+    render(<ShellNotice message="layout.notSaved" closeLabel="layout.close" onDismiss={vi.fn()} />);
     const notice = screen.getByRole("alert");
     expect(notice.style.alignItems).toBe("flex-start");
     const message_ = notice.querySelector("span") as HTMLElement;

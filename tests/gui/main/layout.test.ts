@@ -10,7 +10,14 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } fro
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadLayout, parseLayout, saveLayout, serializeLayout } from "../../../src/gui/main/layout.js";
+import {
+  loadLayout,
+  parseLayout,
+  recordsListWidth,
+  saveLayout,
+  saveRecordsListWidth,
+  serializeLayout,
+} from "../../../src/gui/main/layout.js";
 import type { AppLog } from "../../../src/gui/main/log.js";
 import {
   ARCHIVE_MIN_WIDTH,
@@ -19,31 +26,34 @@ import {
   DEFAULT_LAYOUT,
   LAYOUT_BOUNDS,
   minWindowWidth,
+  RECORDS_LIST_WIDTH,
   SPLITTER_WIDTH,
 } from "../../../src/gui/shared/layout.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
 import { managedEntries } from "../../helpers/managedEntries.js";
 
+// The default layout as the file holds it: the main window's panes and the
+// Records window's list pane.
+const DEFAULT_STORED = { ...DEFAULT_LAYOUT, recordsListWidth: RECORDS_LIST_WIDTH.default };
+
 describe("parseLayout", () => {
   it("reads a stored layout", () => {
-    const text = JSON.stringify({ version: 1, layout: { jobsWidth: 300, progressWidth: 360 } });
-    expect(parseLayout(text)).toEqual({ jobsWidth: 300, progressWidth: 360 });
+    const text = JSON.stringify({ version: 1, layout: { jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 } });
+    expect(parseLayout(text)).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 });
   });
 
   it("clamps out-of-bounds widths into the allowed range", () => {
-    const text = JSON.stringify({ version: 1, layout: { jobsWidth: 10000, progressWidth: 1 } });
+    const text = JSON.stringify({ version: 1, layout: { jobsWidth: 10000, progressWidth: 1, recordsListWidth: 1 } });
     expect(parseLayout(text)).toEqual({
       jobsWidth: LAYOUT_BOUNDS.jobsWidth.max,
       progressWidth: LAYOUT_BOUNDS.progressWidth.min,
+      recordsListWidth: RECORDS_LIST_WIDTH.min,
     });
   });
 
-  it("fills missing fields from the default layout", () => {
+  it("fills missing fields from the default layout, the Records list width included", () => {
     const text = JSON.stringify({ version: 1, layout: { jobsWidth: 320 } });
-    expect(parseLayout(text)).toEqual({
-      jobsWidth: 320,
-      progressWidth: DEFAULT_LAYOUT.progressWidth,
-    });
+    expect(parseLayout(text)).toEqual({ ...DEFAULT_STORED, jobsWidth: 320 });
   });
 
   it("rejects junk or a missing layout so the loader can preserve it", () => {
@@ -77,17 +87,18 @@ describe("persisted bounds feed the derived window minimum", () => {
 
 describe("serializeLayout", () => {
   it("round-trips through parseLayout", () => {
-    const layout = { jobsWidth: 260, progressWidth: 420 };
+    const layout = { jobsWidth: 260, progressWidth: 420, recordsListWidth: 450 };
     const serialized = serializeLayout(layout);
     expect(parseLayout(serialized)).toEqual(layout);
     expect(JSON.parse(serialized)).toEqual({ version: 1, layout });
   });
 
   it("clamps on write too, so a bad value can never be persisted", () => {
-    const text = serializeLayout({ jobsWidth: -5, progressWidth: 99999 });
+    const text = serializeLayout({ jobsWidth: -5, progressWidth: 99999, recordsListWidth: 99999 });
     expect(parseLayout(text)).toEqual({
       jobsWidth: LAYOUT_BOUNDS.jobsWidth.min,
       progressWidth: LAYOUT_BOUNDS.progressWidth.max,
+      recordsListWidth: RECORDS_LIST_WIDTH.max,
     });
   });
 });
@@ -98,7 +109,7 @@ describe("persists the intent, not the resize-clamped display", () => {
     // for DISPLAY against the live body width. So a wide intent saved on a big
     // window must survive in the file as-is — NOT collapsed to what a later, smaller
     // window would show. This pins that the persistence boundary stores the intent.
-    const intent = { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max };
+    const intent = { ...DEFAULT_STORED, jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max };
 
     // What a shrunk window would DISPLAY (the clamped widths) — must NOT be persisted.
     const clampedForDisplay = clampLayoutToWidth(intent, minWindowWidth());
@@ -149,7 +160,7 @@ describe("layout file quarantine-then-reset", () => {
 
     const { value: layout, quarantinedTo } = await loadLayout(logger);
 
-    expect(layout).toEqual(DEFAULT_LAYOUT);
+    expect(layout).toEqual(DEFAULT_STORED);
     expect(existsSync(file)).toBe(false); // moved aside, not left in place
     const entries = readdirSync(root);
     expect(entries).toHaveLength(1);
@@ -181,9 +192,42 @@ describe("layout file quarantine-then-reset", () => {
     const file = path.join(root, "layout.json");
     writeFileSync(file, JSON.stringify({ version: 1, layout: { jobsWidth: "wide" } }));
     const loaded = await loadLayout();
-    expect(loaded.value).toEqual(DEFAULT_LAYOUT);
+    expect(loaded.value).toEqual(DEFAULT_STORED);
     expect(loaded.quarantinedTo).toMatch(/\.invalid$/);
     expect(existsSync(file)).toBe(false);
+  });
+
+  it("quarantines a wrong-shaped Records list width too", async () => {
+    const file = path.join(root, "layout.json");
+    writeFileSync(file, JSON.stringify({ version: 1, layout: { recordsListWidth: "wide" } }));
+    const loaded = await loadLayout();
+    expect(loaded.value).toEqual(DEFAULT_STORED);
+    expect(loaded.quarantinedTo).toMatch(/\.invalid$/);
+  });
+
+  it("restores the Records list width saved before, and each window's save keeps the other's widths", async () => {
+    const file = path.join(root, "layout.json");
+    writeFileSync(file, serializeLayout({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 }));
+    await loadLayout();
+    expect(recordsListWidth()).toBe(500);
+
+    expect(await saveRecordsListWidth(9999)).toBe(RECORDS_LIST_WIDTH.max);
+    expect(parseLayout(readFileSync(file, "utf8"))).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: RECORDS_LIST_WIDTH.max });
+
+    await saveLayout({ jobsWidth: 320, progressWidth: 380 });
+    expect(parseLayout(readFileSync(file, "utf8"))).toEqual({ jobsWidth: 320, progressWidth: 380, recordsListWidth: RECORDS_LIST_WIDTH.max });
+    expect(recordsListWidth()).toBe(RECORDS_LIST_WIDTH.max);
+  });
+
+  it("writes overlapping saves in the order they were made", async () => {
+    const file = path.join(root, "layout.json");
+    await loadLayout();
+    await Promise.all([
+      saveRecordsListWidth(400),
+      saveLayout({ jobsWidth: 250, progressWidth: 300 }),
+      saveRecordsListWidth(420),
+    ]);
+    expect(parseLayout(readFileSync(file, "utf8"))).toEqual({ jobsWidth: 250, progressWidth: 300, recordsListWidth: 420 });
   });
 
 });

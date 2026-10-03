@@ -20,6 +20,7 @@ import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
 import type { PaneLayout } from "./layout.js";
 import type { LanguageEnvironment } from "./i18n/languages.js";
 import type { Message } from "./i18n/translate.js";
+import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "./records.js";
 
 /** The `mode:"plan"` payload — the dry run shown in a job's detail. */
 export type PlanData = Extract<CreateData, { mode: "plan" }>;
@@ -87,6 +88,9 @@ export const WINDOW_ACTIVITY_CHANNEL = "zipkit:windowActivity";
 /** Main-to-renderer event: a saved language choice moved the interface language. */
 export const LANGUAGE_CHANGED_CHANNEL = "zipkit:languageChanged";
 
+/** Main-to-renderer event: the records database stored a record. */
+export const RECORDS_CHANGED_CHANNEL = "zipkit:recordsChanged";
+
 export interface ZipKitGuiApi {
   /** Open a native picker; returns chosen absolute paths (empty if cancelled). */
   chooseInputs(): Promise<string[]>;
@@ -152,6 +156,21 @@ export interface ZipKitGuiApi {
   getJobEvents(jobId: string): Promise<JobEvent[]>;
   /** Subscribe to the live progress events of every job; returns an unsubscribe fn. */
   onEvent(callback: (event: JobEvent) => void): () => void;
+
+  /** Open the Records window, or bring it forward when it is open. */
+  openRecordsWindow(): Promise<void>;
+  /** One page of record summaries, newest first. */
+  readRecordsPage(query: RecordsQuery): Promise<RecordsPage>;
+  /** One record whole, or null when it is not there. */
+  readRecordDetail(kind: RecordKind, id: number): Promise<RecordDetail | null>;
+  /** The launches the records hold, and this one. */
+  readRecordSources(): Promise<RecordSources>;
+  /** The Records window's list pane width: the dragged intent. */
+  getRecordsListWidth(): Promise<number>;
+  /** Persist the list pane width after a drag; returns the width stored. */
+  saveRecordsListWidth(width: number): Promise<number>;
+  /** Follow the records database storing a record; returns an unsubscribe fn. */
+  onRecordsChanged(callback: () => void): () => void;
 
   /** App name + version for the About dialog. */
   appInfo(): Promise<AppInfo>;

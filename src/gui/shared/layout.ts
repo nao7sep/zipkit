@@ -145,3 +145,50 @@ export function clampLayoutToWidth(layout: PaneLayout, containerWidth: number): 
   }
   return { jobsWidth, progressWidth };
 }
+
+/** One height for every one-line control: index.css's `--control-h`. */
+export const CONTROL_HEIGHT = 32;
+
+/**
+ * The Records window: a user-adjustable list pane (the filters above the record
+ * list) beside the detail pane, which takes the rest, split by one handle and
+ * framed by the same body padding as the main window. The window minimum is
+ * derived from these, as the main window's is from the panes above.
+ */
+export const RECORDS_LIST_WIDTH = { min: 320, default: 380, max: 640 } as const;
+export const RECORDS_DETAIL_MIN_WIDTH = 420;
+/** The filter band: its padding and the gap between its rows and controls. */
+export const RECORDS_FILTERS_PADDING = 12;
+export const RECORDS_FILTERS_GAP = 8;
+/** Three rows of controls (search, launch, kind and level) and the line below. */
+export const RECORDS_FILTERS_HEIGHT = RECORDS_FILTERS_PADDING * 2 + CONTROL_HEIGHT * 3 + RECORDS_FILTERS_GAP * 2 + 1;
+export const RECORDS_LIST_MIN_HEIGHT = 160;
+/** A pane's own border, on both sides. */
+const PANE_BORDERS = 2;
+
+/** The list pane's width as stored: a dragged intent inside its bounds. */
+export function clampRecordsListWidth(width: number): number {
+  return clamp(width, RECORDS_LIST_WIDTH.min, RECORDS_LIST_WIDTH.max);
+}
+
+/** The list pane's displayed width: the intent, narrowed only as far as a
+ *  narrow window needs to keep the detail pane at its minimum. Display only;
+ *  never persisted. */
+export function recordsListDisplayWidth(intent: number, shellWidth: number): number {
+  const base = clampRecordsListWidth(intent);
+  if (!Number.isFinite(shellWidth) || shellWidth <= 0) return base;
+  const room = shellWidth - 2 * BODY_PADDING - SPLITTER_WIDTH - RECORDS_DETAIL_MIN_WIDTH - 2 * PANE_BORDERS;
+  return Math.max(RECORDS_LIST_WIDTH.min, Math.min(base, Math.floor(room)));
+}
+
+/** The Records window's minimum width: both panes' minimums, the handle, the
+ *  panes' borders and the body padding. */
+export function recordsWindowMinWidth(): number {
+  return 2 * BODY_PADDING + RECORDS_LIST_WIDTH.min + SPLITTER_WIDTH + RECORDS_DETAIL_MIN_WIDTH + 2 * PANE_BORDERS;
+}
+
+/** The Records window's minimum height: the list pane's filter band and a usable
+ *  list below it, its borders and the body padding. */
+export function recordsWindowMinHeight(): number {
+  return 2 * BODY_PADDING + PANE_BORDERS + RECORDS_FILTERS_HEIGHT + RECORDS_LIST_MIN_HEIGHT;
+}

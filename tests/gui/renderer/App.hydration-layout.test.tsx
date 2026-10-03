@@ -49,6 +49,13 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     reveal: vi.fn(),
     getJobEvents: vi.fn(async () => []),
     onEvent: vi.fn(() => () => {}),
+    openRecordsWindow: vi.fn(async () => {}),
+    readRecordsPage: vi.fn(async () => ({ records: [], more: false })),
+    readRecordDetail: vi.fn(async () => null),
+    readRecordSources: vi.fn(async () => ({ currentSession: "", sessions: [] })),
+    getRecordsListWidth: vi.fn(async () => 380),
+    saveRecordsListWidth: vi.fn(async (width: number) => width),
+    onRecordsChanged: vi.fn(() => () => {}),
     appInfo: vi.fn(async () => ({ name: "ZipKit", version: "0.1.0" })),
     openExternal: vi.fn(),
     reportError: vi.fn(),
@@ -265,5 +272,43 @@ describe("selected-job IPC ownership", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("archive could not be revealed");
     expect(alert.textContent).not.toContain("LATEST-ZIPKIT-REVEAL");
+  });
+});
+
+describe("the Records menu item", () => {
+  async function chooseRecords(): Promise<void> {
+    const trigger = await screen.findByRole("button", { name: "Menu" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Records" }));
+  }
+
+  it("opens the Records window from the header menu, between Settings and Shortcut keys", async () => {
+    const bridge = api({ getQueue: vi.fn(async () => [job("a")]) });
+    renderApp(bridge);
+    const trigger = await screen.findByRole("button", { name: "Menu" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(items).toEqual(["Settings", "Records", "Shortcut keys", "About ZipKit"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Records" }));
+    expect(bridge.openRecordsWindow).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says when the Records window could not be opened, until dismissed or opened", async () => {
+    const openRecordsWindow = vi
+      .fn<ZipKitGuiApi["openRecordsWindow"]>()
+      .mockRejectedValueOnce(new Error("no page"))
+      .mockResolvedValueOnce(undefined);
+    const bridge = api({ openRecordsWindow });
+    renderApp(bridge);
+
+    await chooseRecords();
+    expect((await screen.findByRole("alert")).textContent).toContain("The records window could not be opened.");
+    expect(bridge.reportError).toHaveBeenCalledWith("open the Records window", expect.objectContaining({ message: "no page" }));
+
+    await chooseRecords();
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 });

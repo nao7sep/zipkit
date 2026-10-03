@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { mainWindowBackground, mainWindowOptions } from "../../../src/gui/main/window-options.js";
-import { minWindowHeight, minWindowWidth } from "../../../src/gui/shared/layout.js";
+import { mainWindowBackground, mainWindowOptions, recordsWindowOptions } from "../../../src/gui/main/window-options.js";
+import {
+  minWindowHeight,
+  minWindowWidth,
+  recordsWindowMinHeight,
+  recordsWindowMinWidth,
+} from "../../../src/gui/shared/layout.js";
 
 describe("mainWindowOptions", () => {
   const options = mainWindowOptions("/tmp/preload.mjs", false);
@@ -41,5 +46,34 @@ describe("mainWindowOptions", () => {
     const bg = (block: string) => block.match(/--bg:\s*(#[0-9a-f]{6});/i)?.[1]?.toLowerCase();
     expect(mainWindowBackground(false)).toBe(bg(light));
     expect(mainWindowBackground(true)).toBe(bg(dark));
+  });
+});
+
+describe("recordsWindowOptions", () => {
+  const options = recordsWindowOptions("/tmp/preload.mjs", true, "Records");
+
+  it("persists its own placement under a stable identity apart from the main window's", () => {
+    expect(options.name).toBe("records");
+    expect(options.name).not.toBe(mainWindowOptions("/tmp/preload.mjs", false).name);
+    expect(options.windowStatePersistence).toEqual({
+      bounds: true,
+      displayMode: process.platform === "win32",
+    });
+  });
+
+  it("opens at its designed size above the minimum derived from its panes, hidden until loaded", () => {
+    expect(options.width).toBe(1240);
+    expect(options.height).toBe(820);
+    expect(options.minWidth).toBe(recordsWindowMinWidth());
+    expect(options.minHeight).toBe(recordsWindowMinHeight());
+    expect(options.width!).toBeGreaterThan(recordsWindowMinWidth());
+    expect(options.height!).toBeGreaterThan(recordsWindowMinHeight());
+    expect(options.show).toBe(false);
+    expect(options.title).toBe("Records");
+    expect(options.backgroundColor).toBe(mainWindowBackground(true));
+  });
+
+  it("isolates its renderer as the main window does", () => {
+    expect(options.webPreferences).toEqual(mainWindowOptions("/tmp/preload.mjs", true).webPreferences);
   });
 });
