@@ -28,7 +28,7 @@ import {
   progressLineText,
   progressMessage,
   progressRuns,
-  progressTime,
+  progressHeading,
   reportRowPath,
   reportSummary,
   severityColor,
@@ -472,39 +472,85 @@ describe("planReport", () => {
   });
 });
 
-const jobEvent = (seq: number, event: Partial<LogEvent> & { event: LogEvent["event"] }, session = "2026-06-14T05:00:00.000Z"): JobEvent => ({
+const jobEvent = (
+  seq: number,
+  event: Partial<LogEvent> & { event: LogEvent["event"] },
+  session = "2026-06-14T05:00:00.000Z",
+  tag: { action: JobEvent["action"]; run: string } = { action: "plan", run: "1" },
+): JobEvent => ({
   jobId: "job",
   session,
   seq,
+  ...tag,
   event: { time: "2026-06-14T05:00:00.000Z", level: "info", stage: "plan", message: "", ...event } as LogEvent,
 });
+const S = "2026-06-14T05:00:00.000Z";
 
 describe("progressRuns", () => {
-  it("starts a run at each stage, leaves out the SDK's startup line, and folds findings by kind", () => {
+  it("heads a plan run once, leaves out the SDK's startup line, and folds findings by kind", () => {
     const events = [
       jobEvent(1, { event: "session.start", version: "0.1.0", concurrency: 2, chunkSize: 1 }),
       jobEvent(2, { event: "scan.start", inputs: 1, time: "2026-06-14T05:00:01.000Z" }),
       jobEvent(3, { event: "entry.flagged", rule: "macos.junk", path: "a", severity: "info" }),
       jobEvent(4, { event: "entry.flagged", rule: "name.reserved", path: "b", severity: "warning", level: "warn" }),
       jobEvent(5, { event: "entry.flagged", rule: "macos.junk", path: "c", severity: "info" }),
-      jobEvent(6, { event: "write.start", entries: 3, time: "2026-06-14T05:00:02.000Z" }),
+      jobEvent(6, { event: "plan.done", total: 3, included: 1, excluded: 2, renamed: 0, warnings: 1, errors: 0, writable: true }),
     ];
     const runs = progressRuns(events);
-    expect(runs.map((run) => [run.key, run.time, run.lines.map((line) => progressLineText(line, en))])).toEqual([
+    expect(runs.map((run) => [run.key, run.action, run.time, run.lines.map((line) => progressLineText(line, en))])).toEqual([
       [
         "2026-06-14T05:00:00.000Z:2",
+        "plan",
         "2026-06-14T05:00:01.000Z",
-        ["Scanning 1 input", "Junk files excluded: 2 entries", "Reserved device names: 1 entry"],
+        [
+          "Scanning 1 input",
+          "Junk files excluded: 2 entries",
+          "Reserved device names: 1 entry",
+          "Plan complete: 1 included, 2 excluded, 0 renamed, 1 warning, 0 errors",
+        ],
       ],
-      ["2026-06-14T05:00:00.000Z:6", "2026-06-14T05:00:02.000Z", ["Writing 3 entries"]],
     ]);
     expect(runs[0]?.lines[2]?.level).toBe("warn");
   });
-  it("shows each run's start time in the locale's format, or the raw value when it cannot be parsed", () => {
+  it("keeps a Create's fresh scan, write and verify under one heading, apart from the plan before it", () => {
+    const create = { action: "create" as const, run: "2" };
+    const runs = progressRuns([
+      jobEvent(1, { event: "scan.start", inputs: 1 }),
+      jobEvent(2, { event: "scan.start", inputs: 1 }, S, create),
+      jobEvent(3, { event: "write.start", entries: 2 }, S, create),
+      jobEvent(4, { event: "extract.start", entries: 2, write: false }, S, create),
+      jobEvent(
+        5,
+        { event: "extract.done", total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, written: 0, skipped: 2, reportOk: true },
+        S,
+        create,
+      ),
+    ]);
+    expect(runs.map((run) => [progressHeading(run, en).split(" · ")[0], run.lines.map((line) => progressLineText(line, en))])).toEqual([
+      ["Plan", ["Scanning 1 input"]],
+      [
+        "Create",
+        [
+          "Scanning 1 input",
+          "Writing 2 entries",
+          "Verifying 2 entries",
+          "Verify complete: 2 entries, 0 CRC failures, 0 SHA mismatches, 0 manifest mismatches",
+        ],
+      ],
+    ]);
+  });
+  it("heads a Verify run and starts a new run when the run id changes, even for the same action", () => {
+    const runs = progressRuns([
+      jobEvent(1, { event: "extract.start", entries: 1, write: false }, S, { action: "verify", run: "3" }),
+      jobEvent(2, { event: "extract.start", entries: 1, write: false }, S, { action: "verify", run: "4" }),
+    ]);
+    expect(runs.map((run) => progressHeading(run, en).split(" · ")[0])).toEqual(["Verify", "Verify"]);
+  });
+  it("heads each run with its action and start time in the locale's format, or the raw value when it cannot be parsed", () => {
     const [run] = progressRuns([jobEvent(1, { event: "scan.start", inputs: 1 })]);
-    expect(progressTime(run!, createTranslator("de"))).toMatch(/^\d{2}\.\d{2}\.\d{2}, \d{2}:\d{2}:\d{2}$/);
+    expect(progressHeading(run!, createTranslator("de"))).toMatch(/^Planung · \d{2}\.\d{2}\.\d{2}, \d{2}:\d{2}:\d{2}$/);
     const [bad] = progressRuns([jobEvent(1, { event: "scan.start", inputs: 1, time: "not-a-time" })]);
-    expect(progressTime(bad!, en)).toBe("not-a-time");
+    expect(progressHeading(bad!, en)).toBe("Plan · not-a-time");
   });
   it("names a kind of finding by a short label, by whether the run repaired it", () => {
     expect(findingKind("name.nfd", "info", en)).toBe("Names normalized to NFC");

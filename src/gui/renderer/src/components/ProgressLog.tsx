@@ -1,7 +1,7 @@
 /**
  * The Progress log: the selected job's SDK events, recorded and live, shown in the
- * Progress pane. Each SDK run (a plan, a write, a verify) shows its start time
- * once and its lines below, and a run's findings fold into one line per kind
+ * Progress pane. Each run (a plan, a Create, a Verify) is headed once by its
+ * action and start time with its lines below, and a run's findings fold into one line per kind
  * (`progressRuns` in view), so nothing repeats on every line of the narrow pane.
  * Only a line worth stopping at carries its level, in its status colour and bold.
  * It follows the tail — when the user is at (or within a small threshold of) the
@@ -17,7 +17,7 @@
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { JobEvent } from "../../../shared/api";
-import { logLevelColor, logLevelLabel, progressLineText, progressRuns, progressTime } from "../view";
+import { logLevelColor, logLevelLabel, progressHeading, progressLineText, progressRuns } from "../view";
 import { useI18n } from "../i18n/I18nContext";
 
 // "Near the bottom" tolerance, in pixels (ScriptDock uses 24).
@@ -58,7 +58,7 @@ export function ProgressLog({ events }: { events: JobEvent[] }) {
     >
       {runs.map((run) => (
         <section key={run.key} style={S.run}>
-          <div style={S.time}>{progressTime(run, t)}</div>
+          <div style={S.time}>{progressHeading(run, t)}</div>
           {run.lines.map((line, index) => {
             const loud = line.level === "warn" || line.level === "error";
             return (
@@ -88,7 +88,7 @@ const S: Record<string, CSSProperties> = {
     fontFamily: "var(--font-mono)",
   },
   run: { margin: "0 0 0.6rem" },
-  // The run's start time heads it once, quiet, so the lines keep the reading colour.
+  // The run's action and start time head it once, quiet, so the lines keep the reading colour.
   time: { color: "var(--text-2)", marginBottom: "0.15rem" },
   line: { whiteSpace: "pre-wrap", wordBreak: "break-word" },
   level: { fontWeight: 700, marginInlineEnd: "0.6em" },

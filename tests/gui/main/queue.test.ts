@@ -28,7 +28,7 @@ vi.mock("../../../src/gui/main/persist.js", () => ({
 }));
 vi.mock("../../../src/gui/main/runtime.js", () => ({
   log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  sendEvent: vi.fn(),
+  startProgressRun: vi.fn(() => vi.fn()),
   sendQueue: vi.fn(),
   zip: {},
 }));

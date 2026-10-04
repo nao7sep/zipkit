@@ -150,6 +150,10 @@
   "progress.empty": "暂无内容。",
   "progress.region": "进度日志",
   "progress.findings": { "other": "{kind}：{count} 个条目" },
+  "progress.runPlan": "计划 · {time}",
+  "progress.runCreate": "创建 · {time}",
+  "progress.runVerify": "校验 · {time}",
+  "progress.runTrash": "将原始项目移到废纸篓 · {time}",
 
   "jobs.queue": "任务队列",
   "jobs.empty": "还没有任务。点按“添加”选择文件夹或文件。",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "other": "正在校验 {count} 个条目" },
   "event.verified": "已校验 {path}",
   "event.extractDone": "解压完成：{counts}",
+  "event.verifyDone": "校验完成：{counts}",
   "event.writtenCount": { "other": "写入 {count} 个" },
   "event.skippedCount": { "other": "跳过 {count} 个" },
 

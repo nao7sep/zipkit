@@ -16,7 +16,7 @@ import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { storageRoot } from "../../sdk/storage.js";
-import { JOB_EVENT_LIMIT, type JobEvent, type LogEvent } from "../shared/api.js";
+import { JOB_EVENT_LIMIT, type JobAction, type JobEvent, type LogEvent } from "../shared/api.js";
 import type {
   JobEventRow,
   LogRow,
@@ -69,9 +69,9 @@ export interface SessionAppLog extends AppLog {
   readonly database: string;
   /** This launch's session, as every record of it carries. */
   readonly session: string;
-  /** Record one SDK progress event under the job it ran for, numbered in this
-   *  launch; returns it as the window receives it. */
-  jobEvent(jobId: string, event: LogEvent): JobEvent;
+  /** Record one SDK progress event under the job and run it belongs to,
+   *  numbered in this launch; returns it as the window receives it. */
+  jobEvent(jobId: string, event: LogEvent, action: JobAction, run: string): JobEvent;
   /** The job's newest recorded events, oldest first; none when the database
    *  cannot be read. */
   jobEvents(jobId: string): Promise<JobEvent[]>;
@@ -307,8 +307,8 @@ export function createAppLog(
   };
 
   let nextSeq = 1;
-  const jobEvent = (jobId: string, event: LogEvent): JobEvent => {
-    const recorded: JobEvent = { jobId, session, seq: nextSeq++, event };
+  const jobEvent = (jobId: string, event: LogEvent, action: JobAction, run: string): JobEvent => {
+    const recorded: JobEvent = { jobId, session, seq: nextSeq++, action, run, event };
     persist({
       type: "jobEvent",
       row: {
@@ -316,6 +316,8 @@ export function createAppLog(
         session,
         seq: recorded.seq,
         jobId,
+        action,
+        run,
         event: event.event,
         level: event.level,
         body: JSON.stringify(event),
@@ -358,7 +360,14 @@ export function createAppLog(
       write("warn", "job progress could not be read", { jobId, error: errorInfo(err) });
       return [];
     }
-    return rows.map((row) => ({ jobId, session: row.session, seq: row.seq, event: JSON.parse(row.body) as LogEvent }));
+    return rows.map((row) => ({
+      jobId,
+      session: row.session,
+      seq: row.seq,
+      action: row.action as JobAction,
+      run: row.run,
+      event: JSON.parse(row.body) as LogEvent,
+    }));
   };
 
   const records = async <R extends RecordsRead>(

@@ -43,14 +43,22 @@ export type GuiPlatform =
 export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity, SourceComparison };
 export type { LanguageEnvironment, Message, PaneLayout };
 
+/** The action that started a Progress run: a background plan, Create (its
+ *  fresh plan, write, verify and Trash), Verify, or moving a finished job's
+ *  originals to Trash. */
+export type JobAction = "plan" | "create" | "verify" | "trash";
+
 /** An SDK progress event under the job it ran for, as main records it in
  *  `records.sqlite3` and sends it to the window. `session` (the launch's start)
  *  and `seq` (its order in that launch) identify it, so a recorded copy and the
- *  live one are recognised as the same event. */
+ *  live one are recognised as the same event. `action` and `run` name the run
+ *  it belongs to: every event one action caused shares one run id. */
 export interface JobEvent {
   jobId: string;
   session: string;
   seq: number;
+  action: JobAction;
+  run: string;
   event: LogEvent;
 }
 

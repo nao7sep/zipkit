@@ -150,6 +150,10 @@
   "progress.empty": "아직 표시할 내용이 없습니다.",
   "progress.region": "진행 상황 로그",
   "progress.findings": { "other": "{kind}: 항목 {count}개" },
+  "progress.runPlan": "계획 · {time}",
+  "progress.runCreate": "만들기 · {time}",
+  "progress.runVerify": "검증 · {time}",
+  "progress.runTrash": "원본을 휴지통으로 옮기기 · {time}",
 
   "jobs.queue": "작업 대기열",
   "jobs.empty": "아직 작업이 없습니다. “추가”를 클릭하여 폴더 또는 파일을 선택하십시오.",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "other": "항목 {count}개 검증 중" },
   "event.verified": "검증됨: {path}",
   "event.extractDone": "풀기 완료: {counts}",
+  "event.verifyDone": "검증 완료: {counts}",
   "event.writtenCount": { "other": "쓴 항목 {count}개" },
   "event.skippedCount": { "other": "건너뜀 {count}개" },
 

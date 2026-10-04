@@ -32,7 +32,7 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
     session: "2026-06-15T01:00:00.000Z",
     records: mocks.records,
   },
-  sendEvent: vi.fn(),
+  startProgressRun: vi.fn(() => vi.fn()),
   toGuiError: vi.fn(),
   zip: {},
 }));

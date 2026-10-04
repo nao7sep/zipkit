@@ -7,12 +7,12 @@
 
 import { BrowserWindow } from "electron";
 import { StallError, ZipKit, ZipKitError } from "../../sdk/index.js";
-import type { GuiError, Job, LogEvent } from "../shared/api.js";
+import type { GuiError, Job, JobAction, LogEvent } from "../shared/api.js";
 import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
 
 /** Every `zip.*` call passes an `onProgress` that records its events in
- *  `records.sqlite3` (see {@link sendEvent}), so the SDK's own session log file
+ *  `records.sqlite3` (see {@link startProgressRun}), so the SDK's own session log file
  *  would only duplicate them; the results' `log` is therefore `null`. */
 export const zip = new ZipKit({ sessionLog: false });
 
@@ -49,12 +49,19 @@ function liveWindow(): BrowserWindow | null {
   return current;
 }
 
-/** Record one SDK progress event under its job, then send it to the window's
+let lastRun = 0;
+
+/** Start one Progress run for a job: the returned sink records each SDK event
+ *  of that action under the job and one run id, then sends it to the window's
  *  Progress pane. The record is made whether or not a window is open: these
- *  records are the only durable copy of the SDK's events. */
-export function sendEvent(jobId: string, event: LogEvent): void {
-  const recorded = log.jobEvent(jobId, event);
-  liveWindow()?.webContents.send("zipkit:event", recorded);
+ *  records are the only durable copy of the SDK's events. Run ids count up in
+ *  the launch, and a record's session tells launches apart. */
+export function startProgressRun(jobId: string, action: JobAction): (event: LogEvent) => void {
+  const run = String(++lastRun);
+  return (event) => {
+    const recorded = log.jobEvent(jobId, event, action, run);
+    liveWindow()?.webContents.send("zipkit:event", recorded);
+  };
 }
 
 export function sendQueue(jobs: Job[]): void {

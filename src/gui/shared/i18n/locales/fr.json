@@ -150,6 +150,10 @@
   "progress.empty": "Rien à afficher pour l’instant.",
   "progress.region": "Journal de progression",
   "progress.findings": { "one": "{kind}\u00a0: {count} entrée d’archive", "many": "{kind}\u00a0: {count} d’entrées d’archive", "other": "{kind}\u00a0: {count} entrées d’archive" },
+  "progress.runPlan": "Planification · {time}",
+  "progress.runCreate": "Création · {time}",
+  "progress.runVerify": "Vérification · {time}",
+  "progress.runTrash": "Placer les originaux dans la corbeille · {time}",
 
   "jobs.queue": "File des tâches",
   "jobs.empty": "Aucune tâche pour l’instant. Cliquez sur «\u00a0Ajouter\u00a0» pour choisir des dossiers ou des fichiers.",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "one": "Vérification de {count} entrée d’archive", "many": "Vérification de {count} d’entrées d’archive", "other": "Vérification de {count} entrées d’archive" },
   "event.verified": "Vérifié\u00a0: {path}",
   "event.extractDone": "Extraction terminée\u00a0: {counts}",
+  "event.verifyDone": "Vérification terminée\u00a0: {counts}",
   "event.writtenCount": { "one": "{count} écrit", "many": "{count} écrits", "other": "{count} écrits" },
   "event.skippedCount": { "one": "{count} ignoré", "many": "{count} ignorés", "other": "{count} ignorés" },
 

@@ -19,7 +19,7 @@ import {
 import type { RecordsRead, RecordsReadResults } from "./records-worker.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
-import { getMainWindow, log, sendEvent, toGuiError, zip } from "./runtime.js";
+import { getMainWindow, log, startProgressRun, toGuiError, zip } from "./runtime.js";
 import { loadSettings, saveSettings } from "./settings.js";
 import { applyThemePreference } from "./theme.js";
 import { applyLanguagePreference, languageEnvironment, mainTranslator } from "./i18n.js";
@@ -99,7 +99,7 @@ export function registerIpc(): void {
       try {
         const data = await zip.extract(
           { archive, dryRun: true, checkMetadata },
-          { onProgress: (e) => sendEvent(jobId, e) },
+          { onProgress: startProgressRun(jobId, "verify") },
         );
         log.info("verify done", { jobId, archive, reportOk: data.reportOk });
         return { ok: true, data };

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   zipOptions: [] as unknown[],
-  jobEvent: vi.fn((jobId: string, event: unknown) => ({ jobId, session: "s", seq: 1, event })),
+  jobEvent: vi.fn((jobId: string, event: unknown, action: string, run: string) => ({ jobId, session: "s", seq: 1, action, run, event })),
 }));
 
 vi.mock("electron", () => ({ BrowserWindow: class {} }));
@@ -29,8 +29,8 @@ import {
   clearMainWindow,
   ensureMainWindow,
   getMainWindow,
-  sendEvent,
   setMainWindow,
+  startProgressRun,
   toGuiError,
 } from "../../../src/gui/main/runtime.js";
 import type { LogEvent } from "../../../src/gui/shared/api.js";
@@ -82,23 +82,38 @@ describe("SDK events", () => {
     expect(hoisted.zipOptions).toEqual([{ sessionLog: false }]);
   });
 
-  it("records an event under its job when no window is open", () => {
-    sendEvent("job-1", event);
+  it("records an event under its job and run when no window is open", () => {
+    const sink = startProgressRun("job-1", "plan");
+    sink(event);
+    sink(event);
 
-    expect(hoisted.jobEvent).toHaveBeenCalledExactlyOnceWith("job-1", event);
+    expect(hoisted.jobEvent).toHaveBeenCalledTimes(2);
+    const [first, second] = hoisted.jobEvent.mock.calls;
+    expect(first?.slice(0, 3)).toEqual(["job-1", event, "plan"]);
+    expect(second?.[3]).toBe(first?.[3]); // one run id for the whole run
+  });
+
+  it("gives each run its own id", () => {
+    startProgressRun("job-1", "create")(event);
+    startProgressRun("job-1", "verify")(event);
+    const [a, b] = hoisted.jobEvent.mock.calls;
+    expect(a?.[3]).not.toBe(b?.[3]);
   });
 
   it("records an event, then sends the recorded event to the open window", () => {
     const win = fakeWindow();
     setMainWindow(win as never);
 
-    sendEvent("job-1", event);
+    startProgressRun("job-1", "verify")(event);
 
-    expect(hoisted.jobEvent).toHaveBeenCalledExactlyOnceWith("job-1", event);
+    const run = hoisted.jobEvent.mock.calls[0]?.[3];
+    expect(hoisted.jobEvent).toHaveBeenCalledExactlyOnceWith("job-1", event, "verify", run);
     expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith("zipkit:event", {
       jobId: "job-1",
       session: "s",
       seq: 1,
+      action: "verify",
+      run,
       event,
     });
   });

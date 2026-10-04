@@ -150,6 +150,10 @@
   "progress.empty": "Ancora niente da mostrare.",
   "progress.region": "Registro dell’avanzamento",
   "progress.findings": { "one": "{kind}: {count} voce", "many": "{kind}: {count} di voci", "other": "{kind}: {count} voci" },
+  "progress.runPlan": "Pianificazione · {time}",
+  "progress.runCreate": "Creazione · {time}",
+  "progress.runVerify": "Verifica · {time}",
+  "progress.runTrash": "Sposta gli originali nel Cestino · {time}",
 
   "jobs.queue": "Coda delle operazioni",
   "jobs.empty": "Ancora nessuna operazione. Fai clic su «Aggiungi» per scegliere cartelle o file.",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "one": "Verifica di {count} voce", "many": "Verifica di {count} di voci", "other": "Verifica di {count} voci" },
   "event.verified": "Verificato: {path}",
   "event.extractDone": "Estrazione completata: {counts}",
+  "event.verifyDone": "Verifica completata: {counts}",
   "event.writtenCount": { "one": "{count} scritto", "many": "{count} scritti", "other": "{count} scritti" },
   "event.skippedCount": { "one": "{count} saltato", "many": "{count} saltati", "other": "{count} saltati" },
 

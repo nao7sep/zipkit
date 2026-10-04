@@ -150,6 +150,10 @@
   "progress.empty": "まだ表示する内容はありません。",
   "progress.region": "進行状況のログ",
   "progress.findings": { "other": "{kind}：{count} エントリ" },
+  "progress.runPlan": "計画 · {time}",
+  "progress.runCreate": "作成 · {time}",
+  "progress.runVerify": "検証 · {time}",
+  "progress.runTrash": "元の項目をゴミ箱に移動 · {time}",
 
   "jobs.queue": "ジョブのキュー",
   "jobs.empty": "ジョブはまだありません。「追加」をクリックして、フォルダまたはファイルを選択してください。",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "other": "{count} エントリを検証中" },
   "event.verified": "検証済み: {path}",
   "event.extractDone": "展開完了: {counts}",
+  "event.verifyDone": "検証完了: {counts}",
   "event.writtenCount": { "other": "書き込み {count}" },
   "event.skippedCount": { "other": "スキップ {count}" },
 

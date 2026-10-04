@@ -150,6 +150,10 @@
   "progress.empty": "Noch nichts anzuzeigen.",
   "progress.region": "Fortschrittsprotokoll",
   "progress.findings": { "one": "{kind}: {count} Eintrag", "other": "{kind}: {count} Einträge" },
+  "progress.runPlan": "Planung · {time}",
+  "progress.runCreate": "Erstellen · {time}",
+  "progress.runVerify": "Prüfen · {time}",
+  "progress.runTrash": "Originale in den Papierkorb legen · {time}",
 
   "jobs.queue": "Auftragswarteschlange",
   "jobs.empty": "Noch keine Aufträge. Klicken Sie auf „Hinzufügen“, um Ordner oder Dateien auszuwählen.",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "one": "{count} Eintrag wird geprüft", "other": "{count} Einträge werden geprüft" },
   "event.verified": "Geprüft: {path}",
   "event.extractDone": "Entpacken abgeschlossen: {counts}",
+  "event.verifyDone": "Prüfung abgeschlossen: {counts}",
   "event.writtenCount": { "one": "{count} geschrieben", "other": "{count} geschrieben" },
   "event.skippedCount": { "one": "{count} übersprungen", "other": "{count} übersprungen" },
 

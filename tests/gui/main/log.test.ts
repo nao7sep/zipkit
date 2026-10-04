@@ -179,18 +179,18 @@ describe("job events", () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const first = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z"));
-    const sent = first.jobEvent("a", event("2026-06-14T05:25:49.000Z", { event: "scan.start", inputs: 1 }));
-    first.jobEvent("b", event("2026-06-14T05:25:49.500Z", { event: "scan.start", inputs: 2 }));
+    const sent = first.jobEvent("a", event("2026-06-14T05:25:49.000Z", { event: "scan.start", inputs: 1 }), "plan", "1");
+    first.jobEvent("b", event("2026-06-14T05:25:49.500Z", { event: "scan.start", inputs: 2 }), "plan", "1");
     await first.close();
     const second = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-15T01:00:00.000Z"));
-    second.jobEvent("a", event("2026-06-15T01:00:01.000Z", { event: "write.start", entries: 3 }));
+    second.jobEvent("a", event("2026-06-15T01:00:01.000Z", { event: "write.start", entries: 3 }), "create", "7");
 
     expect(sent).toMatchObject({ jobId: "a", session: "2026-06-14T05:25:48.123Z", seq: 1 });
     const read = await second.jobEvents("a");
     await second.close();
-    expect(read.map((e) => [e.session, e.seq, e.event.event])).toEqual([
-      ["2026-06-14T05:25:48.123Z", 1, "scan.start"],
-      ["2026-06-15T01:00:00.000Z", 1, "write.start"],
+    expect(read.map((e) => [e.session, e.seq, e.action, e.run, e.event.event])).toEqual([
+      ["2026-06-14T05:25:48.123Z", 1, "plan", "1", "scan.start"],
+      ["2026-06-15T01:00:00.000Z", 1, "create", "7", "write.start"],
     ]);
     expect(read[0]?.event).toEqual(sent.event);
   });
@@ -202,7 +202,7 @@ describe("job events", () => {
     const logs = path.join(dir, "logs");
     const log = createAppLog(path.join(blocker, "records.sqlite3"), logs, new Date("2026-06-14T05:25:48.123Z"));
 
-    log.jobEvent("a", event("2026-06-14T05:25:49.000Z", { event: "scan.start", inputs: 1 }));
+    log.jobEvent("a", event("2026-06-14T05:25:49.000Z", { event: "scan.start", inputs: 1 }), "plan", "1");
     expect(await log.jobEvents("a")).toEqual([]);
     await log.close();
 
@@ -222,11 +222,11 @@ describe("records reads for the Records window", () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const first = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-14T05:25:48.123Z"));
-    first.jobEvent("a", event("2000-01-01T00:00:01.000Z", "info", { event: "scan.start", inputs: 1 }));
-    first.jobEvent("a", event("2000-01-01T00:00:03.000Z", "warn", { event: "scan.symlink-unreadable", path: "/x" }));
+    first.jobEvent("a", event("2000-01-01T00:00:01.000Z", "info", { event: "scan.start", inputs: 1 }), "plan", "1");
+    first.jobEvent("a", event("2000-01-01T00:00:03.000Z", "warn", { event: "scan.symlink-unreadable", path: "/x" }), "plan", "1");
     await first.close();
     const log = createAppLog(database, path.join(dir, "logs"), new Date("2026-06-15T01:00:00.000Z"));
-    log.jobEvent("b", event("2000-01-01T00:00:02.000Z", "error", { event: "fault", code: "read", detail: "100% gone" }));
+    log.jobEvent("b", event("2000-01-01T00:00:02.000Z", "error", { event: "fault", code: "read", detail: "100% gone" }), "plan", "1");
     log.info("app started", { version: "1" });
     log.error("verify failed", { jobId: "b", archive: "/out/b.zip" });
     return { log, database, dir };
@@ -264,7 +264,7 @@ describe("records reads for the Records window", () => {
     const dir = tempDir();
     const log = createAppLog(path.join(dir, "records.sqlite3"), path.join(dir, "logs"));
     const same = "2000-01-01T00:00:00.000Z";
-    for (const name of ["scan.start", "scan.dir", "scan.done"]) log.jobEvent("a", event(same, "info", { event: name }));
+    for (const name of ["scan.start", "scan.dir", "scan.done"]) log.jobEvent("a", event(same, "info", { event: name }), "plan", "1");
     const seen: string[] = [];
     let after: { time: string; kind: "log" | "job-event"; id: number } | null = null;
     for (;;) {
@@ -324,7 +324,7 @@ describe("records reads for the Records window", () => {
     const listener = vi.fn();
     stored.onStored(listener);
     stored.info("one");
-    stored.jobEvent("a", event("2000-01-01T00:00:00.000Z", "info", { event: "scan.start" }));
+    stored.jobEvent("a", event("2000-01-01T00:00:00.000Z", "info", { event: "scan.start" }), "plan", "1");
     await stored.close();
     expect(listener).toHaveBeenCalledTimes(2);
 

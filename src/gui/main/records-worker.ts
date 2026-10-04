@@ -36,12 +36,15 @@ export interface JobEventRow {
   session: string;
   seq: number;
   jobId: string;
+  /** The action that started the event's run, and the run's id in the session. */
+  action: string;
+  run: string;
   event: string;
   level: string;
   body: string;
 }
 
-export type StoredJobEventRow = Pick<JobEventRow, "session" | "seq" | "body">;
+export type StoredJobEventRow = Pick<JobEventRow, "session" | "seq" | "action" | "run" | "body">;
 
 /** What the Records window asks of the database. Reads go through the same
  *  thread as writes, so a read sees every entry posted before it. */
@@ -88,6 +91,8 @@ CREATE TABLE IF NOT EXISTS job_events (
   session_utc TEXT NOT NULL,
   seq         INTEGER NOT NULL,
   job_id      TEXT NOT NULL,
+  action      TEXT NOT NULL,
+  run         TEXT NOT NULL,
   event       TEXT NOT NULL,
   level       TEXT NOT NULL,
   body        TEXT NOT NULL
@@ -246,11 +251,11 @@ class RecordsStore {
           "INSERT INTO logs (time_utc, session_utc, level, message, job_id, fields) VALUES (?, ?, ?, ?, ?, ?)",
         ),
         insertJobEvent: db.prepare(
-          "INSERT INTO job_events (time_utc, session_utc, seq, job_id, event, level, body) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO job_events (time_utc, session_utc, seq, job_id, action, run, event, level, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ),
         // The newest `limit` events, oldest first.
         selectJobEvents: db.prepare(
-          "SELECT session, seq, body FROM (SELECT id, session_utc AS session, seq, body FROM job_events WHERE job_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id",
+          "SELECT session, seq, action, run, body FROM (SELECT id, session_utc AS session, seq, action, run, body FROM job_events WHERE job_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id",
         ),
       };
       return this.#statements;
@@ -265,7 +270,17 @@ class RecordsStore {
   }
 
   jobEvent(row: JobEventRow): void {
-    this.#open().insertJobEvent.run(row.time, row.session, row.seq, row.jobId, row.event, row.level, row.body);
+    this.#open().insertJobEvent.run(
+      row.time,
+      row.session,
+      row.seq,
+      row.jobId,
+      row.action,
+      row.run,
+      row.event,
+      row.level,
+      row.body,
+    );
   }
 
   readJobEvents(jobId: string, limit: number): StoredJobEventRow[] {

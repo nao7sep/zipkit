@@ -150,6 +150,10 @@
   "progress.empty": "Todavía no hay nada que mostrar.",
   "progress.region": "Registro de progreso",
   "progress.findings": { "one": "{kind}: {count} entrada", "many": "{kind}: {count} de entradas", "other": "{kind}: {count} entradas" },
+  "progress.runPlan": "Planificación · {time}",
+  "progress.runCreate": "Creación · {time}",
+  "progress.runVerify": "Verificación · {time}",
+  "progress.runTrash": "Mover los originales a la papelera · {time}",
 
   "jobs.queue": "Cola de trabajos",
   "jobs.empty": "Todavía no hay trabajos. Haz clic en «Agregar» para elegir carpetas o archivos.",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "one": "Verificando {count} entrada", "many": "Verificando {count} de entradas", "other": "Verificando {count} entradas" },
   "event.verified": "Verificado: {path}",
   "event.extractDone": "Extracción completa: {counts}",
+  "event.verifyDone": "Verificación completa: {counts}",
   "event.writtenCount": { "one": "{count} escrito", "many": "{count} escritos", "other": "{count} escritos" },
   "event.skippedCount": { "one": "{count} omitido", "many": "{count} omitidos", "other": "{count} omitidos" },
 

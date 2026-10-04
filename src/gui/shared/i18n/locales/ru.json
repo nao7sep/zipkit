@@ -150,6 +150,10 @@
   "progress.empty": "Пока нечего показать.",
   "progress.region": "Журнал хода работы",
   "progress.findings": { "one": "{kind}: {count} запись", "few": "{kind}: {count} записи", "many": "{kind}: {count} записей", "other": "{kind}: {count} записи" },
+  "progress.runPlan": "План · {time}",
+  "progress.runCreate": "Создание · {time}",
+  "progress.runVerify": "Проверка · {time}",
+  "progress.runTrash": "Перемещение оригиналов в Корзину · {time}",
 
   "jobs.queue": "Очередь заданий",
   "jobs.empty": "Заданий пока нет. Нажмите «Добавить», чтобы выбрать папки или файлы.",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "one": "Проверка {count} элемента", "few": "Проверка {count} элементов", "many": "Проверка {count} элементов", "other": "Проверка {count} элемента" },
   "event.verified": "Проверено: {path}",
   "event.extractDone": "Извлечение завершено: {counts}",
+  "event.verifyDone": "Проверка завершена: {counts}",
   "event.writtenCount": { "one": "{count} записан", "few": "{count} записаны", "many": "{count} записано", "other": "{count} записано" },
   "event.skippedCount": { "one": "{count} пропущен", "few": "{count} пропущены", "many": "{count} пропущено", "other": "{count} пропущено" },
 

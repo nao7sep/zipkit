@@ -150,6 +150,10 @@
   "progress.empty": "Nothing to show yet.",
   "progress.region": "Progress log",
   "progress.findings": { "one": "{kind}: {count} entry", "other": "{kind}: {count} entries" },
+  "progress.runPlan": "Plan · {time}",
+  "progress.runCreate": "Create · {time}",
+  "progress.runVerify": "Verify · {time}",
+  "progress.runTrash": "Move originals to Trash · {time}",
 
   "jobs.queue": "Job queue",
   "jobs.empty": "No jobs yet. Click “Add” to choose directories or files.",
@@ -381,6 +385,7 @@
   "event.verifyStart": { "one": "Verifying {count} entry", "other": "Verifying {count} entries" },
   "event.verified": "Verified {path}",
   "event.extractDone": "Extract complete: {counts}",
+  "event.verifyDone": "Verify complete: {counts}",
   "event.writtenCount": { "one": "{count} written", "other": "{count} written" },
   "event.skippedCount": { "one": "{count} skipped", "other": "{count} skipped" },
 

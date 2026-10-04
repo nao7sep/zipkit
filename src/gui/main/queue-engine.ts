@@ -12,8 +12,9 @@
  * logic: every verdict it acts on (`writable`, the verify result) comes from the
  * SDK. The SDK, OS Trash, persistence, event forwarding, and id minting arrive as
  * injected deps, so the engine is Electron-free and unit-testable with fakes. SDK
- * progress events are tagged with the originating job's id before they are
- * forwarded, so the renderer can show each job its own Progress.
+ * progress events are tagged with the originating job's id and the run of the
+ * action that caused them before they are forwarded, so the renderer can show
+ * each job its own Progress, headed by action.
  */
 
 import {
@@ -25,7 +26,7 @@ import {
   type JobIntent,
   type SavedJob,
 } from "../shared/queue.js";
-import type { LogEvent, PlanData, SourceComparison } from "../shared/api.js";
+import type { JobAction, LogEvent, PlanData, SourceComparison } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
@@ -64,8 +65,9 @@ export interface EngineDeps {
   outputInsideInputs(output: string, inputs: string[], signal?: AbortSignal): Promise<boolean>;
   /** Push the current job list to observers (renderer + persistence). */
   emit(jobs: Job[]): void;
-  /** Record one progress event under its job and forward it to the renderer. */
-  sendEvent(jobId: string, event: LogEvent): void;
+  /** Start a Progress run for a job's action: every event the returned sink
+   *  receives is recorded under that run and forwarded to the renderer. */
+  progress(jobId: string, action: JobAction): (event: LogEvent) => void;
   /** Mint a job id. */
   newId(): string;
   /** The app session log — one line per orchestration intent/outcome. */
@@ -283,9 +285,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     return null;
   }
 
-  /** A progress sink that tags every SDK event with the running job's id. */
-  function progressFor(id: string): (e: LogEvent) => void {
-    return (e) => deps.sendEvent(id, e);
+  /** A progress sink for one run of an action on a job: Create's fresh plan,
+   *  write, verify and recheck share its one run, so Progress heads them once. */
+  function progressFor(id: string, action: JobAction): (e: LogEvent) => void {
+    return deps.progress(id, action);
   }
 
   /** Classify a job's inputs on disk and store the result as `entries`, so the
@@ -321,7 +324,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     set(rec, { state: "planning", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
     try {
-      const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id));
+      const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id, "plan"));
       if (!current()) return; // a newer plan superseded this one — discard the result
       rec.plan = plan;
       set(rec, {
@@ -429,7 +432,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     const resumeFrom = rec.job.intent === "archive-and-trash" ? rec.publishedOutput : null;
     rec.aborter = new AbortController();
     const signal = rec.aborter.signal;
-    const onProgress = progressFor(id);
+    const onProgress = progressFor(id, "create");
     set(rec, { state: "running", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
     deps.log.info(resumeFrom ? "job run resumed after its write" : "job run started", {
@@ -758,7 +761,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           if (!output) {
             result = { severity: "error", message: message("action.noArchive") };
           } else {
-            const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id));
+            const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id, "trash"));
             if (aborter.signal.aborted) {
               result = { severity: "warning", message: message("action.originalsTrashCancelled") };
               deps.log.info("trash originals cancelled", { jobId: id });

@@ -11,7 +11,7 @@ import { nanoid } from "nanoid";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
-import { log, sendEvent, sendQueue, zip } from "./runtime.js";
+import { log, sendQueue, startProgressRun, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import { loadQueue, saveQueue, toResumable } from "./persist.js";
 import { resolveOutputPath } from "./output.js";
@@ -106,7 +106,7 @@ const engine = createQueueEngine({
     }, 500);
     sendQueue(jobs);
   },
-  sendEvent,
+  progress: startProgressRun,
   newId: () => nanoid(),
   log,
 });

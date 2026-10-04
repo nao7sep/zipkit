@@ -15,7 +15,7 @@
 
 import { JOB_EVENT_LIMIT } from "../../shared/api";
 import { manifestRequiredButMissing, scanBlocksTrash } from "../../shared/queue";
-import type { ExtractData, Finding, InputEntry, Job, JobEvent, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
+import type { ExtractData, Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
 import type { GuiOptions } from "../../shared/spec";
@@ -507,41 +507,57 @@ function formatLocalTime(iso: string, t: Translator): string {
   return t.logTime(d);
 }
 
-/** The time a Progress run started, in local form. */
-export function progressTime(run: ProgressRun, t: Translator): string {
-  return formatLocalTime(run.time, t);
+const RUN_HEADINGS: Record<JobAction, MessageKey> = {
+  plan: "progress.runPlan",
+  create: "progress.runCreate",
+  verify: "progress.runVerify",
+  trash: "progress.runTrash",
+};
+
+/** A Progress run's heading: the action that started it and its start time,
+ *  in local form. */
+export function progressHeading(run: ProgressRun, t: Translator): string {
+  return t.t(RUN_HEADINGS[run.action], { time: formatLocalTime(run.time, t) });
 }
 
 /** A Progress line: one SDK event, or a run's findings of one kind folded into
- *  a count. */
+ *  a count. An event line knows whether its run's read was a dry run, so a
+ *  verify ends with its own result line. */
 export type ProgressLine =
-  | { kind: "event"; level: LogEvent["level"]; event: LogEvent }
+  | { kind: "event"; level: LogEvent["level"]; event: LogEvent; dryRun: boolean }
   | { kind: "findings"; level: LogEvent["level"]; rule: string; severity: Severity; count: number };
 
-/** One SDK run for a job — a plan, a write, a verify — with its start time
- *  shown once and its lines below. `key` is its first event's identity. */
+/** One run of an action on a job — a plan, a Create, a Verify — headed once
+ *  by its action and start time, with its lines below. `key` is its first
+ *  event's identity. */
 export interface ProgressRun {
   key: string;
+  action: JobAction;
   time: string;
   lines: ProgressLine[];
 }
 
-const RUN_STARTS: ReadonlySet<LogEvent["event"]> = new Set(["scan.start", "write.start", "extract.start"]);
-
-/** A job's events as Progress runs: each run starts at a stage's start event,
- *  and its findings fold into one line per kind. The SDK's once-per-launch
- *  startup line belongs to no job and is left out. */
+/** A job's events as Progress runs: a run is every event one action caused
+ *  (main tags each with its run), so a Create's fresh plan, write and verify
+ *  read as one, and its findings fold into one line per kind. The SDK's
+ *  once-per-launch startup line belongs to no job and is left out. */
 export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
   const runs: ProgressRun[] = [];
   let run: ProgressRun | null = null;
+  let runId = "";
+  let dryRun = false;
   let folded = new Map<string, Extract<ProgressLine, { kind: "findings" }>>();
-  for (const { session, seq, event } of events) {
+  for (const { session, seq, action, run: eventRun, event } of events) {
     if (event.event === "session.start") continue;
-    if (!run || RUN_STARTS.has(event.event)) {
-      run = { key: `${session}:${seq}`, time: event.time, lines: [] };
+    const id = `${session}\0${eventRun}`;
+    if (!run || id !== runId) {
+      run = { key: `${session}:${seq}`, action, time: event.time, lines: [] };
       runs.push(run);
+      runId = id;
+      dryRun = false;
       folded = new Map();
     }
+    if (event.event === "extract.start") dryRun = !event.write;
     if (event.event === "entry.flagged") {
       const kind = `${event.rule}\0${event.severity}`;
       const line = folded.get(kind);
@@ -560,7 +576,7 @@ export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
       }
       continue;
     }
-    run.lines.push({ kind: "event", level: event.level, event });
+    run.lines.push({ kind: "event", level: event.level, event, dryRun });
   }
   return runs;
 }
@@ -568,7 +584,7 @@ export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
 /** A Progress line's text. */
 export function progressLineText(line: ProgressLine, t: Translator): string {
   return line.kind === "event"
-    ? progressMessage(line.event, t)
+    ? progressMessage(line.event, t, line.dryRun)
     : t.t("progress.findings", { kind: findingKind(line.rule, line.severity, t), count: line.count });
 }
 
@@ -627,8 +643,9 @@ export function logLevelLabel(level: LogEvent["level"]): MessageKey {
 /** The Progress line for a typed SDK event, rendered from the event's own
  *  fields rather than from the SDK's English `message`. The structured event,
  *  its JSONL message, and its wire literals remain untouched. A fault keeps
- *  its code and diagnostic detail as the SDK wrote them. */
-export function progressMessage(event: LogEvent, t: Translator): string {
+ *  its code and diagnostic detail as the SDK wrote them. `dryRun` says the
+ *  read this event ends wrote nothing, so `extract.done` reads as a verify. */
+export function progressMessage(event: LogEvent, t: Translator, dryRun = false): string {
   switch (event.event) {
     case "session.start":
       return t.t("event.sessionStart", {
@@ -676,6 +693,16 @@ export function progressMessage(event: LogEvent, t: Translator): string {
     case "entry.verified":
       return t.t("event.verified", { path: event.path });
     case "extract.done":
+      if (dryRun) {
+        return t.t("event.verifyDone", {
+          counts: t.list([
+            t.t("report.entries", { count: event.total }),
+            t.t("report.crcFailures", { count: event.crcFailed }),
+            t.t("report.shaMismatches", { count: event.shaMismatched }),
+            t.t("report.manifestMismatches", { count: event.manifestMismatched }),
+          ]),
+        });
+      }
       return t.t("event.extractDone", {
         counts: t.list([
           t.t("event.writtenCount", { count: event.written }),

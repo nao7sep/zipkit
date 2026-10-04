@@ -10,7 +10,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-engine.js";
 import { nullLog } from "../../../src/gui/main/log.js";
-import type { PlanData } from "../../../src/gui/shared/api.js";
+import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator, type Message } from "../../../src/gui/shared/i18n/translate.js";
 import { StallError, WriteError } from "../../../src/sdk/errors.js";
@@ -66,7 +66,7 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
     },
     outputInsideInputs: async () => false,
     emit: () => {},
-    sendEvent: () => {},
+    progress: () => () => {},
     newId: () => `job-${++idN}`,
     log: nullLog,
     ...overrides,
@@ -130,6 +130,37 @@ describe("queue engine", () => {
     await tick();
     expect(calls.verify).toBe(0);
     expect(calls.trash).toEqual([]);
+  });
+
+  it("tags a background plan as plan, and Create's re-plan, write, verify and recheck as one create run", async () => {
+    const runs: string[] = [];
+    const seen: string[] = [];
+    const sinks = new Map<(e: LogEvent) => void, string>();
+    const { deps } = makeDeps({
+      progress: (jobId, action) => {
+        runs.push(`${jobId} ${action}`);
+        const sink = () => {};
+        sinks.set(sink, action);
+        return sink;
+      },
+      plan: async (_inputs, _options, _signal, onProgress) => {
+        seen.push(`plan:${sinks.get(onProgress)}`);
+        return planData(true);
+      },
+      write: async (_plan, _signal, onProgress) => (seen.push(`write:${sinks.get(onProgress)}`), 1),
+      verify: async (_output, _signal, onProgress) => (seen.push(`verify:${sinks.get(onProgress)}`), true),
+      recheck: async (_output, _inputs, _options, _signal, onProgress) => {
+        seen.push(`recheck:${sinks.get(onProgress)}`);
+        return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    expect(runs).toEqual([`${id} plan`, `${id} create`]);
+    expect(seen).toEqual(["plan:plan", "plan:create", "write:create", "verify:create", "recheck:create"]);
   });
 
   it("names the source file that changed while the archive was written", async () => {
