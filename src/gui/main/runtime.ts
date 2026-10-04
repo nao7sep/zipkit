@@ -48,9 +48,10 @@ function liveWindow(): BrowserWindow | null {
 }
 
 /** Record one SDK progress event under its job, then send it to the window's
- *  Progress pane. */
+ *  Progress pane. The record is made whether or not a window is open. */
 export function sendEvent(jobId: string, event: LogEvent): void {
-  liveWindow()?.webContents.send("zipkit:event", log.jobEvent(jobId, event));
+  const recorded = log.jobEvent(jobId, event);
+  liveWindow()?.webContents.send("zipkit:event", recorded);
 }
 
 export function sendQueue(jobs: Job[]): void {

@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const hoisted = vi.hoisted(() => ({
+  jobEvent: vi.fn((jobId: string, event: unknown) => ({ jobId, session: "s", seq: 1, event })),
+}));
+
 vi.mock("electron", () => ({ BrowserWindow: class {} }));
 vi.mock("../../../src/sdk/index.js", () => {
   class ZipKitError extends Error {}
@@ -12,16 +16,18 @@ vi.mock("../../../src/sdk/index.js", () => {
   }
   return { ZipKit: class {}, ZipKitError, StallError };
 });
-vi.mock("../../../src/gui/main/log.js", () => ({ createAppLog: () => ({}) }));
+vi.mock("../../../src/gui/main/log.js", () => ({ createAppLog: () => ({ jobEvent: hoisted.jobEvent }) }));
 
 import { StallError } from "../../../src/sdk/index.js";
 import {
   clearMainWindow,
   ensureMainWindow,
   getMainWindow,
+  sendEvent,
   setMainWindow,
   toGuiError,
 } from "../../../src/gui/main/runtime.js";
+import type { LogEvent } from "../../../src/gui/shared/api.js";
 
 function fakeWindow() {
   return {
@@ -55,6 +61,36 @@ describe("main-window ownership", () => {
     clearMainWindow(first as never);
 
     expect(getMainWindow()).toBe(replacement);
+  });
+});
+
+describe("SDK events", () => {
+  const event = { time: "t", level: "info", message: "m", stage: "plan", event: "plan.done" } as unknown as LogEvent;
+
+  beforeEach(() => {
+    setMainWindow(null);
+    hoisted.jobEvent.mockClear();
+  });
+
+  it("records an event under its job when no window is open", () => {
+    sendEvent("job-1", event);
+
+    expect(hoisted.jobEvent).toHaveBeenCalledExactlyOnceWith("job-1", event);
+  });
+
+  it("records an event, then sends the recorded event to the open window", () => {
+    const win = fakeWindow();
+    setMainWindow(win as never);
+
+    sendEvent("job-1", event);
+
+    expect(hoisted.jobEvent).toHaveBeenCalledExactlyOnceWith("job-1", event);
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith("zipkit:event", {
+      jobId: "job-1",
+      session: "s",
+      seq: 1,
+      event,
+    });
   });
 });
 
