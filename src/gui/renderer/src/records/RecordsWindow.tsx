@@ -41,7 +41,7 @@ import {
   LEVEL_PILLS,
   cursorAfter,
   mergeNewestPage,
-  prettyJson,
+  recordDetails,
   recordKey,
 } from "./record-format";
 
@@ -574,7 +574,7 @@ function RecordDetailView({
   add(t.t("records.job"), record.jobId === null ? null : <code>{record.jobId}</code>);
   add(t.t("records.launch"), launchLabel(record.session));
 
-  const details = prettyJson(record.kind === "log" ? record.fields : record.body);
+  const details = recordDetails(record);
 
   return (
     <>
@@ -594,10 +594,12 @@ function RecordDetailView({
             </div>
           ))}
         </dl>
-        <section className="records-block">
-          <h3 className="records-block__label">{t.t("records.details")}</h3>
-          <pre className="records-block__text">{details}</pre>
-        </section>
+        {details !== null && (
+          <section className="records-block">
+            <h3 className="records-block__label">{t.t("records.details")}</h3>
+            <pre className="records-block__text">{details}</pre>
+          </section>
+        )}
       </div>
     </>
   );

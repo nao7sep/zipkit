@@ -183,7 +183,8 @@ describe("RecordsWindow", () => {
       block.querySelector("h3")?.textContent,
       block.querySelector("pre")?.textContent,
     ]);
-    expect(blocks).toEqual([["Details", JSON.stringify(JSON.parse(eventDetail.kind === "job-event" ? eventDetail.body : ""), null, 2)]]);
+    // The event name is the title already, so Details leaves it out.
+    expect(blocks).toEqual([["Details", JSON.stringify({ code: "read", detail: "/in/a.txt: gone", token: "sk-test" }, null, 2)]]);
     const body = document.querySelector(".records-detail__body")!.textContent!;
     expect(body).toContain("job-1");
     expect(body).toContain("Sequence number");
@@ -202,6 +203,16 @@ describe("RecordsWindow", () => {
     const body = document.querySelector(".records-detail__body")!.textContent!;
     expect(body).not.toContain("(this launch)");
     expect(body).not.toContain("Job");
+  });
+
+  it("leaves out the Details block of a record with nothing in it, keeping its fields", async () => {
+    readRecordDetail.mockImplementation(async () => ({ ...lineDetail, fields: "{}" }));
+    await mount();
+    await act(async () => options()[1]!.click());
+
+    expect(document.querySelector(".records-detail__title")?.textContent).toBe("verify failed");
+    expect(document.querySelector(".records-block")).toBeNull();
+    expect(document.querySelector(".records-meta")?.textContent).toContain("Launch");
   });
 
   it("moves the selection with the arrow keys, stopping at the ends", async () => {

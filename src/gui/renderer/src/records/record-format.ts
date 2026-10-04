@@ -7,6 +7,7 @@
 import type { MessageKey } from "../../../shared/i18n/catalogues";
 import type {
   RecordCursor,
+  RecordDetail,
   RecordKind,
   RecordLevel,
   RecordLevelFilter,
@@ -18,13 +19,42 @@ export function recordKey(record: { kind: RecordKind; id: number }): string {
   return `${record.kind}:${record.id}`;
 }
 
-/** Stored JSON, indented for reading; text that is not JSON is shown as it is. */
-export function prettyJson(text: string): string {
+/** The values the detail pane already shows beside the Details block, by the
+ *  key they are stored under: a progress event's body is the SDK's whole log
+ *  line, so its time, level and event name are shown above it, and a log line's
+ *  job id is shown as its Job field. */
+function shownValues(record: RecordDetail): Record<string, unknown> {
+  return record.kind === "log"
+    ? { jobId: record.jobId }
+    : { time: record.time, level: record.level, event: record.event };
+}
+
+function isEmpty(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value).length === 0;
+  return false;
+}
+
+/** A record's Details block text: its stored JSON, indented, without the
+ *  values the pane already shows; text that is not JSON as it is. `null` when
+ *  nothing is left to show, so the block is left out. */
+export function recordDetails(record: RecordDetail): string | null {
+  const text = record.kind === "log" ? record.fields : record.body;
+  let value: unknown;
   try {
-    return JSON.stringify(JSON.parse(text), null, 2);
+    value = JSON.parse(text);
   } catch {
-    return text;
+    return text.trim() === "" ? null : text;
   }
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const shown = shownValues(record);
+    value = Object.fromEntries(
+      Object.entries(value).filter(([key, v]) => !(Object.hasOwn(shown, key) && shown[key] !== null && shown[key] === v)),
+    );
+  }
+  return isEmpty(value) ? null : JSON.stringify(value, null, 2);
 }
 
 export const KIND_LABELS: Record<RecordKind, MessageKey> = {

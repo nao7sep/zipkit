@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cursorAfter, mergeNewestPage, prettyJson, recordKey } from "../../../../src/gui/renderer/src/records/record-format";
-import type { RecordSummary } from "../../../../src/gui/shared/records";
+import { cursorAfter, mergeNewestPage, recordDetails, recordKey } from "../../../../src/gui/renderer/src/records/record-format";
+import type { RecordDetail, RecordSummary } from "../../../../src/gui/shared/records";
 
 const row = (id: number, time: string, title = `row ${id}`): RecordSummary => ({
   kind: "log", id, session: "s", time, level: "info", title, text: null, jobId: null,
@@ -47,8 +47,41 @@ describe("record helpers", () => {
     expect(cursorAfter([])).toBeNull();
   });
 
+  const logLine = (fields: string, jobId: string | null = null): RecordDetail => ({
+    kind: "log", id: 1, session: "s", time: "2026-10-02T08:00:01.000Z", level: "info", message: "m", jobId, fields,
+  });
+  const progress = (body: string): RecordDetail => ({
+    kind: "job-event", id: 1, session: "s", time: "2026-10-02T08:00:01.000Z", seq: 1, jobId: "job-1",
+    event: "plan.done", level: "info", body,
+  });
+
   it("indents stored JSON and leaves other text as it is", () => {
-    expect(prettyJson('{"a":1}')).toBe('{\n  "a": 1\n}');
-    expect(prettyJson("not json")).toBe("not json");
+    expect(recordDetails(logLine('{"a":1}'))).toBe('{\n  "a": 1\n}');
+    expect(recordDetails(logLine("not json"))).toBe("not json");
+  });
+
+  it("has no details for an empty value", () => {
+    for (const empty of ["{}", "null", "[]", '""', '"  "', "", "  \n "]) {
+      expect(recordDetails(logLine(empty)), empty).toBeNull();
+    }
+  });
+
+  it("leaves out what the pane already shows, and nothing else", () => {
+    expect(recordDetails(logLine('{"jobId":"job-1","archive":"/a.zip"}', "job-1"))).toBe(
+      JSON.stringify({ archive: "/a.zip" }, null, 2),
+    );
+    expect(recordDetails(logLine('{"jobId":"job-1"}', "job-1"))).toBeNull();
+    expect(recordDetails(logLine('{"jobId":7}'))).toBe(JSON.stringify({ jobId: 7 }, null, 2));
+    expect(
+      recordDetails(progress(JSON.stringify({
+        time: "2026-10-02T08:00:01.000Z", message: "plan complete", stage: "plan", level: "info", event: "plan.done", total: 2,
+      }))),
+    ).toBe(JSON.stringify({ message: "plan complete", stage: "plan", total: 2 }, null, 2));
+    expect(
+      recordDetails(progress(JSON.stringify({ time: "2026-10-02T08:00:01.000Z", level: "info", event: "plan.done" }))),
+    ).toBeNull();
+    expect(recordDetails(progress(JSON.stringify({ level: "warn", event: "other" })))).toBe(
+      JSON.stringify({ level: "warn", event: "other" }, null, 2),
+    );
   });
 });
