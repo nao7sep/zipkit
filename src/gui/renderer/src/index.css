@@ -644,11 +644,18 @@ code {
   gap: 1rem;
   padding: 0.85rem;
 }
+/* Each field takes the width its value needs, at least 180px, and a value wraps only
+   when the pane cannot fit it on one line. */
 .records-meta {
   margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem 1rem;
+}
+.records-meta > div {
+  flex: 0 1 auto;
+  min-width: 180px;
+  max-width: 100%;
 }
 .records-meta dt {
   font-size: 0.75rem;
