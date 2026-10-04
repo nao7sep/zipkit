@@ -36,7 +36,7 @@ describe("the interface language main settles on", () => {
 
     const { container } = render(
       <MainProcessLanguage>
-        <AppHeader onOpenSettings={() => {}} onOpenRecords={() => {}} onOpenShortcuts={() => {}} onOpenAbout={() => {}} />
+        <AppHeader onOpenSettings={() => {}} onOpenRecords={() => {}} onOpenShortcuts={() => {}} onOpenHelp={() => {}} onOpenAbout={() => {}} />
       </MainProcessLanguage>,
     );
     // No English flashes before the language is known.
@@ -66,7 +66,7 @@ describe("the interface language main settles on", () => {
 
     render(
       <MainProcessLanguage>
-        <AppHeader onOpenSettings={() => {}} onOpenRecords={() => {}} onOpenShortcuts={() => {}} onOpenAbout={() => {}} />
+        <AppHeader onOpenSettings={() => {}} onOpenRecords={() => {}} onOpenShortcuts={() => {}} onOpenHelp={() => {}} onOpenAbout={() => {}} />
       </MainProcessLanguage>,
     );
     await act(async () => answer({ language: "ko", locale: "ko" }));

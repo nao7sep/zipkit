@@ -65,6 +65,7 @@ import { ReceiverResultNotice } from "./components/ReceiverResultNotice";
 import { Report } from "./components/Report";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
+import { HelpDialog } from "./components/HelpDialog";
 import { Splitter } from "./components/Splitter";
 import { StateBadge } from "./components/StateBadge";
 import {
@@ -79,7 +80,7 @@ import {
   outputPreview,
 } from "./view";
 
-type DialogName = "settings" | "shortcuts" | "about";
+type DialogName = "settings" | "shortcuts" | "help" | "about";
 
 const GROW: CSSProperties = { flex: 1 };
 
@@ -541,6 +542,7 @@ export function App() {
           );
         }}
         onOpenShortcuts={() => setDialog("shortcuts")}
+        onOpenHelp={() => setDialog("help")}
         onOpenAbout={() => setDialog("about")}
       />
       {layoutSaveFailed && (
@@ -642,6 +644,7 @@ export function App() {
         />
       )}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+      {dialog === "help" && <HelpDialog onClose={() => setDialog(null)} />}
       {dialog === "about" && <AboutDialog onClose={() => setDialog(null)} />}
     </div>
   );

@@ -3,7 +3,7 @@
  * left and a hamburger menu on the right. The menu is Radix's DropdownMenu —
  * battle-tested roving focus, type-ahead, Escape, and outside-click per the
  * composite-control conventions — holding the app's utility surfaces (Settings,
- * Records, Shortcut keys, About). The hamburger is an inline SVG, not a font glyph.
+ * Records, Shortcut keys, Help, About). The hamburger is an inline SVG, not a font glyph.
  */
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -15,11 +15,13 @@ export function AppHeader({
   onOpenSettings,
   onOpenRecords,
   onOpenShortcuts,
+  onOpenHelp,
   onOpenAbout,
 }: {
   onOpenSettings: () => void;
   onOpenRecords: () => void;
   onOpenShortcuts: () => void;
+  onOpenHelp: () => void;
   onOpenAbout: () => void;
 }) {
   const { t } = useI18n();
@@ -42,6 +44,9 @@ export function AppHeader({
             </DropdownMenu.Item>
             <DropdownMenu.Item className="menu-item" onSelect={onOpenShortcuts}>
               {t("header.shortcuts")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className="menu-item" onSelect={onOpenHelp}>
+              {t("header.help")}
             </DropdownMenu.Item>
             <DropdownMenu.Item className="menu-item" onSelect={onOpenAbout}>
               {t("header.about")}

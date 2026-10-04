@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
@@ -290,7 +290,7 @@ describe("the Records menu item", () => {
     trigger.focus();
     fireEvent.keyDown(trigger, { key: "Enter" });
     const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
-    expect(items).toEqual(["Settings", "Records", "Shortcut keys", "About ZipKit"]);
+    expect(items).toEqual(["Settings", "Records", "Shortcut keys", "Help", "About ZipKit"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Records" }));
     expect(bridge.openRecordsWindow).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -310,5 +310,21 @@ describe("the Records menu item", () => {
 
     await chooseRecords();
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+});
+
+describe("the Help menu item", () => {
+  it("opens the Help dialog from the header menu, and Close closes it", async () => {
+    renderApp(api({ getQueue: vi.fn(async () => [job("a")]) }));
+    const trigger = await screen.findByRole("button", { name: "Menu" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Help" }));
+    const dialog = await screen.findByRole("dialog", { name: "Help" });
+    expect(dialog.textContent).toContain("Names it fixes");
+    expect(dialog.textContent).toContain("What a ZIP file does not carry");
+    // The footer's Close, not the title bar's close control.
+    fireEvent.click(within(dialog).getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Help" })).toBeNull());
   });
 });
