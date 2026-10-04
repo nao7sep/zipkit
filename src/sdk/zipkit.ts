@@ -39,10 +39,12 @@ import {
   openSessionLog,
   type SessionLog,
 } from "./log/session.js";
-import { extractArchive } from "./extract/extract.js";
+import { compareWithManifest } from "./compare/sources.js";
+import { extractArchive, readManifest } from "./extract/extract.js";
+import { readInternals } from "./internal/carrier.js";
 import { nodeFileSystem, Volume } from "./internal/volume.js";
 import { planArchive } from "./plan/plan.js";
-import { resolvePolicy } from "./policy.js";
+import { METADATA_DEFAULTS, resolvePolicy } from "./policy.js";
 import { scan } from "./scan/scan.js";
 import {
   validateChunkSize,
@@ -64,6 +66,7 @@ import type {
   ExtractData,
   ExtractSpec,
   LogStage,
+  SourceComparison,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.js";
@@ -197,6 +200,49 @@ export class ZipKit {
         throw err;
       }
     });
+  }
+
+  /**
+   * Re-scan `spec`'s inputs and compare them with the manifest embedded in
+   * `archive` (see {@link SourceComparison}), the check before deleting the
+   * originals an archive was made from. `spec` is the one the archive was
+   * created with, so the same entries are included and excluded. Writes
+   * nothing; emits the scan's events but not a plan's findings, since this
+   * plan is never written.
+   */
+  async compareSources(
+    spec: ArchiveSpec,
+    archive: string,
+    options: ZipKitCallOptions = {},
+  ): Promise<SourceComparison> {
+    const result = await this.#run(options, async (logger) => {
+      try {
+        const validated = validateSpec(spec);
+        const policy = resolvePolicy(this.#policy, validated.policy);
+        const volume = this.volume(options.signal);
+        const limit = pLimit(this.#concurrency);
+        const scanned = await scan(validated, policy, {
+          matcher: matcherFor(policy),
+          limit,
+          logger,
+          signal: options.signal,
+          volume,
+        });
+        const plan = planArchive(scanned, policy);
+        const name = policy.metadata !== false ? policy.metadata.name : METADATA_DEFAULTS.name;
+        const records = await readManifest(volume, archive, name);
+        const unlistedDirs = new Set(scanned.unlistedDirs);
+        const unlisted = scanned.entries
+          .filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath))
+          .map((e) => e.sourcePath);
+        return compareWithManifest(readInternals(plan)?.writeEntries ?? [], unlisted, records);
+      } catch (err) {
+        this.#reportError(logger, err);
+        throw err;
+      }
+    });
+    const { log: _log, ...comparison } = result;
+    return comparison;
   }
 
   /**

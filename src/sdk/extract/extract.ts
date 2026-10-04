@@ -114,11 +114,66 @@ async function ensureRealDirs(volume: Volume, dest: string, segments: string[]):
   return true;
 }
 
-interface ManifestRecord {
+/** One `entries` record of an embedded manifest, as untrusted JSON. */
+export interface ManifestRecord {
   archivePath?: unknown;
+  sourcePath?: unknown;
+  type?: unknown;
   size?: unknown;
   crc32?: unknown;
   sha256?: unknown;
+  mtime?: unknown;
+}
+
+/** Find and parse the embedded manifest `name` among an open archive's entries.
+ *  Absent is `read.manifest-missing`; unparseable is `read.manifest-invalid`. */
+async function loadManifest(
+  archive: VolumeFile,
+  entries: ReadEntry[],
+  name: string,
+): Promise<{ entry: ReadEntry; records: ManifestRecord[] }> {
+  const inside = entries.find((e) => e.archivePath === name);
+  if (!inside) {
+    throw new ReadError(
+      "read.manifest-missing",
+      `metadata validation requested but no manifest '${name}' is embedded in the archive`,
+    );
+  }
+  let doc: { entries?: unknown };
+  try {
+    doc = JSON.parse((await readEntryBuffer(archive, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
+  } catch (err) {
+    if (err instanceof StallError || err instanceof AbortError) throw err;
+    throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
+      cause: err,
+    });
+  }
+  const records = Array.isArray(doc?.entries) ? (doc.entries as ManifestRecord[]) : [];
+  return { entry: inside, records: records.filter((r) => typeof r === "object" && r !== null) };
+}
+
+/** Open an archive and read its embedded manifest's entry records. */
+export async function readManifest(volume: Volume, archivePath: string, name: string): Promise<ManifestRecord[]> {
+  let archive: VolumeFile;
+  try {
+    archive = await volume.open(archivePath, "r");
+  } catch (err) {
+    if (err instanceof ZipKitError) throw err;
+    throw new ReadError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+  }
+  try {
+    let fileSize: number;
+    try {
+      fileSize = Number((await archive.stat()).size);
+    } catch (err) {
+      if (err instanceof ZipKitError) throw err;
+      throw new ReadError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+    }
+    const parsed = await parseZip(archive, fileSize);
+    return (await loadManifest(archive, parsed.entries, name)).records;
+  } finally {
+    await archive.release();
+  }
 }
 
 /**
@@ -331,26 +386,10 @@ export async function extractArchive(
     const manifestMap = new Map<string, ManifestRecord>();
     if (spec.checkMetadata) {
       const name = spec.metadataName ?? METADATA_DEFAULTS.name;
-      const inside = parsed.entries.find((e) => e.archivePath === name);
-      if (!inside) {
-        throw new ReadError(
-          "read.manifest-missing",
-          `metadata validation requested but no manifest '${name}' is embedded in the archive`,
-        );
-      }
-      manifestEntryPath = inside.archivePath;
-      let doc: { entries?: unknown };
-      try {
-        doc = JSON.parse((await readEntryBuffer(archive, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
-      } catch (err) {
-        if (err instanceof StallError || err instanceof AbortError) throw err;
-        throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
-          cause: err,
-        });
-      }
+      const loaded = await loadManifest(archive, parsed.entries, name);
+      manifestEntryPath = loaded.entry.archivePath;
       manifest = { name };
-      const docEntries = Array.isArray(doc.entries) ? (doc.entries as ManifestRecord[]) : [];
-      for (const m of docEntries) {
+      for (const m of loaded.records) {
         if (typeof m.archivePath === "string") manifestMap.set(m.archivePath, m);
       }
     }

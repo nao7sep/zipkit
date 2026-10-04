@@ -27,6 +27,7 @@ export type {
   PlanSummary,
   PlannedEntry,
   Severity,
+  SourceComparison,
   Transformation,
   UtcTime,
   ZipKitCallOptions,

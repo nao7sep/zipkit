@@ -465,6 +465,25 @@ export interface ExtractData {
   findings: Finding[]; // SSOT
 }
 
+/**
+ * How an archive's inputs on disk compare with its manifest, from
+ * {@link import("./zipkit.js").ZipKit.compareSources}. Paths are the
+ * manifest's input-relative source paths. `matches` is the delete gate: true
+ * only when every included file and symlink is as archived and the fresh scan
+ * listed every folder.
+ */
+export interface SourceComparison {
+  matches: boolean;
+  /** Included now but not in the manifest. */
+  added: string[];
+  /** In the manifest but no longer included. */
+  missing: string[];
+  /** In both, with a different type, size or modification time. */
+  changed: string[];
+  /** Folders the fresh scan could not list, so their contents went unchecked. */
+  unlisted: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
