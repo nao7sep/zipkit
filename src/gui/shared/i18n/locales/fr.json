@@ -295,6 +295,7 @@
   "report.groupNotes": "Remarques ({count})",
   "report.groupRenamed": "Renommés pour la portabilité ({count})",
   "report.groupWarnings": "Avertissements ({count})",
+  "report.renamedFrom": "Renommé depuis {from}",
 
   "guidance.outputAmbiguous": "Ces entrées se trouvent dans des dossiers différents, ZipKit ne peut donc pas choisir seul un emplacement. Indiquez un nom de fichier (le dossier de sortie est par défaut celui de la première entrée) et elles seront archivées ensemble.",
   "guidance.inputMissing": "Une entrée n’existe plus sur le disque. Retirez-la de la liste ou restaurez-la, puis réessayez.",
@@ -326,7 +327,6 @@
   "finding.pre1980": "La date de modification est antérieure à 1980 et est ramenée au minimum DOS",
   "finding.post2107": "La date de modification est postérieure à 2107 et est ramenée au maximum DOS",
   "finding.outputExists": "L’archive de sortie existe déjà. Activez «\u00a0Remplacer un fichier existant\u00a0» pour la remplacer.",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "Préfixes de chemin absolu supprimés",
   "findingKind.pathTraversal": "Chemins hors de la racine de l’archive exclus",

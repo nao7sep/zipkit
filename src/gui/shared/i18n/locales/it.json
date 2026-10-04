@@ -295,6 +295,7 @@
   "report.groupNotes": "Note ({count})",
   "report.groupRenamed": "Rinominati per la portabilità ({count})",
   "report.groupWarnings": "Avvisi ({count})",
+  "report.renamedFrom": "Rinominato da {from}",
 
   "guidance.outputAmbiguous": "Questi input si trovano in cartelle diverse, quindi ZipKit non può scegliere da solo una posizione. Imposta un nome di file (la cartella di destinazione predefinita è quella del primo input) e verranno archiviati insieme.",
   "guidance.inputMissing": "Un input non esiste più sul disco. Rimuovilo dall’elenco o ripristinalo, poi riprova.",
@@ -326,7 +327,6 @@
   "finding.pre1980": "La data di modifica è anteriore al 1980 e viene portata al minimo DOS",
   "finding.post2107": "La data di modifica è successiva al 2107 e viene portata al massimo DOS",
   "finding.outputExists": "L’archivio di destinazione esiste già. Attiva «Sovrascrivi un file esistente» per sostituirlo.",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "Prefissi di percorso assoluto rimossi",
   "findingKind.pathTraversal": "Percorsi fuori dalla radice dell’archivio esclusi",

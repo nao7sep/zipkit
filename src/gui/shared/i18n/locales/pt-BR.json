@@ -295,6 +295,7 @@
   "report.groupNotes": "Observações ({count})",
   "report.groupRenamed": "Renomeados para portabilidade ({count})",
   "report.groupWarnings": "Avisos ({count})",
+  "report.renamedFrom": "Renomeado de {from}",
 
   "guidance.outputAmbiguous": "Estas entradas estão em pastas diferentes, então o ZipKit não consegue escolher um local sozinho. Defina um nome de arquivo (a pasta de saída padrão é a da primeira entrada) e elas serão compactadas juntas.",
   "guidance.inputMissing": "Uma entrada não existe mais no disco. Remova-a da lista ou restaure-a e tente novamente.",
@@ -326,7 +327,6 @@
   "finding.pre1980": "A data de modificação é anterior a 1980 e é ajustada para o mínimo do DOS",
   "finding.post2107": "A data de modificação é posterior a 2107 e é ajustada para o máximo do DOS",
   "finding.outputExists": "O arquivo compactado de saída já existe. Ative “Substituir um arquivo existente” para substituí-lo.",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "Prefixos de caminho absoluto removidos",
   "findingKind.pathTraversal": "Caminhos fora da raiz do arquivo compactado excluídos",

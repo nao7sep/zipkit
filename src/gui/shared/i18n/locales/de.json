@@ -295,6 +295,7 @@
   "report.groupNotes": "Hinweise ({count})",
   "report.groupRenamed": "Für Portabilität umbenannt ({count})",
   "report.groupWarnings": "Warnungen ({count})",
+  "report.renamedFrom": "Umbenannt von {from}",
 
   "guidance.outputAmbiguous": "Diese Eingaben liegen in verschiedenen Ordnern, daher kann ZipKit keinen Speicherort selbst wählen. Legen Sie einen Dateinamen fest (der Ausgabeordner ist standardmäßig der Ordner der ersten Eingabe), dann werden sie gemeinsam archiviert.",
   "guidance.inputMissing": "Eine Eingabe ist nicht mehr auf dem Datenträger vorhanden. Entfernen Sie sie aus der Liste oder stellen Sie sie wieder her, und versuchen Sie es dann erneut.",
@@ -326,7 +327,6 @@
   "finding.pre1980": "Der Änderungszeitpunkt liegt vor 1980 und wird auf das DOS-Minimum gesetzt",
   "finding.post2107": "Der Änderungszeitpunkt liegt nach 2107 und wird auf das DOS-Maximum gesetzt",
   "finding.outputExists": "Das Ausgabearchiv ist bereits vorhanden. Aktivieren Sie „Vorhandene Datei überschreiben“, um es zu ersetzen.",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "Absolute Pfadpräfixe entfernt",
   "findingKind.pathTraversal": "Pfade außerhalb des Archivstamms ausgeschlossen",

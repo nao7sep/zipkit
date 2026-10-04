@@ -29,7 +29,7 @@ import {
   progressMessage,
   progressRuns,
   progressHeading,
-  reportRowPath,
+  renameDisplay,
   reportSummary,
   severityColor,
   stateColor,
@@ -471,9 +471,33 @@ describe("planReport", () => {
       { kind: "renamed", rows: [{ path: "as_dir/file.txt", from: "as:dir/file.txt", changes: ["Invalid characters substituted"] }] },
     ]);
   });
-  it("shows a renamed row by its name on disk, then its name in the archive", () => {
-    expect(reportRowPath({ path: "b/CON_.txt", from: "b/CON.txt", changes: [] }, en)).toBe("b/CON.txt → b/CON_.txt");
-    expect(reportRowPath({ path: "a.txt", changes: [] }, en)).toBe("a.txt");
+  it("shows an NFD-only rename once: the decomposed Japanese name and its NFC form look the same", () => {
+    // が and パ written as base kana plus combining (semi-)voiced marks.
+    const nfd = "\u304b\u3099\u30cf\u309a.txt";
+    expect(renameDisplay(nfd, nfd.normalize("NFC"))).toEqual({ kind: "same" });
+  });
+  it("marks only the real substitution in a decomposed name that also had an invalid character", () => {
+    const nfd = "\u304b\u3099:\u30cf\u309a.txt";
+    const fixed = "\u304c_\u30d1.txt";
+    expect(renameDisplay(nfd, fixed)).toEqual({
+      kind: "changed",
+      parts: [
+        { text: "\u304c", change: "kept" },
+        { text: ":", change: "removed" },
+        { text: "_", change: "added" },
+        { text: "\u30d1.txt", change: "kept" },
+      ],
+    });
+  });
+  it("marks a plain substitution", () => {
+    expect(renameDisplay("b/CON.txt", "b/CON_.txt")).toEqual({
+      kind: "changed",
+      parts: [
+        { text: "b/CON", change: "kept" },
+        { text: "_", change: "added" },
+        { text: ".txt", change: "kept" },
+      ],
+    });
   });
   it("reads a name finding as repaired only when the SDK gave it a rename target", () => {
     const plan = planOf([entry({ archivePath: "CON", findings: [{ rule: "name.reserved", severity: "error", path: "CON", message: "reserved" }] })]);

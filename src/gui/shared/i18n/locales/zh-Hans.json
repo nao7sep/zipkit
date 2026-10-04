@@ -295,6 +295,7 @@
   "report.groupNotes": "提示（{count}）",
   "report.groupRenamed": "为可移植性重命名（{count}）",
   "report.groupWarnings": "警告（{count}）",
+  "report.renamedFrom": "原名称：{from}",
 
   "guidance.outputAmbiguous": "这些输入位于不同的文件夹中，因此 ZipKit 无法自行选择保存位置。设置一个文件名（输出文件夹默认为第一个输入所在的文件夹），它们就会被归档在一起。",
   "guidance.inputMissing": "某个输入已不在磁盘上。请将其从列表中移除或恢复它，然后重试。",
@@ -326,7 +327,6 @@
   "finding.pre1980": "修改时间早于 1980 年，将被调整为 DOS 允许的最早时间",
   "finding.post2107": "修改时间晚于 2107 年，将被调整为 DOS 允许的最晚时间",
   "finding.outputExists": "输出归档已存在。要替换它，请打开“覆盖已有文件”。",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "已移除的绝对路径前缀",
   "findingKind.pathTraversal": "已排除的归档根目录之外的路径",

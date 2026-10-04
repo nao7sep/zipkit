@@ -295,6 +295,7 @@
   "report.groupNotes": "참고({count})",
   "report.groupRenamed": "이식성을 위한 이름 변경({count})",
   "report.groupWarnings": "경고({count})",
+  "report.renamedFrom": "원래 이름: {from}",
 
   "guidance.outputAmbiguous": "입력이 서로 다른 폴더에 있어 ZipKit이 저장 위치를 스스로 정할 수 없습니다. 파일 이름을 설정하면(출력 폴더는 첫 번째 입력의 폴더가 기본값) 함께 아카이브됩니다.",
   "guidance.inputMissing": "입력이 더 이상 디스크에 없습니다. 목록에서 제거하거나 복원한 다음 다시 시도하십시오.",
@@ -326,7 +327,6 @@
   "finding.pre1980": "수정 시각이 1980년 이전이어서 DOS 최솟값으로 맞춥니다",
   "finding.post2107": "수정 시각이 2107년 이후여서 DOS 최댓값으로 맞춥니다",
   "finding.outputExists": "출력 아카이브가 이미 있습니다. 바꾸려면 “기존 파일 덮어쓰기”를 켜십시오.",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "제거된 절대 경로 접두사",
   "findingKind.pathTraversal": "제외된 아카이브 루트 밖 경로",

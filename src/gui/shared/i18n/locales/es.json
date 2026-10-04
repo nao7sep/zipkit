@@ -295,6 +295,7 @@
   "report.groupNotes": "Notas ({count})",
   "report.groupRenamed": "Renombrados por portabilidad ({count})",
   "report.groupWarnings": "Advertencias ({count})",
+  "report.renamedFrom": "Cambiado de nombre desde {from}",
 
   "guidance.outputAmbiguous": "Estas entradas están en carpetas distintas, así que ZipKit no puede elegir una ubicación por sí solo. Indica un nombre de archivo (la carpeta de salida es, de forma predeterminada, la de la primera entrada) y se comprimirán juntas.",
   "guidance.inputMissing": "Una entrada ya no existe en el disco. Quítala de la lista o restáurala, y vuelve a intentarlo.",
@@ -326,7 +327,6 @@
   "finding.pre1980": "La fecha de modificación es anterior a 1980 y se ajusta al mínimo de DOS",
   "finding.post2107": "La fecha de modificación es posterior a 2107 y se ajusta al máximo de DOS",
   "finding.outputExists": "El archivo comprimido de salida ya existe. Activa «Sobrescribir un archivo existente» para reemplazarlo.",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "Prefijos de ruta absoluta eliminados",
   "findingKind.pathTraversal": "Rutas fuera de la raíz del archivo comprimido excluidas",

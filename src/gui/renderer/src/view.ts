@@ -13,6 +13,7 @@
  * wrote it.
  */
 
+import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
 import { manifestRequiredButMissing, scanBlocksTrash } from "../../shared/queue";
 import type { ExtractData, Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
@@ -465,9 +466,31 @@ export function planReport(plan: PlanData, t: Translator): ReportGroup[] {
   return REPORT_GROUPS.filter((kind) => rows[kind].length > 0).map((kind) => ({ kind, rows: rows[kind] }));
 }
 
-/** A row's path line: the archive path, led by its name on disk when renamed. */
-export function reportRowPath(row: ReportRow, t: Translator): string {
-  return row.from === undefined ? row.path : t.t("finding.renamedTo", { text: row.from, to: row.path });
+/** One run of a renamed path as shown: kept as it was, removed from the name
+ *  on disk, or added in the archive. */
+export interface RenamePart {
+  text: string;
+  change: "kept" | "removed" | "added";
+}
+
+/**
+ * How a renamed row shows its path. A name whose only change is NFD to NFC
+ * looks the same before and after, so it is shown once (`same`) and its
+ * change list says what changed. Any other rename is one path with the
+ * removed and added characters marked, compared after NFC so a decomposed
+ * name shows only its real substitutions. Diffed by code point, so an emoji
+ * or a combined character is never split.
+ */
+export function renameDisplay(from: string, path: string): { kind: "same" } | { kind: "changed"; parts: RenamePart[] } {
+  const before = from.normalize("NFC");
+  if (before === path) return { kind: "same" };
+  return {
+    kind: "changed",
+    parts: diffChars(before, path).map((part) => ({
+      text: part.value,
+      change: part.added ? "added" : part.removed ? "removed" : "kept",
+    })),
+  };
 }
 
 /** The Progress labels for the name rules, a fixed and a found form each. */

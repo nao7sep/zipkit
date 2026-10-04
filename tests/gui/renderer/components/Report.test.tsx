@@ -120,3 +120,42 @@ describe("Report result announcements", () => {
     expect(live.textContent).not.toContain("archive unreadable");
   });
 });
+
+describe("Report renamed rows", () => {
+  const renamedPlan = (from: string, to: string): PlanData =>
+    ({
+      ...plan(),
+      entries: [
+        {
+          archivePath: to,
+          originalPath: from,
+          type: "file",
+          method: "deflate",
+          excluded: false,
+          findings: [{ rule: "name.invalid-char", severity: "info", path: from, message: "substituted", fix: { kind: "rename", to } }],
+        },
+      ],
+    }) as PlanData;
+
+  it("marks the change visually and gives a screen reader the path and its old name", () => {
+    render(<Report job={job()} plan={renamedPlan("a:b.txt", "a_b.txt")} verify={null} />);
+    const removed = document.querySelector("del")!;
+    const added = document.querySelector("ins")!;
+    expect(removed.textContent).toBe(":");
+    expect(added.textContent).toBe("_");
+    expect(removed.closest("[aria-hidden='true']")).not.toBeNull();
+    expect(screen.getByText("Renamed from a:b.txt")).toBeTruthy();
+    expect(screen.getByText("a_b.txt", { exact: false, selector: "span" })).toBeTruthy();
+  });
+
+  it("shows an NFD-only rename as the one path, with no marks", () => {
+    const nfd = "cafe\u0301.txt";
+    const nfc = nfd.normalize("NFC");
+    const p = renamedPlan(nfd, nfc);
+    p.entries[0]!.findings = [{ rule: "name.nfd", severity: "info", path: nfd, message: "normalized", fix: { kind: "rename", to: nfc } }];
+    render(<Report job={job()} plan={p} verify={null} />);
+    expect(document.querySelector("del")).toBeNull();
+    expect(screen.getByText(nfc)).toBeTruthy();
+    expect(screen.getByText("Name normalized from NFD to NFC")).toBeTruthy();
+  });
+});

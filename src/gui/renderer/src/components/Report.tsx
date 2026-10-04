@@ -18,12 +18,13 @@ import {
   planReport,
   reportGroupLevel,
   reportGroupTitle,
-  reportRowPath,
+  renameDisplay,
   reportSummary,
   severityColor,
   verifySummary,
   type ReportGroup,
   type ReportLine,
+  type ReportRow,
 } from "../view";
 
 export function Report({
@@ -194,7 +195,7 @@ function Group({ group }: { group: ReportGroup }) {
       <ul style={S.log}>
         {group.rows.map((row, i) => (
           <li key={i} style={{ ...S.fileRow, borderColor: color }}>
-            <span style={S.path}>{reportRowPath(row, t)}</span>
+            <RowPath row={row} />
             {row.changes.map((change, j) => (
               <span key={j} style={S.change}>{change}</span>
             ))}
@@ -202,6 +203,34 @@ function Group({ group }: { group: ReportGroup }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+/** A row's path: the archive path, with a rename's removed and added
+ *  characters marked. The marks are visual only; a screen reader hears the
+ *  path and the name it had on disk. */
+function RowPath({ row }: { row: ReportRow }) {
+  const t = useI18n();
+  const shown = row.from === undefined ? null : renameDisplay(row.from, row.path);
+  if (row.from === undefined || shown === null || shown.kind === "same") {
+    return <span style={S.path}>{row.path}</span>;
+  }
+  return (
+    <span style={S.path}>
+      <span style={S.srOnly}>{row.path} </span>
+      <span aria-hidden="true">
+        {shown.parts.map((part, i) =>
+          part.change === "removed" ? (
+            <del key={i} style={S.removed}>{part.text}</del>
+          ) : part.change === "added" ? (
+            <ins key={i} style={S.added}>{part.text}</ins>
+          ) : (
+            <span key={i}>{part.text}</span>
+          ),
+        )}
+      </span>
+      <span style={S.srOnly}>{t.t("report.renamedFrom", { from: row.from })}</span>
+    </span>
   );
 }
 
@@ -229,6 +258,14 @@ const S: Record<string, CSSProperties> = {
   },
   text: { flex: 1, minWidth: 0, fontSize: "0.85rem", wordBreak: "break-word" },
   path: { fontFamily: "var(--font-mono)", fontSize: "0.8rem", wordBreak: "break-all" },
+  // A removed character is struck through in the error colour; an added one
+  // sits on a tint of the success colour, in the text colour so it stays legible.
+  removed: { color: "var(--status-error)", textDecoration: "line-through" },
+  added: {
+    textDecoration: "none",
+    background: "color-mix(in srgb, var(--status-ok) 24%, transparent)",
+    borderRadius: 2,
+  },
   srOnly: {
     position: "absolute",
     width: 1,

@@ -295,6 +295,7 @@
   "report.groupNotes": "Notes ({count})",
   "report.groupRenamed": "Renamed for portability ({count})",
   "report.groupWarnings": "Warnings ({count})",
+  "report.renamedFrom": "Renamed from {from}",
 
   "guidance.outputAmbiguous": "These inputs are in different folders, so ZipKit can’t choose a location on its own. Set a file name (the output directory defaults to the first input’s folder) and they’ll be archived together.",
   "guidance.inputMissing": "An input no longer exists on disk. Remove it from the list or restore it, then try again.",
@@ -326,7 +327,6 @@
   "finding.pre1980": "Modification time predates 1980 and is clamped to the DOS minimum",
   "finding.post2107": "Modification time is after 2107 and is clamped to the DOS maximum",
   "finding.outputExists": "The output archive already exists. Turn on “Overwrite an existing file” to replace it.",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "Absolute path prefixes stripped",
   "findingKind.pathTraversal": "Paths outside the archive root excluded",

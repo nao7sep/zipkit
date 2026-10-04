@@ -295,6 +295,7 @@
   "report.groupNotes": "情報（{count}）",
   "report.groupRenamed": "移植性のための名前変更（{count}）",
   "report.groupWarnings": "警告（{count}）",
+  "report.renamedFrom": "元の名前: {from}",
 
   "guidance.outputAmbiguous": "入力が別々のフォルダにあるため、ZipKit は保存場所を自動で決められません。ファイル名を指定すると（出力先フォルダは最初の入力のフォルダになります）、まとめてアーカイブされます。",
   "guidance.inputMissing": "入力がディスク上に見つかりません。一覧から削除するか元に戻してから、もう一度お試しください。",
@@ -326,7 +327,6 @@
   "finding.pre1980": "変更日時が 1980 年より前のため、DOS の最小値に切り上げます",
   "finding.post2107": "変更日時が 2107 年より後のため、DOS の最大値に切り下げます",
   "finding.outputExists": "出力先のアーカイブがすでに存在します。置き換えるには「既存のファイルを上書き」をオンにしてください。",
-  "finding.renamedTo": "{text} → {to}",
 
   "findingKind.pathAbsolute": "取り除いた絶対パスの先頭部分",
   "findingKind.pathTraversal": "除外したアーカイブのルート外を指すパス",
