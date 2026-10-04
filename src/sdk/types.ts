@@ -165,6 +165,15 @@ export interface ZipKitOptions {
    */
   logDir?: string;
   /**
+   * Whether this instance writes its per-session log file. Defaults to `true`.
+   * Pass `false` when the caller keeps its own durable record of every event
+   * through each call's `onProgress` hook: the instance then writes no log file,
+   * and each result's `log` is `null`. The events themselves are unchanged —
+   * `session.start` still leads the first call's `onProgress` stream. Combining
+   * `false` with a `logDir` is a usage error.
+   */
+  sessionLog?: boolean;
+  /**
    * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
    * read/inflate/deflate/write streams. A runtime/performance concern, not a
    * policy: it changes only how the work is buffered, never the archive's bytes.
@@ -191,7 +200,8 @@ export interface ZipKitOptions {
  * `onProgress` is the progress hook: a per-call destination for the live event
  * stream, so each call decides where its progress goes. With no hook the SDK
  * writes nothing to stdout or stderr; the durable record still goes to the
- * instance's per-session log file (see {@link ZipKitOptions.logDir}). The same
+ * instance's per-session log file (see {@link ZipKitOptions.logDir}), unless the
+ * instance was built with `sessionLog: false`. The same
  * structured `LogEvent` stream feeds this hook and that session log — one
  * producer, many sinks.
  *
@@ -251,7 +261,7 @@ export type CreateData =
   | {
       mode: "plan"; // --dry-run: planned, nothing written
       output: string; // resolved output path (the intended target)
-      log: string; // session log this run was recorded to (provenance)
+      log: string | null; // session log this run was recorded to (provenance); null with `sessionLog: false`
       writable: boolean; // the gate
       summary: PlanSummary;
       findings: Finding[]; // SSOT
@@ -260,7 +270,7 @@ export type CreateData =
   | {
       mode: "write"; // actual create
       output: string;
-      log: string; // session log this run was recorded to (provenance)
+      log: string | null; // session log this run was recorded to (provenance); null with `sessionLog: false`
       writable: boolean;
       written: boolean; // archive fully streamed, fsync'd, renamed?
       bytes: number | null; // final on-disk size; null if not written
@@ -424,7 +434,7 @@ export interface ExtractEntryResult {
  */
 export interface ExtractData {
   archive: string; // identity
-  log: string; // session log this run was recorded to (provenance)
+  log: string | null; // session log this run was recorded to (provenance); null with `sessionLog: false`
   dest: string | null; // null on --dry-run
   dryRun: boolean;
   wrote: boolean; // state: whether any file was written

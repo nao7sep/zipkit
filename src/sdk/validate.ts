@@ -235,6 +235,22 @@ export function validateConcurrency(concurrency: number): number {
   return concurrency;
 }
 
+/**
+ * Validate the session-log switch: a boolean when given, and never `false`
+ * beside a `logDir`, which would name a directory for a log the caller turned
+ * off. Returns whether the instance writes its session log (`true` when unset).
+ */
+export function validateSessionLog(sessionLog: unknown, logDir: unknown): boolean {
+  if (sessionLog === undefined) return true;
+  if (typeof sessionLog !== "boolean") {
+    throw new PolicyError("options.invalid", `sessionLog must be a boolean (got ${String(sessionLog)})`);
+  }
+  if (!sessionLog && logDir !== undefined) {
+    throw new PolicyError("options.invalid", "logDir cannot be given when sessionLog is false");
+  }
+  return sessionLog;
+}
+
 /** Validate an instance-level policy, applying filter-rule defaults. */
 export function validatePolicy(policy: DeepPartial<ArchivePolicy>): DeepPartial<ArchivePolicy> {
   const result = partialPolicySchema.safeParse(policy);

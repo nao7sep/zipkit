@@ -11,8 +11,11 @@
  * on its first verb call, and every verb on the instance appends its events
  * there; each result's `log` field names the file. `logDir` defaults to
  * `ZIPKIT_LOG_DIR`, else `<ZIPKIT_DATA_DIR or ~/.zipkit>/logs`. Lines are appended synchronously, so
- * there is no descriptor to close and nothing to flush. The SDK writes nothing
- * to stdout or stderr — progress goes only to a per-call `onProgress` hook.
+ * there is no descriptor to close and nothing to flush. An instance built with
+ * `sessionLog: false` writes no file and its results' `log` is `null`; its
+ * events reach only each call's `onProgress`, for a caller that records them
+ * itself. The SDK writes nothing to stdout or stderr — progress goes only to a
+ * per-call `onProgress` hook.
  * A log-sink failure is deliberately silent so logging cannot break a verb.
  *
  * The session spans the instance's lifetime: a caller that builds one `ZipKit`
@@ -47,6 +50,7 @@ import {
   validateExtractSpec,
   validateIoTimeout,
   validatePolicy,
+  validateSessionLog,
   validateSpec,
 } from "./validate.js";
 import { writeArchive } from "./write/write.js";
@@ -107,8 +111,9 @@ export class ZipKit {
   readonly #concurrency: number;
   readonly #chunkSize: number;
   readonly #ioTimeoutMs: number;
-  /** This session's log path, stamped at construction (the session start). */
-  readonly #sessionPath: string;
+  /** This session's log path, stamped at construction (the session start);
+   *  `null` when the instance was built with `sessionLog: false`. */
+  readonly #sessionPath: string | null;
   /** The session log, opened lazily on the first verb call and reused so its
    *  directory is created once and its degrade state is shared across verbs. */
   #session: SessionLog | undefined;
@@ -125,8 +130,12 @@ export class ZipKit {
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
     this.#ioTimeoutMs =
       options.ioTimeoutMs !== undefined ? validateIoTimeout(options.ioTimeoutMs) : DEFAULT_IO_TIMEOUT_MS;
-    const logDir = options.logDir ?? process.env.ZIPKIT_LOG_DIR ?? defaultLogDir();
-    this.#sessionPath = path.join(logDir, `${defaultSessionTimestamp()}.log`);
+    if (validateSessionLog(options.sessionLog, options.logDir)) {
+      const logDir = options.logDir ?? process.env.ZIPKIT_LOG_DIR ?? defaultLogDir();
+      this.#sessionPath = path.join(logDir, `${defaultSessionTimestamp()}.log`);
+    } else {
+      this.#sessionPath = null;
+    }
   }
 
   /**
@@ -202,24 +211,26 @@ export class ZipKit {
 
   /** The instance's session log, opened lazily on first use so an instance that
    *  never runs a verb writes no file. */
-  #sessionLog(): SessionLog {
-    if (this.#session === undefined) this.#session = openSessionLog(this.#sessionPath);
+  #sessionLog(sessionPath: string): SessionLog {
+    if (this.#session === undefined) this.#session = openSessionLog(sessionPath);
     return this.#session;
   }
 
   /**
    * The one seam every verb runs through. Builds the run's logger from the two
-   * sinks a run has — the always-on session log and the optional per-call
-   * `onProgress` hook — runs the verb, then stamps the session-log path onto the
-   * result the boundary owns. The stamp is a mutation, not a spread: a
-   * {@link PlanData} carries non-enumerable writer instructions
-   * (`src/internal/carrier.ts`) that an object spread would silently drop.
+   * sinks a run has — the session log (unless `sessionLog: false`) and the
+   * optional per-call `onProgress` hook — runs the verb, then stamps the
+   * session-log path (or `null`) onto the result the boundary owns. The stamp is
+   * a mutation, not a spread: a {@link PlanData} carries non-enumerable writer
+   * instructions (`src/internal/carrier.ts`) that an object spread would
+   * silently drop.
    */
   async #run<U extends object>(
     options: ZipKitCallOptions,
     fn: (logger: Logger) => Promise<U>,
-  ): Promise<U & { log: string }> {
-    const sinks: LogSink[] = [this.#sessionLog().sink];
+  ): Promise<U & { log: string | null }> {
+    const sinks: LogSink[] = [];
+    if (this.#sessionPath !== null) sinks.push(this.#sessionLog(this.#sessionPath).sink);
     if (options.onProgress) sinks.push(options.onProgress);
     const logger = createLogger(sinks);
     // Startup line, once per session: the tool version and the effective runtime
@@ -236,7 +247,7 @@ export class ZipKit {
         chunkSize: this.#chunkSize,
       });
     }
-    const result = (await fn(logger)) as U & { log: string };
+    const result = (await fn(logger)) as U & { log: string | null };
     result.log = this.#sessionPath;
     return result;
   }

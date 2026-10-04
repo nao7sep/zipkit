@@ -1,15 +1,16 @@
 /**
- * End-to-end: one ZipKit instance keeps one always-on session log under its
- * `logDir`, named with the `-fff` stamp; events carry the `time`/`message`
- * envelope; `debug` is gated; `result.log` identifies the file; and the session
- * survives `close()` (a later verb reopens it).
+ * End-to-end: one ZipKit instance keeps one session log under its `logDir`,
+ * named with the `-fff` stamp; events carry the `time`/`message` envelope;
+ * `debug` is gated; `result.log` identifies the file; the `onProgress` stream
+ * carries exactly what the file holds; and `sessionLog: false` writes no file.
  */
 
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit } from "../../src/sdk/index.js";
+import { PolicyError, ZipKit } from "../../src/sdk/index.js";
+import type { LogEvent } from "../../src/sdk/index.js";
 
 let root: string;
 let logDir: string;
@@ -125,5 +126,61 @@ describe("SDK session log", () => {
     await new ZipKit({ logDir }).extract({ archive, dryRun: true });
 
     expect((await sessionLines()).map((l) => l.event)).toContain("entry.verified");
+  });
+
+  it("hands onProgress every line the session log holds, session.start included, for each verb", async () => {
+    const archive = await buildArchive();
+    const zip = new ZipKit({ logDir });
+    const seen: LogEvent[] = [];
+    const onProgress = (e: LogEvent): void => {
+      seen.push(e);
+    };
+    const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onProgress });
+    await zip.write(plan, { onProgress });
+    await zip.extract({ archive, dryRun: true, checkMetadata: true }, { onProgress });
+    await expect(zip.extract({ archive: path.join(root, "missing.zip"), dryRun: true }, { onProgress })).rejects.toThrow();
+
+    const lines = await sessionLines();
+    expect(seen.map((e) => e.event)).toContain("fault");
+    expect(seen[0]?.event).toBe("session.start");
+    expect(JSON.parse(JSON.stringify(seen))).toEqual(lines);
+  });
+});
+
+describe("SDK without a session log", () => {
+  it("writes no log file, returns a null log, and still streams session.start first", async () => {
+    const dir = path.join(root, "default-logs");
+    const previous = process.env.ZIPKIT_LOG_DIR;
+    process.env.ZIPKIT_LOG_DIR = dir;
+    try {
+      const zip = new ZipKit({ sessionLog: false });
+      const seen: LogEvent[] = [];
+      const onProgress = (e: LogEvent): void => {
+        seen.push(e);
+      };
+      const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onProgress });
+      const written = await zip.write(plan, { onProgress });
+      const extracted = await zip.extract({ archive: written.output, dryRun: true }, { onProgress });
+
+      expect([plan.log, written.log, extracted.log]).toEqual([null, null, null]);
+      await expect(readdir(dir)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(seen.filter((e) => e.event === "session.start")).toHaveLength(1);
+      expect(seen[0]?.event).toBe("session.start");
+      expect(seen.map((e) => e.event)).toEqual(expect.arrayContaining(["plan.done", "write.done", "extract.done"]));
+    } finally {
+      if (previous === undefined) delete process.env.ZIPKIT_LOG_DIR;
+      else process.env.ZIPKIT_LOG_DIR = previous;
+    }
+  });
+
+  it("keeps the session log on by default and with sessionLog: true", async () => {
+    const result = await new ZipKit({ logDir, sessionLog: true }).create({ inputs: [proj], output: path.join(root, "o.zip") });
+    expect(result.log).toMatch(/\d{8}-\d{6}-\d{3}-utc\.log$/);
+    expect((await sessionLines()).length).toBeGreaterThan(0);
+  });
+
+  it("rejects a non-boolean sessionLog and a logDir beside sessionLog: false", () => {
+    expect(() => new ZipKit({ sessionLog: "no" as never })).toThrow(PolicyError);
+    expect(() => new ZipKit({ sessionLog: false, logDir })).toThrow(PolicyError);
   });
 });
