@@ -28,10 +28,8 @@ export function OptionsPanel({
     onChange({ ...options, [key]: value });
 
   return (
-    // The container establishes the query context; the fieldset is the grid that
-    // responds to the *pane's* width (not the viewport), capping at 4 columns.
-    <div className="options-grid-container">
-      <fieldset disabled={disabled} className="options-grid" style={S.fieldset}>
+    // The fieldset is the grid; its columns follow the pane's width.
+    <fieldset disabled={disabled} className="options-grid" style={S.fieldset}>
       <Section title={t("options.cleaning")}>
         <Check checked={options.junk} onChange={(v) => set("junk", v)}>
           {t("options.junk")}
@@ -63,6 +61,7 @@ export function OptionsPanel({
         </Field>
         <Field label={t("options.symlinks")}>
           <select
+            style={S.select}
             value={options.symlinks}
             onChange={(e) => set("symlinks", e.target.value as GuiOptions["symlinks"])}
           >
@@ -73,6 +72,7 @@ export function OptionsPanel({
         </Field>
         <Field label={t("options.emptyDirs")}>
           <select
+            style={S.select}
             value={options.emptyDirs}
             onChange={(e) => set("emptyDirs", e.target.value as GuiOptions["emptyDirs"])}
           >
@@ -109,8 +109,7 @@ export function OptionsPanel({
           style={S.textarea}
         />
       </Section>
-      </fieldset>
-    </div>
+    </fieldset>
   );
 }
 
@@ -158,7 +157,7 @@ function Check({
 
 const S: Record<string, CSSProperties> = {
   // Just the <fieldset> reset; the responsive grid lives in `.options-grid`
-  // (index.css) so it can use container queries to cap the column count.
+  // (index.css).
   fieldset: { border: "none", margin: 0, padding: 0, minWidth: 0 },
   section: { display: "grid", gap: "0.4rem", minWidth: 0 },
   sectionWide: { display: "grid", gap: "0.4rem", minWidth: 0, gridColumn: "1 / -1" },
@@ -171,10 +170,12 @@ const S: Record<string, CSSProperties> = {
   },
   sectionBody: { display: "grid", gap: "0.4rem" },
   check: { display: "flex", gap: "0.5rem", alignItems: "baseline" },
-  field: { display: "flex", gap: "0.6rem", alignItems: "center" },
-  // No fixed width and no wrap, so "Compression level" / "Empty directories" stay
-  // on one line.
-  fieldLabel: { whiteSpace: "nowrap", color: "var(--text-2)" },
-  fieldControl: { display: "flex", gap: "0.5rem", alignItems: "center", flex: 1, minWidth: 0 },
+  // Label and control side by side while they fit; otherwise the control wraps
+  // below the label, and a label longer than the column wraps itself.
+  field: { display: "flex", flexWrap: "wrap", gap: "0.3rem 0.6rem", alignItems: "center", minWidth: 0 },
+  fieldLabel: { color: "var(--text-2)", minWidth: 0 },
+  fieldControl: { display: "flex", gap: "0.5rem", alignItems: "center", flex: "1 1 auto", minWidth: 0 },
+  // A select can then shrink below its longest option instead of overflowing.
+  select: { minWidth: 0, maxWidth: "100%" },
   textarea: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3rem" },
 };

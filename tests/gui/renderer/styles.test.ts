@@ -40,3 +40,12 @@ describe("button pressed states", () => {
     expect(compact).toMatch(/button:disabled\{opacity:0\.45/);
   });
 });
+
+// The options grid sizes its columns from the pane, never below one column's
+// worth of content, so a section is never squeezed until its rows overlap.
+describe("options grid", () => {
+  it("fits as many columns as the pane holds, each at least one section wide or the whole pane", () => {
+    expect(compact).toMatch(/\.options-grid\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,\d+(\.\d+)?rem\),1fr\)\)/);
+    expect(compact).not.toContain("@container");
+  });
+});

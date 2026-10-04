@@ -449,33 +449,17 @@ code {
   background: var(--surface-2);
 }
 
-/* OptionsPanel grid (Settings + the job Parameters section). Container queries so
- * the column count tracks the PANE width, not the viewport. Capped at 4: past the
- * 4-column point the columns just widen (1fr), never multiply into empty phantom
- * tracks. A `.section-wide` item (the Comment) always spans the full row. */
-.options-grid-container {
-  container-type: inline-size;
-}
+/* OptionsPanel grid (Settings + the job Parameters section). As many columns as
+ * fit the pane, each at least 20rem (the Archive section's widest row in German,
+ * label and select side by side) or the whole pane when it is narrower; auto-fit
+ * folds unused tracks, so the sections only widen and never leave phantom gaps.
+ * The Comment section spans the full row. Inside a column a field's label may
+ * wrap and its control drops below it, so nothing overlaps in any language. */
 .options-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
   gap: 1rem 1.5rem;
   align-items: start;
-}
-@container (min-width: 28rem) {
-  .options-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@container (min-width: 42rem) {
-  .options-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-@container (min-width: 56rem) {
-  .options-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
 }
 
 /* About opens with the app's name, its version tied to it. */
