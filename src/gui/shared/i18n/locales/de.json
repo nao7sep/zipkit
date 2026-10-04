@@ -78,6 +78,7 @@
   "job.insideSource": "Das Archiv liegt innerhalb der Quelle, daher wurden die Originale nicht angetastet.",
   "job.locationUnverified": "Der Speicherort des Archivs konnte nicht geprüft werden. Die Originale wurden behalten.",
   "job.verifyFailed": "Die Prüfung ist fehlgeschlagen. Die Originale wurden behalten.",
+  "job.verifyFailedAgain": "Die Prüfung ist erneut fehlgeschlagen. Die Originale wurden behalten. Legen Sie das Archiv in den Papierkorb und erstellen Sie es dann erneut.",
   "job.verifyErrored": "Das Archiv konnte nicht geprüft werden. Die Originale wurden behalten.",
   "job.originalsChanged": "Die Originale wurden nach dem Erstellen des Archivs geändert, daher wurden die Originale und das Archiv behalten. Um die Änderungen aufzunehmen, legen Sie das Archiv in den Papierkorb und erstellen Sie es erneut.",
   "job.recheckErrored": "Die Originale konnten nicht mit dem Archiv abgeglichen werden. Die Originale wurden behalten.",

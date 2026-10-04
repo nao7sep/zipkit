@@ -169,6 +169,32 @@ function refusalMessage(refusal: TrashRefusal, insideKey: MessageKey): Message {
   }
 }
 
+/** An input's own name: the first segment of every manifest source path it
+ *  contributed. */
+function inputName(input: string): string {
+  return input.split(/[\\/]/).filter((s) => s !== "").pop() ?? "";
+}
+
+/**
+ * A recheck of only the inputs still present, after a partial Trash moved the
+ * others: the manifest entries the moved inputs contributed are missing by
+ * design, so they are not a difference. A moved input that shares its name
+ * with one still present explains nothing, since their entries cannot be told
+ * apart.
+ */
+function explainMoved(comparison: SourceComparison, present: string[], moved: string[]): SourceComparison {
+  if (moved.length === 0) return comparison;
+  const presentNames = new Set(present.map(inputName));
+  const movedNames = new Set(moved.map(inputName).filter((name) => !presentNames.has(name)));
+  const missing = comparison.missing.filter((p) => !movedNames.has(p.split("/")[0] ?? ""));
+  const matches =
+    comparison.added.length === 0 &&
+    missing.length === 0 &&
+    comparison.changed.length === 0 &&
+    comparison.unlisted.length === 0;
+  return { ...comparison, missing, matches };
+}
+
 /** A failed step's job message: the step's own sentence, led by the path that
  *  stopped responding when the failure was a stalled volume. */
 function failureMessage(err: unknown, key: MessageKey): Message {
@@ -206,6 +232,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     inputs: string[],
     signal: AbortSignal,
     onProgress: (e: LogEvent) => void,
+    moved: string[] = [],
   ): Promise<TrashRefusal | null> {
     const id = rec.job.id;
     try {
@@ -227,7 +254,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return { reason: "verify-error", err };
     }
     try {
-      const comparison = await deps.recheck(output, inputs, rec.job.options, signal, onProgress);
+      const comparison = explainMoved(
+        await deps.recheck(output, inputs, rec.job.options, signal, onProgress),
+        inputs,
+        moved,
+      );
       if (!comparison.matches) {
         deps.log.error("trash blocked: originals changed since archiving", {
           jobId: id,
@@ -317,62 +348,105 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     }
   }
 
+  /** Re-plan fresh and write the archive. Resolves to the written output, or
+   *  null when the job stopped (its state already says why). */
+  async function writeStage(
+    rec: Rec,
+    signal: AbortSignal,
+    onProgress: (e: LogEvent) => void,
+  ): Promise<{ output: string; bytes: number | null } | null> {
+    const id = rec.job.id;
+    // Re-plan fresh: the world may have changed since this job was enqueued.
+    let plan: PlanData;
+    try {
+      plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onProgress);
+      rec.plan = plan;
+      set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
+    } catch (err) {
+      // The earlier plan no longer describes this job, so the report explains
+      // the failure rather than that stale plan.
+      rec.plan = null;
+      set(rec, { state: "needs-attention", writable: false, message: failureMessage(err, "job.prepareFailed"), errorCode: errCode(err) });
+      deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
+      return null;
+    }
+    if (!plan.writable) {
+      set(rec, { state: "needs-attention", message: message("job.noLongerWritable") });
+      deps.log.warn("job run skipped: no longer writable", { jobId: id, errors: plan.summary.errors });
+      return null;
+    }
+
+    let bytes: number | null;
+    rec.publishedOutput = null;
+    set(rec, { archiveWritten: false });
+    try {
+      bytes = await deps.write(plan, signal, onProgress);
+    } catch (err) {
+      set(rec, { state: "failed", message: writeFailureMessage(err) });
+      deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
+      return null;
+    }
+    rec.publishedOutput = plan.output;
+    set(rec, { archiveWritten: true });
+    return { output: plan.output, bytes };
+  }
+
   async function runJob(id: string): Promise<void> {
     const rec = recs.get(id);
     if (!rec) return;
+    // A Move-to-Trash run that failed after its archive was written resumes
+    // there: the archive stays, and the checks and Trash run again for the
+    // inputs still present (a partial Trash already moved the others).
+    const resumeFrom = rec.job.intent === "archive-and-trash" ? rec.publishedOutput : null;
     rec.aborter = new AbortController();
     const signal = rec.aborter.signal;
     const onProgress = progressFor(id);
     set(rec, { state: "running", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
-    deps.log.info("job run started", { jobId: id, intent: rec.job.intent });
+    deps.log.info(resumeFrom ? "job run resumed after its write" : "job run started", {
+      jobId: id,
+      intent: rec.job.intent,
+    });
     try {
-      // Re-plan fresh: the world may have changed since this job was enqueued.
-      let plan: PlanData;
-      try {
-        plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onProgress);
-        rec.plan = plan;
-        set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
-      } catch (err) {
-        // The earlier plan no longer describes this job, so the report explains
-        // the failure rather than that stale plan.
-        rec.plan = null;
-        set(rec, { state: "needs-attention", writable: false, message: failureMessage(err, "job.prepareFailed"), errorCode: errCode(err) });
-        deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
-        return;
-      }
-      if (!plan.writable) {
-        set(rec, { state: "needs-attention", message: message("job.noLongerWritable") });
-        deps.log.warn("job run skipped: no longer writable", { jobId: id, errors: plan.summary.errors });
-        return;
-      }
-
-      let bytes: number | null;
-      rec.publishedOutput = null;
-      try {
-        bytes = await deps.write(plan, signal, onProgress);
-      } catch (err) {
-        set(rec, { state: "failed", message: writeFailureMessage(err) });
-        deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
-        return;
-      }
-      rec.publishedOutput = plan.output;
-
-      if (rec.job.intent === "save") {
-        set(rec, { state: "done", message: message("job.saved", { count: bytes ?? 0 }) });
-        deps.log.info("job saved", { jobId: id, output: plan.output, bytes });
-        return;
+      let output: string;
+      let inputs = rec.job.inputs;
+      if (resumeFrom) {
+        output = resumeFrom;
+        let entries: InputEntry[];
+        try {
+          entries = await deps.classify(rec.job.inputs);
+        } catch (err) {
+          set(rec, { state: "failed", message: failureMessage(err, "job.prepareFailed") });
+          deps.log.error("job resume could not classify inputs", { jobId: id, error: errorInfo(err) });
+          return;
+        }
+        set(rec, { entries });
+        inputs = entries.filter((e) => e.kind !== "nonexistent").map((e) => e.path);
+      } else {
+        const written = await writeStage(rec, signal, onProgress);
+        if (!written) return;
+        output = written.output;
+        if (rec.job.intent === "save") {
+          set(rec, { state: "done", message: message("job.saved", { count: written.bytes ?? 0 }) });
+          deps.log.info("job saved", { jobId: id, output, bytes: written.bytes });
+          return;
+        }
       }
 
       // archive-and-trash: every check, then Trash — originals kept on any failure.
-      const refusal = await checkBeforeTrash(rec, plan.output, rec.job.inputs, signal, onProgress);
+      const moved = rec.job.inputs.filter((p) => !inputs.includes(p));
+      const refusal = await checkBeforeTrash(rec, output, inputs, signal, onProgress, moved);
       if (refusal) {
-        set(rec, { state: "failed", message: refusalMessage(refusal, "job.insideSource") });
+        const again = resumeFrom !== null && refusal.reason === "verify-failed";
+        set(rec, {
+          state: "failed",
+          message: again ? message("job.verifyFailedAgain") : refusalMessage(refusal, "job.insideSource"),
+        });
         return;
       }
       let trashResult: TrashResult;
       try {
-        trashResult = await deps.trash(rec.job.inputs, signal);
+        trashResult = await deps.trash(inputs, signal);
       } catch (err) {
         set(rec, { state: "failed", message: message("job.trashFailed") });
         deps.log.error("job Trash failed after verify", { jobId: id, error: errorInfo(err) });
@@ -387,8 +461,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         void classifyInputs(id);
         return;
       }
-      set(rec, { state: "done", message: message("job.archivedAndTrashed", { count: rec.job.inputs.length }) });
-      deps.log.info("job archived and trashed", { jobId: id, output: plan.output, trashed: rec.job.inputs.length });
+      set(rec, { state: "done", message: message("job.archivedAndTrashed", { count: inputs.length }) });
+      deps.log.info("job archived and trashed", { jobId: id, output, trashed: inputs.length });
     } finally {
       rec.aborter = null;
       emit();
@@ -488,8 +562,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // the record of the archive on disk). A late click or the pane's option
       // debounce can still arrive after the job finishes; accepting it would drop
       // the published output the Trash command needs and re-plan the result away.
-      if (!rec || !isEditable(rec.job.state)) return;
-      rec.publishedOutput = null;
+      if (!rec || !isEditable(rec.job)) return;
       let replan = false;
       if (patch.intent !== undefined) {
         set(rec, { intent: patch.intent });
@@ -613,6 +686,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           writable: undefined,
           message: undefined,
           actionResult: undefined,
+          archiveWritten: false,
         });
         rec.publishedOutput = null;
         emit();

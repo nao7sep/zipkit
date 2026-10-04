@@ -78,6 +78,7 @@
   "job.insideSource": "El archivo comprimido está dentro del origen, así que no se tocaron los originales.",
   "job.locationUnverified": "No se pudo verificar la ubicación del archivo comprimido. Se conservaron los originales.",
   "job.verifyFailed": "La verificación falló. Se conservaron los originales.",
+  "job.verifyFailedAgain": "La verificación volvió a fallar. Se conservaron los originales. Mueve el archivo comprimido a la papelera y vuelve a crearlo.",
   "job.verifyErrored": "No se pudo verificar el archivo comprimido. Se conservaron los originales.",
   "job.originalsChanged": "Los originales cambiaron después de crear el archivo comprimido, así que se conservaron los originales y el archivo comprimido. Para incluir los cambios, mueve el archivo comprimido a la papelera y vuelve a crearlo.",
   "job.recheckErrored": "No se pudieron comparar los originales con el archivo comprimido. Se conservaron los originales.",

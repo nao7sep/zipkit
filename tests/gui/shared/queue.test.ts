@@ -20,7 +20,13 @@ const ALL_STATES: JobState[] = [
 describe("isEditable", () => {
   it("locks a job that is committed to run or already finished", () => {
     // queued is locked (committed to run); cancelling it returns it to editable.
-    // failed stays editable — a fresh attempt is the whole point of the state.
-    expect(ALL_STATES.filter(isEditable)).toEqual(["planning", "needs-attention", "ready", "failed"]);
+    // failed stays editable — a fresh attempt is the whole point of the state —
+    // unless its archive was written (below).
+    expect(ALL_STATES.filter((state) => isEditable({ state }))).toEqual(["planning", "needs-attention", "ready", "failed"]);
+  });
+
+  it("locks a failed job whose archive was written, like a done one", () => {
+    expect(isEditable({ state: "failed", archiveWritten: true })).toBe(false);
+    expect(isEditable({ state: "failed", archiveWritten: false })).toBe(true);
   });
 });

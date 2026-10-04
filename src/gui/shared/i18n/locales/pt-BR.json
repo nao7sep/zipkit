@@ -78,6 +78,7 @@
   "job.insideSource": "O arquivo compactado está dentro da origem, então os originais não foram tocados.",
   "job.locationUnverified": "Não foi possível verificar o local do arquivo compactado. Os originais foram mantidos.",
   "job.verifyFailed": "A verificação falhou. Os originais foram mantidos.",
+  "job.verifyFailedAgain": "A verificação falhou novamente. Os originais foram mantidos. Mova o arquivo compactado para a Lixeira e crie-o novamente.",
   "job.verifyErrored": "Não foi possível verificar o arquivo compactado. Os originais foram mantidos.",
   "job.originalsChanged": "Os originais mudaram depois que o arquivo compactado foi criado, então os originais e o arquivo compactado foram mantidos. Para incluir as alterações, mova o arquivo compactado para a Lixeira e crie-o novamente.",
   "job.recheckErrored": "Não foi possível comparar os originais com o arquivo compactado. Os originais foram mantidos.",

@@ -78,6 +78,7 @@
   "job.insideSource": "The archive is inside the source, so the originals were left untouched.",
   "job.locationUnverified": "The archive location could not be verified. The originals were kept.",
   "job.verifyFailed": "Verification failed. The originals were kept.",
+  "job.verifyFailedAgain": "Verification failed again. The originals were kept. Move the archive to Trash, then create it again.",
   "job.verifyErrored": "The archive could not be verified. The originals were kept.",
   "job.originalsChanged": "The originals changed after the archive was made, so the originals and the archive were kept. To include the changes, move the archive to Trash and create it again.",
   "job.recheckErrored": "The originals could not be checked against the archive. The originals were kept.",

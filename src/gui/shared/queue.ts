@@ -48,12 +48,15 @@ export type JobState =
 /** A job's options/intent/inputs may be edited only before it runs and while not
  *  done. A `queued` job is committed to run (waiting its turn), so it is locked
  *  too — cancelling it returns it to an editable `ready`/`needs-attention` state.
- *  It lives here, beside the states, because the engine and the renderer must
- *  lock the same set: the controls the renderer disables are exactly the writes
- *  the engine refuses, and a second spelling of the rule is what let a finished
- *  job keep taking writes. */
-export function isEditable(state: JobState): boolean {
-  return state !== "running" && state !== "done" && state !== "queued";
+ *  A failed job whose archive was written is locked like a done one: that
+ *  archive is the record of its options, and Retry resumes from it; moving the
+ *  archive to Trash unlocks the job. It lives here, beside the states, because
+ *  the engine and the renderer must lock the same set: the controls the
+ *  renderer disables are exactly the writes the engine refuses, and a second
+ *  spelling of the rule is what let a finished job keep taking writes. */
+export function isEditable(job: Pick<Job, "state" | "archiveWritten">): boolean {
+  if (job.state === "failed") return job.archiveWritten !== true;
+  return job.state !== "running" && job.state !== "done" && job.state !== "queued";
 }
 
 /** A Move-to-Trash job verifies the archive against its manifest before it
@@ -88,6 +91,9 @@ export interface Job {
    *  current state, so the renderer can show stable, friendly guidance keyed on
    *  the code rather than parsing `message`. Absent when there is no fault. */
   errorCode?: string;
+  /** Whether this job's latest run wrote its archive (the file may still need
+   *  checking, but it is there to reveal or move to Trash). */
+  archiveWritten?: boolean;
   /** Set while a finished job's originals are being checked and moved to
    *  Trash on request: the job is busy, and only Cancel is offered. */
   trashing?: boolean;

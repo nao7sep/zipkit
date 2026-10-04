@@ -654,12 +654,15 @@ describe("jobCommands", () => {
   it("offers only retry on a failure with no output (write failed)", () => {
     expect(jobCommands(job({ state: "failed" }))).toEqual(["retry"]);
   });
-  it("offers reveal + remove-archive on a failure whose output exists", () => {
-    expect(jobCommands(job({ state: "failed", output: "/out/x.zip" }))).toEqual([
+  it("offers reveal + remove-archive on a failure whose archive was written", () => {
+    expect(jobCommands(job({ state: "failed", output: "/out/x.zip", archiveWritten: true }))).toEqual([
       "retry",
       "reveal",
       "remove-archive",
     ]);
+  });
+  it("offers only retry on a failed write, though the plan named an output", () => {
+    expect(jobCommands(job({ state: "failed", output: "/out/x.zip", archiveWritten: false }))).toEqual(["retry"]);
   });
   it("on done, offers remove-archive (and trash-originals last) only for the save intent", () => {
     // With originals still present (entries with a file), a save job offers both;

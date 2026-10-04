@@ -192,10 +192,11 @@ export function jobCommands(job: Job): JobCommand[] {
       return ["cancel"];
     case "failed":
       // If the archive was written but a later step failed (an archive-and-trash
-      // whose verify/Trash failed, so the .zip exists and the originals are kept),
-      // let the user inspect or clean up that file — not just retry. A plain write
-      // failure leaves no output, so it offers only "Try again".
-      if (job.output) return runnable ? ["retry", "reveal", "remove-archive"] : ["reveal", "remove-archive"];
+      // whose checks or Trash failed, so the .zip exists and the originals are
+      // kept), let the user inspect or clean up that file, or retry from it. A
+      // write failure leaves no archive, so it offers only "Try again" (the
+      // planned `output` names where it would have gone, not a file).
+      if (job.archiveWritten) return runnable ? ["retry", "reveal", "remove-archive"] : ["reveal", "remove-archive"];
       return runnable ? ["retry"] : [];
     case "done":
       // Moving the originals to Trash on request: busy until it ends or is cancelled.

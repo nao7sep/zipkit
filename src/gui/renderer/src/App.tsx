@@ -686,7 +686,7 @@ function JobView({
 
   // The one rule the engine also enforces: what this pane disables is exactly what
   // the engine refuses.
-  const editable = isEditable(job.state);
+  const editable = isEditable(job);
   // A job that stops being editable takes its options back. The 250 ms commit debounce
   // outlives the edit, so a change typed just before the job runs would land on a job
   // that no longer accepts it: drop the pending commit and show what the job holds,

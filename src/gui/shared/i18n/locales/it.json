@@ -78,6 +78,7 @@
   "job.insideSource": "L’archivio si trova all’interno dell’origine, quindi gli originali non sono stati toccati.",
   "job.locationUnverified": "Impossibile verificare la posizione dell’archivio. Gli originali sono stati conservati.",
   "job.verifyFailed": "La verifica non è riuscita. Gli originali sono stati conservati.",
+  "job.verifyFailedAgain": "La verifica non è riuscita di nuovo. Gli originali sono stati conservati. Sposta l’archivio nel Cestino, poi crealo di nuovo.",
   "job.verifyErrored": "Impossibile verificare l’archivio. Gli originali sono stati conservati.",
   "job.originalsChanged": "Gli originali sono cambiati dopo la creazione dell’archivio, quindi sono stati conservati sia gli originali sia l’archivio. Per includere le modifiche, sposta l’archivio nel Cestino e crealo di nuovo.",
   "job.recheckErrored": "Impossibile confrontare gli originali con l’archivio. Gli originali sono stati conservati.",

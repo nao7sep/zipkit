@@ -725,8 +725,82 @@ describe("queue engine", () => {
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(engine.snapshot()[0]?.archiveWritten).toBe(false);
     engine.removeArchive(id);
     await tick();
+    expect(calls.trash).toEqual([]);
+  });
+
+  it("Retry after a failed check resumes from the written archive, without writing again", async () => {
+    let verifyOk = false;
+    const { deps, calls } = makeDeps({ verify: async () => (calls.verify++, verifyOk) });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(engine.snapshot()[0]?.archiveWritten).toBe(true);
+    // The written archive is the record of the options now: no edits.
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1 } });
+    expect(engine.snapshot()[0]?.options.level).toBe(DEFAULT_OPTIONS.level);
+    verifyOk = true;
+    const plansBefore = calls.plan;
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    expect(calls.write).toBe(1);
+    expect(calls.plan).toBe(plansBefore);
+    expect(calls.verify).toBe(2);
+    expect(calls.recheck).toBe(1);
+    expect(calls.trash).toEqual([["/data"]]);
+  });
+
+  it("Retry after a partial Trash moves only the inputs still present, forgiving what moved", async () => {
+    let trashCall = 0;
+    let recheckedInputs: string[] = [];
+    const { deps, calls } = makeDeps({
+      trash: async (paths) => {
+        calls.trash.push(paths);
+        trashCall++;
+        return trashCall === 1
+          ? { moved: ["/x/a"], failed: [{ path: "/x/b", message: "busy" }], unconfirmed: [] }
+          : { moved: paths, failed: [], unconfirmed: [] };
+      },
+      classify: async (paths) => paths.map((path) => ({ path, kind: trashCall > 0 && path === "/x/a" ? "nonexistent" as const : "file" as const })),
+      recheck: async (_output, inputs) => {
+        recheckedInputs = inputs;
+        calls.recheck++;
+        // The moved input's entries are missing from disk, as they should be.
+        return { matches: inputs.length === 2, added: [], missing: inputs.length === 2 ? [] : ["a/f.txt"], changed: [], unlisted: [] };
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x/a", "/x/b"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    expect(recheckedInputs).toEqual(["/x/b"]);
+    expect(calls.trash).toEqual([["/x/a", "/x/b"], ["/x/b"]]);
+    expect(calls.write).toBe(1);
+  });
+
+  it("a verify that fails again after Retry says to move the archive to Trash and create it again", async () => {
+    const { deps, calls } = makeDeps({ verify: async () => false });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(say(engine.snapshot()[0]?.message)).toBe("Verification failed. The originals were kept.");
+    engine.run(id);
+    await vi.waitFor(() =>
+      expect(say(engine.snapshot()[0]?.message)).toBe(
+        "Verification failed again. The originals were kept. Move the archive to Trash, then create it again.",
+      ),
+    );
+    expect(engine.snapshot()[0]?.state).toBe("failed");
+    expect(calls.write).toBe(1);
     expect(calls.trash).toEqual([]);
   });
 

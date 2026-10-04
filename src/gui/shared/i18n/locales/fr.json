@@ -78,6 +78,7 @@
   "job.insideSource": "L’archive se trouve dans la source, les originaux n’ont donc pas été touchés.",
   "job.locationUnverified": "L’emplacement de l’archive n’a pas pu être vérifié. Les originaux ont été conservés.",
   "job.verifyFailed": "La vérification a échoué. Les originaux ont été conservés.",
+  "job.verifyFailedAgain": "La vérification a de nouveau échoué. Les originaux ont été conservés. Placez l’archive dans la corbeille, puis créez-la de nouveau.",
   "job.verifyErrored": "L’archive n’a pas pu être vérifiée. Les originaux ont été conservés.",
   "job.originalsChanged": "Les originaux ont été modifiés après la création de l’archive : les originaux et l’archive ont donc été conservés. Pour inclure les modifications, placez l’archive dans la corbeille et créez-la de nouveau.",
   "job.recheckErrored": "Les originaux n’ont pas pu être comparés à l’archive. Les originaux ont été conservés.",
