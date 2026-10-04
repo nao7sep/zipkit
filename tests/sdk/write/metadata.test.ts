@@ -88,13 +88,30 @@ describe("buildMetadata", () => {
     );
     const entry = metaEntries(doc)[0]!;
     expect(entry.type).toBe("symlink");
-    expect(doc.createdUtc).toBeDefined();
+    expect(doc.createdAtUtc).toBeDefined();
     expect(doc.timeZone).toBe("Asia/Tokyo");
     // Each time is recorded as lossless ns plus an ISO-8601 string, in UTC.
     expect(entry.mtime).toEqual({ ns: "1577836800000000000", iso: "2020-01-01T00:00:00.000Z" });
     for (const key of ["mtime", "atime", "ctime", "btime"]) {
       expect((entry[key] as { ns: string }).ns).toBe("1577836800000000000");
     }
+  });
+
+  it("opens with what the document is, the app, its version, repository, time and format", () => {
+    const doc = buildMetadata(plan, DEFAULT_POLICY, [], 0n, "UTC");
+    expect(Object.keys(doc).slice(0, 6)).toEqual([
+      "about",
+      "app",
+      "version",
+      "repository",
+      "createdAtUtc",
+      "formatVersion",
+    ]);
+    expect(doc.about).toMatch(/^ZipKit wrote this manifest/);
+    expect(doc.app).toBe("ZipKit");
+    expect(doc.repository).toBe("https://github.com/nao7sep/zipkit");
+    expect(doc.createdAtUtc).toEqual({ ns: "0", iso: "1970-01-01T00:00:00.000Z" });
+    expect(doc.formatVersion).toBe(1);
   });
 
   it("records btime as null when the platform reports no creation time", () => {

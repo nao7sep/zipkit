@@ -23,7 +23,7 @@ describe("DEFAULT_POLICY", () => {
     expect(DEFAULT_POLICY.compression.stored).toBe("builtin");
     expect(DEFAULT_POLICY.compression.store).toEqual([]);
     expect(DEFAULT_POLICY.compression.level).toBe(6);
-    expect(DEFAULT_POLICY.metadata).toEqual({ name: "_metadata.json", hash: true });
+    expect(DEFAULT_POLICY.metadata).toEqual({ name: "zipkit.json", hash: true });
   });
 
   it("defaults every name guardrail to fix (suspicious to warn)", () => {
@@ -109,12 +109,12 @@ describe("resolvePolicy", () => {
 
   it("fills metadata defaults — name and hash on — for a partial metadata object", () => {
     const resolved = resolvePolicy(undefined, { metadata: {} });
-    expect(resolved.metadata).toEqual({ name: "_metadata.json", hash: true });
+    expect(resolved.metadata).toEqual({ name: "zipkit.json", hash: true });
   });
 
   it("keeps an explicit hash:false opt-out", () => {
     const resolved = resolvePolicy(undefined, { metadata: { hash: false } });
-    expect(resolved.metadata).toEqual({ name: "_metadata.json", hash: false });
+    expect(resolved.metadata).toEqual({ name: "zipkit.json", hash: false });
   });
 
   it("keeps metadata disabled when set to false", () => {

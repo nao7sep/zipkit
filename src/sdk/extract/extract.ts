@@ -31,6 +31,7 @@ import { reportFindings } from "../log/findings.js";
 import type { Logger } from "../log/logger.js";
 import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobberPublish.js";
 import type { Volume, VolumeFile } from "../internal/volume.js";
+import { METADATA_DEFAULTS } from "../policy.js";
 import { finding } from "../registry.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
@@ -316,7 +317,7 @@ export async function extractArchive(
     let manifestEntryPath: string | undefined;
     const manifestMap = new Map<string, ManifestRecord>();
     if (spec.checkMetadata) {
-      const name = spec.metadataName ?? "_metadata.json";
+      const name = spec.metadataName ?? METADATA_DEFAULTS.name;
       const inside = parsed.entries.find((e) => e.archivePath === name);
       if (!inside) {
         throw new ReadError(

@@ -109,7 +109,7 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
 ];
 
 export const METADATA_DEFAULTS: MetadataPolicy = {
-  name: "_metadata.json",
+  name: "zipkit.json",
   // A manifest exists to establish content identity, so the SHA-256 is on by
   // default; omitting it is the deliberate choice. CRC-32 is always present.
   hash: true,

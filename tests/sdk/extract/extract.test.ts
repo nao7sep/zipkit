@@ -160,11 +160,11 @@ describe("heavy validation against a manifest", () => {
     const archive = await writeArchive([
       fileEntry("a.txt", "alpha"),
       fileEntry("b.txt", "beta"),
-      fileEntry("_metadata.json", JSON.stringify(manifest)),
+      fileEntry("zipkit.json", JSON.stringify(manifest)),
     ]);
 
     const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
-    expect(report.manifest?.name).toBe("_metadata.json");
+    expect(report.manifest?.name).toBe("zipkit.json");
     expect(report.entries.find((e) => e.archivePath === "a.txt")?.sha).toBe("ok");
     expect(report.missing).toEqual(["c.txt"]); // in manifest, not in archive
     expect(report.extra).toEqual(["b.txt"]); // in archive, not in manifest
@@ -186,10 +186,10 @@ describe("heavy validation against a manifest", () => {
       inputs: [path.join(dir, "f1.txt"), path.join(dir, "f2.txt")],
       output: archive,
       overwrite: true,
-      policy: { metadata: { name: "_metadata.json", hash: true } },
+      policy: { metadata: { name: "zipkit.json", hash: true } },
     });
     const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
-    expect(report.manifest?.name).toBe("_metadata.json");
+    expect(report.manifest?.name).toBe("zipkit.json");
     expect(report.reportOk).toBe(true);
     expect(report.missing).toEqual([]);
     expect(report.extra).toEqual([]);
@@ -358,15 +358,15 @@ describe("path safety and exclusion", () => {
   });
 
   it("does not write a literally-excluded entry", async () => {
-    const archive = await writeArchive([fileEntry("keep.txt", "k"), fileEntry("_metadata.json", "{}")]);
+    const archive = await writeArchive([fileEntry("keep.txt", "k"), fileEntry("zipkit.json", "{}")]);
     const dest = path.join(dir, "out");
     const report = await new ZipKit().extract({
       archive,
       dest,
-      exclude: [{ pattern: "_metadata.json", match: "literal", target: "both" }],
+      exclude: [{ pattern: "zipkit.json", match: "literal", target: "both" }],
     });
-    expect(report.entries.find((e) => e.archivePath === "_metadata.json")?.skipped).toBe("excluded");
-    await expect(stat(path.join(dest, "_metadata.json"))).rejects.toThrow();
+    expect(report.entries.find((e) => e.archivePath === "zipkit.json")?.skipped).toBe("excluded");
+    await expect(stat(path.join(dest, "zipkit.json"))).rejects.toThrow();
     expect((await readFile(path.join(dest, "keep.txt"))).toString()).toBe("k");
   });
 
@@ -601,7 +601,7 @@ describe("per-failure logging", () => {
     const archive = await writeArchive([
       fileEntry("a.txt", "alpha"),
       fileEntry("b.txt", "beta"),
-      fileEntry("_metadata.json", JSON.stringify(manifest)),
+      fileEntry("zipkit.json", JSON.stringify(manifest)),
     ]);
 
     const logDir = path.join(dir, "logs-meta");

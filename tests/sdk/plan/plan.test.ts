@@ -155,17 +155,17 @@ describe("collisions", () => {
 
   it("errors when a real entry collides with the reserved metadata name", () => {
     const p = plan([
-      scanEntry({ archivePath: "_metadata.json", absolutePath: "/abs/1" }),
+      scanEntry({ archivePath: "zipkit.json", absolutePath: "/abs/1" }),
       scanEntry({ archivePath: "keep.txt", absolutePath: "/abs/2" }),
     ]);
     expect(p.writable).toBe(false);
     const f = p.findings.find((x) => x.rule === "collision.post-fix");
     expect(f?.severity).toBe("error");
-    expect(f?.message).toContain("_metadata.json");
+    expect(f?.message).toContain("zipkit.json");
   });
 
   it("permits the metadata name when metadata is disabled (no reservation)", () => {
-    const p = plan([scanEntry({ archivePath: "_metadata.json", absolutePath: "/abs/1" })], {
+    const p = plan([scanEntry({ archivePath: "zipkit.json", absolutePath: "/abs/1" })], {
       metadata: false,
     });
     expect(p.writable).toBe(true);

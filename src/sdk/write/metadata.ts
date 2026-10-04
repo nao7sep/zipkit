@@ -5,9 +5,10 @@
  * input-relative disk-trace path. CRC-32 (already computed) detects corruption;
  * the optional SHA-256 establishes content identity; `size`/`compressedSize`
  * record how each entry compressed. The full record is always built and
- * returned from `create`; it is embedded as `_metadata.json` unless disabled.
+ * returned from `create`; it is embedded as `zipkit.json` unless disabled.
  *
- * The document carries a header (tool, version, creation time, the zone the DOS
+ * The document carries a header (what the document is, the app, its version and
+ * repository, creation time, the document's format version, the zone the DOS
  * fields used, resolved policy, plan summary, and aggregate byte totals), one
  * record per written entry, the list of excluded entries with their reason, and
  * all findings. Keys follow the entity-record role order: the header leads with
@@ -27,6 +28,14 @@ import type {
   UtcTime,
 } from "../types.js";
 import { VERSION } from "../version.js";
+
+const ABOUT =
+  "ZipKit wrote this manifest when it created the archive. It lists every entry with its " +
+  "original name, size, CRC-32 and times, the entries left out, and what ZipKit found and " +
+  "fixed. ZipKit's Verify reads it to confirm the archive is complete and unchanged.";
+const REPOSITORY = "https://github.com/nao7sep/zipkit";
+/** The manifest layout version; raise it when a reader must tell layouts apart. */
+const FORMAT_VERSION = 1;
 
 /** The `mode:"plan"` member of {@link CreateData} — the planning view the
  *  metadata document is built from (entries, summary, findings). The metadata
@@ -129,9 +138,12 @@ export function buildMetadata(
     });
 
   const document: Metadata = {
-    tool: "zipkit",
+    about: ABOUT,
+    app: "ZipKit",
     version: VERSION,
-    createdUtc: utcTime(createdNs),
+    repository: REPOSITORY,
+    createdAtUtc: utcTime(createdNs),
+    formatVersion: FORMAT_VERSION,
     // The IANA zone the archive's DOS local-time fields were rendered in, so the
     // lossy local field stays interpretable.
     timeZone,

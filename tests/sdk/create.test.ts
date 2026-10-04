@@ -45,7 +45,7 @@ describe("output resolution and round-trip", () => {
     const { entries } = readZip(await readFile(result.output));
     const names = entries.map((e) => e.name).sort();
     // Metadata is embedded by default, so it rides along with the flattened content.
-    expect(names).toEqual(["_metadata.json", "a.txt", "sub/b.bin"]);
+    expect(names).toEqual(["a.txt", "sub/b.bin", "zipkit.json"]);
     expect(entries.find((e) => e.name === "a.txt")?.content.toString()).toBe(
       "hello hello hello hello",
     );
@@ -85,15 +85,15 @@ describe("metadata", () => {
     await new ZipKit().create({
       inputs: [proj],
       output,
-      policy: { metadata: { name: "_metadata.json", hash: true } },
+      policy: { metadata: { name: "zipkit.json", hash: true } },
     });
 
     const { entries } = readZip(await readFile(output));
-    const meta = entries.find((e) => e.name === "_metadata.json");
+    const meta = entries.find((e) => e.name === "zipkit.json");
     expect(meta).toBeDefined();
 
     const doc = JSON.parse(meta!.content.toString("utf8"));
-    expect(doc.tool).toBe("zipkit");
+    expect(doc.app).toBe("ZipKit");
     expect(Array.isArray(doc.entries)).toBe(true);
     const fileEntry = doc.entries.find((e: { archivePath: string }) => e.archivePath === "a.txt");
     expect(fileEntry.crc32).toBeTypeOf("number");
@@ -134,10 +134,10 @@ describe("metadata", () => {
 
     // Embedded by default.
     const names = readZip(await readFile(result.output)).entries.map((e) => e.name);
-    expect(names).toContain("_metadata.json");
+    expect(names).toContain("zipkit.json");
 
     // The full structured record is returned regardless.
-    expect(result.metadata!.tool).toBe("zipkit");
+    expect(result.metadata!.app).toBe("ZipKit");
     expect(result.metadata!.timeZone).toBeTypeOf("string");
     expect(Array.isArray(result.metadata!.findings)).toBe(true);
     const a = result.metadata!.entries.find((e) => e.archivePath === "a.txt");
@@ -167,7 +167,7 @@ describe("metadata", () => {
 
     // No metadata entry in the archive.
     const names = readZip(await readFile(result.output)).entries.map((e) => e.name);
-    expect(names).not.toContain("_metadata.json");
+    expect(names).not.toContain("zipkit.json");
     expect(names.sort()).toEqual(["a.txt", "sub/b.bin"]);
 
     // The record is still returned (the run's state), with times but no SHA
@@ -184,11 +184,11 @@ describe("metadata", () => {
     await new ZipKit().create({
       inputs: [proj],
       output,
-      policy: { metadata: { name: "_metadata.json", hash: true } },
+      policy: { metadata: { name: "zipkit.json", hash: true } },
     });
 
     const { entries } = readZip(await readFile(output));
-    const doc = JSON.parse(entries.find((e) => e.name === "_metadata.json")!.content.toString("utf8"));
+    const doc = JSON.parse(entries.find((e) => e.name === "zipkit.json")!.content.toString("utf8"));
     const fileEntry = doc.entries.find((e: { archivePath: string }) => e.archivePath === "a.txt");
     const expected = createHash("sha256").update("hello hello hello hello").digest("hex");
     expect(fileEntry.sha256).toBe(expected);
@@ -211,7 +211,7 @@ describe("plan / inspect / write flow", () => {
     expect(existsSync(output)).toBe(true);
     const { entries } = readZip(await readFile(output));
     // The metadata document lists every written entry except the embedded
-    // _metadata.json itself, which rides as the archive's final entry.
+    // zipkit.json itself, which rides as the archive's final entry.
     expect((result.metadata?.entries.length ?? 0) + 1).toBe(entries.length);
   });
 });

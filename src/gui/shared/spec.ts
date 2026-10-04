@@ -18,7 +18,7 @@ export interface GuiOptions {
   level: number;
   symlinks: "ignore" | "preserve" | "follow";
   emptyDirs: "keep" | "prune";
-  /** Embed the `_metadata.json` manifest. */
+  /** Embed the `zipkit.json` manifest. */
   metadata: boolean;
   /** Record a per-file SHA-256 in the manifest. */
   hash: boolean;

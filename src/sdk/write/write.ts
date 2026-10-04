@@ -220,7 +220,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     throwIfAborted(signal);
 
     // The structured record is always built and returned — it is the run's full
-    // state. Embedding it as `_metadata.json` is the only part gated by policy.
+    // state. Embedding it as `zipkit.json` is the only part gated by policy.
     const metadataEntries: MetadataEntryInput[] = streamed.map((s) => {
       const input: MetadataEntryInput = {
         writeEntry: s.source,

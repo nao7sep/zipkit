@@ -103,7 +103,7 @@ describe("safe single-component fields", () => {
     },
   );
 
-  it.each(["a/b", "..", ".", "with/slash", "dir/_metadata.json"])(
+  it.each(["a/b", "..", ".", "with/slash", "dir/zipkit.json"])(
     "rejects an unsafe metadata.name %j",
     (name) => {
       expect(() => validatePolicy({ metadata: { name } } as never)).toThrow(PolicyError);
@@ -111,7 +111,7 @@ describe("safe single-component fields", () => {
   );
 
   it("accepts a safe metadata.name", () => {
-    expect(() => validatePolicy({ metadata: { name: "_metadata.json" } } as never)).not.toThrow();
+    expect(() => validatePolicy({ metadata: { name: "zipkit.json" } } as never)).not.toThrow();
   });
 });
 

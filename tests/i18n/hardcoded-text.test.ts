@@ -23,7 +23,7 @@ const READ_ATTRIBUTES = new Set([
 const LITERAL_TEXT = new Set([
   "ZipKit",
   // The manifest's file name, filled into its option label.
-  "_metadata.json",
+  "zipkit.json",
 ]);
 
 type Node = { type: string; loc?: { start: { line: number } }; [key: string]: unknown };

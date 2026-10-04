@@ -91,7 +91,7 @@ function jsonStringBytes(s: string): number {
 // width: per entry the four `{ns,iso}` time pairs, the size/compressedSize/crc32/
 // mode numbers, the type/method enums, and the sha256 (64 hex); per transform,
 // excluded entry, and finding the keys and small enums; and the header's fixed
-// scaffolding (tool/version/createdUtc, the resolved IANA timeZone, and the
+// scaffolding (about/app/version/repository/createdAtUtc/formatVersion, the resolved IANA timeZone, and the
 // summary/totals numbers) plus the policy's enum fields. Every *unbounded*
 // variable-length string (paths, transformations, messages, comment, the policy's
 // patterns/extensions/zone/name, the time-range paths) is summed separately at

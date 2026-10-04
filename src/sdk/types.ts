@@ -278,7 +278,7 @@ export type CreateData =
       summary: PlanSummary;
       findings: Finding[]; // SSOT (domain + operational)
       /**
-       * The embedded `_metadata.json` document = the post-write per-entry SSOT
+       * The embedded `zipkit.json` document = the post-write per-entry SSOT
        * (crc/sha/sizes/times). `null` only if a fault hit before it was built.
        */
       metadata: Metadata | null;
@@ -341,12 +341,18 @@ export interface ExtremeEntry {
 /**
  * The lossless structured record of an archive run: header, per-entry records,
  * dropped entries, and findings. Returned from every `create` and embedded as
- * `_metadata.json` unless disabled.
+ * `zipkit.json` unless disabled.
  */
 export interface Metadata {
-  tool: string; // identity
+  /** A plain-language sentence saying what the document is, for a recipient
+   *  who opens it without knowing ZipKit. */
+  about: string; // identity
+  app: string;
   version: string; // provenance
-  createdUtc: UtcTime;
+  repository: string;
+  createdAtUtc: UtcTime;
+  /** The document's layout version; raised when a reader must tell layouts apart. */
+  formatVersion: number;
   /** The IANA zone the DOS local-time fields were rendered in. */
   timeZone: string;
   /** The archive comment, present only when one was set. */

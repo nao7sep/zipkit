@@ -170,7 +170,7 @@ describe("readEntryData rejects unreadable entries", () => {
     await writeFile(file, Buffer.concat([local, data]));
     const fh = await openRead(file);
     const entry: ReadEntry = {
-      archivePath: "_metadata.json",
+      archivePath: "zipkit.json",
       type: "file",
       method: 0,
       crc32: 0,
