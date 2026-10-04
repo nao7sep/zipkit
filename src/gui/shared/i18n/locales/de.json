@@ -73,6 +73,7 @@
   "job.prepareFailed": "Dieser Auftrag konnte nicht vorbereitet werden. Prüfen Sie, ob seine Eingaben noch vorhanden sind, und versuchen Sie es dann erneut.",
   "job.noLongerWritable": "Das Archiv kann nicht mehr geschrieben werden. Das hat sich bei der erneuten Prüfung beim Ausführen gezeigt.",
   "job.writeFailed": "Das Archiv konnte nicht geschrieben werden. Prüfen Sie den Ausgabeort und den freien Speicherplatz, und versuchen Sie es dann erneut.",
+  "job.sourceChanged": "{path} wurde während der Archivierung geändert, daher wurde kein Archiv geschrieben. Erstellen Sie das Archiv erneut.",
   "job.saved": { "one": "Gespeichert ({count} Byte).", "other": "Gespeichert ({count} Byte)." },
   "job.insideSource": "Das Archiv liegt innerhalb der Quelle, daher wurden die Originale nicht angetastet.",
   "job.locationUnverified": "Der Speicherort des Archivs konnte nicht geprüft werden. Die Originale wurden behalten.",

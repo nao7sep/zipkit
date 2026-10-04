@@ -73,6 +73,7 @@
   "job.prepareFailed": "This job could not be prepared. Check that its inputs are still available, then try again.",
   "job.noLongerWritable": "The archive can no longer be written. This was found when the job was checked again at run time.",
   "job.writeFailed": "The archive could not be written. Check the output location and available storage, then try again.",
+  "job.sourceChanged": "{path} changed while it was being archived, so no archive was written. Create the archive again.",
   "job.saved": { "one": "Saved ({count} byte).", "other": "Saved ({count} bytes)." },
   "job.insideSource": "The archive is inside the source, so the originals were left untouched.",
   "job.locationUnverified": "The archive location could not be verified. The originals were kept.",

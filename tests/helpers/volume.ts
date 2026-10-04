@@ -74,3 +74,20 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
     },
   };
 }
+
+type PortHandle = Awaited<ReturnType<FileSystemPort["open"]>>;
+
+/**
+ * The real filesystem, except that the handle opened for `path` is passed
+ * through `wrap`, so a test can make that one file report another stat or
+ * return other bytes than the disk holds.
+ */
+export function fileSystemWith(path: string, wrap: (handle: PortHandle) => PortHandle): FileSystemPort {
+  return {
+    ...nodeFileSystem,
+    open: async (p, flags) => {
+      const handle = await nodeFileSystem.open(p, flags);
+      return p === path ? wrap(handle) : handle;
+    },
+  };
+}

@@ -14,6 +14,7 @@
  */
 
 import { createHash, type Hash } from "node:crypto";
+import type { BigIntStats } from "node:fs";
 import { StallError, throwIfAborted, toAbortError, WriteError, ZipKitError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
 import type { Volume } from "../internal/volume.js";
@@ -64,10 +65,30 @@ function toWriteEntryInput(source: WriteEntry): WriteEntryInput {
   };
 }
 
+/** Whether an open source file no longer matches what the scan recorded. Only
+ *  size and modification time count: ctime moves on a Finder tag or a
+ *  permission change, which leaves the content as scanned. */
+function changedSinceScan(source: WriteEntry, stats: BigIntStats): boolean {
+  return Number(stats.size) !== source.size || stats.mtimeNs !== source.mtimeNs;
+}
+
+function sourceChanged(source: WriteEntry): WriteError {
+  return new WriteError(
+    "write.source-changed",
+    `source changed while it was being archived: ${source.archivePath}`,
+    { path: source.archivePath },
+  );
+}
+
 /**
  * Stream one source file through its compressor into the writer, computing the
  * SHA-256 over the raw bytes when requested. Directories carry no data and are
  * handled by the caller via `addDir`.
+ *
+ * The entry's header and the manifest carry the scanned size and time, so the
+ * file must still be exactly what the scan saw: it is checked when opened,
+ * while reading (no byte past the scanned size), and once read. Any change
+ * fails the whole write, and the writer's abort removes its temp file.
  */
 async function streamFile(
   writer: ZipWriter,
@@ -83,6 +104,7 @@ async function streamFile(
     try {
       const file = await deps.volume.open(source.absolutePath, "r");
       try {
+        if (changedSinceScan(source, await file.stat())) throw sourceChanged(source);
         let position = 0;
         for (;;) {
           throwIfAborted(deps.signal);
@@ -90,9 +112,13 @@ async function streamFile(
           const bytesRead = await file.read(buf, 0, chunkSize, position);
           if (bytesRead === 0) break;
           position += bytesRead;
+          if (position > source.size) throw sourceChanged(source);
           const chunk = bytesRead === chunkSize ? buf : buf.subarray(0, bytesRead);
           if (hasher) hasher.update(chunk);
           await compressor.update(chunk);
+        }
+        if (position !== source.size || changedSinceScan(source, await file.stat())) {
+          throw sourceChanged(source);
         }
       } finally {
         await file.release();

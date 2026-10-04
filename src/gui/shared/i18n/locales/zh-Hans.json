@@ -73,6 +73,7 @@
   "job.prepareFailed": "无法准备此任务。请确认其输入项仍然存在，然后重试。",
   "job.noLongerWritable": "归档已无法写入。这是在运行时重新检查任务时发现的。",
   "job.writeFailed": "无法写入归档。请检查输出位置和可用存储空间，然后重试。",
+  "job.sourceChanged": "{path} 在归档过程中发生了变化，因此未写入归档。请重新创建归档。",
   "job.saved": { "other": "已保存（{count} 字节）。" },
   "job.insideSource": "归档位于源项目内部，因此原始项目未被改动。",
   "job.locationUnverified": "无法确认归档的位置。原始项目已保留。",

@@ -73,6 +73,7 @@
   "job.prepareFailed": "Impossibile preparare questa operazione. Controlla che i suoi elementi di input siano ancora disponibili, poi riprova.",
   "job.noLongerWritable": "L’archivio non può più essere scritto. È emerso al nuovo controllo dell’operazione al momento dell’esecuzione.",
   "job.writeFailed": "Impossibile scrivere l’archivio. Controlla la destinazione e lo spazio disponibile, poi riprova.",
+  "job.sourceChanged": "{path} è cambiato durante l’archiviazione, quindi non è stato scritto alcun archivio. Crea di nuovo l’archivio.",
   "job.saved": { "one": "Salvato ({count} byte).", "many": "Salvato ({count} di byte).", "other": "Salvato ({count} byte)." },
   "job.insideSource": "L’archivio si trova all’interno dell’origine, quindi gli originali non sono stati toccati.",
   "job.locationUnverified": "Impossibile verificare la posizione dell’archivio. Gli originali sono stati conservati.",

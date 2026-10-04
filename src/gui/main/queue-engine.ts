@@ -107,6 +107,22 @@ function stalledPath(err: unknown): string | undefined {
   return undefined;
 }
 
+/** The archive path of the source file a write found changed since the scan. */
+function changedSourcePath(err: unknown): string | undefined {
+  if (errCode(err) !== "write.source-changed") return undefined;
+  const path = (err as { path?: unknown }).path;
+  return typeof path === "string" ? path : undefined;
+}
+
+/** A failed write's job message: a source file that changed while it was read
+ *  is named, so the user knows the archive was refused rather than broken. */
+function writeFailureMessage(err: unknown): Message {
+  const changed = changedSourcePath(err);
+  return changed !== undefined
+    ? message("job.sourceChanged", { path: changed })
+    : failureMessage(err, "job.writeFailed");
+}
+
 /** A failed step's job message: the step's own sentence, led by the path that
  *  stopped responding when the failure was a stalled volume. */
 function failureMessage(err: unknown, key: MessageKey): Message {
@@ -238,7 +254,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       try {
         bytes = await deps.write(plan, signal, onProgress);
       } catch (err) {
-        set(rec, { state: "failed", message: failureMessage(err, "job.writeFailed") });
+        set(rec, { state: "failed", message: writeFailureMessage(err) });
         deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
         return;
       }

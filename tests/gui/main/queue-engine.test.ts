@@ -13,7 +13,7 @@ import { nullLog } from "../../../src/gui/main/log.js";
 import type { PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator, type Message } from "../../../src/gui/shared/i18n/translate.js";
-import { StallError } from "../../../src/sdk/errors.js";
+import { StallError, WriteError } from "../../../src/sdk/errors.js";
 
 const en = createTranslator("en");
 /** A job or action message as the English reader sees it. */
@@ -85,6 +85,22 @@ describe("queue engine", () => {
     expect(say(engine.snapshot()[0]?.message)).toBe(
       "The drive or network share holding /Volumes/NAS/out-x.tmp stopped responding. " +
         "The archive could not be written. Check the output location and available storage, then try again.",
+    );
+  });
+
+  it("names the source file that changed while the archive was written", async () => {
+    const { deps } = makeDeps({
+      write: async () => {
+        throw new WriteError("write.source-changed", "source changed", { path: "docs/notes.txt" });
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(say(engine.snapshot()[0]?.message)).toBe(
+      "docs/notes.txt changed while it was being archived, so no archive was written. Create the archive again.",
     );
   });
 

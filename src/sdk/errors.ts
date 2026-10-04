@@ -32,6 +32,13 @@ export class PolicyError extends ZipKitError {
 /** Writing the archive failed, or the plan was not writable. */
 export class WriteError extends ZipKitError {
   readonly errorType = "write" as const;
+  /** The archive path of the entry the failure concerns, when it concerns one. */
+  readonly path: string | undefined;
+
+  constructor(code: string, message: string, options?: { cause?: unknown; path?: string }) {
+    super(code, message, options);
+    this.path = options?.path;
+  }
 }
 
 /**
