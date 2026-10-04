@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { QUIT_WAIT_MS, stopFlushAndExit, type QuitSteps } from "../../../src/gui/main/quit.js";
+import { createQuitHandler, QUIT_WAIT_MS, stopFlushAndExit, type QuitSteps } from "../../../src/gui/main/quit.js";
 
 function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
   return {
@@ -100,5 +100,56 @@ describe("stopFlushAndExit", () => {
 
     expect(s.onFlushed).toHaveBeenCalledOnce();
     expect(s.exit).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("createQuitHandler", () => {
+  const quitEvent = () => ({ preventDefault: vi.fn() });
+
+  it("holds a second quit during a pending shutdown, which alone ends the process", async () => {
+    let finish!: () => void;
+    const exit = vi.fn();
+    const shutdown = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            exit(0);
+            resolve();
+          };
+        }),
+    );
+    const handle = createQuitHandler({ hasRunningJob: () => false, confirmQuit: vi.fn(), shutdown });
+
+    const first = quitEvent();
+    handle(first);
+    await Promise.resolve();
+    const second = quitEvent();
+    handle(second);
+
+    expect(first.preventDefault).toHaveBeenCalledOnce();
+    expect(second.preventDefault).toHaveBeenCalledOnce();
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(exit).not.toHaveBeenCalled();
+
+    finish();
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledOnce());
+  });
+
+  it("asks before cancelling a running job, and stays running when declined", async () => {
+    const shutdown = vi.fn(async () => {});
+    let answer = false;
+    const confirmQuit = vi.fn(async () => answer);
+    const handle = createQuitHandler({ hasRunningJob: () => true, confirmQuit, shutdown });
+
+    handle(quitEvent());
+    await vi.waitFor(() => expect(confirmQuit).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    expect(shutdown).not.toHaveBeenCalled();
+
+    answer = true;
+    const again = quitEvent();
+    handle(again);
+    expect(again.preventDefault).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
   });
 });

@@ -64,3 +64,41 @@ export async function stopFlushAndExit(steps: QuitSteps, waitMs = QUIT_WAIT_MS):
     steps.exit(0);
   }
 }
+
+export interface QuitRequestSteps {
+  /** Whether a job is still writing, verifying, or moving originals to Trash. */
+  hasRunningJob(): boolean;
+  /** Ask whether to cancel that job and quit; resolves `true` to quit. */
+  confirmQuit(): Promise<boolean>;
+  /** The quit sequence; it ends the process when it settles. */
+  shutdown(): Promise<void>;
+}
+
+/**
+ * The `before-quit` handler. Every quit is held, the repeat ones included:
+ * only the shutdown's own `app.exit()` ends the process, so a second Cmd+Q, or
+ * `window-all-closed` quitting while shutdown runs, waits for it instead of
+ * letting Electron end the process before the queue and the log are written.
+ * One decision runs at a time; declining the confirm leaves the app running
+ * and the next quit asks again.
+ */
+export function createQuitHandler(steps: QuitRequestSteps): (event: { preventDefault(): void }) => void {
+  let pending = false;
+  return (event) => {
+    event.preventDefault();
+    if (pending) return;
+    pending = true;
+    void (async () => {
+      try {
+        // A job still running has no bounded way to finish on its own schedule,
+        // so quitting must choose: cancel it (its writer removes its own temp
+        // file, within quit's bound) or let the user keep working.
+        if (steps.hasRunningJob() && !(await steps.confirmQuit())) return;
+        await steps.shutdown();
+      } finally {
+        pending = false;
+      }
+    })();
+  };
+}
+

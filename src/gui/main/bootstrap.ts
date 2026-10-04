@@ -28,7 +28,7 @@ import { loadLayout } from "./layout.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
-import { QUIT_WAIT_MS, stopFlushAndExit } from "./quit.js";
+import { createQuitHandler, QUIT_WAIT_MS, stopFlushAndExit } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
@@ -189,45 +189,22 @@ app.on("window-all-closed", () => {
   if (quitting) app.quit();
 });
 
-let queueFlushedForQuit = false;
-// Guards the async confirm/cancel decision below against a second `before-quit`
-// (e.g. a repeated Cmd+Q) firing while the first is still awaiting the user or
-// the running job's own abort.
-let quitDecisionPending = false;
-app.on("before-quit", (event) => {
-  if (queueFlushedForQuit) return;
-  event.preventDefault();
-  if (quitDecisionPending) return;
-  quitDecisionPending = true;
-  void (async () => {
-    try {
-      // A job still writing, verifying, or moving originals to Trash has no
-      // bounded way to finish on its own schedule, so quitting must choose:
-      // cancel it (its writer removes its own temp file, within quit's bound)
-      // or let the user keep working.
-      if (hasRunningJob()) {
-        const quitAnyway = await confirmQuitDuringWrite(getMainWindow());
-        if (!quitAnyway) return; // quit stays cancelled; the job keeps running
-      }
-      await stopFlushAndExit({
+app.on(
+  "before-quit",
+  createQuitHandler({
+    hasRunningJob,
+    confirmQuit: () => confirmQuitDuringWrite(getMainWindow()),
+    shutdown: () =>
+      stopFlushAndExit({
         stopJob: cancelRunningJobAndWait,
         flush: flushQueue,
         onJobStopTimeout: () =>
           log.warn("the cancelled job did not stop in time; quitting without it", { waitMs: QUIT_WAIT_MS }),
-        onFlushed: () => {
-          queueFlushedForQuit = true;
-          log.info("app quitting");
-        },
-        onFlushError: (err) => {
-          queueFlushedForQuit = true;
-          log.error("failed to flush the queue before quit", { error: errorInfo(err) });
-        },
+        onFlushed: () => log.info("app quitting"),
+        onFlushError: (err) => log.error("failed to flush the queue before quit", { error: errorInfo(err) }),
         closeBackups: () => closeBackupStore(),
         closeLog: () => log.close(),
         exit: (code) => app.exit(code),
-      });
-    } finally {
-      quitDecisionPending = false;
-    }
-  })();
-});
+      }),
+  }),
+);
