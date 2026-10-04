@@ -268,7 +268,10 @@ export function reportSummary(job: Job, plan: PlanData | null, t: Translator): R
     return { level: "info", text: t.t("report.archived", { count: s.included }) };
   }
   const notes: string[] = [];
-  if (s.renamed > 0) notes.push(t.t("report.renamedNote", { count: s.renamed }));
+  // Counted as the Report's Renamed rows, so a renamed folder counts once, as
+  // it is listed, not once per file inside it.
+  const renamed = planReport(plan, t).find((g) => g.kind === "renamed")?.rows.length ?? 0;
+  if (renamed > 0) notes.push(t.t("report.renamedNote", { count: renamed }));
   if (s.excluded > 0) notes.push(t.t("report.excludedNote", { count: s.excluded }));
   if (s.warnings > 0) notes.push(t.t("report.warningsNote", { count: s.warnings }));
   return {
@@ -416,10 +419,28 @@ function severityGroup(findings: readonly Finding[]): ReportGroupKind | null {
   return null;
 }
 
+function lastSegment(p: string): string {
+  return p.split("/").filter((s) => s !== "").pop() ?? "";
+}
+
+/** Whether an entry was renamed in its own right: its own name changed, or the
+ *  SDK reported a rename on it (a parent segment with no folder entry of its
+ *  own is reported on the entry). A name changed only because its folder was
+ *  renamed is the folder's change, shown once on the folder's row. */
+function renamedItself(entry: PlanData["entries"][number]): boolean {
+  if (entry.originalPath === entry.archivePath) return false;
+  return (
+    lastSegment(entry.originalPath) !== lastSegment(entry.archivePath) ||
+    entry.findings.some((f) => f.fix?.kind === "rename")
+  );
+}
+
 /** The Report's files: one row per file the plan changes or has a finding on,
  *  with every change it makes to that file, grouped by kind. Each entry's own
  *  findings are its changes; a finding no entry carries (the output already
- *  existing) is a row of its own. Pure and testable. */
+ *  existing) is a row of its own. An entry whose only change is a renamed
+ *  folder above it (every file of a renamed `.pages` bundle) gets no row. Pure
+ *  and testable. */
 export function planReport(plan: PlanData, t: Translator): ReportGroup[] {
   const rows: Record<ReportGroupKind, ReportRow[]> = { blocking: [], warnings: [], renamed: [], excluded: [], notes: [] };
   const findingId = (f: Finding): string => `${f.rule}\0${f.path}\0${f.message}`;
@@ -432,7 +453,7 @@ export function planReport(plan: PlanData, t: Translator): ReportGroup[] {
     if (entry.excluded && !findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
       changes.push(excludedText(entry.excludeReason, t));
     }
-    const renamed = entry.originalPath !== entry.archivePath;
+    const renamed = renamedItself(entry);
     if (changes.length === 0 && !renamed) continue;
     const kind = severityGroup(findings) ?? (entry.excluded ? "excluded" : renamed ? "renamed" : "notes");
     rows[kind].push(renamed ? { path: entry.archivePath, from: entry.originalPath, changes } : { path: entry.archivePath, changes });

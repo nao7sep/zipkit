@@ -253,13 +253,39 @@ describe("containingDir", () => {
 });
 
 describe("reportSummary", () => {
+  // `renamed` here is the number of entries renamed in their own right, each
+  // given the rename finding the SDK reports on it.
   const planOf = (over: Partial<PlanData["summary"]> & { writable: boolean }): PlanData => {
     const { writable, ...summary } = over;
+    const entries = Array.from({ length: summary.renamed ?? 0 }, (_, i) => ({
+      archivePath: `f${i}_.txt`,
+      originalPath: `f${i}:.txt`,
+      type: "file",
+      method: "deflate",
+      excluded: false,
+      findings: [{ rule: "name.invalid-char", severity: "info", path: `f${i}:.txt`, message: "invalid characters substituted", fix: { kind: "rename", to: `f${i}_.txt` } }],
+    }));
     return {
       writable,
+      entries,
+      findings: entries.flatMap((e) => e.findings),
       summary: { included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, ...summary },
     } as unknown as PlanData;
   };
+  it("counts a renamed folder once, as the Report lists it, not once per file inside it", () => {
+    const folder = { kind: "rename" as const, to: "Report.pages" };
+    const plan = {
+      writable: true,
+      summary: { included: 3, excluded: 0, renamed: 3, warnings: 0, errors: 0 },
+      entries: [
+        { archivePath: "Report.pages", originalPath: "Report.pages ", type: "dir", method: "store", excluded: false, findings: [{ rule: "name.trailing-dot-space", severity: "info", path: "Report.pages ", message: "trimmed", fix: folder }] },
+        { archivePath: "Report.pages/index.xml", originalPath: "Report.pages /index.xml", type: "file", method: "deflate", excluded: false, findings: [] },
+        { archivePath: "Report.pages/Data/a.png", originalPath: "Report.pages /Data/a.png", type: "file", method: "store", excluded: false, findings: [] },
+      ],
+      findings: [],
+    } as unknown as PlanData;
+    expect(reportSummary(job({ state: "ready" }), plan, en)?.text).toBe("3 items ready to archive (1 renamed for portability).");
+  });
   it("asks for review, not a fix, when Create stopped because the files changed", () => {
     expect(
       reportSummary(job({ state: "needs-attention", writable: true, message: message("job.planChanged") }), planOf({ writable: true }), en),
@@ -402,6 +428,47 @@ describe("planReport", () => {
       },
       { kind: "renamed", rows: [{ path: "b/CON_.txt", from: "b/CON.txt", changes: ["Reserved device name given a suffix"] }] },
       { kind: "excluded", rows: [{ path: "a/.DS_Store", changes: ["Excluded by the junk preset"] }] },
+    ]);
+  });
+  it("gives a renamed folder one row, and a file inside it a row only for its own change", () => {
+    const fix = (to: string) => ({ kind: "rename" as const, to });
+    const plan = planOf([
+      entry({
+        archivePath: "Docs",
+        originalPath: "Docs.",
+        type: "dir",
+        findings: [{ rule: "name.trailing-dot-space", severity: "info", path: "Docs.", message: "trimmed", fix: fix("Docs") }],
+      }),
+      entry({ archivePath: "Docs/plain.txt", originalPath: "Docs./plain.txt" }),
+      entry({ archivePath: "Docs/X.pages", originalPath: "Docs./X.pages", type: "dir" }),
+      entry({ archivePath: "Docs/X.pages/index.xml", originalPath: "Docs./X.pages/index.xml" }),
+      entry({ archivePath: "Docs/X.pages/Data/p.png", originalPath: "Docs./X.pages/Data/p.png" }),
+      entry({
+        archivePath: "Docs/a_b.txt",
+        originalPath: "Docs./a:b.txt",
+        findings: [{ rule: "name.invalid-char", severity: "info", path: "Docs./a:b.txt", message: "substituted", fix: fix("Docs/a_b.txt") }],
+      }),
+    ]);
+    expect(planReport(plan, en)).toEqual([
+      {
+        kind: "renamed",
+        rows: [
+          { path: "Docs", from: "Docs.", changes: ["Trailing dots or spaces trimmed"] },
+          { path: "Docs/a_b.txt", from: "Docs./a:b.txt", changes: ["Invalid characters substituted"] },
+        ],
+      },
+    ]);
+  });
+  it("keeps the row of an entry the SDK reported a parent rename on (no folder entry of its own)", () => {
+    const plan = planOf([
+      entry({
+        archivePath: "as_dir/file.txt",
+        originalPath: "as:dir/file.txt",
+        findings: [{ rule: "name.invalid-char", severity: "info", path: "as:dir/file.txt", message: "substituted", fix: { kind: "rename", to: "as_dir/file.txt" } }],
+      }),
+    ]);
+    expect(planReport(plan, en)).toEqual([
+      { kind: "renamed", rows: [{ path: "as_dir/file.txt", from: "as:dir/file.txt", changes: ["Invalid characters substituted"] }] },
     ]);
   });
   it("shows a renamed row by its name on disk, then its name in the archive", () => {
