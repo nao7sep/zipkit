@@ -1,10 +1,9 @@
 /**
  * The app's own log — the lifecycle-and-orchestration record the main process
- * keeps, per the logging and data-lifecycle conventions. It is distinct from
- * (and complementary to) the SDK instance's per-verb log file, which records
- * scan/plan/write/extract internals; each SDK result's `log` field names that
- * file. Here we record what the *app* does: startup/shutdown, IPC commands,
- * queue transitions, and failures.
+ * keeps, per the logging and data-lifecycle conventions: startup/shutdown, IPC
+ * commands, queue transitions, and failures. The SDK's scan/plan/write/extract
+ * events are recorded here too, under their job (`jobEvent`); the SDK instance
+ * writes no log file of its own.
  *
  * Each line is a row in `records.sqlite3`, beside each job's SDK progress
  * events, written by the records thread (./records-worker); `debug` is gated by

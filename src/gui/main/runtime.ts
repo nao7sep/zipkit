@@ -1,6 +1,6 @@
 /**
- * Shared main-process singletons: the one `ZipKit` instance (one app run = one
- * SDK logging session), the app's own log (lifecycle + orchestration),
+ * Shared main-process singletons: the one `ZipKit` instance, the app's records
+ * (lifecycle, orchestration, and every SDK event under its job),
  * the target window for pushed streams, and the error mapper. Both the plain IPC
  * handlers and the queue engine use these.
  */
@@ -11,10 +11,12 @@ import type { GuiError, Job, LogEvent } from "../shared/api.js";
 import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
 
-export const zip = new ZipKit();
+/** Every `zip.*` call passes an `onProgress` that records its events in
+ *  `records.sqlite3` (see {@link sendEvent}), so the SDK's own session log file
+ *  would only duplicate them; the results' `log` is therefore `null`. */
+export const zip = new ZipKit({ sessionLog: false });
 
-/** The app's records for this launch. The SDK keeps its own per-verb log file;
- *  the `zip.*` results' `log` field names it. */
+/** The app's records for this launch. */
 export const log = createAppLog();
 
 let win: BrowserWindow | null = null;
@@ -48,7 +50,8 @@ function liveWindow(): BrowserWindow | null {
 }
 
 /** Record one SDK progress event under its job, then send it to the window's
- *  Progress pane. The record is made whether or not a window is open. */
+ *  Progress pane. The record is made whether or not a window is open: these
+ *  records are the only durable copy of the SDK's events. */
 export function sendEvent(jobId: string, event: LogEvent): void {
   const recorded = log.jobEvent(jobId, event);
   liveWindow()?.webContents.send("zipkit:event", recorded);

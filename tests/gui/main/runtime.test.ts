@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
+  zipOptions: [] as unknown[],
   jobEvent: vi.fn((jobId: string, event: unknown) => ({ jobId, session: "s", seq: 1, event })),
 }));
 
@@ -14,7 +15,12 @@ vi.mock("../../../src/sdk/index.js", () => {
       super(`read did not respond within 30000 ms: ${path}`);
     }
   }
-  return { ZipKit: class {}, ZipKitError, StallError };
+  class ZipKit {
+    constructor(options: unknown) {
+      hoisted.zipOptions.push(options);
+    }
+  }
+  return { ZipKit, ZipKitError, StallError };
 });
 vi.mock("../../../src/gui/main/log.js", () => ({ createAppLog: () => ({ jobEvent: hoisted.jobEvent }) }));
 
@@ -70,6 +76,10 @@ describe("SDK events", () => {
   beforeEach(() => {
     setMainWindow(null);
     hoisted.jobEvent.mockClear();
+  });
+
+  it("builds the one SDK instance without a session log file of its own", () => {
+    expect(hoisted.zipOptions).toEqual([{ sessionLog: false }]);
   });
 
   it("records an event under its job when no window is open", () => {
