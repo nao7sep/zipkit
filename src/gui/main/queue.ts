@@ -71,6 +71,13 @@ const engine = createQueueEngine({
         { signal, onProgress },
       )
     ).reportOk,
+  // The archive is the output: naming it keeps the fresh scan from counting
+  // the archive itself when it sits beside the inputs.
+  recheck: (output, inputs, options, signal, onProgress) => {
+    const spec = buildSpec(inputs, options);
+    spec.output = output;
+    return zip.compareSources(spec, output, { signal, onProgress });
+  },
   classify: (paths) => classifyPaths(paths, zip.volume()),
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };

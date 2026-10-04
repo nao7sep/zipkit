@@ -79,6 +79,8 @@
   "job.locationUnverified": "アーカイブの場所を確認できませんでした。元の項目は残してあります。",
   "job.verifyFailed": "検証に失敗しました。元の項目は残してあります。",
   "job.verifyErrored": "アーカイブを検証できませんでした。元の項目は残してあります。",
+  "job.originalsChanged": "アーカイブの作成後に元の項目が変更されたため、元の項目とアーカイブは残してあります。変更を含めるには、アーカイブをゴミ箱に移動してから、もう一度作成してください。",
+  "job.recheckErrored": "元の項目をアーカイブと照合できませんでした。元の項目は残してあります。",
   "job.trashFailed": "アーカイブは保存して検証しましたが、元の項目をゴミ箱に移動できませんでした。元の項目は残してあります。",
   "job.savedVerifiedPartial": "アーカイブは保存して検証しました。{detail}",
   "job.archivedAndTrashed": { "other": "保存して検証しました。元の項目 {count} 個をゴミ箱に移動しました。" },
@@ -90,6 +92,7 @@
   "action.noArchive": "正常に書き込まれたアーカイブがありません。元の項目は残してあります。",
   "action.archiveInsideOriginal": "アーカイブが元の項目の中にあるため、元の項目は残してあります。",
   "action.originalsTrashFailed": "元の項目をゴミ箱に移動できませんでした。元の項目は残してあります。",
+  "action.originalsTrashCancelled": "元の項目のゴミ箱への移動をキャンセルしました。元の項目は残してあります。",
   "action.originalsTrashed": { "other": "元の項目 {count} 個をゴミ箱に移動しました。" },
 
   "load.loadingTitle": "ZipKit を読み込んでいます…",

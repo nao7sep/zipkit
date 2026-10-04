@@ -79,6 +79,8 @@
   "job.locationUnverified": "No se pudo verificar la ubicación del archivo comprimido. Se conservaron los originales.",
   "job.verifyFailed": "La verificación falló. Se conservaron los originales.",
   "job.verifyErrored": "No se pudo verificar el archivo comprimido. Se conservaron los originales.",
+  "job.originalsChanged": "Los originales cambiaron después de crear el archivo comprimido, así que se conservaron los originales y el archivo comprimido. Para incluir los cambios, mueve el archivo comprimido a la papelera y vuelve a crearlo.",
+  "job.recheckErrored": "No se pudieron comparar los originales con el archivo comprimido. Se conservaron los originales.",
   "job.trashFailed": "El archivo comprimido se guardó y se verificó, pero los originales no se pudieron mover a la papelera. Se conservaron los originales.",
   "job.savedVerifiedPartial": "El archivo comprimido se guardó y se verificó. {detail}",
   "job.archivedAndTrashed": { "one": "Guardado y verificado. Se movió {count} original a la papelera.", "many": "Guardado y verificado. Se movieron {count} de originales a la papelera.", "other": "Guardado y verificado. Se movieron {count} originales a la papelera." },
@@ -90,6 +92,7 @@
   "action.noArchive": "No hay ningún archivo comprimido escrito correctamente. Se conservaron los originales.",
   "action.archiveInsideOriginal": "El archivo comprimido está dentro de un original, así que se conservaron los originales.",
   "action.originalsTrashFailed": "No se pudieron mover los originales a la papelera. Se conservaron.",
+  "action.originalsTrashCancelled": "Se canceló el traslado de los originales a la papelera. Se conservaron los originales.",
   "action.originalsTrashed": { "one": "Se movió {count} original a la papelera.", "many": "Se movieron {count} de originales a la papelera.", "other": "Se movieron {count} originales a la papelera." },
 
   "load.loadingTitle": "Cargando ZipKit…",

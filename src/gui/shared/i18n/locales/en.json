@@ -79,6 +79,8 @@
   "job.locationUnverified": "The archive location could not be verified. The originals were kept.",
   "job.verifyFailed": "Verification failed. The originals were kept.",
   "job.verifyErrored": "The archive could not be verified. The originals were kept.",
+  "job.originalsChanged": "The originals changed after the archive was made, so the originals and the archive were kept. To include the changes, move the archive to Trash and create it again.",
+  "job.recheckErrored": "The originals could not be checked against the archive. The originals were kept.",
   "job.trashFailed": "The archive was saved and verified, but the originals could not be moved to Trash. The originals were kept.",
   "job.savedVerifiedPartial": "The archive was saved and verified. {detail}",
   "job.archivedAndTrashed": { "one": "Saved and verified. {count} original was moved to Trash.", "other": "Saved and verified. {count} originals were moved to Trash." },
@@ -90,6 +92,7 @@
   "action.noArchive": "No successfully written archive is available. The originals were kept.",
   "action.archiveInsideOriginal": "The archive is inside an original, so the originals were kept.",
   "action.originalsTrashFailed": "The originals could not be moved to Trash. They were kept.",
+  "action.originalsTrashCancelled": "Moving the originals to Trash was cancelled. The originals were kept.",
   "action.originalsTrashed": { "one": "{count} original was moved to Trash.", "other": "{count} originals were moved to Trash." },
 
   "load.loadingTitle": "Loading ZipKit…",

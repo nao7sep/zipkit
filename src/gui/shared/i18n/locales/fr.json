@@ -79,6 +79,8 @@
   "job.locationUnverified": "L’emplacement de l’archive n’a pas pu être vérifié. Les originaux ont été conservés.",
   "job.verifyFailed": "La vérification a échoué. Les originaux ont été conservés.",
   "job.verifyErrored": "L’archive n’a pas pu être vérifiée. Les originaux ont été conservés.",
+  "job.originalsChanged": "Les originaux ont été modifiés après la création de l’archive : les originaux et l’archive ont donc été conservés. Pour inclure les modifications, placez l’archive dans la corbeille et créez-la de nouveau.",
+  "job.recheckErrored": "Les originaux n’ont pas pu être comparés à l’archive. Les originaux ont été conservés.",
   "job.trashFailed": "L’archive a été enregistrée et vérifiée, mais les originaux n’ont pas pu être placés dans la corbeille. Les originaux ont été conservés.",
   "job.savedVerifiedPartial": "L’archive a été enregistrée et vérifiée. {detail}",
   "job.archivedAndTrashed": { "one": "Enregistrée et vérifiée. {count} original a été placé dans la corbeille.", "many": "Enregistrée et vérifiée. {count} d’originaux ont été placés dans la corbeille.", "other": "Enregistrée et vérifiée. {count} originaux ont été placés dans la corbeille." },
@@ -90,6 +92,7 @@
   "action.noArchive": "Aucune archive écrite avec succès n’est disponible. Les originaux ont été conservés.",
   "action.archiveInsideOriginal": "L’archive se trouve dans un original, les originaux ont donc été conservés.",
   "action.originalsTrashFailed": "Les originaux n’ont pas pu être placés dans la corbeille. Ils ont été conservés.",
+  "action.originalsTrashCancelled": "Le placement des originaux dans la corbeille a été annulé. Les originaux ont été conservés.",
   "action.originalsTrashed": { "one": "{count} original a été placé dans la corbeille.", "many": "{count} d’originaux ont été placés dans la corbeille.", "other": "{count} originaux ont été placés dans la corbeille." },
 
   "load.loadingTitle": "Chargement de ZipKit…",

@@ -79,6 +79,8 @@
   "job.locationUnverified": "Não foi possível verificar o local do arquivo compactado. Os originais foram mantidos.",
   "job.verifyFailed": "A verificação falhou. Os originais foram mantidos.",
   "job.verifyErrored": "Não foi possível verificar o arquivo compactado. Os originais foram mantidos.",
+  "job.originalsChanged": "Os originais mudaram depois que o arquivo compactado foi criado, então os originais e o arquivo compactado foram mantidos. Para incluir as alterações, mova o arquivo compactado para a Lixeira e crie-o novamente.",
+  "job.recheckErrored": "Não foi possível comparar os originais com o arquivo compactado. Os originais foram mantidos.",
   "job.trashFailed": "O arquivo compactado foi salvo e verificado, mas os originais não puderam ser movidos para a Lixeira. Os originais foram mantidos.",
   "job.savedVerifiedPartial": "O arquivo compactado foi salvo e verificado. {detail}",
   "job.archivedAndTrashed": { "one": "Salvo e verificado. {count} original foi movido para a Lixeira.", "many": "Salvo e verificado. {count} de originais foram movidos para a Lixeira.", "other": "Salvo e verificado. {count} originais foram movidos para a Lixeira." },
@@ -90,6 +92,7 @@
   "action.noArchive": "Nenhum arquivo compactado gravado com sucesso está disponível. Os originais foram mantidos.",
   "action.archiveInsideOriginal": "O arquivo compactado está dentro de um original, então os originais foram mantidos.",
   "action.originalsTrashFailed": "Não foi possível mover os originais para a Lixeira. Eles foram mantidos.",
+  "action.originalsTrashCancelled": "A movimentação dos originais para a Lixeira foi cancelada. Os originais foram mantidos.",
   "action.originalsTrashed": { "one": "{count} original foi movido para a Lixeira.", "many": "{count} de originais foram movidos para a Lixeira.", "other": "{count} originais foram movidos para a Lixeira." },
 
   "load.loadingTitle": "Carregando o ZipKit…",

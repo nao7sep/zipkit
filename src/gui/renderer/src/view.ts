@@ -152,11 +152,12 @@ export function isTerminal(state: Job["state"]): boolean {
   return state === "done" || state === "failed";
 }
 
-/** States a job can be cancelled out of: in-flight work (`planning`/`running`) or
- *  waiting its turn (`queued`). Cancelling re-plans the job back to an editable
- *  state. Drives the listbox Cancel affordance (button + Escape). */
-export function isCancelable(state: Job["state"]): boolean {
-  return state === "planning" || state === "queued" || state === "running";
+/** Jobs that can be cancelled: in-flight work (`planning`/`running`), waiting
+ *  its turn (`queued`), or a finished job moving its originals to Trash.
+ *  Cancelling a run re-plans the job back to an editable state. Drives the
+ *  listbox Cancel affordance (button + Escape). */
+export function isCancelable(job: Job): boolean {
+  return job.state === "planning" || job.state === "queued" || job.state === "running" || job.trashing === true;
 }
 
 /** A per-job lifecycle command for the right-pane command bar. */
@@ -197,12 +198,15 @@ export function jobCommands(job: Job): JobCommand[] {
       if (job.output) return runnable ? ["retry", "reveal", "remove-archive"] : ["reveal", "remove-archive"];
       return runnable ? ["retry"] : [];
     case "done":
+      // Moving the originals to Trash on request: busy until it ends or is cancelled.
+      if (job.trashing) return ["cancel"];
       if (job.intent !== "save") return ["verify", "reveal"];
       // A saved archive: verify/reveal it, remove the archive to edit and
-      // re-create, or (only while they still exist) trash the originals. The most
-      // destructive command (trash-originals) is ordered last so the command bar
-      // can seat it at the far-right end, away from the everyday buttons.
-      return originalsPresent(job)
+      // re-create, or (only while they still exist, and only when the archive
+      // carries the manifest the check before Trash needs) trash the originals.
+      // The most destructive command (trash-originals) is ordered last so the
+      // command bar can seat it at the far-right end, away from the everyday buttons.
+      return job.options.metadata && originalsPresent(job)
         ? ["verify", "reveal", "remove-archive", "trash-originals"]
         : ["verify", "reveal", "remove-archive"];
   }

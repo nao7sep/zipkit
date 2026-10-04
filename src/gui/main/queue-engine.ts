@@ -24,7 +24,7 @@ import {
   type JobIntent,
   type SavedJob,
 } from "../shared/queue.js";
-import type { LogEvent, PlanData } from "../shared/api.js";
+import type { LogEvent, PlanData, SourceComparison } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
@@ -40,6 +40,15 @@ export interface EngineDeps {
   write(plan: PlanData, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<number | null>;
   /** Verify a written archive (CRC + metadata); resolves to the SDK's reportOk. */
   verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<boolean>;
+  /** Re-scan the inputs under the job's options and compare them with the
+   *  archive's manifest: the last check before any of them goes to Trash. */
+  recheck(
+    output: string,
+    inputs: string[],
+    options: GuiOptions,
+    signal: AbortSignal,
+    onProgress: (e: LogEvent) => void,
+  ): Promise<SourceComparison>;
   /** Classify input paths on disk (dir/file/nonexistent) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
   /** Move each path independently to the OS Trash and report the exact outcome.
@@ -75,7 +84,8 @@ export interface QueueEngine {
   trashOriginals(id: string): void;
   getPlan(id: string): PlanData | null;
   restore(saved: SavedJob[]): void;
-  /** True while a job is actually writing/verifying/trashing (not merely queued). */
+  /** True while a job is actually writing/verifying/trashing (not merely queued),
+   *  including a finished job whose originals are being moved on request. */
   hasRunningJob(): boolean;
   /** For app quit: abort whatever job is running, stop draining any queued ones,
    *  and resolve only once the in-flight run has actually stopped, so quit can
@@ -130,6 +140,35 @@ function writeFailureMessage(err: unknown): Message {
     : failureMessage(err, "job.writeFailed");
 }
 
+/** Why the originals may not go to Trash, from {@link EngineDeps}' checks in
+ *  order: the archive's location, its verify, and the recheck of the inputs. */
+type TrashRefusal =
+  | { reason: "inside" }
+  | { reason: "location-error"; err: unknown }
+  | { reason: "verify-failed" }
+  | { reason: "verify-error"; err: unknown }
+  | { reason: "changed"; comparison: SourceComparison }
+  | { reason: "recheck-error"; err: unknown };
+
+/** The message for a refused Trash; only the location sentence differs between
+ *  a Move-to-Trash run and the command on a finished job. */
+function refusalMessage(refusal: TrashRefusal, insideKey: MessageKey): Message {
+  switch (refusal.reason) {
+    case "inside":
+      return message(insideKey);
+    case "location-error":
+      return failureMessage(refusal.err, "job.locationUnverified");
+    case "verify-failed":
+      return message("job.verifyFailed");
+    case "verify-error":
+      return failureMessage(refusal.err, "job.verifyErrored");
+    case "changed":
+      return message("job.originalsChanged");
+    case "recheck-error":
+      return failureMessage(refusal.err, "job.recheckErrored");
+  }
+}
+
 /** A failed step's job message: the step's own sentence, led by the path that
  *  stopped responding when the failure was a stalled volume. */
 function failureMessage(err: unknown, key: MessageKey): Message {
@@ -154,6 +193,58 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   function set(rec: Rec, patch: Partial<Job>): void {
     rec.job = { ...rec.job, ...patch };
   }
+  /** The commands on finished jobs that are still moving originals to Trash,
+   *  so quit can wait for them as it waits for a run. */
+  const actions = new Set<Promise<void>>();
+
+  /** Every check before the originals go to Trash, in order: the archive is
+   *  not inside them, it verifies against its manifest, and a fresh scan of
+   *  the inputs still matches that manifest. Null when all pass. */
+  async function checkBeforeTrash(
+    rec: Rec,
+    output: string,
+    inputs: string[],
+    signal: AbortSignal,
+    onProgress: (e: LogEvent) => void,
+  ): Promise<TrashRefusal | null> {
+    const id = rec.job.id;
+    try {
+      if (await deps.outputInsideInputs(output, inputs, signal)) {
+        deps.log.error("trash blocked: archive inside source", { jobId: id, output });
+        return { reason: "inside" };
+      }
+    } catch (err) {
+      deps.log.error("trash blocked: physical identity check failed", { jobId: id, error: errorInfo(err) });
+      return { reason: "location-error", err };
+    }
+    try {
+      if (!(await deps.verify(output, signal, onProgress))) {
+        deps.log.error("trash blocked: verification failed; originals kept", { jobId: id, output });
+        return { reason: "verify-failed" };
+      }
+    } catch (err) {
+      deps.log.error("trash blocked: verification errored; originals kept", { jobId: id, error: errorInfo(err) });
+      return { reason: "verify-error", err };
+    }
+    try {
+      const comparison = await deps.recheck(output, inputs, rec.job.options, signal, onProgress);
+      if (!comparison.matches) {
+        deps.log.error("trash blocked: originals changed since archiving", {
+          jobId: id,
+          added: comparison.added.length,
+          missing: comparison.missing.length,
+          changed: comparison.changed.length,
+          unlisted: comparison.unlisted.length,
+        });
+        return { reason: "changed", comparison };
+      }
+    } catch (err) {
+      deps.log.error("trash blocked: originals recheck errored", { jobId: id, error: errorInfo(err) });
+      return { reason: "recheck-error", err };
+    }
+    return null;
+  }
+
   /** A progress sink that tags every SDK event with the running job's id. */
   function progressFor(id: string): (e: LogEvent) => void {
     return (e) => deps.sendEvent(id, e);
@@ -273,27 +364,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         return;
       }
 
-      // archive-and-trash: guard, verify, then Trash — originals kept on any failure.
-      try {
-        if (await deps.outputInsideInputs(plan.output, rec.job.inputs, signal)) {
-          set(rec, { state: "failed", message: message("job.insideSource") });
-          deps.log.error("job trash blocked: archive inside source", { jobId: id, output: plan.output });
-          return;
-        }
-      } catch (err) {
-        set(rec, { state: "failed", message: failureMessage(err, "job.locationUnverified") });
-        deps.log.error("job trash blocked: physical identity check failed", { jobId: id, error: errorInfo(err) });
-        return;
-      }
-      try {
-        if (!(await deps.verify(plan.output, signal, onProgress))) {
-          set(rec, { state: "failed", message: message("job.verifyFailed") });
-          deps.log.error("job verification failed; originals kept", { jobId: id, output: plan.output });
-          return;
-        }
-      } catch (err) {
-        set(rec, { state: "failed", message: failureMessage(err, "job.verifyErrored") });
-        deps.log.error("job verification errored; originals kept", { jobId: id, error: errorInfo(err) });
+      // archive-and-trash: every check, then Trash — originals kept on any failure.
+      const refusal = await checkBeforeTrash(rec, plan.output, rec.job.inputs, signal, onProgress);
+      if (refusal) {
+        set(rec, { state: "failed", message: refusalMessage(refusal, "job.insideSource") });
         return;
       }
       let trashResult: TrashResult;
@@ -448,7 +522,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     remove(id) {
       const rec = recs.get(id);
-      if (!rec || rec.job.state === "running") return;
+      if (!rec || rec.job.state === "running" || rec.job.trashing) return;
       recs.delete(id);
       const i = order.indexOf(id);
       if (i >= 0) order.splice(i, 1);
@@ -499,7 +573,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // A done archive-and-trash is NOT removable — its originals are already gone.
       const removable =
         (rec.job.state === "done" && rec.job.intent === "save") || rec.job.state === "failed";
-      if (!removable) return;
+      if (!removable || rec.job.trashing) return;
       const output = rec.publishedOutput;
       deps.log.info("remove archive requested", { jobId: id, output });
       void (async () => {
@@ -547,61 +621,55 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     trashOriginals(id) {
       const rec = recs.get(id);
-      if (!rec || rec.job.state !== "done" || rec.job.intent !== "save") return;
+      // One in flight per job: the claim is taken here, before the first await.
+      if (!rec || rec.job.state !== "done" || rec.job.intent !== "save" || rec.job.trashing) return;
+      // Offered only when the archive carries the manifest its verify needs.
+      if (!rec.job.options.metadata) {
+        deps.log.warn("trash originals refused: the archive has no manifest", { jobId: id });
+        return;
+      }
       const inputs = rec.job.inputs;
+      const output = rec.publishedOutput;
+      const aborter = new AbortController();
+      rec.aborter = aborter;
+      set(rec, { trashing: true, actionResult: undefined });
+      emit();
       deps.log.info("trash originals requested", { jobId: id, count: inputs.length });
-      void (async () => {
+      const work = (async () => {
+        let result: NonNullable<Job["actionResult"]>;
         try {
-          if (!rec.publishedOutput) {
-            set(rec, {
-              actionResult: {
-                severity: "error",
-                message: message("action.noArchive"),
-              },
-            });
-            emit();
-            return;
-          }
-          if (await deps.outputInsideInputs(rec.publishedOutput, inputs)) {
-            set(rec, {
-              actionResult: {
-                severity: "error",
-                message: message("action.archiveInsideOriginal"),
-              },
-            });
-            emit();
-            return;
-          }
-          // Same standalone-action note as `removeArchive` above.
-          const result = await deps.trash(inputs, new AbortController().signal);
-          if (!trashConfirmed(result)) {
-            set(rec, {
-              actionResult: { severity: "error", message: describeOriginalsTrash(result) },
-            });
-            deps.log.error("trash originals not fully confirmed", { jobId: id, ...result });
-            emit();
-            void classifyInputs(id);
-            return;
+          if (!output) {
+            result = { severity: "error", message: message("action.noArchive") };
+          } else {
+            const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id));
+            if (aborter.signal.aborted) {
+              result = { severity: "warning", message: message("action.originalsTrashCancelled") };
+              deps.log.info("trash originals cancelled", { jobId: id });
+            } else if (refusal) {
+              result = { severity: "error", message: refusalMessage(refusal, "action.archiveInsideOriginal") };
+            } else {
+              const trashResult = await deps.trash(inputs, aborter.signal);
+              if (trashConfirmed(trashResult)) {
+                result = { severity: "info", message: message("action.originalsTrashed", { count: inputs.length }) };
+                deps.log.info("originals trashed", { jobId: id, count: inputs.length });
+              } else {
+                result = { severity: "error", message: describeOriginalsTrash(trashResult) };
+                deps.log.error("trash originals not fully confirmed", { jobId: id, ...trashResult });
+              }
+            }
           }
         } catch (err) {
-          set(rec, {
-            actionResult: {
-              severity: "error",
-              message: message("action.originalsTrashFailed"),
-            },
-          });
+          result = { severity: "error", message: message("action.originalsTrashFailed") };
           deps.log.error("trash originals failed", { jobId: id, error: errorInfo(err) });
-          emit();
-          return;
         }
-        set(rec, {
-          actionResult: { severity: "info", message: message("action.originalsTrashed", { count: inputs.length }) },
-        });
-        deps.log.info("originals trashed", { jobId: id, count: inputs.length });
+        if (rec.aborter === aborter) rec.aborter = null;
+        set(rec, { trashing: false, actionResult: result });
         emit();
-        // Re-classify so the now-missing originals read as such and the command hides.
+        // Re-classify so moved originals read as missing and the command hides.
         void classifyInputs(id);
       })();
+      actions.add(work);
+      void work.finally(() => actions.delete(work));
     },
     getPlan(id) {
       return recs.get(id)?.plan ?? null;
@@ -618,7 +686,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
     },
     hasRunningJob() {
-      for (const rec of recs.values()) if (rec.job.state === "running") return true;
+      for (const rec of recs.values()) if (rec.job.state === "running" || rec.job.trashing) return true;
       return false;
     },
     async shutdown() {
@@ -626,9 +694,9 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // running job leaves behind and goes no further.
       pending.length = 0;
       for (const rec of recs.values()) {
-        if (rec.job.state === "running") rec.aborter?.abort();
+        if (rec.job.state === "running" || rec.job.trashing) rec.aborter?.abort();
       }
-      if (currentRun) await currentRun.catch(() => {});
+      await Promise.allSettled([...(currentRun ? [currentRun] : []), ...actions]);
     },
   };
 }

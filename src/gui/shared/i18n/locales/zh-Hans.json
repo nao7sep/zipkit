@@ -79,6 +79,8 @@
   "job.locationUnverified": "无法确认归档的位置。原始项目已保留。",
   "job.verifyFailed": "校验失败。原始项目已保留。",
   "job.verifyErrored": "无法校验归档。原始项目已保留。",
+  "job.originalsChanged": "创建归档后原始项目发生了变化，因此原始项目和归档均已保留。要包含这些更改，请将归档移到废纸篓，然后重新创建。",
+  "job.recheckErrored": "无法将原始项目与归档进行核对。原始项目已保留。",
   "job.trashFailed": "归档已保存并通过校验，但原始项目无法移到废纸篓。原始项目已保留。",
   "job.savedVerifiedPartial": "归档已保存并通过校验。{detail}",
   "job.archivedAndTrashed": { "other": "已保存并通过校验。{count} 个原始项目已移到废纸篓。" },
@@ -90,6 +92,7 @@
   "action.noArchive": "没有成功写入的归档。原始项目已保留。",
   "action.archiveInsideOriginal": "归档位于某个原始项目内部，因此原始项目已保留。",
   "action.originalsTrashFailed": "无法将原始项目移到废纸篓。原始项目已保留。",
+  "action.originalsTrashCancelled": "已取消将原始项目移到废纸篓。原始项目已保留。",
   "action.originalsTrashed": { "other": "{count} 个原始项目已移到废纸篓。" },
 
   "load.loadingTitle": "正在载入 ZipKit…",

@@ -79,6 +79,8 @@
   "job.locationUnverified": "Der Speicherort des Archivs konnte nicht geprüft werden. Die Originale wurden behalten.",
   "job.verifyFailed": "Die Prüfung ist fehlgeschlagen. Die Originale wurden behalten.",
   "job.verifyErrored": "Das Archiv konnte nicht geprüft werden. Die Originale wurden behalten.",
+  "job.originalsChanged": "Die Originale wurden nach dem Erstellen des Archivs geändert, daher wurden die Originale und das Archiv behalten. Um die Änderungen aufzunehmen, legen Sie das Archiv in den Papierkorb und erstellen Sie es erneut.",
+  "job.recheckErrored": "Die Originale konnten nicht mit dem Archiv abgeglichen werden. Die Originale wurden behalten.",
   "job.trashFailed": "Das Archiv wurde gespeichert und geprüft, aber die Originale konnten nicht in den Papierkorb gelegt werden. Die Originale wurden behalten.",
   "job.savedVerifiedPartial": "Das Archiv wurde gespeichert und geprüft. {detail}",
   "job.archivedAndTrashed": { "one": "Gespeichert und geprüft. {count} Original wurde in den Papierkorb gelegt.", "other": "Gespeichert und geprüft. {count} Originale wurden in den Papierkorb gelegt." },
@@ -90,6 +92,7 @@
   "action.noArchive": "Es gibt kein erfolgreich geschriebenes Archiv. Die Originale wurden behalten.",
   "action.archiveInsideOriginal": "Das Archiv liegt innerhalb eines Originals, daher wurden die Originale behalten.",
   "action.originalsTrashFailed": "Die Originale konnten nicht in den Papierkorb gelegt werden. Sie wurden behalten.",
+  "action.originalsTrashCancelled": "Das Verschieben der Originale in den Papierkorb wurde abgebrochen. Die Originale wurden behalten.",
   "action.originalsTrashed": { "one": "{count} Original wurde in den Papierkorb gelegt.", "other": "{count} Originale wurden in den Papierkorb gelegt." },
 
   "load.loadingTitle": "ZipKit wird geladen …",

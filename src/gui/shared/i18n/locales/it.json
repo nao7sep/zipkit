@@ -79,6 +79,8 @@
   "job.locationUnverified": "Impossibile verificare la posizione dell’archivio. Gli originali sono stati conservati.",
   "job.verifyFailed": "La verifica non è riuscita. Gli originali sono stati conservati.",
   "job.verifyErrored": "Impossibile verificare l’archivio. Gli originali sono stati conservati.",
+  "job.originalsChanged": "Gli originali sono cambiati dopo la creazione dell’archivio, quindi sono stati conservati sia gli originali sia l’archivio. Per includere le modifiche, sposta l’archivio nel Cestino e crealo di nuovo.",
+  "job.recheckErrored": "Impossibile confrontare gli originali con l’archivio. Gli originali sono stati conservati.",
   "job.trashFailed": "L’archivio è stato salvato e verificato, ma non è stato possibile spostare gli originali nel Cestino. Gli originali sono stati conservati.",
   "job.savedVerifiedPartial": "L’archivio è stato salvato e verificato. {detail}",
   "job.archivedAndTrashed": { "one": "Salvato e verificato. {count} originale è stato spostato nel Cestino.", "many": "Salvato e verificato. {count} di originali sono stati spostati nel Cestino.", "other": "Salvato e verificato. {count} originali sono stati spostati nel Cestino." },
@@ -90,6 +92,7 @@
   "action.noArchive": "Non è disponibile alcun archivio scritto correttamente. Gli originali sono stati conservati.",
   "action.archiveInsideOriginal": "L’archivio si trova all’interno di un originale, quindi gli originali sono stati conservati.",
   "action.originalsTrashFailed": "Impossibile spostare gli originali nel Cestino. Sono stati conservati.",
+  "action.originalsTrashCancelled": "Lo spostamento degli originali nel Cestino è stato annullato. Gli originali sono stati conservati.",
   "action.originalsTrashed": { "one": "{count} originale è stato spostato nel Cestino.", "many": "{count} di originali sono stati spostati nel Cestino.", "other": "{count} originali sono stati spostati nel Cestino." },
 
   "load.loadingTitle": "Caricamento di ZipKit…",

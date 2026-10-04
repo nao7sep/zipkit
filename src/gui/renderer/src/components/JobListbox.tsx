@@ -178,7 +178,7 @@ export function JobListbox({
       return;
     }
     if (e.key === "Escape") {
-      if (active && isCancelable(active.state)) {
+      if (active && isCancelable(active)) {
         e.preventDefault();
         onCancel(active.id);
       }
@@ -248,7 +248,7 @@ export function JobListbox({
                   {metaText(job, t) && <span style={S.dim}>{metaText(job, t)}</span>}
                 </div>
               </div>
-              {isCancelable(job.state) && (
+              {isCancelable(job) && (
                 <button
                   className="icon"
                   tabIndex={-1}

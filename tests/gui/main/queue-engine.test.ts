@@ -35,7 +35,7 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
 }
 
 function makeDeps(overrides: Partial<EngineDeps> = {}) {
-  const calls = { plan: 0, write: 0, verify: 0, trash: [] as string[][], maxWriteInFlight: 0 };
+  const calls = { plan: 0, write: 0, verify: 0, recheck: 0, trash: [] as string[][], maxWriteInFlight: 0 };
   let writeInFlight = 0;
   let idN = 0;
   const deps: EngineDeps = {
@@ -54,6 +54,10 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
     verify: async () => {
       calls.verify++;
       return true;
+    },
+    recheck: async () => {
+      calls.recheck++;
+      return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
     },
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
@@ -837,6 +841,119 @@ describe("queue engine", () => {
     engine.trashOriginals(id);
     await vi.waitFor(() => expect(calls.trash).toEqual([["/a", "/b"]]));
     expect(engine.snapshot()[0]?.state).toBe("done"); // archive kept; job stays done
+  });
+
+  it("archive-and-trash: keeps the originals and the archive when they changed after archiving", async () => {
+    const { deps, calls } = makeDeps({
+      recheck: async () => ({ matches: false, added: ["data/new.txt"], missing: [], changed: [], unlisted: [] }),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(say(engine.snapshot()[0]?.message)).toBe(
+      "The originals changed after the archive was made, so the originals and the archive were kept. " +
+        "To include the changes, move the archive to Trash and create it again.",
+    );
+    expect(calls.verify).toBe(1);
+    expect(calls.trash).toEqual([]);
+  });
+
+  async function doneSave(deps: EngineDeps, options = DEFAULT_OPTIONS) {
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], options, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    return { engine, id };
+  }
+
+  it("trashOriginals verifies the archive and rechecks the originals before moving them", async () => {
+    const order: string[] = [];
+    const { deps, calls } = makeDeps({
+      verify: async () => (order.push("verify"), true),
+      recheck: async (output, inputs) => {
+        order.push(`recheck ${output} ${inputs.join(",")}`);
+        return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+      },
+    });
+    const { engine, id } = await doneSave(deps);
+    engine.trashOriginals(id);
+    await vi.waitFor(() => expect(calls.trash).toEqual([["/data"]]));
+    expect(order).toEqual(["verify", "recheck /tmp/out.zip /data"]);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.actionResult?.severity).toBe("info"));
+  });
+
+  it("trashOriginals refuses when the archive no longer verifies, or the originals changed", async () => {
+    let verifyOk = false;
+    let matches = true;
+    const { deps, calls } = makeDeps({
+      verify: async () => verifyOk,
+      recheck: async () => ({ matches, added: [], missing: [], changed: matches ? [] : ["data/a"], unlisted: [] }),
+    });
+    const { engine, id } = await doneSave(deps);
+    engine.trashOriginals(id);
+    await vi.waitFor(() => expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("Verification failed. The originals were kept."));
+    verifyOk = true;
+    matches = false;
+    engine.trashOriginals(id);
+    await vi.waitFor(() => expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("The originals changed after the archive was made"));
+    expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
+    expect(calls.trash).toEqual([]);
+  });
+
+  it("trashOriginals is refused for an archive without the manifest", async () => {
+    const { deps, calls } = makeDeps();
+    const { engine, id } = await doneSave(deps, { ...DEFAULT_OPTIONS, metadata: false });
+    engine.trashOriginals(id);
+    await tick();
+    expect(calls.verify).toBe(0);
+    expect(calls.trash).toEqual([]);
+    expect(engine.snapshot()[0]?.trashing).toBeUndefined();
+  });
+
+  it("trashOriginals is busy while it runs, takes one claim, and cancels for real", async () => {
+    let release: (() => void) | null = null;
+    const { deps, calls } = makeDeps({
+      verify: (_output, signal) =>
+        new Promise<boolean>((resolve, reject) => {
+          release = () => resolve(true);
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    });
+    const { engine, id } = await doneSave(deps);
+    engine.trashOriginals(id);
+    engine.trashOriginals(id); // a second click while the first is in flight
+    expect(engine.snapshot()[0]?.trashing).toBe(true);
+    expect(engine.hasRunningJob()).toBe(true);
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    engine.cancel(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+    expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe(
+      "Moving the originals to Trash was cancelled. The originals were kept.",
+    );
+    expect(engine.snapshot()[0]?.state).toBe("done");
+    expect(engine.hasRunningJob()).toBe(false);
+    expect(calls.trash).toEqual([]);
+  });
+
+  it("shutdown waits for a finished job's Trash command to stop", async () => {
+    let settled = false;
+    const { deps } = makeDeps({
+      verify: (_output, signal) =>
+        new Promise<boolean>((_resolve, reject) => {
+          const stop = () => setTimeout(() => ((settled = true), reject(new Error("aborted"))), 20);
+          if (signal.aborted) stop();
+          else signal.addEventListener("abort", stop);
+        }),
+    });
+    const { engine, id } = await doneSave(deps);
+    engine.trashOriginals(id);
+    await tick();
+    await engine.shutdown();
+    expect(settled).toBe(true);
+    expect(engine.snapshot()[0]?.trashing).toBe(false);
   });
 
   it("trashOriginals is a no-op unless the job is a done save job", async () => {

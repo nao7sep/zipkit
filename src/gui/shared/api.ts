@@ -14,7 +14,7 @@
  * job in the list.
  */
 
-import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity } from "../../sdk/types.js";
+import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity, SourceComparison } from "../../sdk/types.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
 import type { PaneLayout } from "./layout.js";
@@ -40,7 +40,7 @@ export type GuiPlatform =
   | "cygwin"
   | "netbsd";
 
-export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity };
+export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity, SourceComparison };
 export type { LanguageEnvironment, Message, PaneLayout };
 
 /** An SDK progress event under the job it ran for, as main records it in

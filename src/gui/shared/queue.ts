@@ -88,6 +88,9 @@ export interface Job {
    *  current state, so the renderer can show stable, friendly guidance keyed on
    *  the code rather than parsing `message`. Absent when there is no fault. */
   errorCode?: string;
+  /** Set while a finished job's originals are being checked and moved to
+   *  Trash on request: the job is busy, and only Cancel is offered. */
+  trashing?: boolean;
 }
 
 /** The resumable part of a job that survives a restart (no transient run state). */

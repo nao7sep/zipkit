@@ -204,8 +204,9 @@ describe("isTerminal / isCancelable", () => {
   it("is terminal only when done or failed", () => {
     expect(ALL_STATES.filter(isTerminal)).toEqual(["done", "failed"]);
   });
-  it("is cancelable while planning, queued, or running", () => {
-    expect(ALL_STATES.filter(isCancelable)).toEqual(["planning", "queued", "running"]);
+  it("is cancelable while planning, queued, or running, or while moving originals to Trash", () => {
+    expect(ALL_STATES.filter((state) => isCancelable(job({ state })))).toEqual(["planning", "queued", "running"]);
+    expect(isCancelable(job({ state: "done", trashing: true }))).toBe(true);
   });
 });
 
@@ -625,6 +626,17 @@ describe("jobCommands", () => {
   it("offers create only when ready, and nothing when blocked", () => {
     expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);
+  });
+  it("offers only cancel while a finished job moves its originals to Trash", () => {
+    expect(jobCommands(job({ state: "done", intent: "save", trashing: true }))).toEqual(["cancel"]);
+  });
+  it("offers trash-originals only when the archive carries the manifest", () => {
+    const done = { state: "done" as const, intent: "save" as const, entries: [{ path: "/a", kind: "file" as const }] };
+    expect(jobCommands(job({ ...done, options: { ...DEFAULT_OPTIONS, metadata: false } }))).toEqual([
+      "verify",
+      "reveal",
+      "remove-archive",
+    ]);
   });
   it("offers no create or retry for a Move-to-Trash job without its manifest", () => {
     const noManifest = { intent: "archive-and-trash" as const, options: { ...DEFAULT_OPTIONS, metadata: false } };
