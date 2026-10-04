@@ -332,7 +332,7 @@
   "findingKind.pathAbsolute": "Absolute Pfadpräfixe entfernt",
   "findingKind.pathTraversal": "Pfade außerhalb des Archivstamms ausgeschlossen",
   "findingKind.pathTooLong": "Für Windows zu lange Pfade",
-  "findingKind.junk": "Ausgeschlossene Systemmüll-Dateien",
+  "findingKind.junk": "Ausgeschlossene Systemmülldateien",
   "findingKind.symlink": "Symbolische Links",
   "findingKind.unsupported": "Ausgelassene Sonderdateien",
   "findingKind.unlisted": "Nicht lesbare Ordner",

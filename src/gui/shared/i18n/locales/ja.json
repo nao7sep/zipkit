@@ -309,7 +309,7 @@
   "finding.junk": "不要ファイルのプリセットで除外",
   "finding.symlinkPreserved": "シンボリックリンクを Unix のリンクとして格納しました。Windows ではテキストファイルとして展開されます",
   "finding.symlinkIgnored": "シンボリックリンクを無視しました",
-  "finding.unsupported": "除外：ソケット、パイプ、デバイス、またはたどれないリンクは ZIP に格納できません",
+  "finding.unsupported": "除外: ソケット、パイプ、デバイス、またはたどれないリンクは ZIP に格納できません",
   "finding.unlisted": "このフォルダを読み取れなかったため、中身はアーカイブに含まれていません",
   "finding.nfdFixed": "名前を NFD から NFC に正規化しました",
   "finding.nfd": "名前が NFC 形式ではありません",
