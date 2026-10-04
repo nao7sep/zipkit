@@ -14,7 +14,7 @@
  */
 
 import { JOB_EVENT_LIMIT } from "../../shared/api";
-import { manifestRequiredButMissing } from "../../shared/queue";
+import { manifestRequiredButMissing, scanBlocksTrash } from "../../shared/queue";
 import type { ExtractData, Finding, InputEntry, Job, JobEvent, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
@@ -170,14 +170,15 @@ export type JobCommand =
   | "trash-originals"
   | "remove-archive";
 
-export { manifestRequiredButMissing };
+export { manifestRequiredButMissing, scanBlocksTrash };
 
 /** The lifecycle commands available for a job in its current state. Pure, so the
  *  command bar reads one source and is unit-tested without a DOM. `needs-attention`
  *  intentionally offers none — the job is blocked until its options are fixed —
- *  and neither does a Move-to-Trash job without its manifest, whose note says why. */
+ *  and neither does a Move-to-Trash job without its manifest or with a folder
+ *  its scan could not list, whose note says why. */
 export function jobCommands(job: Job): JobCommand[] {
-  const runnable = !manifestRequiredButMissing(job.intent, job.options.metadata);
+  const runnable = !manifestRequiredButMissing(job.intent, job.options.metadata) && !scanBlocksTrash(job);
   switch (job.state) {
     case "planning":
       return ["cancel"];
@@ -209,7 +210,7 @@ export function jobCommands(job: Job): JobCommand[] {
       // carries the manifest the check before Trash needs) trash the originals.
       // The most destructive command (trash-originals) is ordered last so the
       // command bar can seat it at the far-right end, away from the everyday buttons.
-      return job.options.metadata && originalsPresent(job)
+      return job.options.metadata && !job.scanIncomplete && originalsPresent(job)
         ? ["verify", "reveal", "remove-archive", "trash-originals"]
         : ["verify", "reveal", "remove-archive"];
   }

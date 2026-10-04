@@ -228,6 +228,7 @@
   "dest.setFileName": "(Dateinamen festlegen)",
   "dest.besideInput": "(neben der Eingabe)",
   "op.manifestNeeded": "Aktivieren Sie „Manifest einbetten“. Das Archiv wird damit geprüft, bevor die Originale in den Papierkorb gelegt werden.",
+  "op.scanIncomplete": "Ein Ordner konnte nicht gelesen werden. Sein Inhalt fehlt im Archiv und ginge verloren, wenn die Originale in den Papierkorb gelegt würden. Machen Sie den Ordner lesbar oder wählen Sie „Archiv speichern“.",
   "report.planLoadFailed": "Der Plan dieses Auftrags konnte nicht geladen werden. Der Auftrag ist unverändert; versuchen Sie es erneut.",
   "report.retryPlan": "Plan erneut laden",
 

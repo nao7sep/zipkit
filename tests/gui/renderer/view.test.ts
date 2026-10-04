@@ -635,6 +635,13 @@ describe("jobCommands", () => {
     expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);
   });
+  it("offers no Move to Trash after a scan that could not list a folder", () => {
+    expect(jobCommands(job({ state: "ready", intent: "archive-and-trash", scanIncomplete: true }))).toEqual([]);
+    expect(jobCommands(job({ state: "ready", intent: "save", scanIncomplete: true }))).toEqual(["create"]);
+    expect(
+      jobCommands(job({ state: "done", intent: "save", scanIncomplete: true, entries: [{ path: "/a", kind: "file" }] })),
+    ).toEqual(["verify", "reveal", "remove-archive"]);
+  });
   it("offers create on a still-writable job stopped for review", () => {
     expect(jobCommands(job({ state: "needs-attention", writable: true }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention", writable: false }))).toEqual([]);

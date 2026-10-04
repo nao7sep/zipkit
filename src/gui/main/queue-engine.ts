@@ -19,6 +19,7 @@
 import {
   isEditable,
   manifestRequiredButMissing,
+  scanBlocksTrash,
   type InputEntry,
   type Job,
   type JobIntent,
@@ -204,6 +205,11 @@ function failureMessage(err: unknown, key: MessageKey): Message {
   return sentences([message("error.stalled", { path }), message(key)]) ?? message(key);
 }
 
+/** Whether a plan found a folder it could not list. */
+function scanIncomplete(plan: PlanData): boolean {
+  return plan.findings.some((f) => f.rule === "entry.unlisted");
+}
+
 export function createQueueEngine(deps: EngineDeps): QueueEngine {
   const recs = new Map<string, Rec>();
   const order: string[] = [];
@@ -322,6 +328,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         output: plan.output,
         summary: plan.summary,
         writable: plan.writable,
+        scanIncomplete: scanIncomplete(plan),
         state: plan.writable ? "ready" : "needs-attention",
         message: plan.writable ? undefined : message("job.blocking", { count: plan.summary.errors }),
       });
@@ -335,7 +342,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     } catch (err) {
       if (!current()) return; // superseded (often via the abort above) — discard
       rec.plan = null;
-      set(rec, { state: "needs-attention", writable: false, message: failureMessage(err, "job.prepareFailed"), errorCode: errCode(err) });
+      set(rec, {
+        state: "needs-attention",
+        writable: false,
+        scanIncomplete: undefined,
+        message: failureMessage(err, "job.prepareFailed"),
+        errorCode: errCode(err),
+      });
       deps.log.error("job plan failed", { jobId: id, error: errorInfo(err) });
     } finally {
       // Only the current run owns the aborter and the post-plan emit; a superseded
@@ -363,12 +376,18 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     try {
       plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onProgress);
       rec.plan = plan;
-      set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable });
+      set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable, scanIncomplete: scanIncomplete(plan) });
     } catch (err) {
       // The earlier plan no longer describes this job, so the report explains
       // the failure rather than that stale plan.
       rec.plan = null;
-      set(rec, { state: "needs-attention", writable: false, message: failureMessage(err, "job.prepareFailed"), errorCode: errCode(err) });
+      set(rec, {
+        state: "needs-attention",
+        writable: false,
+        scanIncomplete: undefined,
+        message: failureMessage(err, "job.prepareFailed"),
+        errorCode: errCode(err),
+      });
       deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
       return null;
     }
@@ -488,14 +507,20 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     return job.state === "ready" || job.state === "queued" || job.state === "failed";
   }
 
-  /** Whether a job's options forbid running it at all: a Move-to-Trash job
-   *  without the manifest it is verified against. Checked when a run is
-   *  requested and again when the drain reaches it, so neither a stale click
-   *  nor an edit while it waited can start it. */
+  /** Whether a job may not run at all: a Move-to-Trash job without the
+   *  manifest it is verified against, or one whose plan could not list a
+   *  folder. Checked when a run is requested and again when the drain reaches
+   *  it, so neither a stale click nor an edit while it waited can start it. */
   function refusesRun(rec: Rec): boolean {
-    if (!manifestRequiredButMissing(rec.job.intent, rec.job.options.metadata)) return false;
-    deps.log.warn("job run refused: Move to Trash needs the manifest", { jobId: rec.job.id });
-    return true;
+    if (manifestRequiredButMissing(rec.job.intent, rec.job.options.metadata)) {
+      deps.log.warn("job run refused: Move to Trash needs the manifest", { jobId: rec.job.id });
+      return true;
+    }
+    if (scanBlocksTrash(rec.job)) {
+      deps.log.warn("job run refused: a folder could not be listed", { jobId: rec.job.id });
+      return true;
+    }
+    return false;
   }
 
   /** The in-flight `runJob` call, if any — at most one at a time by design.
@@ -710,9 +735,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const rec = recs.get(id);
       // One in flight per job: the claim is taken here, before the first await.
       if (!rec || rec.job.state !== "done" || rec.job.intent !== "save" || rec.job.trashing) return;
-      // Offered only when the archive carries the manifest its verify needs.
+      // Offered only when the archive carries the manifest its verify needs,
+      // and when the scan listed every folder, so nothing unarchived is moved.
       if (!rec.job.options.metadata) {
         deps.log.warn("trash originals refused: the archive has no manifest", { jobId: id });
+        return;
+      }
+      if (rec.job.scanIncomplete) {
+        deps.log.warn("trash originals refused: a folder could not be listed", { jobId: id });
         return;
       }
       const inputs = rec.job.inputs;

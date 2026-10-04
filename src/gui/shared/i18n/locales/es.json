@@ -228,6 +228,7 @@
   "dest.setFileName": "(indica un nombre de archivo)",
   "dest.besideInput": "(junto a la entrada)",
   "op.manifestNeeded": "Activa «Incluir manifiesto». El archivo comprimido se verifica con él antes de mover los originales a la papelera.",
+  "op.scanIncomplete": "No se pudo leer una carpeta, así que su contenido no está en el archivo comprimido y se perdería al mover los originales a la papelera. Haz que la carpeta se pueda leer o elige «Guardar el archivo comprimido».",
   "report.planLoadFailed": "No se pudo cargar el plan de este trabajo. El trabajo no ha cambiado; vuelve a intentarlo.",
   "report.retryPlan": "Volver a cargar el plan",
 

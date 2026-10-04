@@ -66,6 +66,13 @@ export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean)
   return intent === "archive-and-trash" && !metadata;
 }
 
+/** A Move-to-Trash job whose plan found a folder it could not list: that
+ *  folder's contents are in neither the archive nor its manifest, so no check
+ *  could show the originals are safe to move. */
+export function scanBlocksTrash(job: Pick<Job, "intent" | "scanIncomplete">): boolean {
+  return job.intent === "archive-and-trash" && job.scanIncomplete === true;
+}
+
 export interface Job {
   id: string;
   inputs: string[];
@@ -91,6 +98,9 @@ export interface Job {
    *  current state, so the renderer can show stable, friendly guidance keyed on
    *  the code rather than parsing `message`. Absent when there is no fault. */
   errorCode?: string;
+  /** Whether the held plan found a folder it could not list (an
+   *  `entry.unlisted` warning): its contents are missing from the archive. */
+  scanIncomplete?: boolean;
   /** Whether this job's latest run wrote its archive (the file may still need
    *  checking, but it is there to reveal or move to Trash). */
   archiveWritten?: boolean;

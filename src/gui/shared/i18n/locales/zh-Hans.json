@@ -228,6 +228,7 @@
   "dest.setFileName": "（请设置文件名）",
   "dest.besideInput": "（与输入相同的位置）",
   "op.manifestNeeded": "请打开“嵌入清单”。在原始项目移到废纸篓之前，会先对照清单校验归档。",
+  "op.scanIncomplete": "无法读取某个文件夹，因此其内容不在归档中，将原始项目移到废纸篓会丢失这些内容。请让该文件夹可读，或选择“保存归档”。",
   "report.planLoadFailed": "无法载入此任务的计划。任务未改动，请重试。",
   "report.retryPlan": "重新载入计划",
 

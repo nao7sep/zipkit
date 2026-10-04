@@ -105,6 +105,33 @@ describe("queue engine", () => {
     expect(engine.snapshot()[0]?.state).toBe("ready");
   });
 
+  it("keeps a Move-to-Trash job from running, and a saved job's originals from Trash, after an unlisted folder", async () => {
+    const { deps, calls } = makeDeps({
+      plan: async () => {
+        calls.plan++;
+        const plan = planData(true);
+        plan.findings = [{ rule: "entry.unlisted", severity: "warning", path: "locked", message: "folder could not be read" }];
+        return plan;
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const trashJob = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    expect(engine.snapshot()[0]?.scanIncomplete).toBe(true);
+    engine.run(trashJob);
+    await tick();
+    expect(calls.write).toBe(0);
+
+    const saveJob = engine.add(["/other"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("ready"));
+    engine.run(saveJob);
+    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("done"));
+    engine.trashOriginals(saveJob);
+    await tick();
+    expect(calls.verify).toBe(0);
+    expect(calls.trash).toEqual([]);
+  });
+
   it("names the source file that changed while the archive was written", async () => {
     const { deps } = makeDeps({
       write: async () => {

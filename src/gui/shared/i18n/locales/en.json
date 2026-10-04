@@ -228,6 +228,7 @@
   "dest.setFileName": "(set a file name)",
   "dest.besideInput": "(beside the input)",
   "op.manifestNeeded": "Turn on “Embed manifest”. The archive is checked against it before the originals are moved to Trash.",
+  "op.scanIncomplete": "A folder could not be read, so its contents are not in the archive and moving the originals to Trash would lose them. Make the folder readable, or choose “Save archive”.",
   "report.planLoadFailed": "This job’s plan could not be loaded. The job is unchanged; try again.",
   "report.retryPlan": "Retry plan",
 

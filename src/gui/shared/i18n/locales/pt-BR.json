@@ -228,6 +228,7 @@
   "dest.setFileName": "(defina um nome de arquivo)",
   "dest.besideInput": "(ao lado da entrada)",
   "op.manifestNeeded": "Ative “Incluir manifesto”. O arquivo compactado é verificado com ele antes de os originais serem movidos para a Lixeira.",
+  "op.scanIncomplete": "Não foi possível ler uma pasta, então o conteúdo dela não está no arquivo compactado e seria perdido ao mover os originais para a Lixeira. Torne a pasta legível ou escolha “Salvar o arquivo compactado”.",
   "report.planLoadFailed": "Não foi possível carregar o plano deste trabalho. O trabalho não foi alterado; tente novamente.",
   "report.retryPlan": "Recarregar o plano",
 

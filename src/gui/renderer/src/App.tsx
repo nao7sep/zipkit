@@ -74,6 +74,7 @@ import {
   type JobCommand,
   label,
   manifestRequiredButMissing,
+  scanBlocksTrash,
   mergeJobEvents,
   outputPreview,
 } from "./view";
@@ -1039,6 +1040,9 @@ function JobView({
         </div>
         {manifestRequiredButMissing(job.intent, opts.metadata) && (
           <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>{t.t("op.manifestNeeded")}</p>
+        )}
+        {scanBlocksTrash(job) && (
+          <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>{t.t("op.scanIncomplete")}</p>
         )}
         <CommandBar job={job} onCommand={onCommand} />
         {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
