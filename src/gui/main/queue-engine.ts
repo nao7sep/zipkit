@@ -27,6 +27,7 @@ import {
 import type { LogEvent, PlanData, SourceComparison } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
+import { reportChanged } from "./plan-review.js";
 import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
 import { message, sentences, type Message } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
@@ -357,6 +358,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   ): Promise<{ output: string; bytes: number | null } | null> {
     const id = rec.job.id;
     // Re-plan fresh: the world may have changed since this job was enqueued.
+    const reviewed = rec.plan;
     let plan: PlanData;
     try {
       plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onProgress);
@@ -373,6 +375,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (!plan.writable) {
       set(rec, { state: "needs-attention", message: message("job.noLongerWritable") });
       deps.log.warn("job run skipped: no longer writable", { jobId: id, errors: plan.summary.errors });
+      return null;
+    }
+    // The fresh plan is held either way; when it would show another Report than
+    // the one the user reviewed, it waits for review instead of being written.
+    // A plan that landed just before an immediate Create counts as reviewed.
+    if (reviewed && reportChanged(reviewed, plan)) {
+      set(rec, { state: "needs-attention", message: message("job.planChanged") });
+      deps.log.warn("job run stopped: the files changed since the plan was reviewed", { jobId: id });
       return null;
     }
 
@@ -470,10 +480,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   }
 
   /** A job is runnable from the pending queue when it is writable-and-waiting
-   *  (`ready`), waiting its turn (`queued`), or a retryable terminal (`failed`).
-   *  Anything else in `pending` (e.g. re-planned to `needs-attention`) is skipped. */
-  function isRunnable(state: Job["state"]): boolean {
-    return state === "ready" || state === "queued" || state === "failed";
+   *  (`ready`, or `needs-attention` only for review of a still-writable plan),
+   *  waiting its turn (`queued`), or a retryable terminal (`failed`). Anything
+   *  else in `pending` (e.g. re-planned to a blocked `needs-attention`) is skipped. */
+  function isRunnable(job: Job): boolean {
+    if (job.state === "needs-attention") return job.writable === true;
+    return job.state === "ready" || job.state === "queued" || job.state === "failed";
   }
 
   /** Whether a job's options forbid running it at all: a Move-to-Trash job
@@ -501,7 +513,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         if (id === undefined) break;
         const rec = recs.get(id);
         // Skip if removed or no longer runnable (e.g. re-planned to needs-attention).
-        if (!rec || !isRunnable(rec.job.state) || refusesRun(rec)) continue;
+        if (!rec || !isRunnable(rec.job) || refusesRun(rec)) continue;
         currentRun = runJob(id);
         try {
           await currentRun;
@@ -626,10 +638,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const rec = recs.get(id);
       if (!rec) return;
       const s = rec.job.state;
-      // Accept a request for a runnable job (ready / retryable) or one still
-      // (re)planning — the latter is honored when its plan lands (maybeRunPending),
-      // which keeps "edit a field, then Create" from being dropped mid-re-plan.
-      if (s !== "ready" && s !== "failed" && s !== "planning") return;
+      // Accept a request for a runnable job (ready / retryable / reviewed after a
+      // change) or one still (re)planning — the latter is honored when its plan
+      // lands (maybeRunPending), which keeps "edit a field, then Create" from
+      // being dropped mid-re-plan.
+      if (s !== "planning" && !(s !== "queued" && isRunnable(rec.job))) return;
       if (refusesRun(rec)) return;
       if (!pending.includes(id)) pending.push(id);
       deps.log.info("job run requested", { jobId: id, state: s });

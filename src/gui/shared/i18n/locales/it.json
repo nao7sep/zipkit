@@ -72,6 +72,7 @@
   "job.blocking": { "one": "{count} problema bloccante", "many": "{count} di problemi bloccanti", "other": "{count} problemi bloccanti" },
   "job.prepareFailed": "Impossibile preparare questa operazione. Controlla che i suoi elementi di input siano ancora disponibili, poi riprova.",
   "job.noLongerWritable": "L’archivio non può più essere scritto. È emerso al nuovo controllo dell’operazione al momento dell’esecuzione.",
+  "job.planChanged": "I file sono cambiati dopo il controllo di questa operazione, quindi l’archivio non è stato creato. Rivedi il resoconto, poi crea di nuovo l’archivio.",
   "job.writeFailed": "Impossibile scrivere l’archivio. Controlla la destinazione e lo spazio disponibile, poi riprova.",
   "job.sourceChanged": "{path} è cambiato durante l’archiviazione, quindi non è stato scritto alcun archivio. Crea di nuovo l’archivio.",
   "job.saved": { "one": "Salvato ({count} byte).", "many": "Salvato ({count} di byte).", "other": "Salvato ({count} byte)." },

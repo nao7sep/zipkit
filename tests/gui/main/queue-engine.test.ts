@@ -245,6 +245,39 @@ describe("queue engine", () => {
     });
   });
 
+  it("stops Create for review when the fresh plan shows another Report, then creates once reviewed", async () => {
+    let files = ["a.txt"];
+    const { deps, calls } = makeDeps({
+      plan: async () => {
+        calls.plan++;
+        const plan = planData(true);
+        plan.entries = files.map((archivePath) => ({
+          archivePath,
+          originalPath: archivePath,
+          type: "file" as const,
+          method: "deflate" as const,
+          excluded: false,
+          findings: [],
+        }));
+        return plan;
+      },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "save");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    files = ["a.txt", "b.txt"]; // a file appeared after the Report was read
+    engine.run(id);
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    const job = engine.snapshot()[0];
+    expect(job?.writable).toBe(true);
+    expect(say(job?.message)).toContain("The files changed since this job was checked");
+    expect(calls.write).toBe(0);
+    expect(engine.getPlan(id)?.entries.map((e) => e.archivePath)).toEqual(["a.txt", "b.txt"]);
+    engine.run(id); // the fresh plan is the reviewed one now
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    expect(calls.write).toBe(1);
+  });
+
   it("re-plans fresh at run time", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);

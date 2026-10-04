@@ -72,6 +72,7 @@
   "job.blocking": { "one": "{count} problema que impede a criação", "many": "{count} de problemas que impedem a criação", "other": "{count} problemas que impedem a criação" },
   "job.prepareFailed": "Não foi possível preparar este trabalho. Verifique se as entradas dele ainda estão disponíveis e tente novamente.",
   "job.noLongerWritable": "O arquivo compactado não pode mais ser gravado. Isso foi constatado quando o trabalho foi verificado de novo na execução.",
+  "job.planChanged": "Os arquivos mudaram desde que este trabalho foi verificado, então o arquivo compactado não foi criado. Revise o relatório e crie o arquivo compactado novamente.",
   "job.writeFailed": "Não foi possível gravar o arquivo compactado. Verifique o local de saída e o espaço disponível e tente novamente.",
   "job.sourceChanged": "{path} mudou enquanto era arquivado, então nenhum arquivo compactado foi gravado. Crie o arquivo compactado novamente.",
   "job.saved": { "one": "Salvo ({count} byte).", "many": "Salvo ({count} de bytes).", "other": "Salvo ({count} bytes)." },

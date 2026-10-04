@@ -182,7 +182,9 @@ export function jobCommands(job: Job): JobCommand[] {
     case "planning":
       return ["cancel"];
     case "needs-attention":
-      return [];
+      // Still writable only when Create stopped because the files changed since
+      // the Report was read: the user reviews the fresh one, then creates.
+      return job.writable === true && runnable ? ["create"] : [];
     case "ready":
       return runnable ? ["create"] : [];
     case "queued":
@@ -248,6 +250,9 @@ export function reportSummary(job: Job, plan: PlanData | null, t: Translator): R
   // structured data (plan === null) — the captured message is the only explanation
   // the user gets, so never swallow it. Prefer friendly guidance keyed on the SDK
   // error code; fall back to the structured count, then the raw message.
+  if (job.state === "needs-attention" && job.writable === true && job.message) {
+    return { level: "warning", text: t.text(job.message) };
+  }
   if (job.state === "needs-attention") {
     const guidance = job.errorCode ? ERROR_GUIDANCE[job.errorCode] : undefined;
     if (guidance) return { level: "error", text: t.t(guidance) };

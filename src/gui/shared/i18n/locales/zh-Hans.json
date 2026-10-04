@@ -72,6 +72,7 @@
   "job.blocking": { "other": "{count} 个阻止创建的问题" },
   "job.prepareFailed": "无法准备此任务。请确认其输入项仍然存在，然后重试。",
   "job.noLongerWritable": "归档已无法写入。这是在运行时重新检查任务时发现的。",
+  "job.planChanged": "自检查此任务以来文件发生了变化，因此未创建归档。请查看报告，然后重新创建归档。",
   "job.writeFailed": "无法写入归档。请检查输出位置和可用存储空间，然后重试。",
   "job.sourceChanged": "{path} 在归档过程中发生了变化，因此未写入归档。请重新创建归档。",
   "job.saved": { "other": "已保存（{count} 字节）。" },

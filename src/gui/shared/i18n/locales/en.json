@@ -72,6 +72,7 @@
   "job.blocking": { "one": "{count} blocking finding", "other": "{count} blocking findings" },
   "job.prepareFailed": "This job could not be prepared. Check that its inputs are still available, then try again.",
   "job.noLongerWritable": "The archive can no longer be written. This was found when the job was checked again at run time.",
+  "job.planChanged": "The files changed since this job was checked, so the archive was not created. Review the report, then create the archive again.",
   "job.writeFailed": "The archive could not be written. Check the output location and available storage, then try again.",
   "job.sourceChanged": "{path} changed while it was being archived, so no archive was written. Create the archive again.",
   "job.saved": { "one": "Saved ({count} byte).", "other": "Saved ({count} bytes)." },

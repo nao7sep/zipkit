@@ -72,6 +72,7 @@
   "job.blocking": { "one": "{count} problème bloquant", "many": "{count} de problèmes bloquants", "other": "{count} problèmes bloquants" },
   "job.prepareFailed": "Cette tâche n’a pas pu être préparée. Vérifiez que ses entrées sont toujours disponibles, puis réessayez.",
   "job.noLongerWritable": "L’archive ne peut plus être écrite. Cela a été constaté lors de la nouvelle vérification de la tâche au moment de l’exécution.",
+  "job.planChanged": "Les fichiers ont changé depuis la vérification de cette tâche : l’archive n’a donc pas été créée. Consultez le rapport, puis créez de nouveau l’archive.",
   "job.writeFailed": "L’archive n’a pas pu être écrite. Vérifiez l’emplacement de sortie et l’espace disponible, puis réessayez.",
   "job.sourceChanged": "{path} a été modifié pendant son archivage, aucune archive n’a donc été écrite. Créez de nouveau l’archive.",
   "job.saved": { "one": "Enregistrée ({count}\u00a0octet).", "many": "Enregistrée ({count}\u00a0d’octets).", "other": "Enregistrée ({count}\u00a0octets)." },

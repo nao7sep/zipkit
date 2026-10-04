@@ -72,6 +72,7 @@
   "job.blocking": { "one": "{count} problema bloqueante", "many": "{count} de problemas bloqueantes", "other": "{count} problemas bloqueantes" },
   "job.prepareFailed": "No se pudo preparar este trabajo. Comprueba que sus entradas sigan disponibles y vuelve a intentarlo.",
   "job.noLongerWritable": "El archivo comprimido ya no se puede escribir. Se detectó al volver a comprobar el trabajo al ejecutarlo.",
+  "job.planChanged": "Los archivos cambiaron desde que se revisó este trabajo, así que no se creó el archivo comprimido. Revisa el informe y vuelve a crear el archivo comprimido.",
   "job.writeFailed": "No se pudo escribir el archivo comprimido. Comprueba la ubicación de salida y el espacio disponible, y vuelve a intentarlo.",
   "job.sourceChanged": "{path} cambió mientras se archivaba, así que no se escribió ningún archivo comprimido. Vuelve a crear el archivo comprimido.",
   "job.saved": { "one": "Guardado ({count} byte).", "many": "Guardado ({count} de bytes).", "other": "Guardado ({count} bytes)." },

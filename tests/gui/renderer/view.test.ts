@@ -259,6 +259,14 @@ describe("reportSummary", () => {
       summary: { included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, ...summary },
     } as unknown as PlanData;
   };
+  it("asks for review, not a fix, when Create stopped because the files changed", () => {
+    expect(
+      reportSummary(job({ state: "needs-attention", writable: true, message: message("job.planChanged") }), planOf({ writable: true }), en),
+    ).toEqual({
+      level: "warning",
+      text: "The files changed since this job was checked, so the archive was not created. Review the report, then create the archive again.",
+    });
+  });
   it("speaks to the job's actual state, never a vague 'safe' claim", () => {
     expect(reportSummary(job({ state: "failed", message: message("job.writeFailed") }), null, en)?.text).toBe(
       "The archive could not be written. Check the output location and available storage, then try again.",
@@ -626,6 +634,10 @@ describe("jobCommands", () => {
   it("offers create only when ready, and nothing when blocked", () => {
     expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);
+  });
+  it("offers create on a still-writable job stopped for review", () => {
+    expect(jobCommands(job({ state: "needs-attention", writable: true }))).toEqual(["create"]);
+    expect(jobCommands(job({ state: "needs-attention", writable: false }))).toEqual([]);
   });
   it("offers only cancel while a finished job moves its originals to Trash", () => {
     expect(jobCommands(job({ state: "done", intent: "save", trashing: true }))).toEqual(["cancel"]);
