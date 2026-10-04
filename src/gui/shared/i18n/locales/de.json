@@ -297,6 +297,8 @@
   "finding.junk": "Durch die Voreinstellung für Systemmüll ausgeschlossen",
   "finding.symlinkPreserved": "Symbolischer Link als Unix-Link-Eintrag behalten; Windows entpackt ihn als Textdatei",
   "finding.symlinkIgnored": "Symbolischer Link ignoriert",
+  "finding.unsupported": "Ausgelassen: ein Socket, eine Pipe, ein Gerät oder ein Link, dem nicht gefolgt werden kann – ZIP kann so etwas nicht speichern",
+  "finding.unlisted": "Dieser Ordner konnte nicht gelesen werden, daher fehlt sein Inhalt im Archiv",
   "finding.nfdFixed": "Name von NFD nach NFC normalisiert",
   "finding.nfd": "Der Name ist nicht in NFC-Form",
   "finding.invalidCharFixed": "Ungültige Zeichen ersetzt",

@@ -59,6 +59,37 @@ describe("selection", () => {
   });
 });
 
+describe("objects the walk could not archive", () => {
+  it("excludes a skipped special file with an info finding and stays writable", () => {
+    const p = plan([scanEntry({ archivePath: "a.txt" })], {}, {
+      skipped: [
+        { archivePath: "pipe", sourcePath: "proj/pipe", kind: "fifo" },
+        { archivePath: "dangling", sourcePath: "proj/dangling", kind: "broken-link" },
+      ],
+    });
+    expect(p.writable).toBe(true);
+    const pipe = p.entries.find((e) => e.archivePath === "pipe");
+    expect(pipe).toMatchObject({ excluded: true, type: "file" });
+    expect(pipe?.findings).toEqual([expect.objectContaining({ rule: "entry.unsupported", severity: "info" })]);
+    expect(pipe?.excludeReason).toMatch(/FIFO/);
+    expect(p.entries.find((e) => e.archivePath === "dangling")?.excludeReason).toMatch(/does not exist/);
+    expect(written(p)).toEqual(["a.txt"]);
+    expect(p.summary).toMatchObject({ included: 1, excluded: 2, warnings: 0, errors: 0 });
+  });
+
+  it("warns on a folder the scan could not list without blocking", () => {
+    const p = plan(
+      [scanEntry({ archivePath: "a.txt" }), scanEntry({ archivePath: "locked", type: "dir", size: 0 })],
+      {},
+      { unlistedDirs: ["locked"] },
+    );
+    expect(p.writable).toBe(true);
+    const locked = p.entries.find((e) => e.archivePath === "locked");
+    expect(locked?.findings).toEqual([expect.objectContaining({ rule: "entry.unlisted", severity: "warning" })]);
+    expect(p.summary.warnings).toBe(1);
+  });
+});
+
 describe("name fixing", () => {
   it("normalizes an NFD name to NFC, renames, and logs info without blocking", () => {
     const nfd = `cafe${String.fromCodePoint(0x0301)}.txt`;

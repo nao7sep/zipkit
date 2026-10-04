@@ -297,6 +297,8 @@
   "finding.junk": "已被垃圾文件预设排除",
   "finding.symlinkPreserved": "符号链接已存储为 Unix 链接条目；Windows 会将其解压为文本文件",
   "finding.symlinkIgnored": "已忽略符号链接",
+  "finding.unsupported": "已排除：套接字、管道、设备或无法跟随的链接，ZIP 无法容纳这些项目",
+  "finding.unlisted": "无法读取此文件夹，因此其内容未包含在归档中",
   "finding.nfdFixed": "名称已从 NFD 规范化为 NFC",
   "finding.nfd": "名称不是 NFC 形式",
   "finding.invalidCharFixed": "已替换无效字符",

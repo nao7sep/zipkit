@@ -8,7 +8,7 @@
  */
 
 import { finding } from "../registry.js";
-import type { ScanEntry, ScanResult, Transformation, WriteEntry } from "../internal/types.js";
+import type { ScanEntry, ScanResult, SkipKind, Transformation, WriteEntry } from "../internal/types.js";
 import type { Finding, PlannedEntry } from "../types.js";
 
 export interface WorkItem {
@@ -26,25 +26,40 @@ export interface WorkItem {
   transformations: Transformation[];
 }
 
+/** What the plan says about each object the walk left out. */
+const SKIP_MESSAGES: Record<SkipKind, string> = {
+  socket: "socket left out: a ZIP archive cannot hold it",
+  fifo: "named pipe (FIFO) left out: a ZIP archive cannot hold it",
+  device: "device file left out: a ZIP archive cannot hold it",
+  "broken-link": "symbolic link left out: its target does not exist",
+  "external-link": "symbolic link left out: its target is outside the input",
+  "unreadable-link": "symbolic link left out: its target cannot be read",
+};
+
+/** A scan entry for an item that has no stat of its own to carry. */
+function placeholderScan(archivePath: string, sourcePath: string, type: ScanEntry["type"]): ScanEntry {
+  return {
+    absolutePath: "",
+    inputIndex: -1,
+    archivePath,
+    sourcePath,
+    type,
+    size: 0,
+    mtimeNs: 0n,
+    atimeNs: 0n,
+    ctimeNs: 0n,
+    birthtimeNs: 0n,
+    mode: 0,
+  };
+}
+
 export function buildWorkItems(scan: ScanResult): WorkItem[] {
   const items: WorkItem[] = [];
 
   for (const dir of scan.prunedDirs) {
     if (dir.archivePath === "") continue;
     items.push({
-      scan: {
-        absolutePath: "",
-        inputIndex: -1,
-        archivePath: dir.archivePath,
-        sourcePath: dir.archivePath,
-        type: "dir",
-        size: 0,
-        mtimeNs: 0n,
-        atimeNs: 0n,
-        ctimeNs: 0n,
-        birthtimeNs: 0n,
-        mode: 0,
-      },
+      scan: placeholderScan(dir.archivePath, dir.archivePath, "dir"),
       archivePath: dir.archivePath,
       originalPath: dir.archivePath,
       type: "dir",
@@ -59,8 +74,38 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
     });
   }
 
+  // Excluded like a pruned folder, so the plan and the manifest's excluded list
+  // name every object the walk found but could not archive.
+  for (const skipped of scan.skipped) {
+    const type = skipped.kind.endsWith("-link") ? "symlink" : "file";
+    const message = SKIP_MESSAGES[skipped.kind];
+    items.push({
+      scan: placeholderScan(skipped.archivePath, skipped.sourcePath, type),
+      archivePath: skipped.archivePath,
+      originalPath: skipped.archivePath,
+      type,
+      excluded: true,
+      excludeReason: message,
+      method: "store",
+      emitExplicit: false,
+      findings: [finding("entry.unsupported", skipped.archivePath, message)],
+      transformations: [],
+    });
+  }
+
+  const unlisted = new Set(scan.unlistedDirs);
   for (const entry of scan.entries) {
     if (entry.archivePath === "") continue; // the archive root itself is not an entry
+    const findings =
+      entry.type === "dir" && unlisted.has(entry.archivePath)
+        ? [
+            finding(
+              "entry.unlisted",
+              entry.archivePath,
+              "folder could not be read: its contents are not in the archive",
+            ),
+          ]
+        : [];
     items.push({
       scan: entry,
       archivePath: entry.archivePath,
@@ -69,7 +114,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       excluded: false,
       method: "store",
       emitExplicit: entry.type === "file",
-      findings: [],
+      findings,
       transformations: [],
     });
   }

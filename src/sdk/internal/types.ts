@@ -69,10 +69,26 @@ export interface PrunedDir {
   reason: string;
 }
 
+/** Why the walk left an object out that it found: ZIP stores only files,
+ *  folders and links, and a link under `follow` must lead to one of those. */
+export type SkipKind = "socket" | "fifo" | "device" | "broken-link" | "external-link" | "unreadable-link";
+
+/** An object the walk found and left out, recorded so the plan can report it. */
+export interface SkippedEntry {
+  archivePath: string;
+  sourcePath: string;
+  kind: SkipKind;
+}
+
 /** Everything the pure planner needs, gathered by the scan edge. */
 export interface ScanResult {
   entries: ScanEntry[];
   prunedDirs: PrunedDir[];
+  /** Objects found but not archivable (see {@link SkippedEntry}). */
+  skipped: SkippedEntry[];
+  /** Archive paths of folders below an input whose listing failed, so their
+   *  contents are missing from the scan. */
+  unlistedDirs: string[];
   output: string;
   outputExists: boolean;
   overwrite: boolean;

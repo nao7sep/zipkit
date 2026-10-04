@@ -297,6 +297,8 @@
   "finding.junk": "불필요 파일 사전 설정으로 제외됨",
   "finding.symlinkPreserved": "심볼릭 링크를 Unix 링크 항목으로 유지했습니다. Windows에서는 텍스트 파일로 풀립니다",
   "finding.symlinkIgnored": "심볼릭 링크를 무시했습니다",
+  "finding.unsupported": "제외됨: 소켓, 파이프, 장치 또는 따라갈 수 없는 링크는 ZIP에 담을 수 없습니다",
+  "finding.unlisted": "이 폴더를 읽을 수 없어 내용이 아카이브에 포함되지 않았습니다",
   "finding.nfdFixed": "이름을 NFD에서 NFC로 정규화했습니다",
   "finding.nfd": "이름이 NFC 형식이 아닙니다",
   "finding.invalidCharFixed": "잘못된 문자를 대체했습니다",

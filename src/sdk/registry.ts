@@ -24,6 +24,8 @@ export type RuleId =
   | "windows.junk"
   | "linux.junk"
   | "entry.symlink"
+  | "entry.unsupported"
+  | "entry.unlisted"
   | "name.nfd"
   | "name.invalid-char"
   | "name.control-char"
@@ -53,6 +55,12 @@ export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
   "windows.junk": { severity: "info", disposition: "exclude" },
   "linux.junk": { severity: "info", disposition: "exclude" },
   "entry.symlink": { severity: "warning", disposition: "exclude" },
+  // A socket, FIFO or device, or under `follow` a link that leads nowhere
+  // archivable: ZIP cannot store it, so it is left out and reported.
+  "entry.unsupported": { severity: "info", disposition: "exclude" },
+  // A folder below an input that could not be listed: it is archived without
+  // its contents, which are therefore in neither the archive nor the manifest.
+  "entry.unlisted": { severity: "warning", disposition: "keep without contents" },
   // The name rules' severity is set per run from the `names` policy action
   // (fix → info, warn → warning, error → error); these defaults are only used
   // if a call site forgets to pass one.

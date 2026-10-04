@@ -25,7 +25,7 @@ import { ScanError, throwIfAborted, ZipKitError } from "../errors.js";
 import type { FilterMatcher } from "../filter/match.js";
 import { toForwardSlash } from "../internal/path.js";
 import type { Volume } from "../internal/volume.js";
-import type { PrunedDir, ScanEntry, ScanResult } from "../internal/types.js";
+import type { PrunedDir, ScanEntry, ScanResult, SkipKind, SkippedEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import {
   checkAnchorCollisions,
@@ -73,6 +73,8 @@ interface ScanContext {
   artifactIds: Set<string>;
   entries: ScanEntry[];
   prunedDirs: PrunedDir[];
+  skipped: SkippedEntry[];
+  unlistedDirs: string[];
   followedDirs: Set<string>;
   inputRoots: string[];
 }
@@ -120,6 +122,17 @@ function makeEntry(
   return entry;
 }
 
+/** The kind of a stat'd object that is neither a file, a folder nor a link. */
+function specialKind(stats: BigIntStats): SkipKind {
+  if (stats.isSocket()) return "socket";
+  if (stats.isFIFO()) return "fifo";
+  return "device";
+}
+
+function skip(ctx: ScanContext, paths: EntryPaths, kind: SkipKind): void {
+  ctx.skipped.push({ archivePath: paths.archive, sourcePath: paths.source, kind });
+}
+
 function isWithin(root: string, target: string): boolean {
   if (root === "") return true;
   const rel = path.relative(root, target);
@@ -158,32 +171,40 @@ async function handleSymlink(
     real = await ctx.volume.realpath(abs);
   } catch (err) {
     rethrowClassified(err);
-    return; // broken link: nothing to follow
+    skip(ctx, paths, "broken-link"); // nothing to follow
+    return;
   }
 
   const root = ctx.inputRoots[inputIndex] ?? "";
-  if (!ctx.followExternal && !isWithin(root, real)) return;
+  if (!ctx.followExternal && !isWithin(root, real)) {
+    skip(ctx, paths, "external-link");
+    return;
+  }
 
   let resolved: BigIntStats;
   try {
     resolved = await ctx.volume.stat(real);
   } catch (err) {
     rethrowClassified(err);
+    skip(ctx, paths, "unreadable-link");
     return;
   }
   // A followed symlink carries the target's bytes, so self-exclusion must compare
   // the resolved target identity too (the link inode itself is necessarily
-  // different from the output inode).
+  // different from the output inode). Silent: the target is the archive itself.
   if (ctx.artifactIds.has(fileId(resolved))) return;
 
   if (resolved.isDirectory()) {
     // Check and claim with no await in between, so concurrent symlinks to the
-    // same real directory cannot both pass the cycle guard.
+    // same real directory cannot both pass the cycle guard. A repeat visit is
+    // silent: the first visit already archived that content.
     if (ctx.followedDirs.has(real)) return;
     ctx.followedDirs.add(real);
     await crawlDirectory(ctx, real, paths, inputIndex);
   } else if (resolved.isFile()) {
     ctx.entries.push(makeEntry(real, inputIndex, paths, "file", resolved));
+  } else {
+    skip(ctx, paths, specialKind(resolved));
   }
 }
 
@@ -209,8 +230,10 @@ async function processPath(
     ctx.entries.push(makeEntry(abs, inputIndex, paths, "dir", st));
   } else if (st.isFile()) {
     ctx.entries.push(makeEntry(abs, inputIndex, paths, "file", st));
+  } else {
+    // Sockets, FIFOs and devices cannot be archived; the plan reports each.
+    skip(ctx, paths, specialKind(st));
   }
-  // sockets, fifos, and devices are not archivable and are skipped silently.
 }
 
 /** How many directories the walk lists at once. */
@@ -222,8 +245,9 @@ const WALK_BATCH = 16;
  * before descending into them. Returns every path under `absDir` (not
  * `absDir` itself). A symlink is listed, never descended into; following one
  * is `handleSymlink`'s decision. A subdirectory that cannot be listed is
- * skipped, while a stall or a cancel ends the scan. Only the input root
- * itself failing to list is a scan fault.
+ * recorded in `unlistedDirs` and its contents are missing, while a stall or a
+ * cancel ends the scan. Only the input root itself failing to list is a scan
+ * fault.
  */
 async function walkTree(ctx: ScanContext, absDir: string, anchors: EntryPaths): Promise<string[]> {
   const found: string[] = [];
@@ -242,6 +266,7 @@ async function walkTree(ctx: ScanContext, absDir: string, anchors: EntryPaths): 
             if (dir === absDir) {
               throw new ScanError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err });
             }
+            ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, dir))));
             return { dir, entries: [] };
           }
         }),
@@ -408,6 +433,8 @@ export async function scan(
     artifactIds,
     entries: [],
     prunedDirs: [],
+    skipped: [],
+    unlistedDirs: [],
     followedDirs: new Set(),
     inputRoots: canonicalRoots,
   };
@@ -456,6 +483,8 @@ export async function scan(
   const result: ScanResult = {
     entries: ctx.entries,
     prunedDirs: ctx.prunedDirs,
+    skipped: ctx.skipped,
+    unlistedDirs: ctx.unlistedDirs,
     output,
     outputExists,
     overwrite: spec.overwrite === true,

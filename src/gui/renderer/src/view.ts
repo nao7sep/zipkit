@@ -303,6 +303,8 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
   "windows.junk": "finding.junk",
   "linux.junk": "finding.junk",
   "name.suspicious": "finding.suspicious",
+  "entry.unsupported": "finding.unsupported",
+  "entry.unlisted": "finding.unlisted",
   "entry.duplicate": "finding.duplicate",
   "collision.case": "finding.collisionCase",
   "collision.post-fix": "finding.collisionPostFix",
@@ -363,6 +365,7 @@ const EXCLUDING_RULES = new Set([
   "linux.junk",
   "path.traversal",
   "entry.symlink",
+  "entry.unsupported",
   "entry.duplicate",
 ]);
 

@@ -34,6 +34,8 @@ describe("RULE_REGISTRY", () => {
       "windows.junk",
       "linux.junk",
       "entry.symlink",
+      "entry.unsupported",
+      "entry.unlisted",
       "name.nfd",
       "name.invalid-char",
       "name.control-char",

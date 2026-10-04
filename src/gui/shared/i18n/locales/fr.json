@@ -297,6 +297,8 @@
   "finding.junk": "Exclu par le préréglage des fichiers parasites",
   "finding.symlinkPreserved": "Lien symbolique conservé comme entrée de lien Unix\u00a0; Windows l’extrait comme fichier texte",
   "finding.symlinkIgnored": "Lien symbolique ignoré",
+  "finding.unsupported": "Ignoré\u00a0: un socket, un tube, un périphérique ou un lien impossible à suivre, qu’une archive ZIP ne peut pas contenir",
+  "finding.unlisted": "Ce dossier n’a pas pu être lu, son contenu n’est donc pas dans l’archive",
   "finding.nfdFixed": "Nom normalisé de NFD en NFC",
   "finding.nfd": "Le nom n’est pas sous forme NFC",
   "finding.invalidCharFixed": "Caractères non valides remplacés",

@@ -297,6 +297,8 @@
   "finding.junk": "Escluso dal preset dei file superflui",
   "finding.symlinkPreserved": "Collegamento simbolico mantenuto come voce di collegamento Unix; Windows lo estrae come file di testo",
   "finding.symlinkIgnored": "Collegamento simbolico ignorato",
+  "finding.unsupported": "Escluso: un socket, una pipe, un dispositivo o un collegamento che non si può seguire, che ZIP non può contenere",
+  "finding.unlisted": "Impossibile leggere questa cartella, quindi il suo contenuto non è nell’archivio",
   "finding.nfdFixed": "Nome normalizzato da NFD a NFC",
   "finding.nfd": "Il nome non è in forma NFC",
   "finding.invalidCharFixed": "Caratteri non validi sostituiti",

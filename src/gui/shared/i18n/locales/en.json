@@ -297,6 +297,8 @@
   "finding.junk": "Excluded by the junk preset",
   "finding.symlinkPreserved": "Symlink kept as a Unix link entry; Windows extracts it as a text file",
   "finding.symlinkIgnored": "Symlink ignored",
+  "finding.unsupported": "Left out: a socket, pipe, device, or link that cannot be followed, which ZIP cannot hold",
+  "finding.unlisted": "This folder could not be read, so its contents are not in the archive",
   "finding.nfdFixed": "Name normalized from NFD to NFC",
   "finding.nfd": "The name is not in NFC form",
   "finding.invalidCharFixed": "Invalid characters substituted",

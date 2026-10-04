@@ -31,6 +31,8 @@ export function scanResult(entries: ScanEntry[], over: Partial<ScanResult> = {})
   return {
     entries,
     prunedDirs: over.prunedDirs ?? [],
+    skipped: over.skipped ?? [],
+    unlistedDirs: over.unlistedDirs ?? [],
     output: over.output ?? "/tmp/zipkit-test/out.zip",
     outputExists: over.outputExists ?? false,
     overwrite: over.overwrite ?? false,

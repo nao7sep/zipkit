@@ -297,6 +297,8 @@
   "finding.junk": "Excluido por el ajuste de archivos basura",
   "finding.symlinkPreserved": "Enlace simbólico conservado como entrada de enlace Unix; Windows lo extrae como archivo de texto",
   "finding.symlinkIgnored": "Enlace simbólico ignorado",
+  "finding.unsupported": "Omitido: un socket, una tubería, un dispositivo o un enlace que no se puede seguir, algo que ZIP no puede contener",
+  "finding.unlisted": "No se pudo leer esta carpeta, así que su contenido no está en el archivo comprimido",
   "finding.nfdFixed": "Nombre normalizado de NFD a NFC",
   "finding.nfd": "El nombre no está en forma NFC",
   "finding.invalidCharFixed": "Se sustituyeron caracteres no válidos",

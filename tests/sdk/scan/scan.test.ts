@@ -6,7 +6,8 @@
  * as a top-level input, and the output-artifact self-exclusion.
  */
 
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -127,6 +128,7 @@ describe("scan over a real tree", () => {
 
     const blocked = await runScan({ inputs: [proj] }, { symlinks: "follow" });
     expect(names(blocked)).not.toContain("escape/secret.txt");
+    expect(blocked.skipped).toEqual([{ archivePath: "escape", sourcePath: "proj/escape", kind: "external-link" }]);
 
     const allowed = await runScan(
       { inputs: [proj] },
@@ -144,7 +146,41 @@ describe("scan over a real tree", () => {
     const result = await runScan({ inputs: [proj] }, { symlinks: "follow" });
 
     expect(names(result)).toEqual(["real.txt"]);
+    expect(result.skipped).toEqual([{ archivePath: "dangling", sourcePath: "proj/dangling", kind: "broken-link" }]);
   });
+
+  // A FIFO is a POSIX object; Windows has no mkfifo.
+  it.skipIf(process.platform === "win32")("records a FIFO as skipped rather than dropping it silently", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj, { recursive: true });
+    await writeFile(path.join(proj, "real.txt"), "real");
+    execFileSync("mkfifo", [path.join(proj, "pipe")]);
+
+    const result = await runScan({ inputs: [proj] });
+
+    expect(names(result)).toEqual(["real.txt"]);
+    expect(result.skipped).toEqual([{ archivePath: "pipe", sourcePath: "proj/pipe", kind: "fifo" }]);
+  });
+
+  // POSIX permissions decide whether a folder can be listed; root lists anything.
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "records a subfolder it cannot list",
+    async () => {
+      const proj = path.join(dir, "proj");
+      const locked = path.join(proj, "locked");
+      await mkdir(locked, { recursive: true });
+      await writeFile(path.join(locked, "hidden.txt"), "hidden");
+      await writeFile(path.join(proj, "a.txt"), "a");
+      await chmod(locked, 0o000);
+      try {
+        const result = await runScan({ inputs: [proj] });
+        expect(names(result)).toEqual(["a.txt", "locked"]);
+        expect(result.unlistedDirs).toEqual(["locked"]);
+      } finally {
+        await chmod(locked, 0o755);
+      }
+    },
+  );
 
   it("follows a symlink given directly as a top-level input", async () => {
     const realdir = path.join(dir, "realdir");

@@ -297,6 +297,8 @@
   "finding.junk": "Excluído pela predefinição de arquivos inúteis",
   "finding.symlinkPreserved": "Link simbólico mantido como entrada de link Unix; o Windows o extrai como arquivo de texto",
   "finding.symlinkIgnored": "Link simbólico ignorado",
+  "finding.unsupported": "Deixado de fora: um socket, pipe, dispositivo ou link que não pode ser seguido, algo que o ZIP não comporta",
+  "finding.unlisted": "Não foi possível ler esta pasta, então o conteúdo dela não está no arquivo compactado",
   "finding.nfdFixed": "Nome normalizado de NFD para NFC",
   "finding.nfd": "O nome não está na forma NFC",
   "finding.invalidCharFixed": "Caracteres inválidos substituídos",

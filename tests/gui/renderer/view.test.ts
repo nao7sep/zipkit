@@ -412,6 +412,28 @@ describe("planReport", () => {
       ["Symlink ignored"],
     ]);
   });
+  it("lists a skipped special file as excluded by its finding alone, and an unreadable folder as a warning", () => {
+    const plan = planOf([
+      entry({
+        archivePath: "pipe",
+        excluded: true,
+        excludeReason: "named pipe (FIFO) left out: a ZIP archive cannot hold it",
+        findings: [{ rule: "entry.unsupported", severity: "info", path: "pipe", message: "named pipe (FIFO) left out" }],
+      }),
+      entry({
+        archivePath: "locked",
+        type: "dir",
+        findings: [{ rule: "entry.unlisted", severity: "warning", path: "locked", message: "folder could not be read" }],
+      }),
+    ]);
+    expect(planReport(plan, en)).toEqual([
+      { kind: "warnings", rows: [{ path: "locked", changes: ["This folder could not be read, so its contents are not in the archive"] }] },
+      {
+        kind: "excluded",
+        rows: [{ path: "pipe", changes: ["Left out: a socket, pipe, device, or link that cannot be followed, which ZIP cannot hold"] }],
+      },
+    ]);
+  });
   it("shows a rule the GUI does not know as the SDK wrote it", () => {
     const plan = planOf([entry({ archivePath: "x", findings: [{ rule: "future.rule", severity: "warning", path: "x", message: "something new" }] })]);
     expect(planReport(plan, en)[0]?.rows[0]?.changes).toEqual(["Something new"]);
