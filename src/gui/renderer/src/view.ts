@@ -14,6 +14,7 @@
  */
 
 import { JOB_EVENT_LIMIT } from "../../shared/api";
+import { manifestRequiredButMissing } from "../../shared/queue";
 import type { ExtractData, Finding, InputEntry, Job, JobEvent, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
@@ -168,17 +169,21 @@ export type JobCommand =
   | "trash-originals"
   | "remove-archive";
 
+export { manifestRequiredButMissing };
+
 /** The lifecycle commands available for a job in its current state. Pure, so the
  *  command bar reads one source and is unit-tested without a DOM. `needs-attention`
- *  intentionally offers none — the job is blocked until its options are fixed. */
+ *  intentionally offers none — the job is blocked until its options are fixed —
+ *  and neither does a Move-to-Trash job without its manifest, whose note says why. */
 export function jobCommands(job: Job): JobCommand[] {
+  const runnable = !manifestRequiredButMissing(job.intent, job.options.metadata);
   switch (job.state) {
     case "planning":
       return ["cancel"];
     case "needs-attention":
       return [];
     case "ready":
-      return ["create"];
+      return runnable ? ["create"] : [];
     case "queued":
       // Waiting its turn: the only act is to pull it back out of the queue.
       return ["cancel"];
@@ -189,7 +194,8 @@ export function jobCommands(job: Job): JobCommand[] {
       // whose verify/Trash failed, so the .zip exists and the originals are kept),
       // let the user inspect or clean up that file — not just retry. A plain write
       // failure leaves no output, so it offers only "Try again".
-      return job.output ? ["retry", "reveal", "remove-archive"] : ["retry"];
+      if (job.output) return runnable ? ["retry", "reveal", "remove-archive"] : ["reveal", "remove-archive"];
+      return runnable ? ["retry"] : [];
     case "done":
       if (job.intent !== "save") return ["verify", "reveal"];
       // A saved archive: verify/reveal it, remove the archive to edit and
@@ -200,12 +206,6 @@ export function jobCommands(job: Job): JobCommand[] {
         ? ["verify", "reveal", "remove-archive", "trash-originals"]
         : ["verify", "reveal", "remove-archive"];
   }
-}
-
-/** archive-and-trash verifies against the manifest before deleting, so it needs
- *  the manifest embedded; warn when the intent is set without it. */
-export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean): boolean {
-  return intent === "archive-and-trash" && !metadata;
 }
 
 /** The short intent tag shown on a job row — only the noteworthy intent gets a

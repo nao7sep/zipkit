@@ -88,6 +88,19 @@ describe("queue engine", () => {
     );
   });
 
+  it("refuses to run a Move-to-Trash job without the manifest, writing nothing", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/good"], { ...DEFAULT_OPTIONS, metadata: false }, "archive-and-trash");
+    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await tick();
+    await tick();
+    expect(calls.write).toBe(0);
+    expect(calls.plan).toBe(1);
+    expect(engine.snapshot()[0]?.state).toBe("ready");
+  });
+
   it("names the source file that changed while the archive was written", async () => {
     const { deps } = makeDeps({
       write: async () => {

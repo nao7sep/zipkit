@@ -56,6 +56,13 @@ export function isEditable(state: JobState): boolean {
   return state !== "running" && state !== "done" && state !== "queued";
 }
 
+/** A Move-to-Trash job verifies the archive against its manifest before it
+ *  moves anything, so it cannot run with the manifest turned off. One copy, so
+ *  the engine refuses exactly the runs the renderer does not offer. */
+export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean): boolean {
+  return intent === "archive-and-trash" && !metadata;
+}
+
 export interface Job {
   id: string;
   inputs: string[];

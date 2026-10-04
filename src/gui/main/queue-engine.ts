@@ -16,7 +16,14 @@
  * forwarded, so the renderer can show each job its own Progress.
  */
 
-import { isEditable, type InputEntry, type Job, type JobIntent, type SavedJob } from "../shared/queue.js";
+import {
+  isEditable,
+  manifestRequiredButMissing,
+  type InputEntry,
+  type Job,
+  type JobIntent,
+  type SavedJob,
+} from "../shared/queue.js";
 import type { LogEvent, PlanData } from "../shared/api.js";
 import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
@@ -321,6 +328,16 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     return state === "ready" || state === "queued" || state === "failed";
   }
 
+  /** Whether a job's options forbid running it at all: a Move-to-Trash job
+   *  without the manifest it is verified against. Checked when a run is
+   *  requested and again when the drain reaches it, so neither a stale click
+   *  nor an edit while it waited can start it. */
+  function refusesRun(rec: Rec): boolean {
+    if (!manifestRequiredButMissing(rec.job.intent, rec.job.options.metadata)) return false;
+    deps.log.warn("job run refused: Move to Trash needs the manifest", { jobId: rec.job.id });
+    return true;
+  }
+
   /** The in-flight `runJob` call, if any — at most one at a time by design.
    *  `shutdown()` awaits this rather than the cancel request itself, so quit
    *  waits for the writer to actually stop. */
@@ -336,7 +353,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         if (id === undefined) break;
         const rec = recs.get(id);
         // Skip if removed or no longer runnable (e.g. re-planned to needs-attention).
-        if (!rec || !isRunnable(rec.job.state)) continue;
+        if (!rec || !isRunnable(rec.job.state) || refusesRun(rec)) continue;
         currentRun = runJob(id);
         try {
           await currentRun;
@@ -466,6 +483,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // (re)planning — the latter is honored when its plan lands (maybeRunPending),
       // which keeps "edit a field, then Create" from being dropped mid-re-plan.
       if (s !== "ready" && s !== "failed" && s !== "planning") return;
+      if (refusesRun(rec)) return;
       if (!pending.includes(id)) pending.push(id);
       deps.log.info("job run requested", { jobId: id, state: s });
       // A planning job waits for its plan; only a runnable one starts (or queues

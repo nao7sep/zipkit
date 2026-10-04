@@ -626,6 +626,14 @@ describe("jobCommands", () => {
     expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);
   });
+  it("offers no create or retry for a Move-to-Trash job without its manifest", () => {
+    const noManifest = { intent: "archive-and-trash" as const, options: { ...DEFAULT_OPTIONS, metadata: false } };
+    expect(jobCommands(job({ state: "ready", ...noManifest }))).toEqual([]);
+    expect(jobCommands(job({ state: "failed", ...noManifest }))).toEqual([]);
+    expect(jobCommands(job({ state: "ready", intent: "save", options: { ...DEFAULT_OPTIONS, metadata: false } }))).toEqual([
+      "create",
+    ]);
+  });
   it("offers cancel while planning, queued, or running", () => {
     expect(jobCommands(job({ state: "planning" }))).toEqual(["cancel"]);
     expect(jobCommands(job({ state: "queued" }))).toEqual(["cancel"]);
