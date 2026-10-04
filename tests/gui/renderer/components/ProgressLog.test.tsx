@@ -30,7 +30,7 @@ describe("ProgressLog", () => {
     expect(lines).toEqual([
       "not-a-time",
       "Scanning 1 input",
-      "WarningThe name is a reserved device name: 2 entries",
+      "WarningReserved device names: 2 entries",
       "not-a-time",
       "Writing 2 entries",
     ]);

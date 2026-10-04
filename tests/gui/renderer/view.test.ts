@@ -36,7 +36,8 @@ import {
   stateLabel,
   verifySummary,
 } from "../../../src/gui/renderer/src/view";
-import { JOB_EVENT_LIMIT, type ExtractData, type Job, type JobEvent, type LogEvent, type PlanData } from "../../../src/gui/shared/api";
+import { JOB_EVENT_LIMIT, type ExtractData, type Job, type JobEvent, type LogEvent, type PlanData, type Severity } from "../../../src/gui/shared/api";
+import { RULE_ORDER } from "../../../src/sdk/registry";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
 import { createTranslator, message } from "../../../src/gui/shared/i18n/translate";
@@ -493,7 +494,7 @@ describe("progressRuns", () => {
       [
         "2026-06-14T05:00:00.000Z:2",
         "2026-06-14T05:00:01.000Z",
-        ["Scanning 1 input", "Excluded by the junk preset: 2 entries", "The name is a reserved device name: 1 entry"],
+        ["Scanning 1 input", "Junk files excluded: 2 entries", "Reserved device names: 1 entry"],
       ],
       ["2026-06-14T05:00:00.000Z:6", "2026-06-14T05:00:02.000Z", ["Writing 3 entries"]],
     ]);
@@ -505,12 +506,29 @@ describe("progressRuns", () => {
     const [bad] = progressRuns([jobEvent(1, { event: "scan.start", inputs: 1, time: "not-a-time" })]);
     expect(progressTime(bad!, en)).toBe("not-a-time");
   });
-  it("names a kind of finding in plain words, by whether the run repaired it", () => {
-    expect(findingKind("name.nfd", "info", en)).toBe("Name normalized from NFD to NFC");
-    expect(findingKind("name.nfd", "warning", en)).toBe("The name is not in NFC form");
-    expect(findingKind("entry.symlink", "warning", en)).toBe("Symbolic link");
-    expect(findingKind("extract.crc-fail", "error", en)).toBe("The content is corrupt (CRC-32 mismatch)");
+  it("names a kind of finding by a short label, by whether the run repaired it", () => {
+    expect(findingKind("name.nfd", "info", en)).toBe("Names normalized to NFC");
+    expect(findingKind("name.nfd", "warning", en)).toBe("Names not in NFC");
+    expect(findingKind("path.too-long", "warning", en)).toBe("Paths too long for Windows");
+    expect(findingKind("macos.junk", "info", en)).toBe("Junk files excluded");
+    expect(findingKind("entry.symlink", "warning", en)).toBe("Symbolic links");
+    expect(findingKind("entry.unsupported", "info", en)).toBe("Special files left out");
+    expect(findingKind("extract.crc-fail", "error", en)).toBe("CRC-32 mismatches");
+    expect(findingKind("extract.manifest-mismatch", "error", en)).toBe("Size or CRC-32 mismatches with the manifest");
     expect(findingKind("future.rule", "info", en)).toBe("future.rule");
+  });
+  it("gives every rule the SDK registers, and every verify rule, a label in one form", () => {
+    const rules = [
+      ...RULE_ORDER.flatMap((rule) => (rule.startsWith("name.") ? [`${rule}|info`, `${rule}|warning`] : [`${rule}|warning`])),
+      ...["crc-fail", "sha-mismatch", "manifest-mismatch", "unsafe-path", "missing", "extra"].map((r) => `extract.${r}|error`),
+    ];
+    for (const entry of rules) {
+      const [rule, severity] = entry.split("|") as [string, Severity];
+      const label = findingKind(rule, severity, en);
+      expect(label, entry).not.toBe(rule);
+      // A label, not a sentence: no clause and no final period.
+      expect(label, entry).not.toMatch(/[.,;:()]$|[,;(]/);
+    }
   });
 });
 
@@ -584,7 +602,7 @@ describe("progress presentation", () => {
       severity: "warning",
       message: "warning: name.reserved at CON.txt",
     } as LogEvent;
-    expect(progressMessage(event, en)).toBe("The name is a reserved device name: 1 entry");
+    expect(progressMessage(event, en)).toBe("Reserved device names: 1 entry");
     expect(event.message).toBe("warning: name.reserved at CON.txt");
   });
 

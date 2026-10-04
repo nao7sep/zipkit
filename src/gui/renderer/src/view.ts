@@ -324,16 +324,6 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
   "output.exists": "finding.outputExists",
 };
 
-/** The verify stage's rules, which only a verify reports. */
-const VERIFY_FINDINGS: Record<string, MessageKey> = {
-  "extract.crc-fail": "finding.crcFail",
-  "extract.sha-mismatch": "finding.shaMismatch",
-  "extract.manifest-mismatch": "finding.manifestMismatch",
-  "extract.unsafe-path": "finding.unsafePath",
-  "extract.missing": "finding.missing",
-  "extract.extra": "finding.extra",
-};
-
 /** The catalogue entry for a plan finding, keyed on its stable rule, or null
  *  for a rule the GUI does not know (shown as the SDK wrote it). A symlink
  *  finding reads from the plan whether the link was kept or dropped: the SDK
@@ -459,14 +449,51 @@ export function reportRowPath(row: ReportRow, t: Translator): string {
   return row.from === undefined ? row.path : t.t("finding.renamedTo", { text: row.from, to: row.path });
 }
 
-/** The plain words for a kind of finding, from its rule and the severity the
- *  run gave it — a progress event carries no fix, and a name rule is reported
- *  at `info` exactly when it was repaired. A rule the GUI does not know shows
- *  its code. */
+/** The Progress labels for the name rules, a fixed and a found form each. */
+const NAME_KINDS: Record<string, { fixed: MessageKey; found: MessageKey }> = {
+  "name.nfd": { fixed: "findingKind.nfdFixed", found: "findingKind.nfd" },
+  "name.invalid-char": { fixed: "findingKind.invalidCharFixed", found: "findingKind.invalidChar" },
+  "name.control-char": { fixed: "findingKind.controlCharFixed", found: "findingKind.controlChar" },
+  "name.trailing-dot-space": { fixed: "findingKind.trailingDotSpaceFixed", found: "findingKind.trailingDotSpace" },
+  "name.reserved": { fixed: "findingKind.reservedFixed", found: "findingKind.reserved" },
+};
+
+/** The Progress label for every other rule, plan and verify alike: a short
+ *  noun phrase that names the kind, where the Report's sentence describes one
+ *  entry. */
+const RULE_KINDS: Record<string, MessageKey> = {
+  "path.absolute": "findingKind.pathAbsolute",
+  "path.traversal": "findingKind.pathTraversal",
+  "path.too-long": "findingKind.pathTooLong",
+  "macos.junk": "findingKind.junk",
+  "windows.junk": "findingKind.junk",
+  "linux.junk": "findingKind.junk",
+  "entry.symlink": "findingKind.symlink",
+  "entry.unsupported": "findingKind.unsupported",
+  "entry.unlisted": "findingKind.unlisted",
+  "name.suspicious": "findingKind.suspicious",
+  "entry.duplicate": "findingKind.duplicate",
+  "collision.case": "findingKind.collisionCase",
+  "collision.post-fix": "findingKind.collisionPostFix",
+  "time.pre-1980": "findingKind.pre1980",
+  "time.post-2107": "findingKind.post2107",
+  "output.exists": "findingKind.outputExists",
+  "extract.crc-fail": "findingKind.crcFail",
+  "extract.sha-mismatch": "findingKind.shaMismatch",
+  "extract.manifest-mismatch": "findingKind.manifestMismatch",
+  "extract.unsafe-path": "findingKind.unsafePath",
+  "extract.missing": "findingKind.missing",
+  "extract.extra": "findingKind.extra",
+};
+
+/** The label for a kind of finding in Progress, from its rule and the severity
+ *  the run gave it — a progress event carries no fix, and a name rule is
+ *  reported at `info` exactly when it was repaired. A rule the GUI does not
+ *  know shows its code. */
 export function findingKind(rule: string, severity: Severity, t: Translator): string {
-  const name = NAME_FINDINGS[rule];
+  const name = NAME_KINDS[rule];
   if (name) return t.t(severity === "info" ? name.fixed : name.found);
-  const key = rule === "entry.symlink" ? "finding.symlink" : (RULE_FINDINGS[rule] ?? VERIFY_FINDINGS[rule]);
+  const key = RULE_KINDS[rule];
   return key ? t.t(key) : rule;
 }
 
