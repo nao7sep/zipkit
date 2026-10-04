@@ -41,13 +41,19 @@ const SUSPICIOUS_CODES = new Set<number>([
   0x200b, 0x2060, 0xfeff, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069,
 ]);
 
+// Windows device names, matched against the upper-cased stem: CON, PRN, AUX,
+// NUL, COM and LPT with a digit 0-9 or a superscript 1-3 (U+00B9, U+00B2,
+// U+00B3), and the console names CONIN$ and CONOUT$.
+const PORT_SUFFIXES = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "\u00b9", "\u00b2", "\u00b3"];
 const RESERVED = new Set<string>([
   "CON",
   "PRN",
   "AUX",
   "NUL",
-  ...Array.from({ length: 9 }, (_, i) => `COM${i + 1}`),
-  ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`),
+  "CONIN$",
+  "CONOUT$",
+  ...PORT_SUFFIXES.map((d) => `COM${d}`),
+  ...PORT_SUFFIXES.map((d) => `LPT${d}`),
 ]);
 
 /** A name issue detected on a segment: its rule, the tier the action assigned,
