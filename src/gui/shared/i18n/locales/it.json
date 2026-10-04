@@ -273,6 +273,7 @@
   "report.entries": { "one": "{count} voce", "many": "{count} di voci", "other": "{count} voci" },
   "report.crcFailures": { "one": "{count} errore CRC", "many": "{count} di errori CRC", "other": "{count} errori CRC" },
   "report.shaMismatches": { "one": "{count} discrepanza SHA", "many": "{count} di discrepanze SHA", "other": "{count} discrepanze SHA" },
+  "report.manifestMismatches": {"one": "{count} discrepanza con il manifesto", "many": "{count} di discrepanze con il manifesto", "other": "{count} discrepanze con il manifesto"},
   "report.zipInput": "Questo input è già un .zip. Comprimerlo di nuovo fa risparmiare poco e mette solo uno zip dentro un altro. Archivia invece il suo contenuto, oppure dai un altro nome alla destinazione.",
   "report.excludedEmptyDir": "Cartella vuota esclusa",
   "report.excludedEmptyFile": "File vuoto saltato",
@@ -317,6 +318,7 @@
   "finding.extra": "Presente nell’archivio ma non nel manifesto",
   "finding.missing": "Elencato nel manifesto ma assente dall’archivio",
   "finding.shaMismatch": "Il contenuto non corrisponde allo SHA-256 del manifesto",
+  "finding.manifestMismatch": "La dimensione o il CRC-32 non corrisponde al manifesto",
   "finding.symlink": "Collegamento simbolico",
   "finding.unsafePath": "Il percorso punta fuori dalla cartella di destinazione",
 

@@ -273,6 +273,7 @@
   "report.entries": { "other": "{count} エントリ" },
   "report.crcFailures": { "other": "CRC エラー {count} 件" },
   "report.shaMismatches": { "other": "SHA 不一致 {count} 件" },
+  "report.manifestMismatches": {"other": "マニフェスト不一致 {count} 件"},
   "report.zipInput": "この入力はすでに .zip です。もう一度圧縮してもほとんど小さくならず、zip の中に zip が入るだけです。代わりに中身をアーカイブするか、出力に別の名前を付けてください。",
   "report.excludedEmptyDir": "空のフォルダを除外",
   "report.excludedEmptyFile": "空のファイルを除外",
@@ -317,6 +318,7 @@
   "finding.extra": "アーカイブにありますが、マニフェストにありません",
   "finding.missing": "マニフェストにありますが、アーカイブにありません",
   "finding.shaMismatch": "内容がマニフェストの SHA-256 と一致しません",
+  "finding.manifestMismatch": "サイズまたは CRC-32 がマニフェストと一致しません",
   "finding.symlink": "シンボリックリンク",
   "finding.unsafePath": "パスが展開先フォルダの外を指しています",
 

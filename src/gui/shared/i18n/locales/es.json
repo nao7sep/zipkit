@@ -273,6 +273,7 @@
   "report.entries": { "one": "{count} entrada", "many": "{count} de entradas", "other": "{count} entradas" },
   "report.crcFailures": { "one": "{count} error de CRC", "many": "{count} de errores de CRC", "other": "{count} errores de CRC" },
   "report.shaMismatches": { "one": "{count} discrepancia de SHA", "many": "{count} de discrepancias de SHA", "other": "{count} discrepancias de SHA" },
+  "report.manifestMismatches": {"one": "{count} discrepancia con el manifiesto", "many": "{count} de discrepancias con el manifiesto", "other": "{count} discrepancias con el manifiesto"},
   "report.zipInput": "Esta entrada ya es un .zip. Volver a comprimirla apenas ahorra espacio y solo mete un zip dentro de otro. Comprime su contenido en su lugar, o ponle otro nombre a la salida.",
   "report.excludedEmptyDir": "Carpeta vacía omitida",
   "report.excludedEmptyFile": "Archivo vacío omitido",
@@ -317,6 +318,7 @@
   "finding.extra": "Está en el archivo comprimido, pero no en el manifiesto",
   "finding.missing": "Figura en el manifiesto, pero falta en el archivo comprimido",
   "finding.shaMismatch": "El contenido no coincide con el SHA-256 del manifiesto",
+  "finding.manifestMismatch": "El tamaño o el CRC-32 no coincide con el manifiesto",
   "finding.symlink": "Enlace simbólico",
   "finding.unsafePath": "La ruta apunta fuera de la carpeta de destino",
 

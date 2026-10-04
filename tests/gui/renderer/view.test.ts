@@ -634,7 +634,9 @@ describe("jobCommands", () => {
 
 describe("verifySummary", () => {
   it("summarizes the verify counts", () => {
-    const data = { summary: { total: 10, crcFailed: 1, shaMismatched: 2 } } as unknown as ExtractData;
-    expect(verifySummary(data, en)).toBe("10 entries, 1 CRC failure, 2 SHA mismatches");
+    const data = {
+      summary: { total: 10, crcFailed: 1, shaMismatched: 2, manifestMismatched: 1 },
+    } as unknown as ExtractData;
+    expect(verifySummary(data, en)).toBe("10 entries, 1 CRC failure, 2 SHA mismatches, 1 manifest mismatch");
   });
 });

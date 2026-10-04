@@ -273,6 +273,7 @@
   "report.entries": { "other": "항목 {count}개" },
   "report.crcFailures": { "other": "CRC 오류 {count}개" },
   "report.shaMismatches": { "other": "SHA 불일치 {count}개" },
+  "report.manifestMismatches": {"other": "매니페스트 불일치 {count}개"},
   "report.zipInput": "이 입력은 이미 .zip 파일입니다. 다시 압축해도 크기가 거의 줄지 않고 zip 안에 zip이 들어갈 뿐입니다. 대신 내용을 아카이브하거나 출력에 다른 이름을 지정하십시오.",
   "report.excludedEmptyDir": "빈 폴더 제외됨",
   "report.excludedEmptyFile": "빈 파일 건너뜀",
@@ -317,6 +318,7 @@
   "finding.extra": "아카이브에 있지만 매니페스트에는 없습니다",
   "finding.missing": "매니페스트에 있지만 아카이브에는 없습니다",
   "finding.shaMismatch": "내용이 매니페스트의 SHA-256과 일치하지 않습니다",
+  "finding.manifestMismatch": "크기 또는 CRC-32가 매니페스트와 일치하지 않습니다",
   "finding.symlink": "심볼릭 링크",
   "finding.unsafePath": "경로가 대상 폴더 밖을 가리킵니다",
 

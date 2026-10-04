@@ -9,6 +9,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { crc32 } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
@@ -193,6 +194,68 @@ describe("heavy validation against a manifest", () => {
     expect(report.reportOk).toBe(true);
     expect(report.missing).toEqual([]);
     expect(report.extra).toEqual([]);
+  });
+});
+
+describe("manifest size and CRC-32", () => {
+  /** A manifest record carrying the entry's true size and CRC-32, as create writes it. */
+  function recordFor(entry: EntryWithData): { archivePath: string; size: number; crc32: number } {
+    return { archivePath: entry.name, size: entry.raw.length, crc32: crc32(entry.raw) };
+  }
+
+  async function verify(entries: EntryWithData[], records: object[], opts?: Partial<BuildOptions>) {
+    const archive = await writeArchive(
+      [...entries, fileEntry("zipkit.json", JSON.stringify({ entries: records }))],
+      opts,
+    );
+    return new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
+  }
+
+  it("fails an entry whose size differs from the manifest", async () => {
+    const a = fileEntry("a.txt", "alpha");
+    const report = await verify([a], [{ ...recordFor(a), size: 999 }]);
+    expect(report.reportOk).toBe(false);
+    expect(report.summary.manifestMismatched).toBe(1);
+    expect(report.findings.filter((f) => f.rule === "extract.manifest-mismatch")).toEqual([
+      expect.objectContaining({ path: "a.txt", severity: "error" }),
+    ]);
+  });
+
+  it("fails an entry whose CRC-32 differs from the manifest even with no SHA-256 recorded", async () => {
+    const a = fileEntry("a.txt", "alpha");
+    const report = await verify([a], [{ ...recordFor(a), crc32: (crc32(a.raw) + 1) >>> 0 }]);
+    expect(report.reportOk).toBe(false);
+    expect(report.findings.map((f) => f.rule)).toContain("extract.manifest-mismatch");
+  });
+
+  it("passes matching records, a CRC-32 with the high bit set, a Zip64 entry and a symlink", async () => {
+    // A content whose CRC-32 is at or above 2^31, so a signed comparison would differ.
+    let high = fileEntry("high.txt", "h0");
+    for (let i = 1; crc32(high.raw) < 0x80000000; i++) high = fileEntry("high.txt", `h${i}`);
+    const link = symlinkEntry("link", "high.txt");
+    const entries = [fileEntry("a.txt", "alpha"), high, link];
+    for (const zip64 of [false, true]) {
+      const report = await verify(entries, entries.map(recordFor), { zip64 });
+      expect(report.summary.manifestMismatched).toBe(0);
+      expect(report.reportOk).toBe(true);
+    }
+  });
+
+  it("does not compare a record without numeric size or CRC-32", async () => {
+    const a = fileEntry("a.txt", "alpha");
+    const report = await verify([a], [{ archivePath: "a.txt", size: "5", crc32: null }]);
+    expect(report.reportOk).toBe(true);
+  });
+
+  it("leaves a CRC-only verify unchanged", async () => {
+    const a = fileEntry("a.txt", "alpha");
+    const archive = await writeArchive([
+      a,
+      fileEntry("zipkit.json", JSON.stringify({ entries: [{ ...recordFor(a), size: 999 }] })),
+    ]);
+    const report = await new ZipKit().extract({ archive, dryRun: true });
+    expect(report.reportOk).toBe(true);
+    expect(report.summary.manifestMismatched).toBe(0);
   });
 });
 

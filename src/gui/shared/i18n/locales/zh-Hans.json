@@ -273,6 +273,7 @@
   "report.entries": { "other": "{count} 个条目" },
   "report.crcFailures": { "other": "{count} 个 CRC 错误" },
   "report.shaMismatches": { "other": "{count} 个 SHA 不匹配" },
+  "report.manifestMismatches": {"other": "{count} 个清单不一致"},
   "report.zipInput": "此输入已经是 .zip。再次压缩几乎不会变小，只会把一个 zip 套进另一个 zip。请改为归档其内容，或为输出另取一个名称。",
   "report.excludedEmptyDir": "已排除空文件夹",
   "report.excludedEmptyFile": "已跳过空文件",
@@ -317,6 +318,7 @@
   "finding.extra": "在归档中，但不在清单中",
   "finding.missing": "在清单中，但归档中缺少",
   "finding.shaMismatch": "内容与清单中的 SHA-256 不匹配",
+  "finding.manifestMismatch": "大小或 CRC-32 与清单不一致",
   "finding.symlink": "符号链接",
   "finding.unsafePath": "路径指向目标文件夹之外",
 

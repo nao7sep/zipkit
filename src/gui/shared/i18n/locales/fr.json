@@ -273,6 +273,7 @@
   "report.entries": { "one": "{count} entrée d’archive", "many": "{count} d’entrées d’archive", "other": "{count} entrées d’archive" },
   "report.crcFailures": { "one": "{count} erreur CRC", "many": "{count} d’erreurs CRC", "other": "{count} erreurs CRC" },
   "report.shaMismatches": { "one": "{count} écart SHA", "many": "{count} d’écarts SHA", "other": "{count} écarts SHA" },
+  "report.manifestMismatches": {"one": "{count} écart avec le manifeste", "many": "{count} d’écarts avec le manifeste", "other": "{count} écarts avec le manifeste"},
   "report.zipInput": "Cette entrée est déjà un .zip. La compresser à nouveau ne fait presque rien gagner et ne fait qu’imbriquer un zip dans un zip. Archivez plutôt son contenu, ou donnez un autre nom à la sortie.",
   "report.excludedEmptyDir": "Dossier vide écarté",
   "report.excludedEmptyFile": "Fichier vide ignoré",
@@ -317,6 +318,7 @@
   "finding.extra": "Présent dans l’archive mais absent du manifeste",
   "finding.missing": "Listé dans le manifeste mais absent de l’archive",
   "finding.shaMismatch": "Le contenu ne correspond pas au SHA-256 du manifeste",
+  "finding.manifestMismatch": "La taille ou le CRC-32 ne correspond pas au manifeste",
   "finding.symlink": "Lien symbolique",
   "finding.unsafePath": "Le chemin pointe en dehors du dossier de destination",
 

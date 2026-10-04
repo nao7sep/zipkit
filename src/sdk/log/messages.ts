@@ -50,7 +50,7 @@ export function messageFor(body: LogEventBody): string {
     case "entry.verified":
       return `verified ${body.path}`;
     case "extract.done":
-      return `extract complete: ${body.written} written, ${body.skipped} skipped, ${body.crcFailed} CRC failure${s(body.crcFailed)}, ${body.shaMismatched} SHA mismatch${body.shaMismatched === 1 ? "" : "es"}`;
+      return `extract complete: ${body.written} written, ${body.skipped} skipped, ${body.crcFailed} CRC failure${s(body.crcFailed)}, ${body.shaMismatched} SHA mismatch${body.shaMismatched === 1 ? "" : "es"}, ${body.manifestMismatched} manifest mismatch${body.manifestMismatched === 1 ? "" : "es"}`;
     case "fault":
       return body.cause !== undefined
         ? `${body.code}: ${body.detail}: ${body.cause}`

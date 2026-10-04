@@ -315,6 +315,7 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
 const VERIFY_FINDINGS: Record<string, MessageKey> = {
   "extract.crc-fail": "finding.crcFail",
   "extract.sha-mismatch": "finding.shaMismatch",
+  "extract.manifest-mismatch": "finding.manifestMismatch",
   "extract.unsafe-path": "finding.unsafePath",
   "extract.missing": "finding.missing",
   "extract.extra": "finding.extra",
@@ -640,6 +641,7 @@ export function progressMessage(event: LogEvent, t: Translator): string {
           t.t("event.skippedCount", { count: event.skipped }),
           t.t("report.crcFailures", { count: event.crcFailed }),
           t.t("report.shaMismatches", { count: event.shaMismatched }),
+          t.t("report.manifestMismatches", { count: event.manifestMismatched }),
         ]),
       });
     case "fault":
@@ -717,5 +719,6 @@ export function verifySummary(data: ExtractData, t: Translator): string {
     t.t("report.entries", { count: s.total }),
     t.t("report.crcFailures", { count: s.crcFailed }),
     t.t("report.shaMismatches", { count: s.shaMismatched }),
+    t.t("report.manifestMismatches", { count: s.manifestMismatched }),
   ]);
 }

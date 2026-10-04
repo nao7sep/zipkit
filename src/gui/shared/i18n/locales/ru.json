@@ -273,6 +273,7 @@
   "report.entries": { "one": "{count} запись", "few": "{count} записи", "many": "{count} записей", "other": "{count} записи" },
   "report.crcFailures": { "one": "{count} ошибка CRC", "few": "{count} ошибки CRC", "many": "{count} ошибок CRC", "other": "{count} ошибки CRC" },
   "report.shaMismatches": { "one": "{count} несовпадение SHA", "few": "{count} несовпадения SHA", "many": "{count} несовпадений SHA", "other": "{count} несовпадения SHA" },
+  "report.manifestMismatches": {"one": "{count} несовпадение с манифестом", "few": "{count} несовпадения с манифестом", "many": "{count} несовпадений с манифестом", "other": "{count} несовпадения с манифестом"},
   "report.zipInput": "Этот исходный элемент уже является файлом .zip. Повторное сжатие почти ничего не даёт и лишь вкладывает один zip в другой. Заархивируйте его содержимое или задайте результату другое имя.",
   "report.excludedEmptyDir": "Пустая папка пропущена",
   "report.excludedEmptyFile": "Пустой файл пропущен",
@@ -317,6 +318,7 @@
   "finding.extra": "Есть в архиве, но отсутствует в манифесте",
   "finding.missing": "Указан в манифесте, но отсутствует в архиве",
   "finding.shaMismatch": "Содержимое не совпадает с SHA-256 из манифеста",
+  "finding.manifestMismatch": "Размер или CRC-32 не совпадает с манифестом",
   "finding.symlink": "Символическая ссылка",
   "finding.unsafePath": "Путь ведёт за пределы папки назначения",
 

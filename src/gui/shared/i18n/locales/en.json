@@ -273,6 +273,7 @@
   "report.entries": { "one": "{count} entry", "other": "{count} entries" },
   "report.crcFailures": { "one": "{count} CRC failure", "other": "{count} CRC failures" },
   "report.shaMismatches": { "one": "{count} SHA mismatch", "other": "{count} SHA mismatches" },
+  "report.manifestMismatches": {"one": "{count} manifest mismatch", "other": "{count} manifest mismatches"},
   "report.zipInput": "This input is already a .zip. Compressing it again saves little and only nests a zip inside a zip. Archive its contents instead, or give the output a different name.",
   "report.excludedEmptyDir": "Empty directory pruned",
   "report.excludedEmptyFile": "Empty file skipped",
@@ -317,6 +318,7 @@
   "finding.extra": "In the archive but not listed in the manifest",
   "finding.missing": "Listed in the manifest but missing from the archive",
   "finding.shaMismatch": "The content does not match the manifest’s SHA-256",
+  "finding.manifestMismatch": "The size or CRC-32 does not match the manifest",
   "finding.symlink": "Symbolic link",
   "finding.unsafePath": "The path points outside the destination folder",
 

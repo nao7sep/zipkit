@@ -434,7 +434,8 @@ export interface ExtractEntryResult {
 /**
  * The `extract` verb's payload. `findings` is the SSOT fault carrier. The domain
  * verdict is `reportOk` — no CRC failure, no unsafe path, and (under
- * `checkMetadata`) no missing/extra entry and no SHA mismatch — distinct from
+ * `checkMetadata`) no missing/extra entry and no SHA, size or CRC-32 mismatch
+ * against the manifest — distinct from
  * the envelope's derived `ok`; a run can complete cleanly yet be "not ok," and a
  * caller gates off `reportOk` (the delete-gate reads it).
  */
@@ -453,6 +454,8 @@ export interface ExtractData {
     skipped: number;
     crcFailed: number;
     shaMismatched: number;
+    /** Entries whose size or CRC-32 differs from the manifest (`checkMetadata`). */
+    manifestMismatched: number;
   };
   entries: ExtractEntryResult[];
   /** In the manifest but absent from the archive (`checkMetadata`). */
@@ -508,6 +511,7 @@ export type LogEventBody =
       total: number;
       crcFailed: number;
       shaMismatched: number;
+      manifestMismatched: number;
       written: number;
       skipped: number;
       reportOk: boolean;

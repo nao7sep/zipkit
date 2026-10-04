@@ -22,7 +22,7 @@ const samples: LogEventBody[] = [
   { event: "write.done", bytes: 100, zip64: false },
   { event: "extract.start", entries: 2, write: true },
   { event: "entry.verified", path: "p" },
-  { event: "extract.done", total: 2, crcFailed: 0, shaMismatched: 0, written: 2, skipped: 0, reportOk: true },
+  { event: "extract.done", total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, written: 2, skipped: 0, reportOk: true },
   { event: "fault", code: "read.not-zip", detail: "not a zip" },
 ];
 

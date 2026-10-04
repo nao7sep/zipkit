@@ -116,7 +116,20 @@ async function ensureRealDirs(volume: Volume, dest: string, segments: string[]):
 
 interface ManifestRecord {
   archivePath?: unknown;
+  size?: unknown;
+  crc32?: unknown;
   sha256?: unknown;
+}
+
+/**
+ * Whether a manifest record's size or CRC-32 disagrees with the archive's
+ * central directory. A field the record does not hold as a number (an older or
+ * third-party manifest) is not compared, so it is never a mismatch.
+ */
+function recordMismatches(record: ManifestRecord, entry: ReadEntry): boolean {
+  if (typeof record.size === "number" && record.size !== entry.uncompSize) return true;
+  if (typeof record.crc32 === "number" && record.crc32 >>> 0 !== entry.crc32 >>> 0) return true;
+  return false;
 }
 
 /** The verified outcome of streaming one entry through inflate. */
@@ -348,6 +361,8 @@ export async function extractArchive(
     // output file. `aborted` short-circuits the pool once an `onUnsafe: abort`
     // entry is found, so the run fails fast without spawning the rest.
     const abort: { entry: ReadEntry | null } = { entry: null };
+    // Entries whose size or CRC-32 differs from their manifest record.
+    const manifestMismatches = new Set<string>();
     // `allSettled`, not `all`: every task runs to completion so none is abandoned
     // mid-stream — which would orphan its temp file and keep reading the archive
     // handle the `finally` is about to close. Each task's calls are bounded, and
@@ -378,6 +393,10 @@ export async function extractArchive(
       const record = checkSha ? manifestMap.get(entry.archivePath) : undefined;
       const storedSha =
         record && typeof record.sha256 === "string" ? record.sha256 : null;
+      // The archive's own header is all the CRC check compares against, so a
+      // replaced entry passes it; comparing the central directory's size and
+      // CRC-32 with the manifest catches it even without a recorded SHA-256.
+      if (record && recordMismatches(record, entry)) manifestMismatches.add(entry.archivePath);
 
       // Decide up front whether this entry's bytes are written, so we only stage
       // a temp file when it will actually be committed. Everything else still
@@ -509,6 +528,7 @@ export async function extractArchive(
     const seen = new Set<string>();
     let crcFailed = 0;
     let shaMismatched = 0;
+    let manifestMismatched = 0;
     let unsafe = 0;
     let written = 0;
     let skipped = 0;
@@ -529,6 +549,17 @@ export async function extractArchive(
           finding("extract.sha-mismatch", r.archivePath, "content hash does not match the manifest", {
             severity: "error",
           }),
+        );
+      }
+      if (manifestMismatches.has(r.archivePath)) {
+        manifestMismatched++;
+        findings.push(
+          finding(
+            "extract.manifest-mismatch",
+            r.archivePath,
+            "size or CRC-32 in the archive does not match the manifest",
+            { severity: "error" },
+          ),
         );
       }
       if (r.skipped === "unsafe") {
@@ -570,11 +601,16 @@ export async function extractArchive(
     const reportOk =
       crcFailed === 0 &&
       unsafe === 0 &&
-      (!spec.checkMetadata || (missing.length === 0 && extra.length === 0 && shaMismatched === 0));
+      (!spec.checkMetadata ||
+        (missing.length === 0 &&
+          extra.length === 0 &&
+          shaMismatched === 0 &&
+          manifestMismatched === 0));
 
     // Enumerate the failures before the aggregate: one warn/error line per
-    // finding (CRC failure, SHA mismatch, unsafe path, missing/extra entry), so a
-    // corrupt or tampered archive logs *which* entries failed, not just a count.
+    // finding (CRC failure, SHA or size/CRC manifest mismatch, unsafe path,
+    // missing/extra entry), so a corrupt or tampered archive logs *which*
+    // entries failed, not just a count.
     // The per-success "entry.verified" lines stay at debug.
     reportFindings(deps.logger, "extract", findings);
 
@@ -585,6 +621,7 @@ export async function extractArchive(
       total: entries.length,
       crcFailed,
       shaMismatched,
+      manifestMismatched,
       written,
       skipped,
       reportOk,
@@ -597,7 +634,7 @@ export async function extractArchive(
       wrote: written > 0,
       reportOk,
       manifest,
-      summary: { total: entries.length, written, skipped, crcFailed, shaMismatched },
+      summary: { total: entries.length, written, skipped, crcFailed, shaMismatched, manifestMismatched },
       entries,
       missing,
       extra,

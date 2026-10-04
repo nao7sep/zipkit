@@ -273,6 +273,7 @@
   "report.entries": { "one": "{count} Eintrag", "other": "{count} Einträge" },
   "report.crcFailures": { "one": "{count} CRC-Fehler", "other": "{count} CRC-Fehler" },
   "report.shaMismatches": { "one": "{count} SHA-Abweichung", "other": "{count} SHA-Abweichungen" },
+  "report.manifestMismatches": {"one": "{count} Manifest-Abweichung", "other": "{count} Manifest-Abweichungen"},
   "report.zipInput": "Diese Eingabe ist bereits eine .zip-Datei. Erneutes Komprimieren spart kaum Platz und steckt nur ein ZIP in ein ZIP. Archivieren Sie stattdessen ihren Inhalt oder geben Sie der Ausgabe einen anderen Namen.",
   "report.excludedEmptyDir": "Leerer Ordner weggelassen",
   "report.excludedEmptyFile": "Leere Datei übersprungen",
@@ -317,6 +318,7 @@
   "finding.extra": "Im Archiv, aber nicht im Manifest aufgeführt",
   "finding.missing": "Im Manifest aufgeführt, aber nicht im Archiv",
   "finding.shaMismatch": "Der Inhalt stimmt nicht mit dem SHA-256 im Manifest überein",
+  "finding.manifestMismatch": "Größe oder CRC-32 stimmt nicht mit dem Manifest überein",
   "finding.symlink": "Symbolischer Link",
   "finding.unsafePath": "Der Pfad verweist auf einen Ort außerhalb des Zielordners",
 
