@@ -21,6 +21,11 @@ const say = (message: Message | undefined): string => (message ? en.text(message
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** Wait for the engine to reach a state. Each step settles within a few turns of
+ *  the event loop, so the check is polled every millisecond rather than at
+ *  waitFor's default 50 ms, which would idle most of each test. */
+const until = <T>(check: () => T | Promise<T>): Promise<T> => vi.waitFor(check, { interval: 1 });
+
 /** A plan that is writable unless its first input is the literal "bad". */
 function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
   return {
@@ -83,9 +88,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toBe(
       "The drive or network share holding /Volumes/NAS/out-x.tmp stopped responding. " +
         "The archive could not be written. Check the output location and available storage, then try again.",
@@ -96,7 +101,7 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/good"], { ...DEFAULT_OPTIONS, metadata: false }, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
     await tick();
     await tick();
@@ -116,16 +121,16 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const trashJob = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(engine.snapshot()[0]?.scanIncomplete).toBe(true);
     engine.run(trashJob);
     await tick();
     expect(calls.write).toBe(0);
 
     const saveJob = engine.add(["/other"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[1]?.state).toBe("ready"));
     engine.run(saveJob);
-    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[1]?.state).toBe("done"));
     engine.trashOriginals(saveJob);
     await tick();
     expect(calls.verify).toBe(0);
@@ -156,9 +161,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(runs).toEqual([`${id} plan`, `${id} create`]);
     expect(seen).toEqual(["plan:plan", "plan:create", "write:create", "verify:create", "recheck:create"]);
   });
@@ -171,9 +176,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toBe(
       "docs/notes.txt changed while it was being archived, so no archive was written. Create the archive again.",
     );
@@ -189,10 +194,10 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     stall = true;
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
     const job = engine.snapshot()[0];
     expect(job?.errorCode).toBe("io.stalled");
     expect(say(job?.message)).toContain("/Volumes/NAS/src stopped responding");
@@ -207,9 +212,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/good"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toBe(
       "The drive or network share holding /tmp/out.zip stopped responding. " +
         "The archive could not be verified. The originals were kept.",
@@ -227,9 +232,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/good"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBeInstanceOf(AbortSignal);
   });
@@ -238,9 +243,9 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/good"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.write).toBe(1);
   });
 
@@ -249,9 +254,9 @@ describe("queue engine", () => {
     const engine = createQueueEngine(deps);
     const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
     engine.add(["/b"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     engine.run(a);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     await tick();
     expect(engine.snapshot()[1]?.state).toBe("ready"); // the unrequested job stays put
     expect(calls.write).toBe(1);
@@ -261,7 +266,7 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["bad"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
     engine.run(id); // a no-op on a blocked job
     await tick();
     await tick();
@@ -277,7 +282,7 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => {
+    await until(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
       expect(say(j?.message)).toContain("could not be prepared");
@@ -296,7 +301,7 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     engine.add(["/a", "/b"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => {
+    await until(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
       expect(j?.errorCode).toBe("output.ambiguous");
@@ -322,17 +327,17 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     files = ["a.txt", "b.txt"]; // a file appeared after the Report was read
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
     const job = engine.snapshot()[0];
     expect(job?.writable).toBe(true);
     expect(say(job?.message)).toContain("The files changed since this job was checked");
     expect(calls.write).toBe(0);
     expect(engine.getPlan(id)?.entries.map((e) => e.archivePath)).toEqual(["a.txt", "b.txt"]);
     engine.run(id); // the fresh plan is the reviewed one now
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.write).toBe(1);
   });
 
@@ -340,10 +345,10 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     const atReady = calls.plan; // the add-time plan
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.plan).toBe(atReady + 1); // planned again at run
   });
 
@@ -351,9 +356,9 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const ids = ["/a", "/b", "/c"].map((p) => engine.add([p], DEFAULT_OPTIONS, "save"));
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     ids.forEach((id) => engine.run(id));
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
     expect(calls.maxWriteInFlight).toBe(1);
   });
 
@@ -371,13 +376,13 @@ describe("queue engine", () => {
     const engine = createQueueEngine(deps);
     const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
     const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     engine.run(a);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running")); // idle -> running, no queued
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("running")); // idle -> running, no queued
     engine.run(b);
-    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("queued")); // waits its turn, visibly
+    await until(() => expect(engine.snapshot()[1]?.state).toBe("queued")); // waits its turn, visibly
     release();
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
     expect(writes).toBe(2);
   });
 
@@ -395,17 +400,17 @@ describe("queue engine", () => {
     const engine = createQueueEngine(deps);
     const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
     const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     const plansBefore = calls.plan;
     engine.run(a);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("running"));
     engine.run(b);
-    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("queued"));
+    await until(() => expect(engine.snapshot()[1]?.state).toBe("queued"));
     engine.cancel(b);
-    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("ready")); // re-planned back to editable
+    await until(() => expect(engine.snapshot()[1]?.state).toBe("ready")); // re-planned back to editable
     expect(calls.plan).toBeGreaterThan(plansBefore);
     release();
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     await tick();
     expect(engine.snapshot()[1]?.state).toBe("ready"); // stayed out of the run
     expect(writes).toBe(1); // only A ever wrote
@@ -425,18 +430,18 @@ describe("queue engine", () => {
     const engine = createQueueEngine(deps);
     const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
     const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     engine.run(a);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("running"));
     engine.run(b);
-    await vi.waitFor(() => expect(engine.snapshot()[1]?.state).toBe("queued"));
+    await until(() => expect(engine.snapshot()[1]?.state).toBe("queued"));
     // Flipping a queued job's intent must be a no-op: a queued job is committed to
     // run, and a store-only edit would otherwise leave it queued and auto-run later
     // under the new (destructive) intent.
     engine.update(b, { intent: "archive-and-trash" });
     expect(engine.snapshot()[1]?.intent).toBe("save");
     release();
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "done")).toBe(true));
     expect(calls.trash).toEqual([]); // B ran as a plain save — nothing trashed
   });
 
@@ -444,9 +449,9 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     const plansWhenDone = calls.plan;
 
     // The pane's option debounce lands after the job finishes. A plan-affecting
@@ -464,7 +469,7 @@ describe("queue engine", () => {
     expect(calls.plan).toBe(plansWhenDone);
 
     engine.removeArchive(id); // the archive it published is still the one it knows
-    await vi.waitFor(() => expect(calls.trash).toEqual([["/tmp/out.zip"]]));
+    await until(() => expect(calls.trash).toEqual([["/tmp/out.zip"]]));
   });
 
   it("honors a run requested while the job is still (re)planning, once the plan lands ready", async () => {
@@ -480,12 +485,12 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
     engine.run(id); // requested mid-plan — must be deferred, not dropped
     await tick();
     expect(engine.snapshot()[0]?.state).toBe("planning"); // still waiting on the plan
     releasePlan();
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done")); // ran once it became ready
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done")); // ran once it became ready
     expect(calls.write).toBe(1);
   });
 
@@ -502,10 +507,10 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
     engine.run(id);
     releasePlan();
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
     await tick();
     expect(engine.snapshot()[0]?.state).toBe("needs-attention"); // stale request dropped
     expect(calls.write).toBe(0);
@@ -522,9 +527,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const ids = ["/a", "/b", "/c"].map((p) => engine.add([p], DEFAULT_OPTIONS, "save"));
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     ids.forEach((id) => engine.run(id));
-    await vi.waitFor(() =>
+    await until(() =>
       expect(engine.snapshot().every((j) => j.state === "done" || j.state === "failed")).toBe(true),
     );
     expect(engine.snapshot().map((j) => j.state)).toEqual(["done", "failed", "done"]);
@@ -535,9 +540,9 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.verify).toBe(1);
     expect(calls.trash).toEqual([["/data"]]);
   });
@@ -546,9 +551,9 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps({ verify: async () => false });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => {
+    await until(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
       expect(say(j?.message)).toContain("Verification failed");
@@ -560,11 +565,11 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeArchive(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(calls.trash).toEqual([["/tmp/out.zip"]]); // the archive was trashed
   });
 
@@ -574,14 +579,14 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps({ verify: async () => false });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(engine.snapshot()[0]?.output).toBe("/tmp/out.zip"); // the .zip was written
     expect(calls.trash).toEqual([]); // verify failed before any trash
     engine.removeArchive(id);
-    await vi.waitFor(() => expect(calls.trash).toEqual([["/tmp/out.zip"]])); // archive removed
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready")); // back to editable
+    await until(() => expect(calls.trash).toEqual([["/tmp/out.zip"]])); // archive removed
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready")); // back to editable
   });
 
   it("restore reloads saved jobs and plans each fresh to ready", async () => {
@@ -591,7 +596,7 @@ describe("queue engine", () => {
       { id: "j1", inputs: ["/a"], options: DEFAULT_OPTIONS, intent: "save" },
       { id: "j2", inputs: ["/b"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" },
     ]);
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     expect(engine.snapshot().map((j) => j.id)).toEqual(["j1", "j2"]);
     expect(calls.plan).toBe(2); // each restored job is re-planned
   });
@@ -605,11 +610,11 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("running"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("running"));
     engine.cancel(id);
-    await vi.waitFor(() => {
+    await until(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
       expect(say(j?.message)).toContain("could not be written");
@@ -634,16 +639,16 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(observedSignal).toBeDefined());
+    await until(() => expect(observedSignal).toBeDefined());
 
     // The Cancel button, while the Trash step is in flight.
     engine.cancel(id);
     expect(observedSignal!.aborted).toBe(true); // previously: trash had no signal to abort at all
     releaseTrash();
 
-    await vi.waitFor(() => {
+    await until(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
       expect(say(j?.message)).toContain("kept");
@@ -663,9 +668,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.hasRunningJob()).toBe(true));
+    await until(() => expect(engine.hasRunningJob()).toBe(true));
 
     let settled = false;
     const shutdown = engine.shutdown().then(() => {
@@ -695,10 +700,10 @@ describe("queue engine", () => {
     const engine = createQueueEngine(deps);
     const a = engine.add(["/a"], DEFAULT_OPTIONS, "save");
     const b = engine.add(["/b"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     engine.run(a);
     engine.run(b);
-    await vi.waitFor(() => expect(engine.snapshot().find((j) => j.id === b)?.state).toBe("queued"));
+    await until(() => expect(engine.snapshot().find((j) => j.id === b)?.state).toBe("queued"));
 
     const shutdown = engine.shutdown();
     rejectFirstWrite(new Error("aborted"));
@@ -715,9 +720,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => {
+    await until(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("failed");
       expect(say(j?.message)).toContain("inside the source");
@@ -732,9 +737,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.trashOriginals(id);
     await tick();
     expect(calls.trash).toEqual([]); // refused — never trashed
@@ -750,11 +755,11 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.trashOriginals(id);
-    await vi.waitFor(() =>
+    await until(() =>
       expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("could not be moved to Trash"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
@@ -771,9 +776,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toContain("1 original was moved to recoverable Trash. 1 original was kept.");
   });
 
@@ -783,9 +788,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     const message = say(engine.snapshot()[0]?.message);
     expect(message).toContain("1 original was moved to recoverable Trash. 1 original was still being moved and may yet reach recoverable Trash.");
     expect(message).not.toContain("kept");
@@ -795,12 +800,12 @@ describe("queue engine", () => {
     const { deps } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     deps.trash = async (paths) => ({ moved: [], failed: [], unconfirmed: paths });
     engine.removeArchive(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.actionResult).toBeDefined());
+    await until(() => expect(engine.snapshot()[0]?.actionResult).toBeDefined());
     const result = engine.snapshot()[0]?.actionResult;
     expect(result?.severity).toBe("warning");
     expect(say(result?.message)).toContain("may yet reach recoverable Trash");
@@ -813,9 +818,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(engine.snapshot()[0]?.archiveWritten).toBe(false);
     engine.removeArchive(id);
     await tick();
@@ -827,9 +832,9 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps({ verify: async () => (calls.verify++, verifyOk) });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(engine.snapshot()[0]?.archiveWritten).toBe(true);
     // The written archive is the record of the options now: no edits.
     engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1 } });
@@ -837,7 +842,7 @@ describe("queue engine", () => {
     verifyOk = true;
     const plansBefore = calls.plan;
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.write).toBe(1);
     expect(calls.plan).toBe(plansBefore);
     expect(calls.verify).toBe(2);
@@ -866,11 +871,11 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x/a", "/x/b"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(recheckedInputs).toEqual(["/x/b"]);
     expect(calls.trash).toEqual([["/x/a", "/x/b"], ["/x/b"]]);
     expect(calls.write).toBe(1);
@@ -880,12 +885,12 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps({ verify: async () => false });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toBe("Verification failed. The originals were kept.");
     engine.run(id);
-    await vi.waitFor(() =>
+    await until(() =>
       expect(say(engine.snapshot()[0]?.message)).toBe(
         "Verification failed again. The originals were kept. Move the archive to Trash, then create it again.",
       ),
@@ -903,11 +908,11 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeArchive(id);
-    await vi.waitFor(() =>
+    await until(() =>
       expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("archive could not be moved to Trash"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
@@ -933,9 +938,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save"); // plan #1 (held open)
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
     engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } }); // plan #2 (fresh)
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.output).toBe("/FRESH.zip"));
+    await until(() => expect(engine.snapshot()[0]?.output).toBe("/FRESH.zip"));
     release[0]!(); // release the stale plan #1 — it must NOT win
     await tick();
     await tick();
@@ -947,10 +952,10 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(calls.plan).toBe(1);
     engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } });
-    await vi.waitFor(() => expect(calls.plan).toBe(2));
+    await until(() => expect(calls.plan).toBe(2));
     expect(engine.snapshot()[0]?.options.junk).toBe(false);
   });
 
@@ -961,7 +966,7 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     engine.add(["/dir/", "/file.txt"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() =>
+    await until(() =>
       expect(engine.snapshot()[0]?.entries).toEqual([
         { path: "/dir/", kind: "directory" },
         { path: "/file.txt", kind: "file" },
@@ -973,7 +978,7 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(calls.plan).toBe(1);
     engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1, comment: "hi" } });
     await tick();
@@ -986,12 +991,12 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(calls.plan).toBe(1);
     engine.update(id, { inputs: ["/x", "/y"] });
-    await vi.waitFor(() => expect(calls.plan).toBe(2));
+    await until(() => expect(calls.plan).toBe(2));
     expect(engine.snapshot()[0]?.inputs).toEqual(["/x", "/y"]);
-    await vi.waitFor(() =>
+    await until(() =>
       expect(engine.snapshot()[0]?.entries?.map((e) => e.path)).toEqual(["/x", "/y"]),
     );
   });
@@ -1000,11 +1005,11 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.trashOriginals(id);
-    await vi.waitFor(() => expect(calls.trash).toEqual([["/a", "/b"]]));
+    await until(() => expect(calls.trash).toEqual([["/a", "/b"]]));
     expect(engine.snapshot()[0]?.state).toBe("done"); // archive kept; job stays done
   });
 
@@ -1014,9 +1019,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toBe(
       "The originals changed after the archive was made, so the originals and the archive were kept. " +
         "To include the changes, move the archive to Trash and create it again.",
@@ -1028,9 +1033,9 @@ describe("queue engine", () => {
   async function doneSave(deps: EngineDeps, options = DEFAULT_OPTIONS) {
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], options, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     return { engine, id };
   }
 
@@ -1045,9 +1050,9 @@ describe("queue engine", () => {
     });
     const { engine, id } = await doneSave(deps);
     engine.trashOriginals(id);
-    await vi.waitFor(() => expect(calls.trash).toEqual([["/data"]]));
+    await until(() => expect(calls.trash).toEqual([["/data"]]));
     expect(order).toEqual(["verify", "recheck /tmp/out.zip /data"]);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.actionResult?.severity).toBe("info"));
+    await until(() => expect(engine.snapshot()[0]?.actionResult?.severity).toBe("info"));
   });
 
   it("trashOriginals refuses when the archive no longer verifies, or the originals changed", async () => {
@@ -1059,11 +1064,11 @@ describe("queue engine", () => {
     });
     const { engine, id } = await doneSave(deps);
     engine.trashOriginals(id);
-    await vi.waitFor(() => expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("Verification failed. The originals were kept."));
+    await until(() => expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("Verification failed. The originals were kept."));
     verifyOk = true;
     matches = false;
     engine.trashOriginals(id);
-    await vi.waitFor(() => expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("The originals changed after the archive was made"));
+    await until(() => expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("The originals changed after the archive was made"));
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(calls.trash).toEqual([]);
   });
@@ -1092,9 +1097,9 @@ describe("queue engine", () => {
     engine.trashOriginals(id); // a second click while the first is in flight
     expect(engine.snapshot()[0]?.trashing).toBe(true);
     expect(engine.hasRunningJob()).toBe(true);
-    await vi.waitFor(() => expect(release).not.toBeNull());
+    await until(() => expect(release).not.toBeNull());
     engine.cancel(id);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+    await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
     expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe(
       "Moving the originals to Trash was cancelled. The originals were kept.",
     );
@@ -1125,7 +1130,7 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.trashOriginals(id); // not done yet, wrong intent
     await tick();
     expect(calls.trash).toEqual([]);
@@ -1140,9 +1145,9 @@ describe("queue engine", () => {
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
     engine.cancel(id);
-    await vi.waitFor(() => {
+    await until(() => {
       const j = engine.snapshot()[0];
       expect(j?.state).toBe("needs-attention");
       expect(say(j?.message)).toContain("could not be prepared");
