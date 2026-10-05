@@ -20,6 +20,9 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { loadLayout } from "../../../src/gui/main/layout.js";
+import { loadQueue } from "../../../src/gui/main/persist.js";
+import { loadSettings } from "../../../src/gui/main/settings.js";
 
 // A one-shot rename failure armed per test; when unarmed, the mock delegates to the real rename so
 // every atomic write (saveSettings/saveLayout/saveQueue) in setup still works against the real root.
@@ -70,7 +73,6 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
   });
 
   it("config.json: the load throws and leaves the corrupt bytes in place (no quarantine, no reset)", async () => {
-    const { loadSettings } = await import("../../../src/gui/main/settings.js");
     const file = path.join(root, "config.json");
     const corruptBytes = "{ not json";
     writeFileSync(file, corruptBytes, "utf8");
@@ -85,7 +87,6 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
   });
 
   it("layout.json: the load throws and leaves the corrupt bytes in place (no quarantine, no reset)", async () => {
-    const { loadLayout } = await import("../../../src/gui/main/layout.js");
     const file = path.join(root, "layout.json");
     const corruptBytes = "not json";
     writeFileSync(file, corruptBytes, "utf8");
@@ -98,7 +99,6 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
   });
 
   it("queue.json: the load throws and leaves the corrupt bytes in place (no quarantine, no reset)", async () => {
-    const { loadQueue } = await import("../../../src/gui/main/persist.js");
     const file = path.join(root, "queue.json");
     const corruptBytes = "{ not json";
     writeFileSync(file, corruptBytes, "utf8");
@@ -113,7 +113,6 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
   it("the propagated failure is the rename error itself, so the caller logs the real cause", async () => {
     // The loader must not repackage or swallow the rename error — the caller's session log needs the
     // actual EBUSY/EACCES cause to diagnose why the corrupt file could not be quarantined.
-    const { loadSettings } = await import("../../../src/gui/main/settings.js");
     const file = path.join(root, "config.json");
     writeFileSync(file, "{ not json", "utf8");
     const injected = new Error("EBUSY: quarantine rename blocked");
@@ -123,7 +122,6 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
   });
 
   it("a non-ENOENT read failure propagates instead of being treated as absence", async () => {
-    const { loadSettings } = await import("../../../src/gui/main/settings.js");
     const file = path.join(root, "config.json");
     writeFileSync(file, JSON.stringify({ formatVersion: 1, defaults: {} }));
     const injected = Object.assign(new Error("EACCES: read blocked"), { code: "EACCES" });
