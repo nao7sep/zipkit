@@ -19,7 +19,8 @@ export default defineConfig({
     // developer's home directory.
     // Every spec that mounts the interface also checks that no catalogue key
     // reaches the screen (localization-conventions, Gates).
-    setupFiles: ["./tests/setup.ts", "./tests/setup/rendered-keys.ts"],
+    // Every jsdom file sets React and Testing Library up before its first test.
+    setupFiles: ["./tests/setup.ts", "./tests/setup/rendered-keys.ts", "./tests/setup/jsdom-warmup.ts"],
     coverage: {
       // V8's native coverage — already the installed provider, no instrumentation
       // step. `include` lists every source file (not just the ones a test happens
