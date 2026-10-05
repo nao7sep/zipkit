@@ -34,6 +34,7 @@ import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobb
 import type { Volume, VolumeFile } from "../internal/volume.js";
 import { METADATA_DEFAULTS } from "../policy.js";
 import { finding } from "../registry.js";
+import { MANIFEST_FORMAT_VERSION } from "../write/metadata.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
 import { findTargetCollision } from "./targetCollision.js";
@@ -127,7 +128,9 @@ export interface ManifestRecord {
 }
 
 /** Find and parse the embedded manifest `name` among an open archive's entries.
- *  Absent is `read.manifest-missing`; unparseable is `read.manifest-invalid`. */
+ *  Absent is `read.manifest-missing`; unparseable is `read.manifest-invalid`; one
+ *  a newer ZipKit wrote is `read.manifest-newer`, never read as this build's
+ *  format. A manifest without `formatVersion` reads as format 1. */
 async function loadManifest(
   archive: VolumeFile,
   entries: ReadEntry[],
@@ -140,7 +143,7 @@ async function loadManifest(
       `metadata validation requested but no manifest '${name}' is embedded in the archive`,
     );
   }
-  let doc: { entries?: unknown };
+  let doc: { formatVersion?: unknown; entries?: unknown };
   try {
     doc = JSON.parse((await readEntryBuffer(archive, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
   } catch (err) {
@@ -148,6 +151,16 @@ async function loadManifest(
     throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
       cause: err,
     });
+  }
+  const formatVersion = doc?.formatVersion ?? 1;
+  if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {
+    throw new ReadError("read.manifest-invalid", `manifest ${name} has an invalid formatVersion`);
+  }
+  if (formatVersion > MANIFEST_FORMAT_VERSION) {
+    throw new ReadError(
+      "read.manifest-newer",
+      `manifest ${name} has format version ${formatVersion}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
+    );
   }
   const records = Array.isArray(doc?.entries) ? (doc.entries as ManifestRecord[]) : [];
   return { entry: inside, records: records.filter((r) => typeof r === "object" && r !== null) };

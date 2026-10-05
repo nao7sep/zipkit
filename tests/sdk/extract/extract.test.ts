@@ -12,6 +12,7 @@ import path from "node:path";
 import { crc32 } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../../src/sdk/index.js";
+import { MANIFEST_FORMAT_VERSION } from "../../../src/sdk/write/metadata.js";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
 import { fileSymlinksSupported } from "../../helpers/symlink.js";
 
@@ -212,6 +213,36 @@ describe("heavy validation against a manifest", () => {
     await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toThrow(
       /manifest/i,
     );
+  });
+
+  it("reads a manifest without a format version as format 1", async () => {
+    const archive = await writeArchive([
+      fileEntry("a.txt", "alpha"),
+      fileEntry("zipkit.json", JSON.stringify({ entries: [{ archivePath: "a.txt" }] })),
+    ]);
+    const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
+    expect(report.reportOk).toBe(true);
+  });
+
+  it("refuses a manifest a newer ZipKit wrote, leaving the archive as it is", async () => {
+    const manifest = { formatVersion: MANIFEST_FORMAT_VERSION + 1, entries: [{ archivePath: "a.txt" }] };
+    const archive = await writeArchive([fileEntry("a.txt", "alpha"), fileEntry("zipkit.json", JSON.stringify(manifest))]);
+    const before = await readFile(archive);
+    await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({
+      errorType: "read",
+      code: "read.manifest-newer",
+    });
+    expect((await readFile(archive)).equals(before)).toBe(true);
+  });
+
+  it.each([0, 1.5, "1"])("rejects a manifest whose format version is not a positive integer: %j", async (formatVersion) => {
+    const archive = await writeArchive([
+      fileEntry("a.txt", "alpha"),
+      fileEntry("zipkit.json", JSON.stringify({ formatVersion, entries: [] })),
+    ]);
+    await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({
+      code: "read.manifest-invalid",
+    });
   });
 
   it("validates an inside manifest end to end via create()", async () => {

@@ -34,8 +34,8 @@ const ABOUT =
   "original name, size, CRC-32 and times, the entries left out, and what ZipKit found and " +
   "fixed. ZipKit's Verify reads it to confirm the archive is complete and unchanged.";
 const REPOSITORY = "https://github.com/nao7sep/zipkit";
-/** The manifest layout version; raise it when a reader must tell layouts apart. */
-const FORMAT_VERSION = 1;
+/** The manifest's format version (store-recovery conventions); a reader refuses a newer one. */
+export const MANIFEST_FORMAT_VERSION = 1;
 
 /** The `mode:"plan"` member of {@link CreateData} — the planning view the
  *  metadata document is built from (entries, summary, findings). The metadata
@@ -143,7 +143,7 @@ export function buildMetadata(
     version: VERSION,
     repository: REPOSITORY,
     createdAtUtc: utcTime(createdNs),
-    formatVersion: FORMAT_VERSION,
+    formatVersion: MANIFEST_FORMAT_VERSION,
     // The IANA zone the archive's DOS local-time fields were rendered in, so the
     // lossy local field stays interpretable.
     timeZone,
