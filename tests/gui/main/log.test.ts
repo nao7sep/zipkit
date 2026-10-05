@@ -154,7 +154,7 @@ describe("createAppLog", () => {
     const started = Date.now();
     log.info("while the database is locked");
     expect(Date.now() - started).toBeLessThan(1_000); // the caller never waits on the database
-    await log.close(200);
+    await log.close(50);
     lock.exec("ROLLBACK");
     lock.close();
 
@@ -393,8 +393,8 @@ describe("records reads for the Records window", () => {
     lock.exec("CREATE TABLE held (x)");
     lock.exec("BEGIN EXCLUSIVE");
     const log = createAppLog(database, path.join(dir, "logs"));
-    await expect(log.records({ op: "sessions" }, 200)).rejects.toThrow(/within 200 ms/);
-    await log.close(200);
+    await expect(log.records({ op: "sessions" }, 50)).rejects.toThrow(/within 50 ms/);
+    await log.close(50);
     lock.exec("ROLLBACK");
     lock.close();
     await expect(log.records({ op: "sessions" })).rejects.toThrow(/closed/);
