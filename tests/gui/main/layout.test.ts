@@ -228,10 +228,12 @@ describe("layout file quarantine-then-reset", () => {
     expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 250, progressWidth: 300, recordsListWidth: 420 });
   });
 
-  it("reads a layout without a format version as format 1", async () => {
-    writeFileSync(path.join(root, "layout.json"), JSON.stringify({ layout: { jobsWidth: 300 } }));
+  it("quarantines a layout without a format version as unreadable", async () => {
+    const bytes = JSON.stringify({ layout: { jobsWidth: 300 } });
+    writeFileSync(path.join(root, "layout.json"), bytes);
     const loaded = await loadLayout();
-    expect(loaded).toEqual({ value: { ...DEFAULT_STORED, jobsWidth: 300 }, quarantinedTo: null, missing: false });
+    expect(loaded.value).toEqual(DEFAULT_STORED);
+    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 
   it("leaves a layout a newer build wrote exactly in place and reports it by path", async () => {

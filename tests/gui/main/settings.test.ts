@@ -106,13 +106,13 @@ describe("settings file location and persistence", () => {
   });
 
   it("writes the file from the settings it is given, every set that differs", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ language: "de", uiFontFamily: "Menlo" }));
+    writeFileSync(settings.settingsFile(), JSON.stringify({ formatVersion: 1, language: "de", uiFontFamily: "Menlo" }));
     await settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "dark" });
     expect(readStored()).toEqual(stored({ theme: "dark" }));
   });
 
   it("drops version, unknown sets and unknown defaults members on the next write", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ version: 99, retired: true, defaults: { ...CUSTOM.defaults, unknown: "drop" } }));
+    writeFileSync(settings.settingsFile(), JSON.stringify({ formatVersion: 1, version: 99, retired: true, defaults: { ...CUSTOM.defaults, unknown: "drop" } }));
     const loaded = (await settings.loadSettings()).value;
     expect(loaded.defaults).toEqual(CUSTOM.defaults);
     await settings.saveSettings({ ...loaded, theme: "light" });
@@ -126,7 +126,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("removes a stored copy identical to the built-in and keeps the file with no sets", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ defaults: DEFAULT_OPTIONS }));
+    writeFileSync(settings.settingsFile(), JSON.stringify({ formatVersion: 1, defaults: DEFAULT_OPTIONS }));
     await settings.saveSettings(DEFAULT_SETTINGS);
     expect(readStored()).toEqual(stored({}));
   });
@@ -153,7 +153,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("a malformed set remains in place and only falls back for that set", async () => {
-    const bytes = JSON.stringify({ defaults: { level: 1 }, theme: "dark" });
+    const bytes = JSON.stringify({ formatVersion: 1, defaults: { level: 1 }, theme: "dark" });
     writeFileSync(settings.settingsFile(), bytes);
     const logger = warningLog();
     expect(await settings.loadSettings(logger)).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null });
@@ -162,13 +162,13 @@ describe("settings file location and persistence", () => {
   });
 
   it("a set that read as its built-in loses its key at the next save", async () => {
-    writeFileSync(settings.settingsFile(), '{"defaults":{"level":1}}');
+    writeFileSync(settings.settingsFile(), '{"formatVersion":1,"defaults":{"level":1}}');
     const loaded = (await settings.loadSettings()).value;
     await settings.saveSettings({ ...loaded, theme: "dark" });
     expect(readStored()).toEqual(stored({ theme: "dark" }));
   });
 
-  it.each(["{ not json", "[]", "null", "5", '{"formatVersion":0}', '{"formatVersion":"1"}'])("quarantines an unreadable file without replacing it: %s", async (bytes) => {
+  it.each(["{ not json", "[]", "null", "5", '{"theme":"dark"}', '{"formatVersion":0}', '{"formatVersion":"1"}'])("quarantines an unreadable file without replacing it: %s", async (bytes) => {
     const file = settings.settingsFile();
     writeFileSync(file, bytes);
     const logger = warningLog();
@@ -182,14 +182,6 @@ describe("settings file location and persistence", () => {
     await settings.saveSettings({ ...loaded.value, theme: "light" });
     expect(readStored()).toEqual(stored({ theme: "light" }));
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
-  });
-
-  it("reads a file without a format version as format 1, and marks it at the next write", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ theme: "dark" }));
-    const loaded = await settings.loadSettings();
-    expect(loaded).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null });
-    await settings.saveSettings({ ...loaded.value, language: "ja" });
-    expect(readStored()).toEqual(stored({ theme: "dark", language: "ja" }));
   });
 
   it("leaves a file a newer build wrote exactly in place and reports it by path", async () => {

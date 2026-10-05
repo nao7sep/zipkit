@@ -189,6 +189,7 @@ describe("heavy validation against a manifest", () => {
     // The manifest is embedded in the archive: it claims a.txt (real sha) and a
     // phantom c.txt, and omits the real b.txt.
     const manifest = {
+      formatVersion: MANIFEST_FORMAT_VERSION,
       entries: [
         { archivePath: "a.txt", sha256: createHash("sha256").update(aData).digest("hex") },
         { archivePath: "c.txt", sha256: "deadbeef" },
@@ -215,15 +216,6 @@ describe("heavy validation against a manifest", () => {
     );
   });
 
-  it("reads a manifest without a format version as format 1", async () => {
-    const archive = await writeArchive([
-      fileEntry("a.txt", "alpha"),
-      fileEntry("zipkit.json", JSON.stringify({ entries: [{ archivePath: "a.txt" }] })),
-    ]);
-    const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
-    expect(report.reportOk).toBe(true);
-  });
-
   it("refuses a manifest a newer ZipKit wrote, leaving the archive as it is", async () => {
     const manifest = { formatVersion: MANIFEST_FORMAT_VERSION + 1, entries: [{ archivePath: "a.txt" }] };
     const archive = await writeArchive([fileEntry("a.txt", "alpha"), fileEntry("zipkit.json", JSON.stringify(manifest))]);
@@ -235,10 +227,10 @@ describe("heavy validation against a manifest", () => {
     expect((await readFile(archive)).equals(before)).toBe(true);
   });
 
-  it.each([0, 1.5, "1"])("rejects a manifest whose format version is not a positive integer: %j", async (formatVersion) => {
+  it.each([undefined, 0, 1.5, "1"])("rejects a manifest without a positive integer format version: %j", async (formatVersion) => {
     const archive = await writeArchive([
       fileEntry("a.txt", "alpha"),
-      fileEntry("zipkit.json", JSON.stringify({ formatVersion, entries: [] })),
+      fileEntry("zipkit.json", JSON.stringify({ formatVersion, entries: [{ archivePath: "a.txt" }] })),
     ]);
     await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({
       code: "read.manifest-invalid",
@@ -271,7 +263,7 @@ describe("manifest size and CRC-32", () => {
 
   async function verify(entries: EntryWithData[], records: object[], opts?: Partial<BuildOptions>) {
     const archive = await writeArchive(
-      [...entries, fileEntry("zipkit.json", JSON.stringify({ entries: records }))],
+      [...entries, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: records }))],
       opts,
     );
     return new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
@@ -317,7 +309,7 @@ describe("manifest size and CRC-32", () => {
     const a = fileEntry("a.txt", "alpha");
     const archive = await writeArchive([
       a,
-      fileEntry("zipkit.json", JSON.stringify({ entries: [{ ...recordFor(a), size: 999 }] })),
+      fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [{ ...recordFor(a), size: 999 }] })),
     ]);
     const report = await new ZipKit().extract({ archive, dryRun: true });
     expect(report.reportOk).toBe(true);
@@ -722,6 +714,7 @@ describe("per-failure logging", () => {
     // The embedded manifest claims a.txt with a WRONG sha (→ mismatch) and a
     // phantom c.txt (→ missing), and omits the real b.txt (→ extra).
     const manifest = {
+      formatVersion: MANIFEST_FORMAT_VERSION,
       entries: [
         { archivePath: "a.txt", sha256: createHash("sha256").update("not-alpha").digest("hex") },
         { archivePath: "c.txt", sha256: "deadbeef" },

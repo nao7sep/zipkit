@@ -182,29 +182,24 @@ describe("format version", () => {
     }
   };
 
-  it("marks a new records database, and an unmarked one, with the records format version", async () => {
+  it("stamps a new records database with the records format version at creation", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
-    const first = createAppLog(database, path.join(dir, "logs"));
-    first.info("first");
-    await first.close();
+    const log = createAppLog(database, path.join(dir, "logs"));
+    log.info("first");
+    await log.close();
     expect(userVersion(database)).toBe(FORMAT_VERSIONS.records);
-
-    const db = new DatabaseSync(database);
-    db.exec("PRAGMA user_version = 0");
-    db.close();
-    const second = createAppLog(database, path.join(dir, "logs"));
-    second.info("second");
-    await second.close();
-    expect(userVersion(database)).toBe(FORMAT_VERSIONS.records);
-    expect(rows(database).map((row) => row.message)).toEqual(["first", "second"]);
+    expect(rows(database).map((row) => row.message)).toEqual(["first"]);
   });
 
-  it("leaves a records database a newer build wrote untouched and keeps its lines in the fallback file", async () => {
+  it.each([
+    ["a newer build wrote", (v: number) => `PRAGMA user_version = ${v + 1}`, /newer than this build/],
+    ["has tables but no format version", () => "CREATE TABLE kept (x)", /no format version/],
+  ])("leaves a records database that %s untouched and keeps its lines in the fallback file", async (_case, setup, reason) => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const db = new DatabaseSync(database);
-    db.exec(`PRAGMA user_version = ${FORMAT_VERSIONS.records + 1}`);
+    db.exec(setup(FORMAT_VERSIONS.records));
     db.close();
     const before = readFileSync(database);
     const logs = path.join(dir, "logs");
@@ -217,7 +212,7 @@ describe("format version", () => {
     const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
       .map((line) => JSON.parse(line) as { message: string; fields: { error?: { message?: string } } });
     expect(lines.map((line) => line.message)).toEqual(["records database unavailable", "kept"]);
-    expect(lines[0]?.fields.error?.message).toMatch(/newer than this build/);
+    expect(lines[0]?.fields.error?.message).toMatch(reason);
   });
 });
 

@@ -31,10 +31,9 @@ function parseJsonObject(text: string, store: string): Record<string, unknown> {
   return value;
 }
 
-/** The format version a document's `formatVersion` records; a missing marker reads as 1. */
+/** The format version a document's `formatVersion` records; a document without one is unreadable. */
 function storedFormatVersion(root: Record<string, unknown>, store: string): number {
   const value = root.formatVersion;
-  if (value === undefined) return 1;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     throw new InvalidManagedJsonError(store, "formatVersion must be a positive integer");
   }

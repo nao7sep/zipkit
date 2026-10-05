@@ -130,7 +130,7 @@ export interface ManifestRecord {
 /** Find and parse the embedded manifest `name` among an open archive's entries.
  *  Absent is `read.manifest-missing`; unparseable is `read.manifest-invalid`; one
  *  a newer ZipKit wrote is `read.manifest-newer`, never read as this build's
- *  format. A manifest without `formatVersion` reads as format 1. */
+ *  format. A manifest without `formatVersion` is unparseable. */
 async function loadManifest(
   archive: VolumeFile,
   entries: ReadEntry[],
@@ -152,9 +152,9 @@ async function loadManifest(
       cause: err,
     });
   }
-  const formatVersion = doc?.formatVersion ?? 1;
+  const formatVersion = doc?.formatVersion;
   if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {
-    throw new ReadError("read.manifest-invalid", `manifest ${name} has an invalid formatVersion`);
+    throw new ReadError("read.manifest-invalid", `manifest ${name} has no valid formatVersion`);
   }
   if (formatVersion > MANIFEST_FORMAT_VERSION) {
     throw new ReadError(

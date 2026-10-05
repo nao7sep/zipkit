@@ -82,8 +82,9 @@ class BackupsStore {
   }
 
   /** Opened on the first record, so a session that saves nothing creates no
-   *  database; a failed open is not retried. A database a newer build wrote
-   *  fails to open and is left as it is (store-recovery conventions). */
+   *  database; a failed open is not retried. A database without its format
+   *  version, or one a newer build wrote, fails to open and is left as it is
+   *  (store-recovery conventions). */
   open(): Statements {
     if (this.#statements) return this.#statements;
     if (this.#openFailure !== null) throw this.#openFailure;
@@ -98,14 +99,17 @@ class BackupsStore {
       db = new DatabaseSync(this.#database);
       // Independent diagnostic readers may briefly contend with a checkpoint/write.
       db.exec("PRAGMA busy_timeout = 5000");
-      // 0 is SQLite's unset value, a missing marker, which reads as 1.
+      // A database with no tables is new and is stamped as it is created; 0,
+      // SQLite's unset value, on one with tables is a missing marker.
       const stored = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
+      const isNew = (db.prepare("SELECT count(*) AS n FROM sqlite_master").get() as { n: number }).n === 0;
+      if (!isNew && stored === 0) throw new Error(`${this.#database} has no format version`);
       if (stored > this.#formatVersion) {
         throw new Error(`${this.#database} has format version ${stored}, newer than this build's ${this.#formatVersion}`);
       }
       db.exec("PRAGMA journal_mode = WAL");
+      if (isNew) db.exec(`PRAGMA user_version = ${this.#formatVersion}`);
       db.exec(SCHEMA);
-      if (stored === 0) db.exec(`PRAGMA user_version = ${this.#formatVersion}`);
       this.#db = db;
       this.#statements = {
         latest: db.prepare("SELECT content_sha256 AS h FROM backups WHERE path = ? ORDER BY id DESC LIMIT 1"),

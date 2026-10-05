@@ -227,28 +227,23 @@ describe("format version", () => {
     }
   };
 
-  it("marks a new store, and an unmarked one, with the backups format version", async () => {
+  it("stamps a new store with the backups format version at creation", async () => {
     const { FORMAT_VERSIONS } = await import("../../../src/gui/main/formatVersions.js");
     const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
     await record(path.join(root, "config.json"), Buffer.from("a", "utf8"));
     await closeBackupStore();
-    const file = path.join(root, "backups.sqlite3");
-    expect(userVersion(file)).toBe(FORMAT_VERSIONS.backups);
-
-    const db = new DatabaseSync(file);
-    db.exec("PRAGMA user_version = 0");
-    db.close();
-    await record(path.join(root, "config.json"), Buffer.from("b", "utf8"));
-    await closeBackupStore();
-    expect(userVersion(file)).toBe(FORMAT_VERSIONS.backups);
-    expect(readRows(root)).toHaveLength(2);
+    expect(userVersion(path.join(root, "backups.sqlite3"))).toBe(FORMAT_VERSIONS.backups);
+    expect(readRows(root)).toHaveLength(1);
   });
 
-  it("leaves a store a newer build wrote untouched, with one warn naming it, and records nothing", async () => {
+  it.each([
+    ["a newer build wrote", (v: number) => `PRAGMA user_version = ${v + 1}`, /newer than this build/],
+    ["has tables but no format version", () => "CREATE TABLE kept (x)", /no format version/],
+  ])("leaves a store that %s untouched, with one warn naming why, and records nothing", async (_case, setup, reason) => {
     const { FORMAT_VERSIONS } = await import("../../../src/gui/main/formatVersions.js");
     const file = path.join(root, "backups.sqlite3");
     const db = new DatabaseSync(file);
-    db.exec(`PRAGMA user_version = ${FORMAT_VERSIONS.backups + 1}`);
+    db.exec(setup(FORMAT_VERSIONS.backups));
     db.close();
     const { readFileSync } = await import("node:fs");
     const before = readFileSync(file);
@@ -259,10 +254,9 @@ describe("format version", () => {
     await closeBackupStore();
 
     expect(readFileSync(file).equals(before)).toBe(true);
-    expect(userVersion(file)).toBe(FORMAT_VERSIONS.backups + 1);
     expect(logCalls.warn).toHaveLength(1);
     expect(logCalls.warn[0]!.message).toMatch(/could not open/i);
-    expect(String((logCalls.warn[0]!.fields?.error as { message?: unknown }).message)).toMatch(/newer than this build/);
+    expect(String((logCalls.warn[0]!.fields?.error as { message?: unknown }).message)).toMatch(reason);
   });
 });
 

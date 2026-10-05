@@ -154,10 +154,12 @@ describe("queue file location and persistence", () => {
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 
-  it("reads a queue without a format version as format 1", async () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
-    writeFileSync(path.join(root, "queue.json"), JSON.stringify({ jobs }));
-    expect(await loadQueue()).toEqual({ value: jobs, quarantinedTo: null, missing: false });
+  it("quarantines a queue without a format version as unreadable", async () => {
+    const bytes = JSON.stringify({ jobs: [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" }] });
+    writeFileSync(path.join(root, "queue.json"), bytes);
+    const loaded = await loadQueue();
+    expect(loaded.value).toEqual([]);
+    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 
   it("leaves a queue a newer build wrote exactly in place and reports it by path", async () => {
