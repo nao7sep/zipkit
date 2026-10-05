@@ -18,7 +18,6 @@ import type { BigIntStats } from "node:fs";
 import { StallError, throwIfAborted, toAbortError, WriteError, ZipKitError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
 import type { Volume } from "../internal/volume.js";
-import { machineTimeZone } from "../internal/timeZone.js";
 import type { Unlogged, WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
 import type { CreateData } from "../types.js";
@@ -165,12 +164,11 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     );
   }
 
-  const { policy, writeEntries, overwrite, comment } = internals;
+  // `timeZone` is the zone the plan resolved and checked the DOS range in; it is
+  // recorded in the metadata so the local field is interpretable. The UTC extras
+  // and metadata times need no zone.
+  const { policy, writeEntries, overwrite, timeZone, comment } = internals;
   const level = policy.compression.level;
-  // The zone the DOS local-time field is rendered in: the explicit policy zone,
-  // or the host's. Resolved once and recorded in the metadata so the local
-  // field is interpretable; the UTC extras and metadata times need no zone.
-  const effectiveTimeZone = policy.timezone ?? machineTimeZone();
   const signal = deps.signal;
   throwIfAborted(signal);
 
@@ -188,7 +186,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
 
   const writer = new ZipWriter(
     plan.output,
-    { timeZone: effectiveTimeZone, chunkSize: deps.chunkSize, overwrite },
+    { timeZone, chunkSize: deps.chunkSize, overwrite },
     deps.volume,
   );
 
@@ -261,7 +259,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       policy,
       metadataEntries,
       createdNs,
-      effectiveTimeZone,
+      timeZone,
       comment,
     );
 

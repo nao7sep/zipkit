@@ -54,7 +54,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   const reserved = policy.metadata !== false ? [policy.metadata.name] : [];
   applyCollision(items, reserved);
   applyCompression(items, policy);
-  applyTimestamps(items);
+  applyTimestamps(items, scan.timeZone);
 
   const writeEntries = buildWriteEntries(items);
 
@@ -103,6 +103,12 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
     findings,
     entries,
   };
-  attachInternals(plan, { writeEntries, policy, overwrite: scan.overwrite, comment: scan.comment });
+  attachInternals(plan, {
+    writeEntries,
+    policy,
+    overwrite: scan.overwrite,
+    timeZone: scan.timeZone,
+    comment: scan.comment,
+  });
   return plan;
 }

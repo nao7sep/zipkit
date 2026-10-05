@@ -117,8 +117,9 @@ export interface ArchivePolicy {
    * IANA timezone name (e.g. `"Asia/Tokyo"`, `"UTC"`) the ZIP DOS local-time
    * field is rendered in. The DOS field stores local wall-clock with no zone, so
    * a same-zone reader sees the file's real time. Defaults to the host zone.
-   * Affects only the DOS field — the extended-timestamp and NTFS extras and the
-   * metadata record are always UTC.
+   * Affects only the DOS field, whose 1980–2107 range (and so the `time.pre-1980`
+   * and `time.post-2107` findings) is judged in this zone — the
+   * extended-timestamp and NTFS extras and the metadata record are always UTC.
    */
   timezone?: string;
   compression: CompressionPolicy;
@@ -403,7 +404,7 @@ export interface ExtractSpec {
   metadataName?: string;
 
   // Restore policy (write only)
-  /** Restore modification/access times to extracted files. Defaults to `restore`. */
+  /** Restore modification/access times to extracted files and folders. Defaults to `restore`. */
   timestamps?: "restore" | "none";
   /** Zone used to interpret the DOS field when an entry has no UTC time extra. */
   timezone?: string;

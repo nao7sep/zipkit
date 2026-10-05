@@ -128,6 +128,37 @@ describe("metadata", () => {
     expect(range.newest.mtime.iso).toBe("2021-12-31T23:59:58.000Z");
   });
 
+  it("warns about a DOS-range clamp exactly when the writer clamps, in the writer's zone", async () => {
+    const proj = path.join(dir, "edge");
+    await mkdir(proj, { recursive: true });
+    await writeFile(path.join(proj, "late.txt"), "late");
+    // 2107-12-31T23:00:00Z: in range in UTC and Los Angeles, 2108 in Tokyo.
+    const sec = Date.UTC(2107, 11, 31, 23) / 1000;
+    await utimes(path.join(proj, "late.txt"), sec, sec);
+    const dosMaxDate = ((2107 - 1980) << 9) | (12 << 5) | 31;
+    const dosMaxTime = (23 << 11) | (59 << 5) | 29;
+
+    const tokyo = await new ZipKit().create({
+      inputs: [proj],
+      output: path.join(dir, "tokyo.zip"),
+      policy: { timezone: "Asia/Tokyo", metadata: false },
+    });
+    expect(tokyo.findings.map((f) => f.rule)).toContain("time.post-2107");
+    expect(tokyo.metadata!.timeZone).toBe("Asia/Tokyo");
+    const clamped = readZip(await readFile(tokyo.output)).entries[0]!;
+    expect([clamped.dosDate, clamped.dosTime]).toEqual([dosMaxDate, dosMaxTime]);
+
+    const la = await new ZipKit().create({
+      inputs: [proj],
+      output: path.join(dir, "la.zip"),
+      policy: { timezone: "America/Los_Angeles", metadata: false },
+    });
+    expect(la.findings.map((f) => f.rule)).not.toContain("time.post-2107");
+    const kept = readZip(await readFile(la.output)).entries[0]!;
+    expect(kept.dosDate).toBe(dosMaxDate); // 2107-12-31, local 15:00
+    expect(kept.dosTime).toBe(15 << 11);
+  });
+
   it("embeds metadata by default and returns the complete record", async () => {
     const proj = await makeTree();
     const result = await new ZipKit().create({ inputs: [proj], output: path.join(dir, "d.zip") });

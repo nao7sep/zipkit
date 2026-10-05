@@ -92,6 +92,10 @@ export interface ScanResult {
   output: string;
   outputExists: boolean;
   overwrite: boolean;
+  /** The IANA zone the DOS local-time fields are rendered in: the policy's
+   *  zone or, without one, the host's. Resolved once here so the plan's DOS-range
+   *  findings and the writer's clamping use the same zone. */
+  timeZone: string;
   /** The archive comment from the spec, carried through to the writer. */
   comment?: string;
 }

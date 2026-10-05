@@ -19,6 +19,8 @@ export interface PlanInternals {
   policy: ArchivePolicy;
   /** Whether replacing an output that exists at publication time was authorized. */
   overwrite: boolean;
+  /** The resolved IANA zone the DOS local-time fields are rendered in. */
+  timeZone: string;
   /** The archive comment from the spec, written to the EOCD and the metadata. */
   comment?: string;
 }

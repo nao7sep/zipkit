@@ -40,7 +40,7 @@
 import { dirname, join, parse } from "node:path";
 import { nanoid } from "nanoid";
 import { throwIfAborted } from "../errors.js";
-import { wallClockInZone } from "../internal/timeZone.js";
+import { dosDateTime } from "../internal/dosTime.js";
 import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobberPublish.js";
 import type { Volume, VolumeFile } from "../internal/volume.js";
 import { deflateBound } from "../plan/zip64.js";
@@ -58,17 +58,8 @@ const GP_UTF8 = 0x0800;
 
 const EMPTY = Buffer.alloc(0);
 
-// 1980-01-01T00:00:00, the DOS epoch; used as the floor and the fixed time.
-const FIXED_DOS = { date: (1 << 5) | 1, time: 0 };
-// 2107-12-31T23:59:58, the latest time the DOS field can represent (ceiling).
-const MAX_DOS = { date: ((2107 - 1980) << 9) | (12 << 5) | 31, time: (23 << 11) | (59 << 5) | 29 };
-
 const INT32_MIN = -0x80000000;
 const INT32_MAX = 0x7fffffff;
-
-// The widest instant JS `Date` can represent (±100,000,000 days from the epoch).
-// An instant beyond this cannot be rendered, so it is clamped by sign.
-const DATE_MS_LIMIT = 8_640_000_000_000_000;
 
 /**
  * One entry to write. A `file`/`symlink` streams its bytes through the writer;
@@ -113,24 +104,6 @@ interface EntryGeometry {
   times: { local: Buffer; central: Buffer };
   info: { madeBy: number; extAttr: number; baseVersion: number };
   versionNeeded: number;
-}
-
-function dosFor(entry: WriteEntryInput, options: ZipWriterOptions): { date: number; time: number } {
-  const ms = Number(entry.mtimeNs / 1_000_000n);
-  if (!Number.isFinite(ms) || ms < -DATE_MS_LIMIT) return FIXED_DOS;
-  if (ms > DATE_MS_LIMIT) return MAX_DOS;
-  // The DOS field is local wall-clock with no zone stored: render the instant in
-  // the configured zone so a same-zone reader sees the file's real time. Clamp
-  // on the *local* components, not the UTC instant — a zone offset can carry an
-  // instant that is within the UTC window just past the 1980/2107 edges, which
-  // would otherwise overflow the packed 16-bit fields.
-  const w = wallClockInZone(ms, options.timeZone);
-  if (w.year < 1980) return FIXED_DOS;
-  if (w.year > 2107) return MAX_DOS;
-  return {
-    date: ((w.year - 1980) << 9) | (w.month << 5) | w.day,
-    time: (w.hour << 11) | (w.minute << 5) | (w.second >> 1),
-  };
 }
 
 // 100-ns ticks between the FILETIME epoch (1601) and the Unix epoch (1970).
@@ -372,7 +345,7 @@ export class ZipWriter {
   #beginEntry(entry: WriteEntryInput): EntryGeometry {
     const name = entry.type === "dir" ? `${entry.name}/` : entry.name;
     const nameBuf = Buffer.from(name, "utf8");
-    const { date, time } = dosFor(entry, this.#options);
+    const { date, time } = dosDateTime(entry.mtimeNs, this.#options.timeZone);
     const headerOffset = this.#offset;
     // The compressed size is not known until the entry streams, but deflate
     // cannot expand past `deflateBound`, so the worst-case payload size fixes the

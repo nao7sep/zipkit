@@ -3,7 +3,8 @@
  * is decompressed and CRC-checked (so a dry run is a pure integrity test that
  * works on any ZIP); under `checkMetadata` each entry is also reconciled against
  * the manifest and its recorded SHA-256; and unless `dryRun` is set, verified
- * entries are written to disk with their times restored.
+ * entries are written to disk with their times restored — a folder's last, once
+ * every entry is in place, since writing into a folder moves its time.
  *
  * Reads are positioned against an open handle, never a whole-archive buffer, and an
  * entry's content streams through inflate to its own output file — so memory
@@ -300,18 +301,21 @@ async function commitFile(
       throw err;
     }
   }
-  if (options.restore) {
-    const t = restoreTimes(entry, options.timeZone);
-    // Best-effort: a filesystem that rejects the times must not fail the write.
-    // A stall or a cancel is not such a rejection and still ends the run.
-    try {
-      await volume.utimes(target, new Date(t.atimeMs), new Date(t.mtimeMs));
-    } catch (err) {
-      if (err instanceof ZipKitError) throw err;
-      /* times are advisory; the content is what matters */
-    }
-  }
+  if (options.restore) await restoreEntryTimes(volume, target, entry, options.timeZone);
   return "written";
+}
+
+/** Set a written entry's stored modification and access times on `target`.
+ *  Best-effort: a filesystem that rejects the times must not fail the write. A
+ *  stall or a cancel is not such a rejection and still ends the run. */
+async function restoreEntryTimes(volume: Volume, target: string, entry: ReadEntry, timeZone: string): Promise<void> {
+  const t = restoreTimes(entry, timeZone);
+  try {
+    await volume.utimes(target, new Date(t.atimeMs), new Date(t.mtimeMs));
+  } catch (err) {
+    if (err instanceof ZipKitError) throw err;
+    /* times are advisory; the content is what matters */
+  }
 }
 
 export async function extractArchive(
@@ -402,6 +406,9 @@ export async function extractArchive(
     const abort: { entry: ReadEntry | null } = { entry: null };
     // Entries whose size or CRC-32 differs from their manifest record.
     const manifestMismatches = new Set<string>();
+    // Folder entries written, whose times are restored once every entry is in
+    // place: writing a file into a folder moves the folder's modified time.
+    const writtenDirs: { entry: ReadEntry; target: string }[] = [];
     // `allSettled`, not `all`: every task runs to completion so none is abandoned
     // mid-stream — which would orphan its temp file and keep reading the archive
     // handle the `finally` is about to close. Each task's calls are bounded, and
@@ -424,6 +431,12 @@ export async function extractArchive(
         "read.unsafe-path",
         `entry '${abort.entry.archivePath}' escapes the destination directory`,
       );
+    }
+    if (writeOptions.restore) {
+      for (const { entry, target } of writtenDirs) {
+        throwIfAborted(signal);
+        await restoreEntryTimes(volume, target, entry, writeOptions.timeZone);
+      }
     }
 
     async function processEntry(entry: ReadEntry): Promise<ExtractEntryResult> {
@@ -531,6 +544,7 @@ export async function extractArchive(
         if (outcome === "written") {
           didWrite = true;
           outputPath = target;
+          if (entry.type === "dir") writtenDirs.push({ entry, target });
         } else if (outcome === "exists") {
           skip = "exists";
         } else {

@@ -78,6 +78,41 @@ describe("restoreTimes source selection", () => {
     expect(restoreTimes(entryWith(extra), "UTC").mtimeMs).toBe(ntfsMs);
   });
 
+  it("finds the time attribute after another NTFS attribute", () => {
+    const mtime = Date.UTC(2021, 4, 5, 6, 7, 8);
+    const ntfs = ntfsExtra(mtime, mtime);
+    // Insert attribute 2 (4 bytes of data) between the reserved bytes and attribute 1.
+    const other = Buffer.from([0x02, 0x00, 0x04, 0x00, 1, 2, 3, 4]);
+    const value = Buffer.concat([ntfs.subarray(4, 8), other, ntfs.subarray(8)]);
+    const field = Buffer.concat([Buffer.from([0x0a, 0x00, value.length, 0x00]), value]);
+    expect(restoreTimes(entryWith(field), "UTC").mtimeMs).toBe(mtime);
+  });
+
+  it("skips an NTFS extra whose attribute tag or size is wrong, or whose mtime is unset", () => {
+    const sec = Date.UTC(2010, 6, 15, 8, 9, 10) / 1000;
+    const ntfsMs = Date.UTC(2020, 0, 1);
+    const badTag = ntfsExtra(ntfsMs, ntfsMs);
+    badTag.writeUInt16LE(0x0002, 8); // attribute tag 2 carries no times
+    const badSize = ntfsExtra(ntfsMs, ntfsMs);
+    badSize.writeUInt16LE(16, 10); // attribute 1 must be 24 bytes
+    const unset = ntfsExtra(ntfsMs, ntfsMs);
+    unset.writeBigUInt64LE(0n, 12); // mtime FILETIME 0: never set
+    const short = ntfsExtra(ntfsMs, ntfsMs).subarray(0, 20);
+    short.writeUInt16LE(16, 2);
+    for (const ntfs of [badTag, badSize, unset, short]) {
+      const t = restoreTimes(entryWith(Buffer.concat([ntfs, utExtra(sec)])), "UTC");
+      expect(t.mtimeMs).toBe(sec * 1000);
+    }
+  });
+
+  it("mirrors the modification time when the NTFS access time is unset", () => {
+    const mtime = Date.UTC(2020, 0, 1, 12);
+    const ntfs = ntfsExtra(mtime, mtime);
+    ntfs.writeBigUInt64LE(0n, 20); // atime FILETIME 0
+    const t = restoreTimes(entryWith(ntfs), "UTC");
+    expect(t.atimeMs).toBe(mtime);
+  });
+
   it("falls back to the UT extra (UTC seconds) when there is no NTFS extra", () => {
     const sec = Date.UTC(2010, 6, 15, 8, 9, 10) / 1000;
     const t = restoreTimes(entryWith(utExtra(sec)), "UTC");

@@ -2,8 +2,9 @@
  * The scan edge. It walks the source tree, pruning
  * excluded directory subtrees through the shared matcher during the walk, and
  * reads each entry's nanosecond timestamps, mode, and symlink target with a
- * direct stat call. It also performs the two I/O facts the pure planner needs
- * but cannot compute: the resolved output path and whether it already exists.
+ * direct stat call. It also gathers the environment facts the pure planner
+ * needs but cannot compute: the resolved output path, whether it already
+ * exists, and the zone the DOS time fields are rendered in.
  *
  * Arcname logic lives in the pure `arcname` module and is applied here, so the
  * walk and the plan share one source of archive-path truth. Symlinks are
@@ -24,6 +25,7 @@ import path from "node:path";
 import { ScanError, throwIfAborted, ZipKitError } from "../errors.js";
 import type { FilterMatcher } from "../filter/match.js";
 import { toForwardSlash } from "../internal/path.js";
+import { machineTimeZone } from "../internal/timeZone.js";
 import type { Volume } from "../internal/volume.js";
 import type { PrunedDir, ScanEntry, ScanResult, SkipKind, SkippedEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
@@ -488,6 +490,7 @@ export async function scan(
     output,
     outputExists,
     overwrite: spec.overwrite === true,
+    timeZone: policy.timezone ?? machineTimeZone(),
   };
   if (spec.comment !== undefined) result.comment = spec.comment;
   return result;

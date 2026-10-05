@@ -4,6 +4,8 @@
  * most faithful one available, in order:
  *
  *   1. NTFS extra (0x000a) — absolute UTC, 100-ns, and carries access time too.
+ *      Used only when its time attribute is well formed and its modification
+ *      time is set; a third-party writer's malformed or zero field falls through.
  *   2. Info-ZIP extended timestamp (0x5455) — absolute UTC seconds. In the
  *      central record only the modification time is present, so access falls
  *      back to it.
@@ -31,12 +33,37 @@ function filetimeToMs(ticks: bigint): number {
   return Number((ticks - NTFS_EPOCH_OFFSET) / 10_000n);
 }
 
+/**
+ * The times in an NTFS extra's value, or null when it carries no usable
+ * modification time. The value is reserved(4) followed by tagged attributes,
+ * each tag(2) size(2) data; only attribute 1, whose size must be 24
+ * (mtime, atime, ctime as FILETIME), holds times. A zero FILETIME means the
+ * writer left the time unset, so a zero modification time makes the field
+ * unusable and a zero access time falls back to the modification time.
+ */
+function ntfsTimes(value: Buffer): RestoreTimes | null {
+  let p = 4;
+  while (p + 4 <= value.length) {
+    const tag = value.readUInt16LE(p);
+    const size = value.readUInt16LE(p + 2);
+    if (p + 4 + size > value.length) return null;
+    if (tag === 0x0001) {
+      if (size !== 24) return null;
+      const mtime = value.readBigUInt64LE(p + 4);
+      const atime = value.readBigUInt64LE(p + 12);
+      if (mtime === 0n) return null;
+      const mtimeMs = filetimeToMs(mtime);
+      return { mtimeMs, atimeMs: atime === 0n ? mtimeMs : filetimeToMs(atime) };
+    }
+    p += 4 + size;
+  }
+  return null;
+}
+
 export function restoreTimes(entry: ReadEntry, timeZone: string): RestoreTimes {
   const ntfs = findExtra(entry.extra, 0x000a);
-  if (ntfs && ntfs.length >= 24) {
-    // data: reserved(4) tag1(2) size1(2) mtime(8) atime(8) ctime(8)
-    return { mtimeMs: filetimeToMs(ntfs.readBigUInt64LE(8)), atimeMs: filetimeToMs(ntfs.readBigUInt64LE(16)) };
-  }
+  const fromNtfs = ntfs ? ntfsTimes(ntfs) : null;
+  if (fromNtfs) return fromNtfs;
 
   const ut = findExtra(entry.extra, 0x5455);
   if (ut && ut.length >= 5 && (ut[0]! & 0x01) === 0x01) {

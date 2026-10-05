@@ -88,6 +88,41 @@ describe("extract round-trip", () => {
     expect(Math.abs((await stat(out)).mtimeMs - Y2020_MS)).toBeLessThan(2000);
   });
 
+  it("restores folder times after the folder's files are written", async () => {
+    const Y2010_NS = 1_262_304_000_000_000_000n;
+    const folder = (name: string): EntryWithData => ({
+      name,
+      type: "dir",
+      method: "store",
+      raw: Buffer.alloc(0),
+      uncompressedSize: 0,
+      mtimeNs: Y2010_NS,
+      atimeNs: Y2010_NS,
+      birthtimeNs: Y2010_NS,
+      mode: 0o755,
+    });
+    // Folders come before their contents, as zipkit writes them, so a folder
+    // stamped as it was created would be moved by the files written into it.
+    const archive = await writeArchive([
+      folder("docs"),
+      folder("docs/sub"),
+      fileEntry("docs/a.txt", "a"),
+      fileEntry("docs/sub/b.txt", "b"),
+    ]);
+    const dest = path.join(dir, "out");
+    const report = await new ZipKit().extract({ archive, dest });
+
+    expect(report.reportOk).toBe(true);
+    for (const name of ["docs", path.join("docs", "sub")]) {
+      expect((await stat(path.join(dest, name))).mtimeMs).toBe(Number(Y2010_NS / 1_000_000n));
+    }
+    expect(Math.abs((await stat(path.join(dest, "docs", "a.txt"))).mtimeMs - Y2020_MS)).toBeLessThan(2000);
+
+    const untouched = path.join(dir, "untouched");
+    await new ZipKit().extract({ archive, dest: untouched, timestamps: "none" });
+    expect((await stat(path.join(untouched, "docs"))).mtimeMs).toBeGreaterThan(Y2020_MS);
+  });
+
   it("preserves an existing file unless overwrite is set", async () => {
     const archive = await writeArchive([fileEntry("a.txt", "new")]);
     const dest = path.join(dir, "out");
