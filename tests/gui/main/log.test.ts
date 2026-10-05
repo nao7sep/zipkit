@@ -5,8 +5,8 @@
  * recurse the cause chain.
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -33,8 +33,11 @@ function rows(file: string): Row[] {
   }
 }
 
+/** A temp dir removed when the test that made it finishes; each test closes its log first. */
 function tempDir(): string {
-  return mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 describe("createAppLog", () => {

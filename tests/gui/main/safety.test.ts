@@ -5,10 +5,10 @@
  * archive, so the boundary cases are pinned.
  */
 
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { outputInsideInputs as check } from "../../../src/gui/main/safety.js";
 import { realVolume } from "../../helpers/volume.js";
 
@@ -17,7 +17,9 @@ const outputInsideInputs = (output: string, inputs: string[]): Promise<boolean> 
 import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 async function fixture(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "zipkit-safety-"));
+  const root = await mkdtemp(path.join(tmpdir(), "zipkit-safety-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  return root;
 }
 
 describe("outputInsideInputs", () => {

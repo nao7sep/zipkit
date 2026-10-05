@@ -7,9 +7,10 @@
  * old in-memory `buildZip` allowed.
  */
 
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { onTestFinished } from "vitest";
 import { EntryCompressor, ZipWriter } from "../../src/sdk/write/zipWriter.js";
 import { realVolume } from "./volume.js";
 import { DEFAULT_DEFLATE_LEVEL } from "../../src/sdk/policy.js";
@@ -49,6 +50,8 @@ export async function buildZipFile(
 ): Promise<BuiltZip> {
   const { zip64: forceZip64 = false, comment, ...writerOptions } = options;
   const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-"));
+  // The archive lives as long as the test that built it.
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   const output = path.join(dir, "a.zip");
   const writer = new ZipWriter(output, writerOptions, realVolume());
   await writer.open();

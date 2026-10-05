@@ -10,11 +10,11 @@
  * tests also implicitly cover the seek-back header patching.
  */
 
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
 import { findExtra, readZipFile } from "../../helpers/readZip.js";
 import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../../src/sdk/plan/zip64.js";
@@ -239,6 +239,7 @@ describe("symlink exception", () => {
 describe("temp file shape", () => {
   it("uses <outputStem>-<nanoid>.tmp beside the output, not a hidden pid/epoch dotfile", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "zk-writer-shape-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     const output = path.join(dir, "archive.zip");
     const writer = new ZipWriter(output, baseOptions, realVolume());
     await writer.open();
