@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildRecoveryDialogs } from "../../../src/gui/main/recoveryDialogs.js";
+import { buildRecoveryDialogs, startupHaltMessage } from "../../../src/gui/main/recoveryDialogs.js";
+import { NewerFormatError } from "../../../src/gui/main/formatVersions.js";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
 
 const { t } = createTranslator("en");
@@ -41,5 +42,20 @@ describe("buildRecoveryDialogs", () => {
     expect(
       buildRecoveryDialogs({ settingsQuarantinedTo: null, queueQuarantinedTo: null }),
     ).toEqual([]);
+  });
+});
+
+describe("startupHaltMessage", () => {
+  it("names a store a newer build wrote by its path and says it was left unchanged", () => {
+    const halt = startupHaltMessage(new NewerFormatError("/Users/me/.zipkit/queue.json", 2, 1));
+    expect(halt).toEqual({ key: "startup.newerStore", values: { file: "/Users/me/.zipkit/queue.json" } });
+    const text = t(halt.key, halt.values);
+    expect(text).toContain("/Users/me/.zipkit/queue.json");
+    expect(text).toContain("newer version of ZipKit");
+    expect(text).toContain("left unchanged");
+  });
+
+  it("keeps the general guidance, without the diagnostic, for any other failure", () => {
+    expect(startupHaltMessage(new Error("EACCES: /private/tmp/secret"))).toEqual({ key: "startup.halted" });
   });
 });

@@ -217,6 +217,55 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
   });
 });
 
+describe("format version", () => {
+  const userVersion = (file: string): number => {
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      return (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+    } finally {
+      db.close();
+    }
+  };
+
+  it("marks a new store, and an unmarked one, with the backups format version", async () => {
+    const { FORMAT_VERSIONS } = await import("../../../src/gui/main/formatVersions.js");
+    const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
+    await record(path.join(root, "config.json"), Buffer.from("a", "utf8"));
+    await closeBackupStore();
+    const file = path.join(root, "backups.sqlite3");
+    expect(userVersion(file)).toBe(FORMAT_VERSIONS.backups);
+
+    const db = new DatabaseSync(file);
+    db.exec("PRAGMA user_version = 0");
+    db.close();
+    await record(path.join(root, "config.json"), Buffer.from("b", "utf8"));
+    await closeBackupStore();
+    expect(userVersion(file)).toBe(FORMAT_VERSIONS.backups);
+    expect(readRows(root)).toHaveLength(2);
+  });
+
+  it("leaves a store a newer build wrote untouched, with one warn naming it, and records nothing", async () => {
+    const { FORMAT_VERSIONS } = await import("../../../src/gui/main/formatVersions.js");
+    const file = path.join(root, "backups.sqlite3");
+    const db = new DatabaseSync(file);
+    db.exec(`PRAGMA user_version = ${FORMAT_VERSIONS.backups + 1}`);
+    db.close();
+    const { readFileSync } = await import("node:fs");
+    const before = readFileSync(file);
+
+    const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
+    await expect(record(path.join(root, "config.json"), Buffer.from("a", "utf8"))).resolves.toBeUndefined();
+    await expect(record(path.join(root, "config.json"), Buffer.from("b", "utf8"))).resolves.toBeUndefined();
+    await closeBackupStore();
+
+    expect(readFileSync(file).equals(before)).toBe(true);
+    expect(userVersion(file)).toBe(FORMAT_VERSIONS.backups + 1);
+    expect(logCalls.warn).toHaveLength(1);
+    expect(logCalls.warn[0]!.message).toMatch(/could not open/i);
+    expect(String((logCalls.warn[0]!.fields?.error as { message?: unknown }).message)).toMatch(/newer than this build/);
+  });
+});
+
 describe("write-through: a real managed save records the exact bytes after the rename", () => {
   it("saveSettings records config.json's exact on-disk bytes into the store", async () => {
     const { readFileSync } = await import("node:fs");

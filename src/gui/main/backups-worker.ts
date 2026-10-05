@@ -20,6 +20,8 @@ import { parentPort, workerData } from "node:worker_threads";
 
 export interface BackupsWorkerData {
   database: string;
+  /** The backups format this build reads and writes, kept in `PRAGMA user_version`. */
+  formatVersion: number;
 }
 
 /** One managed-text write: the full absolute `path` as written, the exact
@@ -72,13 +74,16 @@ class BackupsStore {
   #statements: Statements | null = null;
   #openFailure: unknown = null;
   readonly #database: string;
+  readonly #formatVersion: number;
 
-  constructor(database: string) {
+  constructor(database: string, formatVersion: number) {
     this.#database = database;
+    this.#formatVersion = formatVersion;
   }
 
   /** Opened on the first record, so a session that saves nothing creates no
-   *  database; a failed open is not retried. */
+   *  database; a failed open is not retried. A database a newer build wrote
+   *  fails to open and is left as it is (store-recovery conventions). */
   open(): Statements {
     if (this.#statements) return this.#statements;
     if (this.#openFailure !== null) throw this.#openFailure;
@@ -91,10 +96,16 @@ class BackupsStore {
       // conventions); the store may be the first thing written on a fresh root.
       mkdirSync(path.dirname(this.#database), { recursive: true });
       db = new DatabaseSync(this.#database);
-      db.exec("PRAGMA journal_mode = WAL");
       // Independent diagnostic readers may briefly contend with a checkpoint/write.
       db.exec("PRAGMA busy_timeout = 5000");
+      // 0 is SQLite's unset value, a missing marker, which reads as 1.
+      const stored = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
+      if (stored > this.#formatVersion) {
+        throw new Error(`${this.#database} has format version ${stored}, newer than this build's ${this.#formatVersion}`);
+      }
+      db.exec("PRAGMA journal_mode = WAL");
       db.exec(SCHEMA);
+      if (stored === 0) db.exec(`PRAGMA user_version = ${this.#formatVersion}`);
       this.#db = db;
       this.#statements = {
         latest: db.prepare("SELECT content_sha256 AS h FROM backups WHERE path = ? ORDER BY id DESC LIMIT 1"),
@@ -148,7 +159,8 @@ class BackupsStore {
 
 if (parentPort) {
   const port = parentPort;
-  const store = new BackupsStore((workerData as BackupsWorkerData).database);
+  const { database, formatVersion } = workerData as BackupsWorkerData;
+  const store = new BackupsStore(database, formatVersion);
   const reply = (response: BackupsResponse): void => port.postMessage(response);
   port.on("message", (request: BackupsRequest) => {
     if (request.type === "close") {

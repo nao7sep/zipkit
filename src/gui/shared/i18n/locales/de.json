@@ -53,6 +53,7 @@
   "startup.dataFolder": "ZipKit konnte seinen Datenordner nicht öffnen. Stellen Sie den Zugriff auf den eingestellten Ordner wieder her und starten Sie ZipKit dann erneut.",
   "startup.windowLoad": "ZipKit konnte sein Fenster nicht laden. Starten Sie es neu. Ihre Quelldateien und Archive sind unverändert.",
   "startup.halted": "ZipKit wurde beendet, bevor sich sein Fenster öffnete. Starten Sie es neu. Tritt das Problem weiterhin auf, finden Sie die Diagnose im ZipKit-Protokoll. Ihre Archivdateien auf dem Datenträger sind nicht betroffen.",
+  "startup.newerStore": "{file} wurde von einer neueren ZipKit-Version gespeichert und kann von dieser Version nicht gelesen werden. Die Datei wurde nicht verändert. Verwenden Sie die neuere ZipKit-Version, oder verschieben Sie die Datei an einen anderen Ort, um diese Version ohne sie zu starten.",
   "recovery.settingsTitle": "Einstellungen wurden zurückgesetzt",
   "recovery.settingsMessage": "Eine nicht lesbare Einstellungsdatei wurde aufbewahrt. ZipKit wurde mit den Standardeinstellungen gestartet. Wo die aufbewahrte Kopie liegt, steht im ZipKit-Protokoll. Ihre Archivdateien auf dem Datenträger sind unberührt.",
   "recovery.queueTitle": "Gespeicherte Warteschlange wurde zurückgesetzt",

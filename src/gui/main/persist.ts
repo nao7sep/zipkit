@@ -12,7 +12,8 @@ import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import type { Job, SavedJob } from "../shared/queue.js";
 import { nullLog, type AppLog } from "./log.js";
-import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { FORMAT_VERSIONS } from "./formatVersions.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 import { parseGuiOptions } from "./settings.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
@@ -30,10 +31,9 @@ export function toResumable(jobs: Job[]): SavedJob[] {
     .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options, intent: j.intent }));
 }
 
-/** Parse queue-file text into resumable jobs, defaulting absent option fields and
- * rejecting malformed entries or duplicate/empty IDs as one invalid snapshot. */
-export function parseQueue(text: string): SavedJob[] {
-  const root = parseManagedObject(text, "queue.json");
+/** Read resumable jobs from the queue file's root object, defaulting absent option
+ * fields and rejecting malformed entries or duplicate/empty IDs as one invalid snapshot. */
+export function parseQueue(root: Record<string, unknown>): SavedJob[] {
   if (!Array.isArray(root.jobs)) throw new InvalidManagedJsonError("queue.json", "jobs must be an array");
 
   const out: SavedJob[] = [];
@@ -63,16 +63,16 @@ export function parseQueue(text: string): SavedJob[] {
 
 /** Serialize resumable jobs to queue-file text. Pure. */
 export function serializeQueue(jobs: SavedJob[]): string {
-  return JSON.stringify({ version: 1, jobs }, null, 2);
+  return managedJsonText(FORMAT_VERSIONS.queue, { jobs });
 }
 
 /** Load the persisted resumable jobs. Returns an empty list when there is simply
  *  no file yet (the normal first-run case); a genuine read error is thrown so the
  *  caller can log it through the session log rather than swallowing it. Invalid
- *  v1 content is quarantined before returning an empty queue; future versions,
+ *  content is quarantined before returning an empty queue; a newer format,
  *  quarantine failures, and non-ENOENT read errors propagate. */
 export async function loadQueue(logger: AppLog = nullLog): Promise<ManagedJsonLoad<SavedJob[]>> {
-  return loadManagedJson(queueFile(), parseQueue, () => [], logger);
+  return loadManagedJson(queueFile(), FORMAT_VERSIONS.queue, parseQueue, () => [], logger);
 }
 
 /** Persist resumable jobs through the shared managed-text atomic write (temp file + rename), so a crash

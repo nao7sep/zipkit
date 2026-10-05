@@ -5,7 +5,7 @@
  * storage root (`ZIPKIT_DATA_DIR` or `~/.zipkit`, resolved by the SDK's
  * {@link storageRoot}, beside the queue, settings, and logs). Kept in its own
  * file — separate from the new-job-defaults `config.json` — because layout and
- * archive defaults are unrelated concerns. Parsing validates the v1 schema then
+ * archive defaults are unrelated concerns. Parsing validates the schema then
  * clamps into bounds; invalid bytes are quarantined and real I/O errors surface.
  *
  * Main holds the layout last loaded or saved, so each window saves only its own
@@ -16,7 +16,8 @@ import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_LAYOUT, RECORDS_LIST_WIDTH, clampLayout, clampRecordsListWidth, type PaneLayout } from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
-import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseManagedObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { FORMAT_VERSIONS } from "./formatVersions.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** Every width the layout file holds: the main window's panes and the Records
  *  window's list pane. */
@@ -37,9 +38,8 @@ function freshLayout(): StoredLayout {
   return { ...DEFAULT_LAYOUT, recordsListWidth: RECORDS_LIST_WIDTH.default };
 }
 
-/** Parse and validate layout-file text into a clamped {@link StoredLayout}. */
-export function parseLayout(text: string): StoredLayout {
-  const root = parseManagedObject(text, "layout.json");
+/** Validate the layout file's root object into a clamped {@link StoredLayout}. */
+export function parseLayout(root: Record<string, unknown>): StoredLayout {
   const layout = root.layout;
   if (!isPlainObject(layout)) throw new InvalidManagedJsonError("layout.json", "layout must be an object");
   for (const key of ["jobsWidth", "progressWidth", "recordsListWidth"] as const) {
@@ -56,14 +56,9 @@ export function parseLayout(text: string): StoredLayout {
 
 /** Serialize a layout to file text. Pure. */
 export function serializeLayout(layout: StoredLayout): string {
-  return JSON.stringify(
-    {
-      version: 1,
-      layout: { ...clampLayout(layout), recordsListWidth: clampRecordsListWidth(layout.recordsListWidth) },
-    },
-    null,
-    2,
-  );
+  return managedJsonText(FORMAT_VERSIONS.layout, {
+    layout: { ...clampLayout(layout), recordsListWidth: clampRecordsListWidth(layout.recordsListWidth) },
+  });
 }
 
 let current: StoredLayout = freshLayout();
@@ -76,7 +71,7 @@ let writes: Promise<void> = Promise.resolve();
  *  shape, identical to config.json and queue.json. Layout is disposable view state, so callers leave
  *  its quarantine outcome log-only rather than raising a recovery dialog. */
 export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<StoredLayout>> {
-  const load = await loadManagedJson(layoutFile(), parseLayout, freshLayout, logger);
+  const load = await loadManagedJson(layoutFile(), FORMAT_VERSIONS.layout, parseLayout, freshLayout, logger);
   current = { ...load.value };
   return load;
 }

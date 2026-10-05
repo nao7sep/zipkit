@@ -21,44 +21,46 @@ import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
 import { managedEntries } from "../../helpers/managedEntries.js";
+import { FORMAT_VERSIONS, NewerFormatError } from "../../../src/gui/main/formatVersions.js";
 
 describe("parseQueue", () => {
-  it("round-trips serialized jobs", () => {
+  it("round-trips serialized jobs, under the queue's format version", () => {
     const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
-    expect(parseQueue(serializeQueue(jobs))).toEqual(jobs);
+    const root = JSON.parse(serializeQueue(jobs));
+    expect(root).toEqual({ formatVersion: FORMAT_VERSIONS.queue, jobs });
+    expect(parseQueue(root)).toEqual(jobs);
   });
 
   it("defaults missing option fields over DEFAULT_OPTIONS", () => {
-    const text = JSON.stringify({ version: 1, jobs: [{ id: "a", inputs: ["/x"], options: { level: 9 }, intent: "save" }] });
-    expect(parseQueue(text)[0]?.options).toEqual({ ...DEFAULT_OPTIONS, level: 9 });
+    const root = { formatVersion: 1, jobs: [{ id: "a", inputs: ["/x"], options: { level: 9 }, intent: "save" }] };
+    expect(parseQueue(root)[0]?.options).toEqual({ ...DEFAULT_OPTIONS, level: 9 });
   });
 
   it("rejects malformed entries and unknown intents", () => {
-    const text = JSON.stringify({
-      version: 1,
+    const root = {
+      formatVersion: 1,
       jobs: [
         { id: "a", inputs: ["/x"], intent: "weird" },
         { inputs: ["/y"] },
       ],
-    });
-    expect(() => parseQueue(text)).toThrow(/intent/);
+    };
+    expect(() => parseQueue(root)).toThrow(/intent/);
   });
 
   it("preserves the archive-and-trash intent", () => {
-    const text = JSON.stringify({ version: 1, jobs: [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" }] });
-    expect(parseQueue(text)[0]?.intent).toBe("archive-and-trash");
+    const root = { formatVersion: 1, jobs: [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" }] };
+    expect(parseQueue(root)[0]?.intent).toBe("archive-and-trash");
   });
 
-  it("rejects bad JSON or a non-array jobs field", () => {
-    expect(() => parseQueue("not json")).toThrow(/invalid/);
-    expect(() => parseQueue(JSON.stringify({ version: 1, jobs: "x" }))).toThrow(/jobs/);
-    expect(() => parseQueue(JSON.stringify({ version: 1 }))).toThrow(/jobs/);
+  it("rejects a non-array jobs field", () => {
+    expect(() => parseQueue({ formatVersion: 1, jobs: "x" })).toThrow(/jobs/);
+    expect(() => parseQueue({ formatVersion: 1 })).toThrow(/jobs/);
   });
 
   it("rejects empty or duplicate durable job identities", () => {
     const entry = { inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" };
-    expect(() => parseQueue(JSON.stringify({ version: 1, jobs: [{ id: "", ...entry }] }))).toThrow(/IDs/);
-    expect(() => parseQueue(JSON.stringify({ version: 1, jobs: [{ id: "a", ...entry }, { id: "a", ...entry }] }))).toThrow(/IDs/);
+    expect(() => parseQueue({ formatVersion: 1, jobs: [{ id: "", ...entry }] })).toThrow(/IDs/);
+    expect(() => parseQueue({ formatVersion: 1, jobs: [{ id: "a", ...entry }, { id: "a", ...entry }] })).toThrow(/IDs/);
   });
 });
 
@@ -93,7 +95,7 @@ describe("queue file location and persistence", () => {
     // files (backups.sqlite3 + its WAL sidecars) are the one other expected presence and are filtered
     // out here; that they never carry a `.tmp` is what this still proves.
     expect(managedEntries(root)).toEqual(["queue.json"]);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ formatVersion: 1 });
     expect((await loadQueue()).value).toEqual(jobs);
   });
 
@@ -139,25 +141,34 @@ describe("queue file location and persistence", () => {
     await saveQueue(jobs);
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ formatVersion: 1 });
     expect(managedEntries(root).sort()).toEqual(["queue.json", quarantined].sort());
   });
 
   it("quarantines a malformed individual job rather than silently dropping it", async () => {
     const file = path.join(root, "queue.json");
-    const bytes = JSON.stringify({ version: 1, jobs: [{ id: "", inputs: ["/x"], intent: "save" }] });
+    const bytes = JSON.stringify({ formatVersion: 1, jobs: [{ id: "", inputs: ["/x"], intent: "save" }] });
     writeFileSync(file, bytes);
     const loaded = await loadQueue();
     expect(loaded.value).toEqual([]);
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 
-  it("preserves unsupported future queue versions at the live path", async () => {
+  it("reads a queue without a format version as format 1", async () => {
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    writeFileSync(path.join(root, "queue.json"), JSON.stringify({ jobs }));
+    expect(await loadQueue()).toEqual({ value: jobs, quarantinedTo: null, missing: false });
+  });
+
+  it("leaves a queue a newer build wrote exactly in place and reports it by path", async () => {
     const file = path.join(root, "queue.json");
-    const bytes = JSON.stringify({ version: 2, jobs: [] });
+    const bytes = JSON.stringify({ formatVersion: FORMAT_VERSIONS.queue + 1, jobs: [] });
     writeFileSync(file, bytes);
-    await expect(loadQueue()).rejects.toThrow(/unsupported schema version 2/);
+    const failure = await loadQueue().catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(NewerFormatError);
+    expect(failure).toMatchObject({ file, found: FORMAT_VERSIONS.queue + 1, supported: FORMAT_VERSIONS.queue });
     expect(readFileSync(file, "utf8")).toBe(bytes);
+    expect(managedEntries(root)).toEqual(["queue.json"]);
   });
 });
 

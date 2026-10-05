@@ -53,6 +53,7 @@
   "startup.dataFolder": "ZipKit no pudo abrir su carpeta de datos. Restablece el acceso a la carpeta configurada y vuelve a iniciar ZipKit.",
   "startup.windowLoad": "ZipKit no pudo cargar su ventana. Reinícialo. Tus archivos de origen y tus archivos comprimidos no han cambiado.",
   "startup.halted": "ZipKit se detuvo antes de abrir su ventana. Reinícialo. Si el problema continúa, revisa el diagnóstico en el registro de ZipKit. Tus archivos comprimidos en el disco no se ven afectados.",
+  "startup.newerStore": "{file} se guardó con una versión más reciente de ZipKit y esta versión no puede leerlo. El archivo no se modificó. Usa la versión más reciente de ZipKit o mueve el archivo a otra ubicación para iniciar esta versión sin él.",
   "recovery.settingsTitle": "Se restableció la configuración",
   "recovery.settingsMessage": "Se conservó un archivo de configuración ilegible. ZipKit se inició con la configuración predeterminada. La ubicación de la copia conservada está en el registro de ZipKit. Tus archivos comprimidos en el disco no se tocaron.",
   "recovery.queueTitle": "Se restableció la cola guardada",

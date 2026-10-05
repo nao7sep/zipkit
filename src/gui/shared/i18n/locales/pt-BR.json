@@ -53,6 +53,7 @@
   "startup.dataFolder": "O ZipKit não conseguiu abrir sua pasta de dados. Restaure o acesso à pasta configurada e inicie o ZipKit novamente.",
   "startup.windowLoad": "O ZipKit não conseguiu carregar sua janela. Reinicie-o. Seus arquivos de origem e seus arquivos compactados não foram alterados.",
   "startup.halted": "O ZipKit parou antes de abrir sua janela. Reinicie-o. Se o problema continuar, confira o diagnóstico no registro do ZipKit. Seus arquivos compactados no disco não foram afetados.",
+  "startup.newerStore": "{file} foi salvo por uma versão mais recente do ZipKit, e esta versão não consegue lê-lo. O arquivo não foi alterado. Use a versão mais recente do ZipKit ou mova o arquivo para outro local para iniciar esta versão sem ele.",
   "recovery.settingsTitle": "As configurações foram redefinidas",
   "recovery.settingsMessage": "Um arquivo de configurações ilegível foi preservado. O ZipKit iniciou com as configurações padrão. O local da cópia preservada está no registro do ZipKit. Seus arquivos compactados no disco não foram tocados.",
   "recovery.queueTitle": "A fila salva foi redefinida",

@@ -13,7 +13,7 @@ import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
 import { log, sendQueue, startProgressRun, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
-import { loadQueue, saveQueue, toResumable } from "./persist.js";
+import { saveQueue, toResumable } from "./persist.js";
 import { resolveOutputPath } from "./output.js";
 import { classifyPaths } from "./inputs.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
@@ -148,17 +148,12 @@ export async function flushQueue(): Promise<void> {
   }
 }
 
-/** Reload the persisted jobs at launch and re-plan each one fresh. Returns where
- *  a corrupt queue file was set aside (null normally) so startup can report it. */
-export async function restoreQueue(): Promise<string | null> {
-  // Missing files and successfully quarantined corrupt files already resolve to
-  // an empty queue inside loadQueue. Every rejection is therefore a real I/O or
-  // preservation failure and must reach startup rather than being overwritten by
-  // a later save from an invented empty queue.
-  const { value: saved, quarantinedTo } = await loadQueue(log);
+/** Re-plan the jobs startup loaded from the queue file, each one fresh. Startup
+ *  loads the file before any window exists, so nothing
+ *  the window does can save over a file this build must not write. */
+export function restoreQueue(saved: SavedJob[]): void {
   log.info("queue restored", { jobs: saved.length });
   engine.restore(saved);
-  return quarantinedTo;
 }
 
 /** Whether a job is actually writing/verifying/trashing right now — the

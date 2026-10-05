@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  loadQueue: vi.fn(),
   saveQueue: vi.fn(),
   toResumable: vi.fn((jobs: unknown) => jobs),
   restore: vi.fn(),
@@ -22,7 +21,6 @@ vi.mock("electron", () => ({
 }));
 vi.mock("nanoid", () => ({ nanoid: () => "test-id" }));
 vi.mock("../../../src/gui/main/persist.js", () => ({
-  loadQueue: mocks.loadQueue,
   saveQueue: mocks.saveQueue,
   toResumable: mocks.toResumable,
 }));
@@ -50,29 +48,20 @@ vi.mock("../../../src/gui/main/inputs.js", () => ({ classifyPaths: vi.fn() }));
 
 import { shell } from "electron";
 import { flushQueue, restoreQueue } from "../../../src/gui/main/queue.js";
+import type { SavedJob } from "../../../src/gui/shared/queue.js";
 
 const trashItem = vi.mocked(shell.trashItem);
 
 describe("restoreQueue", () => {
   beforeEach(() => {
-    mocks.loadQueue.mockReset();
     mocks.restore.mockReset();
     mocks.saveQueue.mockReset();
   });
 
-  it("propagates a queue preservation failure instead of inventing an empty queue", async () => {
-    const failure = new Error("EPERM: quarantine rename blocked");
-    mocks.loadQueue.mockRejectedValue(failure);
+  it("re-plans the jobs startup loaded", () => {
+    const saved = [{ id: "a", inputs: ["/x"], options: {}, intent: "save" }] as unknown as SavedJob[];
 
-    await expect(restoreQueue()).rejects.toBe(failure);
-    expect(mocks.restore).not.toHaveBeenCalled();
-  });
-
-  it("restores the value returned by the queue loader", async () => {
-    const saved = [{ id: "a", inputs: ["/x"], options: {}, intent: "save" }];
-    mocks.loadQueue.mockResolvedValue({ value: saved, quarantinedTo: null });
-
-    await restoreQueue();
+    restoreQueue(saved);
 
     expect(mocks.restore).toHaveBeenCalledWith(saved);
   });

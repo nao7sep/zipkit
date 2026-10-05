@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `app`, `version`, `repository`, `createdAtUtc` and `formatVersion`, replacing `tool` and `createdUtc`. Verify looks for `zipkit.json` only; to verify an archive written by 0.1.0, SDK callers pass `metadataName: "_metadata.json"`.
+- ZipKit's own files (`config.json`, `queue.json`, `layout.json` and the records and backups databases) record their format version; `queue.json` and `layout.json` carry `formatVersion` in place of `version`. A launch that finds one of the JSON files written by a newer ZipKit stops, names the file and leaves it unchanged.
 - Verify refuses an embedded manifest whose `formatVersion` is newer than the running build reads, with the error code `read.manifest-newer`; a manifest without `formatVersion` reads as format 1.
 
 ### Fixed

@@ -5,6 +5,7 @@ import path from "node:path";
 import { nanoid } from "nanoid";
 import { defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { record } from "./backupStore.js";
+import { NewerFormatError } from "./formatVersions.js";
 import { nullLog, type AppLog } from "./log.js";
 
 export class InvalidManagedJsonError extends Error {
@@ -14,19 +15,12 @@ export class InvalidManagedJsonError extends Error {
   }
 }
 
-export class UnsupportedManagedJsonVersionError extends Error {
-  constructor(store: string, version: unknown) {
-    super(`${store} uses unsupported schema version ${String(version)}`);
-    this.name = "UnsupportedManagedJsonVersionError";
-  }
-}
-
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Parse a managed JSON object independently of a store's envelope policy. */
-export function parseJsonObject(text: string, store: string): Record<string, unknown> {
+/** Parse a managed JSON document's root object. */
+function parseJsonObject(text: string, store: string): Record<string, unknown> {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -37,16 +31,19 @@ export function parseJsonObject(text: string, store: string): Record<string, unk
   return value;
 }
 
-/** Versioned queue/layout documents preserve unsupported future versions. */
-export function parseManagedObject(text: string, store: string): Record<string, unknown> {
-  const value = parseJsonObject(text, store);
-  if (value.version !== 1) {
-    if (typeof value.version === "number" && value.version > 1) {
-      throw new UnsupportedManagedJsonVersionError(store, value.version);
-    }
-    throw new InvalidManagedJsonError(store, "schema version must be 1");
+/** The format version a document's `formatVersion` records; a missing marker reads as 1. */
+function storedFormatVersion(root: Record<string, unknown>, store: string): number {
+  const value = root.formatVersion;
+  if (value === undefined) return 1;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new InvalidManagedJsonError(store, "formatVersion must be a positive integer");
   }
   return value;
+}
+
+/** A managed document's text: its format version first, then the store's own keys. */
+export function managedJsonText(formatVersion: number, body: Record<string, unknown>): string {
+  return JSON.stringify({ formatVersion, ...body }, null, 2);
 }
 
 /** Move an invalid store aside with its original bytes intact. */
@@ -78,10 +75,13 @@ export interface ManagedJsonLoad<T> {
   missing: boolean;
 }
 
-/** Load without ever returning defaults while corrupt bytes remain at the live path. */
+/** Load without ever returning defaults while corrupt bytes remain at the live path. The
+ *  document's envelope (JSON object, format version) is checked here for every store; `parse`
+ *  reads the store's own keys from the root object. A newer format propagates untouched. */
 export async function loadManagedJson<T>(
   file: string,
-  parse: (text: string) => T,
+  formatVersion: number,
+  parse: (root: Record<string, unknown>) => T,
   onDefault: () => T,
   logger: AppLog = nullLog,
 ): Promise<ManagedJsonLoad<T>> {
@@ -94,8 +94,12 @@ export async function loadManagedJson<T>(
     }
     throw err;
   }
+  const store = path.basename(file);
   try {
-    return { value: parse(text), quarantinedTo: null, missing: false };
+    const root = parseJsonObject(text, store);
+    const found = storedFormatVersion(root, store);
+    if (found > formatVersion) throw new NewerFormatError(file, found, formatVersion);
+    return { value: parse(root), quarantinedTo: null, missing: false };
   } catch (err) {
     if (!(err instanceof InvalidManagedJsonError)) throw err;
     // Quarantine is outside the read catch. Rename failure propagates and leaves

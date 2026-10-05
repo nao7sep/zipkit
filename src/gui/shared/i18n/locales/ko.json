@@ -53,6 +53,7 @@
   "startup.dataFolder": "ZipKit이 데이터 폴더를 열 수 없습니다. 설정된 폴더에 다시 접근할 수 있게 한 다음 ZipKit을 다시 시작하십시오.",
   "startup.windowLoad": "ZipKit이 윈도우를 불러올 수 없습니다. 다시 시작하십시오. 원본 파일과 아카이브는 변경되지 않았습니다.",
   "startup.halted": "ZipKit이 윈도우를 열기 전에 중지되었습니다. 다시 시작하십시오. 문제가 계속되면 ZipKit 로그에서 진단 정보를 확인하십시오. 디스크의 아카이브 파일에는 영향이 없습니다.",
+  "startup.newerStore": "{file}은(는) 새 버전의 ZipKit에서 저장되어 이 버전에서는 읽을 수 없습니다. 파일은 변경하지 않았습니다. 새 버전의 ZipKit을 사용하거나, 파일을 다른 위치로 옮긴 다음 이 버전을 시작하십시오.",
   "recovery.settingsTitle": "설정이 재설정되었습니다",
   "recovery.settingsMessage": "읽을 수 없는 설정 파일은 보존되었습니다. ZipKit이 기본 설정으로 시작되었습니다. 보존된 사본의 위치는 ZipKit 로그에서 확인하십시오. 디스크의 아카이브 파일은 건드리지 않았습니다.",
   "recovery.queueTitle": "저장된 대기열이 재설정되었습니다",

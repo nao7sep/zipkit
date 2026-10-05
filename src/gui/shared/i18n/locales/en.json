@@ -53,6 +53,7 @@
   "startup.dataFolder": "ZipKit could not open its data folder. Restore access to the configured folder, then start ZipKit again.",
   "startup.windowLoad": "ZipKit could not load its window. Restart it. Your source files and archives are unchanged.",
   "startup.halted": "ZipKit stopped before opening its window. Restart it. If the problem continues, check the ZipKit log for the diagnostic. Your archive files on disk are not affected.",
+  "startup.newerStore": "{file} was saved by a newer version of ZipKit, and this version cannot read it. The file was left unchanged. Use the newer version of ZipKit instead, or move the file elsewhere so this version can start without it.",
   "recovery.settingsTitle": "Settings were reset",
   "recovery.settingsMessage": "An unreadable settings file was preserved. ZipKit started with default settings. Check the ZipKit log for the saved-copy location. Your archive files on disk are untouched.",
   "recovery.queueTitle": "Saved queue was reset",

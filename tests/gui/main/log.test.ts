@@ -11,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAppLog, errorInfo } from "../../../src/gui/main/log.js";
+import { FORMAT_VERSIONS } from "../../../src/gui/main/formatVersions.js";
 import type { LogEvent } from "../../../src/gui/shared/api.js";
 import type { RecordsPage } from "../../../src/gui/shared/records.js";
 
@@ -168,6 +169,55 @@ describe("createAppLog", () => {
     await log.close();
 
     expect(readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8")).toContain("\"late\"");
+  });
+});
+
+describe("format version", () => {
+  const userVersion = (file: string): number => {
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      return (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+    } finally {
+      db.close();
+    }
+  };
+
+  it("marks a new records database, and an unmarked one, with the records format version", async () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const first = createAppLog(database, path.join(dir, "logs"));
+    first.info("first");
+    await first.close();
+    expect(userVersion(database)).toBe(FORMAT_VERSIONS.records);
+
+    const db = new DatabaseSync(database);
+    db.exec("PRAGMA user_version = 0");
+    db.close();
+    const second = createAppLog(database, path.join(dir, "logs"));
+    second.info("second");
+    await second.close();
+    expect(userVersion(database)).toBe(FORMAT_VERSIONS.records);
+    expect(rows(database).map((row) => row.message)).toEqual(["first", "second"]);
+  });
+
+  it("leaves a records database a newer build wrote untouched and keeps its lines in the fallback file", async () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const db = new DatabaseSync(database);
+    db.exec(`PRAGMA user_version = ${FORMAT_VERSIONS.records + 1}`);
+    db.close();
+    const before = readFileSync(database);
+    const logs = path.join(dir, "logs");
+
+    const log = createAppLog(database, logs, new Date("2026-06-14T05:25:48.123Z"));
+    log.info("kept");
+    await log.close();
+
+    expect(readFileSync(database).equals(before)).toBe(true);
+    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
+      .map((line) => JSON.parse(line) as { message: string; fields: { error?: { message?: string } } });
+    expect(lines.map((line) => line.message)).toEqual(["records database unavailable", "kept"]);
+    expect(lines[0]?.fields.error?.message).toMatch(/newer than this build/);
   });
 });
 

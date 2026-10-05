@@ -10,7 +10,8 @@ import { changedSettings, DEFAULT_OPTIONS, DEFAULT_SETTINGS, SETTINGS_KEYS, THEM
 import { isLanguage } from "../shared/i18n/languages.js";
 import { multiline, singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
-import { InvalidManagedJsonError, isPlainObject, loadManagedJson, parseJsonObject, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { FORMAT_VERSIONS } from "./formatVersions.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** Computed on each call, not frozen at import, so `ZIPKIT_DATA_DIR` is read after
  * the environment is set (storage-path conventions). */
@@ -74,16 +75,17 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
   return settings;
 }
 
-export function parseSettings(text: string, logger: AppLog = nullLog): GuiSettings {
-  return effectiveSettings(parseJsonObject(text, "config.json"), logger);
+/** The settings config.json's root object holds; each set is checked on its own. */
+export function parseSettings(root: Record<string, unknown>, logger: AppLog = nullLog): GuiSettings {
+  return effectiveSettings(root, logger);
 }
 
 export function serializeSettings(stored: Partial<GuiSettings>): string {
-  return JSON.stringify(stored, null, 2);
+  return managedJsonText(FORMAT_VERSIONS.config, stored);
 }
 
 export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJsonLoad<GuiSettings>> {
-  return loadManagedJson(settingsFile(), (text) => parseSettings(text, logger), freshSettings, logger);
+  return loadManagedJson(settingsFile(), FORMAT_VERSIONS.config, (root) => parseSettings(root, logger), freshSettings, logger);
 }
 
 async function storedText(): Promise<string | null> {

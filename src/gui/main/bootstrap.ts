@@ -13,7 +13,7 @@ import { app, BrowserWindow, nativeTheme } from "electron";
 import { APP_VERSION } from "../shared/identity.js";
 import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
-import { buildRecoveryDialogs } from "./recoveryDialogs.js";
+import { buildRecoveryDialogs, startupHaltMessage } from "./recoveryDialogs.js";
 import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
@@ -25,6 +25,7 @@ import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { loadLayout } from "./layout.js";
+import { loadQueue } from "./persist.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
@@ -73,8 +74,8 @@ function createWindow(): BrowserWindow {
     if (!win.isDestroyed()) win.show();
   }).catch((error) => {
     log.error("main window document failed to load", { error: errorInfo(error) });
-    // The queue has not necessarily hydrated yet. Closing this failed shell must
-    // not flush an empty in-memory queue over the saved one.
+    // Closing this failed shell must not flush the in-memory queue over the
+    // saved one.
     flushQueueOnClose = false;
     if (!win.isDestroyed()) win.close();
     void notifyStartupFailure("startup.windowLoad").catch((dialogError) => log.error("window load failure dialog failed", { error: errorInfo(dialogError) }));
@@ -105,10 +106,12 @@ function activateMainWindow(): void {
 }
 
 // Any startup failure reaches the user and halts. The diagnostic stays in the
-// log; the app-authored dialog carries stable recovery guidance only.
+// log; the app-authored dialog carries stable recovery guidance, and names the
+// file when a newer build wrote it.
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
-  await notifyStartupFailure("startup.halted");
+  const halt = startupHaltMessage(error);
+  await notifyStartupFailure(halt.key, halt.values);
   await closeBackupStore();
   await log.close();
   app.exit(1);
@@ -140,9 +143,10 @@ app.whenReady().then(async () => {
   registerQueueIpc();
   log.onStored(notifyRecordsChanged);
 
-  // Warm stores before the renderer can save defaults over an unreadable file.
-  // This also keeps failed quarantines on the startup error path. Each load
-  // returns its own quarantine outcome; layout is disposable view state and its
+  // Load every store before any window exists, so the renderer can never save
+  // over an unreadable file or one a newer build wrote. This also keeps failed
+  // quarantines and newer formats on the startup error path. Each load returns
+  // its own quarantine outcome; layout is disposable view state and its
   // recovery stays log-only.
   const settingsLoad = await loadSettings(log);
   const { quarantinedTo: settingsQuarantinedTo } = settingsLoad;
@@ -155,6 +159,7 @@ app.whenReady().then(async () => {
   // raw read above; the store's value wins before the window opens.
   await applyLanguagePreference(settingsLoad.value.language, logLanguageError);
   await loadLayout(log);
+  const queueLoad = await loadQueue(log);
 
   windowCreationReady = true;
   const initialWindow = createWindow();
@@ -162,10 +167,9 @@ app.whenReady().then(async () => {
     activationPending = false;
     focusWindow(initialWindow);
   }
-  // Queue recovery is material, so wait for it before reporting.
-  const queueQuarantinedTo = await restoreQueue();
+  restoreQueue(queueLoad.value);
 
-  for (const recoveryDialog of buildRecoveryDialogs({ settingsQuarantinedTo, queueQuarantinedTo })) {
+  for (const recoveryDialog of buildRecoveryDialogs({ settingsQuarantinedTo, queueQuarantinedTo: queueLoad.quarantinedTo })) {
     const { t } = mainTranslator();
     await showAppMessageDialog({
       owner: initialWindow,

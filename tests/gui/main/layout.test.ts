@@ -31,6 +31,7 @@ import {
 } from "../../../src/gui/shared/layout.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
 import { managedEntries } from "../../helpers/managedEntries.js";
+import { FORMAT_VERSIONS, NewerFormatError } from "../../../src/gui/main/formatVersions.js";
 
 // The default layout as the file holds it: the main window's panes and the
 // Records window's list pane.
@@ -38,13 +39,13 @@ const DEFAULT_STORED = { ...DEFAULT_LAYOUT, recordsListWidth: RECORDS_LIST_WIDTH
 
 describe("parseLayout", () => {
   it("reads a stored layout", () => {
-    const text = JSON.stringify({ version: 1, layout: { jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 } });
-    expect(parseLayout(text)).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 });
+    const root = { formatVersion: 1, layout: { jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 } };
+    expect(parseLayout(root)).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 });
   });
 
   it("clamps out-of-bounds widths into the allowed range", () => {
-    const text = JSON.stringify({ version: 1, layout: { jobsWidth: 10000, progressWidth: 1, recordsListWidth: 1 } });
-    expect(parseLayout(text)).toEqual({
+    const root = { formatVersion: 1, layout: { jobsWidth: 10000, progressWidth: 1, recordsListWidth: 1 } };
+    expect(parseLayout(root)).toEqual({
       jobsWidth: LAYOUT_BOUNDS.jobsWidth.max,
       progressWidth: LAYOUT_BOUNDS.progressWidth.min,
       recordsListWidth: RECORDS_LIST_WIDTH.min,
@@ -52,13 +53,12 @@ describe("parseLayout", () => {
   });
 
   it("fills missing fields from the default layout, the Records list width included", () => {
-    const text = JSON.stringify({ version: 1, layout: { jobsWidth: 320 } });
-    expect(parseLayout(text)).toEqual({ ...DEFAULT_STORED, jobsWidth: 320 });
+    const root = { formatVersion: 1, layout: { jobsWidth: 320 } };
+    expect(parseLayout(root)).toEqual({ ...DEFAULT_STORED, jobsWidth: 320 });
   });
 
-  it("rejects junk or a missing layout so the loader can preserve it", () => {
-    expect(() => parseLayout("not json")).toThrow(/invalid/);
-    expect(() => parseLayout(JSON.stringify({ version: 1 }))).toThrow(/layout/);
+  it("rejects a missing layout so the loader can preserve it", () => {
+    expect(() => parseLayout({ formatVersion: 1 })).toThrow(/layout/);
   });
 });
 
@@ -76,9 +76,7 @@ describe("persisted bounds feed the derived window minimum", () => {
     );
     // A persisted layout clamped to its minimum side widths still fits the center
     // pane at the window minimum (no persisted state can violate the invariant).
-    const minSides = parseLayout(
-      JSON.stringify({ version: 1, layout: { jobsWidth: 0, progressWidth: 0 } }),
-    );
+    const minSides = parseLayout({ formatVersion: 1, layout: { jobsWidth: 0, progressWidth: 0 } });
     const centerAtMin =
       minWindowWidth() - minSides.jobsWidth - minSides.progressWidth - 2 * SPLITTER_WIDTH - 2 * BODY_PADDING;
     expect(centerAtMin).toBe(ARCHIVE_MIN_WIDTH);
@@ -89,13 +87,13 @@ describe("serializeLayout", () => {
   it("round-trips through parseLayout", () => {
     const layout = { jobsWidth: 260, progressWidth: 420, recordsListWidth: 450 };
     const serialized = serializeLayout(layout);
-    expect(parseLayout(serialized)).toEqual(layout);
-    expect(JSON.parse(serialized)).toEqual({ version: 1, layout });
+    expect(parseLayout(JSON.parse(serialized))).toEqual(layout);
+    expect(JSON.parse(serialized)).toEqual({ formatVersion: FORMAT_VERSIONS.layout, layout });
   });
 
   it("clamps on write too, so a bad value can never be persisted", () => {
     const text = serializeLayout({ jobsWidth: -5, progressWidth: 99999, recordsListWidth: 99999 });
-    expect(parseLayout(text)).toEqual({
+    expect(parseLayout(JSON.parse(text))).toEqual({
       jobsWidth: LAYOUT_BOUNDS.jobsWidth.min,
       progressWidth: LAYOUT_BOUNDS.progressWidth.max,
       recordsListWidth: RECORDS_LIST_WIDTH.max,
@@ -117,7 +115,7 @@ describe("persists the intent, not the resize-clamped display", () => {
 
     // Persisting the intent (drag value) and reading it back yields the intent,
     // never the resize-clamped display.
-    const restored = parseLayout(serializeLayout(intent));
+    const restored = parseLayout(JSON.parse(serializeLayout(intent)));
     expect(restored).toEqual(intent);
     expect(restored).not.toEqual(clampedForDisplay);
 
@@ -183,14 +181,14 @@ describe("layout file quarantine-then-reset", () => {
     await saveLayout({ jobsWidth: 300, progressWidth: 360 });
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ version: 1 });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ formatVersion: 1 });
     expect(managedEntries(root).sort()).toEqual(["layout.json", quarantined].sort());
     expect(existsSync(path.join(root, "backups.sqlite3"))).toBe(false); // layout is volatile state: not recorded
   });
 
   it("quarantines wrong-shaped widths instead of silently rewriting them", async () => {
     const file = path.join(root, "layout.json");
-    writeFileSync(file, JSON.stringify({ version: 1, layout: { jobsWidth: "wide" } }));
+    writeFileSync(file, JSON.stringify({ formatVersion: 1, layout: { jobsWidth: "wide" } }));
     const loaded = await loadLayout();
     expect(loaded.value).toEqual(DEFAULT_STORED);
     expect(loaded.quarantinedTo).toMatch(/\.invalid$/);
@@ -199,7 +197,7 @@ describe("layout file quarantine-then-reset", () => {
 
   it("quarantines a wrong-shaped Records list width too", async () => {
     const file = path.join(root, "layout.json");
-    writeFileSync(file, JSON.stringify({ version: 1, layout: { recordsListWidth: "wide" } }));
+    writeFileSync(file, JSON.stringify({ formatVersion: 1, layout: { recordsListWidth: "wide" } }));
     const loaded = await loadLayout();
     expect(loaded.value).toEqual(DEFAULT_STORED);
     expect(loaded.quarantinedTo).toMatch(/\.invalid$/);
@@ -212,10 +210,10 @@ describe("layout file quarantine-then-reset", () => {
     expect(recordsListWidth()).toBe(500);
 
     expect(await saveRecordsListWidth(9999)).toBe(RECORDS_LIST_WIDTH.max);
-    expect(parseLayout(readFileSync(file, "utf8"))).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: RECORDS_LIST_WIDTH.max });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: RECORDS_LIST_WIDTH.max });
 
     await saveLayout({ jobsWidth: 320, progressWidth: 380 });
-    expect(parseLayout(readFileSync(file, "utf8"))).toEqual({ jobsWidth: 320, progressWidth: 380, recordsListWidth: RECORDS_LIST_WIDTH.max });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 320, progressWidth: 380, recordsListWidth: RECORDS_LIST_WIDTH.max });
     expect(recordsListWidth()).toBe(RECORDS_LIST_WIDTH.max);
   });
 
@@ -227,7 +225,23 @@ describe("layout file quarantine-then-reset", () => {
       saveLayout({ jobsWidth: 250, progressWidth: 300 }),
       saveRecordsListWidth(420),
     ]);
-    expect(parseLayout(readFileSync(file, "utf8"))).toEqual({ jobsWidth: 250, progressWidth: 300, recordsListWidth: 420 });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 250, progressWidth: 300, recordsListWidth: 420 });
   });
 
+  it("reads a layout without a format version as format 1", async () => {
+    writeFileSync(path.join(root, "layout.json"), JSON.stringify({ layout: { jobsWidth: 300 } }));
+    const loaded = await loadLayout();
+    expect(loaded).toEqual({ value: { ...DEFAULT_STORED, jobsWidth: 300 }, quarantinedTo: null, missing: false });
+  });
+
+  it("leaves a layout a newer build wrote exactly in place and reports it by path", async () => {
+    const file = path.join(root, "layout.json");
+    const bytes = JSON.stringify({ formatVersion: FORMAT_VERSIONS.layout + 1, layout: {} });
+    writeFileSync(file, bytes);
+    const failure = await loadLayout().catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(NewerFormatError);
+    expect(failure).toMatchObject({ file, found: FORMAT_VERSIONS.layout + 1, supported: FORMAT_VERSIONS.layout });
+    expect(readFileSync(file, "utf8")).toBe(bytes);
+    expect(managedEntries(root)).toEqual(["layout.json"]);
+  });
 });

@@ -53,6 +53,7 @@
   "startup.dataFolder": "ZipKit n’a pas pu ouvrir son dossier de données. Rétablissez l’accès au dossier configuré, puis relancez ZipKit.",
   "startup.windowLoad": "ZipKit n’a pas pu charger sa fenêtre. Relancez-le. Vos fichiers sources et vos archives n’ont pas été modifiés.",
   "startup.halted": "ZipKit s’est arrêté avant d’ouvrir sa fenêtre. Relancez-le. Si le problème persiste, consultez le diagnostic dans le journal de ZipKit. Vos fichiers d’archive sur le disque ne sont pas concernés.",
+  "startup.newerStore": "{file} a été enregistré par une version plus récente de ZipKit, et cette version ne peut pas le lire. Le fichier n’a pas été modifié. Utilisez la version plus récente de ZipKit ou déplacez le fichier ailleurs pour démarrer cette version sans ce fichier.",
   "recovery.settingsTitle": "Les réglages ont été réinitialisés",
   "recovery.settingsMessage": "Un fichier de réglages illisible a été conservé. ZipKit a démarré avec les réglages par défaut. L’emplacement de la copie conservée figure dans le journal de ZipKit. Vos fichiers d’archive sur le disque n’ont pas été touchés.",
   "recovery.queueTitle": "La file d’attente enregistrée a été réinitialisée",

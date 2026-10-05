@@ -15,6 +15,8 @@ import type { RecordDetail, RecordKind, RecordsPage, RecordsQuery, RecordSummary
 
 export interface RecordsWorkerData {
   database: string;
+  /** The records format this build reads and writes, kept in `PRAGMA user_version`. */
+  formatVersion: number;
 }
 
 /** One log line. `session` is the launch's start; `jobId` is the queue job the
@@ -229,22 +231,32 @@ class RecordsStore {
   #statements: Statements | null = null;
   #openFailure: unknown = null;
   readonly #database: string;
+  readonly #formatVersion: number;
 
-  constructor(database: string) {
+  constructor(database: string, formatVersion: number) {
     this.#database = database;
+    this.#formatVersion = formatVersion;
   }
 
   /** Opened on the first request, so a process that never logs creates no
-   *  database; a failed open is not retried. */
+   *  database; a failed open is not retried. A database a newer build wrote
+   *  fails to open and is left as it is (store-recovery conventions). */
   #open(): Statements {
     if (this.#statements) return this.#statements;
     if (this.#openFailure !== null) throw this.#openFailure;
+    let db: DatabaseSync | undefined;
     try {
       mkdirSync(path.dirname(this.#database), { recursive: true });
-      const db = new DatabaseSync(this.#database);
+      db = new DatabaseSync(this.#database);
       db.exec("PRAGMA busy_timeout = 5000");
+      // 0 is SQLite's unset value, a missing marker, which reads as 1.
+      const stored = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
+      if (stored > this.#formatVersion) {
+        throw new Error(`${this.#database} has format version ${stored}, newer than this build's ${this.#formatVersion}`);
+      }
       db.exec("PRAGMA journal_mode = WAL");
       db.exec(SCHEMA);
+      if (stored === 0) db.exec(`PRAGMA user_version = ${this.#formatVersion}`);
       this.#db = db;
       this.#statements = {
         insertLog: db.prepare(
@@ -261,6 +273,11 @@ class RecordsStore {
       return this.#statements;
     } catch (err) {
       this.#openFailure = err;
+      try {
+        db?.close();
+      } catch {
+        // The open failure is the actionable one.
+      }
       throw err;
     }
   }
@@ -319,7 +336,8 @@ function answer(store: RecordsStore, request: Exclude<RecordsRequest, { type: "c
 
 if (parentPort) {
   const port = parentPort;
-  const store = new RecordsStore((workerData as RecordsWorkerData).database);
+  const { database, formatVersion } = workerData as RecordsWorkerData;
+  const store = new RecordsStore(database, formatVersion);
   const reply = (response: RecordsResponse): void => port.postMessage(response);
   port.on("message", (request: RecordsRequest) => {
     if (request.type === "close") {
