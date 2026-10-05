@@ -20,8 +20,13 @@ export interface StallingFileSystem {
   port: FileSystemPort;
   /** `"<operation> <path>"` for every call held so far. */
   stalled: string[];
-  /** Let every held call run now, late, against the real filesystem. */
-  release(): void;
+  /** Calls that were not held and have not settled yet. While this is 0, every
+   *  budget timer the Volume has pending belongs to a held call, so advancing
+   *  fake time can expire only held calls. */
+  readonly inFlight: number;
+  /** Let every held call run now, late, against the real filesystem; resolves
+   *  once each of them has settled. */
+  release(): Promise<void>;
 }
 
 /**
@@ -30,13 +35,20 @@ export interface StallingFileSystem {
  * for real, so a test can prove its late completion changes nothing.
  */
 export function stallingFileSystem(shouldStall: (operation: string, path: string) => boolean): StallingFileSystem {
-  const held: Array<() => void> = [];
+  const held: Array<() => Promise<unknown>> = [];
   const stalled: string[] = [];
+  let inFlight = 0;
+  function track<T>(run: () => Promise<T>): Promise<T> {
+    inFlight++;
+    return run().finally(() => {
+      inFlight--;
+    });
+  }
   function gate<T>(operation: string, path: string, run: () => Promise<T>): Promise<T> {
-    if (!shouldStall(operation, path)) return run();
+    if (!shouldStall(operation, path)) return track(run);
     stalled.push(`${operation} ${path}`);
     return new Promise<T>((resolve, reject) => {
-      held.push(() => void run().then(resolve, reject));
+      held.push(() => run().then(resolve, reject));
     });
   }
   const real = nodeFileSystem;
@@ -50,7 +62,7 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
           gate("write", path, () => handle.write(buffer, offset, length, position)),
         sync: () => gate("sync", path, () => handle.sync()),
         stat: () => gate("fstat", path, () => handle.stat()),
-        close: () => handle.close(),
+        close: () => track(() => handle.close()),
       };
     },
     stat: (path) => gate("stat", path, () => real.stat(path)),
@@ -69,8 +81,11 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
   return {
     port,
     stalled,
-    release: () => {
-      for (const run of held.splice(0)) run();
+    get inFlight() {
+      return inFlight;
+    },
+    release: async () => {
+      await Promise.allSettled(held.splice(0).map((run) => run()));
     },
   };
 }

@@ -2,9 +2,14 @@
  * Stalled volumes: every filesystem call the scan, write, and extract edges make
  * is bounded by the SDK's per-operation budget and answers to the run's signal.
  * A fake filesystem holds chosen calls forever (a dropped network share, a
- * removed drive); each edge must fail with a `StallError` naming the path within
- * the budget, or with an `AbortError` promptly on cancel, clean up its temp
+ * removed drive); each edge must fail with a `StallError` naming the path once
+ * the budget elapses, or with an `AbortError` on cancel, clean up its temp
  * output, and — when the held call is finally let through — publish nothing.
+ *
+ * Time is fake and only the test moves it, so no real call is ever expired by a
+ * slow machine. A test advances the clock only while no unheld call is in
+ * flight (`untilHeld`), so the only budgets that can expire are the held calls'.
+ * Cancels are sent once the run is held, never on a timer.
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -21,33 +26,45 @@ import { createLogger } from "../../src/sdk/log/logger.js";
 import { resolvePolicy } from "../../src/sdk/policy.js";
 import { scan } from "../../src/sdk/scan/scan.js";
 import { writeArchive } from "../../src/sdk/write/write.js";
-import { stallingFileSystem } from "../helpers/volume.js";
+import { stallingFileSystem, type StallingFileSystem } from "../helpers/volume.js";
 
 const BUDGET = 150;
-/** Slack for timers and the event loop on a loaded CI machine. */
-const SLACK = 1000;
 
 let dir: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "zipkit-stall-"));
+  // Only the timers: real I/O, setImmediate and the clock stay real.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await rm(dir, { recursive: true, force: true });
 });
 
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+/** One turn of the event loop, after pending I/O callbacks and microtasks. */
+const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-/** Settle a promise that is expected to reject; report the error and how long it took. */
-async function failure(run: Promise<unknown>): Promise<{ err: unknown; ms: number }> {
-  const start = performance.now();
-  try {
-    await run;
-  } catch (err) {
-    return { err, ms: performance.now() - start };
-  }
-  throw new Error("expected the call to fail");
+/** Wait until `count` calls are held and no other call is in flight. */
+async function untilHeld(fs: StallingFileSystem, count = 1): Promise<void> {
+  while (fs.stalled.length < count || fs.inFlight > 0) await tick();
+}
+
+/** A promise expected to reject, with its settlement observable before awaiting. */
+function expectFailure(run: Promise<unknown>): { settled: () => boolean; error: Promise<unknown> } {
+  let settled = false;
+  const error = run.then(
+    () => {
+      settled = true;
+      throw new Error("expected the call to fail");
+    },
+    (err: unknown) => {
+      settled = true;
+      return err;
+    },
+  );
+  return { settled: () => settled, error };
 }
 
 async function makeTree(files = 2): Promise<string> {
@@ -89,6 +106,7 @@ describe("the time budget", () => {
     const plan = await new ZipKit().plan({ inputs: [proj], output: path.join(dir, "slow.zip") });
     // Every read takes a third of the budget; the file takes eight reads, so the
     // run as a whole outlasts the budget several times over.
+    let elapsed = 0;
     const slow: FileSystemPort = {
       ...nodeFileSystem,
       open: async (p, flags) => {
@@ -96,7 +114,9 @@ describe("the time budget", () => {
         return {
           ...handle,
           read: async (...args) => {
-            await delay(BUDGET / 3);
+            await Promise.resolve(); // past the Volume arming this read's budget
+            vi.advanceTimersByTime(BUDGET / 3);
+            elapsed += BUDGET / 3;
             return handle.read(...args);
           },
           write: (...args) => handle.write(...args),
@@ -113,35 +133,40 @@ describe("the time budget", () => {
     });
     expect(result.written).toBe(true);
     expect(existsSync(path.join(dir, "slow.zip"))).toBe(true);
+    expect(elapsed).toBeGreaterThan(2 * BUDGET);
   });
 });
 
 describe("scan on a stalled source", () => {
-  it("fails within the budget with a StallError naming the directory", async () => {
+  it("fails when the budget elapses with a StallError naming the directory", async () => {
     const proj = await makeTree();
     const sub = path.join(proj, "sub");
     const fs = stallingFileSystem((op, p) => op === "readdir" && p === sub);
 
-    const { err, ms } = await failure(runScan(proj, new Volume(fs.port, BUDGET)));
+    const run = expectFailure(runScan(proj, new Volume(fs.port, BUDGET)));
+    await untilHeld(fs);
+    vi.advanceTimersByTime(BUDGET - 1);
+    await tick();
+    expect(run.settled()).toBe(false);
+    vi.advanceTimersByTime(1);
+    const err = await run.error;
 
     expect(err).toBeInstanceOf(StallError);
     expect(err).toMatchObject({ errorType: "stall", code: "io.stalled", operation: "readdir", path: sub });
-    expect(ms).toBeGreaterThanOrEqual(BUDGET - 20);
-    expect(ms).toBeLessThan(BUDGET + SLACK);
-    fs.release();
+    await fs.release();
   });
 
-  it("fails promptly with an AbortError when cancelled during the stall", async () => {
+  it("fails with an AbortError when cancelled during the stall", async () => {
     const proj = await makeTree();
     const fs = stallingFileSystem((op) => op === "readdir");
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
 
-    const { err, ms } = await failure(runScan(proj, new Volume(fs.port, 60_000, controller.signal), controller.signal));
+    const run = expectFailure(runScan(proj, new Volume(fs.port, 60_000, controller.signal), controller.signal));
+    await untilHeld(fs);
+    controller.abort();
 
-    expect(err).toBeInstanceOf(AbortError);
-    expect(ms).toBeLessThan(SLACK);
-    fs.release();
+    expect(await run.error).toBeInstanceOf(AbortError);
+    await fs.release();
   });
 });
 
@@ -150,55 +175,58 @@ describe("write on a stalled volume", () => {
     return new ZipKit().plan({ inputs: [proj], output });
   }
 
-  it("fails within the budget when a source read stalls, and the late read publishes nothing", async () => {
+  it("fails when the budget elapses on a stalled source read, and the late read publishes nothing", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "out.zip");
     const plan = await planFor(proj, output);
     const source = path.join(proj, "f0.txt");
     const fs = stallingFileSystem((op, p) => op === "read" && p === source);
 
-    const { err, ms } = await failure(
+    const run = expectFailure(
       writeArchive(plan, { logger: createLogger(), chunkSize: 65536, volume: new Volume(fs.port, BUDGET) }),
     );
+    await untilHeld(fs);
+    vi.advanceTimersByTime(BUDGET);
+    const err = await run.error;
 
     expect(err).toMatchObject({ errorType: "stall", operation: "read", path: source, committing: false });
-    expect(ms).toBeLessThan(BUDGET + SLACK);
     expect(leftovers(dir, ["proj"])).toEqual([]); // no archive, no temp
 
-    fs.release();
-    await delay(50);
+    await fs.release();
+    await tick();
     expect(leftovers(dir, ["proj"])).toEqual([]);
   });
 
-  it("fails within the budget when a destination write stalls, and removes the temp", async () => {
+  it("fails when the budget elapses on a stalled destination write, and removes the temp", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "out.zip");
     const plan = await planFor(proj, output);
     const fs = stallingFileSystem((op, p) => op === "write" && p.endsWith(".tmp"));
 
-    const { err, ms } = await failure(
+    const run = expectFailure(
       writeArchive(plan, { logger: createLogger(), chunkSize: 65536, volume: new Volume(fs.port, BUDGET) }),
     );
+    await untilHeld(fs);
+    vi.advanceTimersByTime(BUDGET);
+    const err = await run.error;
 
     expect(err).toMatchObject({ errorType: "stall", operation: "write" });
     expect((err as StallError).path).toMatch(/out-.+\.tmp$/);
-    expect(ms).toBeLessThan(BUDGET + SLACK);
     expect(leftovers(dir, ["proj"])).toEqual([]);
 
-    fs.release();
-    await delay(50);
+    await fs.release();
+    await tick();
     expect(leftovers(dir, ["proj"])).toEqual([]);
   });
 
-  it("fails promptly with an AbortError when cancelled during a stalled read", async () => {
+  it("fails with an AbortError when cancelled during a stalled read", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "out.zip");
     const plan = await planFor(proj, output);
     const fs = stallingFileSystem((op, p) => op === "read" && p.endsWith("f0.txt"));
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
 
-    const { err, ms } = await failure(
+    const run = expectFailure(
       writeArchive(plan, {
         logger: createLogger(),
         chunkSize: 65536,
@@ -206,11 +234,36 @@ describe("write on a stalled volume", () => {
         volume: new Volume(fs.port, 60_000, controller.signal),
       }),
     );
+    await untilHeld(fs);
+    controller.abort();
 
-    expect(err).toBeInstanceOf(AbortError);
-    expect(ms).toBeLessThan(SLACK);
+    expect(await run.error).toBeInstanceOf(AbortError);
     expect(leftovers(dir, ["proj"])).toEqual([]);
-    fs.release();
+    await fs.release();
+  });
+
+  it("leaves no temp when cancelled while the archive temp is being created", async () => {
+    const proj = await makeTree();
+    const output = path.join(dir, "out.zip");
+    const plan = await planFor(proj, output);
+    const fs = stallingFileSystem((op, p) => op === "open" && p.endsWith(".tmp"));
+    const controller = new AbortController();
+
+    const run = expectFailure(
+      writeArchive(plan, {
+        logger: createLogger(),
+        chunkSize: 65536,
+        signal: controller.signal,
+        volume: new Volume(fs.port, 60_000, controller.signal),
+      }),
+    );
+    await untilHeld(fs);
+    controller.abort();
+    expect(await run.error).toBeInstanceOf(AbortError);
+
+    // The abandoned create lands now and makes the file; the Volume removes it.
+    await fs.release();
+    while (leftovers(dir, ["proj"]).length > 0) await tick();
   });
 
   it("lets a started publication run to its budget despite a cancel, and says it may still land", async () => {
@@ -220,17 +273,20 @@ describe("write on a stalled volume", () => {
     const fs = stallingFileSystem((op, p) => op === "link" && p === output);
     const controller = new AbortController();
     const volume = new Volume(fs.port, BUDGET, controller.signal);
-    const run = failure(
+
+    const run = expectFailure(
       writeArchive(plan, { logger: createLogger(), chunkSize: 65536, signal: controller.signal, volume }),
     );
-    await vi.waitFor(() => expect(fs.stalled).not.toHaveLength(0));
+    await untilHeld(fs);
     controller.abort();
-
-    const { err } = await run;
+    await tick();
+    expect(run.settled()).toBe(false);
+    vi.advanceTimersByTime(BUDGET);
+    const err = await run.error;
 
     expect(err).toMatchObject({ errorType: "stall", operation: "publish", path: output, committing: true });
     expect((err as StallError).message).toContain("may still complete");
-    fs.release();
+    await fs.release();
   });
 });
 
@@ -249,54 +305,80 @@ describe("extract on a stalled volume", () => {
     );
   }
 
-  it("fails within the budget when the archive stops responding", async () => {
+  /** Extracted files and staged temps under `dest`. */
+  function written(dest: string): string[] {
+    return existsSync(dest)
+      ? readdirSync(dest, { recursive: true })
+          .map(String)
+          .filter((n) => n.endsWith(".txt") || n.includes(".zk-"))
+      : [];
+  }
+
+  it("fails when the budget elapses while the archive stops responding", async () => {
     const archive = await archiveOf(2);
     const dest = path.join(dir, "out");
     const fs = stallingFileSystem((op, p) => op === "read" && p === archive);
 
-    const { err, ms } = await failure(runExtract(archive, dest, new Volume(fs.port, BUDGET)));
+    const run = expectFailure(runExtract(archive, dest, new Volume(fs.port, BUDGET)));
+    await untilHeld(fs);
+    vi.advanceTimersByTime(BUDGET);
 
-    expect(err).toMatchObject({ errorType: "stall", operation: "read", path: archive });
-    expect(ms).toBeLessThan(BUDGET + SLACK);
-    fs.release();
+    expect(await run.error).toMatchObject({ errorType: "stall", operation: "read", path: archive });
+    await fs.release();
   });
 
   it("stops every concurrent entry once the destination stalls, leaves no temp, and publishes nothing late", async () => {
     // Forty entries four at a time: were each entry to wait out its own budget
-    // the run would take ten budgets; the first stall must end them all.
-    const budget = 300;
+    // the run would take ten budgets; one elapsed budget must end them all.
     const archive = await archiveOf(40);
     const dest = path.join(dir, "out");
     const fs = stallingFileSystem((op, p) => op === "write" && path.basename(p).startsWith(".zk-"));
 
-    const { err, ms } = await failure(runExtract(archive, dest, new Volume(fs.port, budget)));
+    const run = expectFailure(runExtract(archive, dest, new Volume(fs.port, BUDGET)));
+    await untilHeld(fs);
+    vi.advanceTimersByTime(BUDGET);
+    const err = await run.error;
 
     expect(err).toMatchObject({ errorType: "stall", operation: "write" });
-    expect(ms).toBeLessThan(budget * 3);
-    const files = (): string[] =>
-      existsSync(dest) ? readdirSync(dest, { recursive: true }).map(String).filter((n) => n.endsWith(".txt") || n.includes(".zk-")) : [];
-    expect(files()).toEqual([]);
+    expect(written(dest)).toEqual([]);
 
-    fs.release();
-    await delay(50);
-    expect(files()).toEqual([]);
+    await fs.release();
+    await tick();
+    expect(written(dest)).toEqual([]);
   });
 
-  it("fails promptly with an AbortError when cancelled during a stalled write", async () => {
+  it("fails with an AbortError when cancelled during a stalled write", async () => {
     const archive = await archiveOf(2);
     const dest = path.join(dir, "out");
     const fs = stallingFileSystem((op, p) => op === "write" && path.basename(p).startsWith(".zk-"));
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
 
-    const { err, ms } = await failure(
+    const run = expectFailure(
       runExtract(archive, dest, new Volume(fs.port, 60_000, controller.signal), controller.signal),
     );
+    await untilHeld(fs);
+    controller.abort();
 
-    expect(err).toBeInstanceOf(AbortError);
-    expect(ms).toBeLessThan(SLACK);
-    const staged = readdirSync(dest, { recursive: true }).map(String).filter((n) => n.includes(".zk-"));
-    expect(staged).toEqual([]);
-    fs.release();
+    expect(await run.error).toBeInstanceOf(AbortError);
+    expect(written(dest)).toEqual([]);
+    await fs.release();
+  });
+
+  it("leaves no temp when cancelled while an entry's temp is being created", async () => {
+    const archive = await archiveOf(2);
+    const dest = path.join(dir, "out");
+    const fs = stallingFileSystem((op, p) => op === "open" && path.basename(p).startsWith(".zk-"));
+    const controller = new AbortController();
+
+    const run = expectFailure(
+      runExtract(archive, dest, new Volume(fs.port, 60_000, controller.signal), controller.signal),
+    );
+    await untilHeld(fs);
+    controller.abort();
+    expect(await run.error).toBeInstanceOf(AbortError);
+
+    // The abandoned creates land now and make their files; the Volume removes them.
+    await fs.release();
+    while (written(dest).length > 0) await tick();
   });
 });

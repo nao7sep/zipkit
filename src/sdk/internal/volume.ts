@@ -9,8 +9,9 @@
  * threadpool, off the JS thread, so the owner can abandon a stuck one: it races
  * each call against a per-operation budget and the verb's `AbortSignal`, and
  * whichever wins first decides what the verb sees. The abandoned call cannot be
- * killed; its eventual outcome is swallowed, and an abandoned `open` has its
- * handle closed when it arrives.
+ * killed; its eventual outcome is swallowed, an abandoned `open` has its
+ * handle closed when it arrives, and an abandoned temp-file create also has its
+ * file removed.
  *
  * Three modes, one per call site kind:
  *
@@ -202,6 +203,19 @@ export class Volume {
   async open(path: string, flags: string): Promise<VolumeFile> {
     const handle = await this.#run("work", "open", path, () => this.#port.open(path, flags), {
       onLateValue: (late) => void late.close().catch(() => {}),
+    });
+    return new VolumeFile(this, handle, path);
+  }
+
+  /**
+   * Create this run's own temp file at a fresh, unique path, exclusively. An
+   * abandoned create may still make the file when it lands, after the caller
+   * has given up and cleaned up; the file is then closed and removed, so a
+   * cancelled or stalled run never leaves its temp behind.
+   */
+  async createTemp(path: string): Promise<VolumeFile> {
+    const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx"), {
+      onLateValue: (late) => void late.close().catch(() => {}).then(() => this.discard(path)),
     });
     return new VolumeFile(this, handle, path);
   }

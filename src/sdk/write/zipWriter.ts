@@ -322,7 +322,7 @@ export class ZipWriter {
   }
 
   async open(): Promise<void> {
-    this.#file = await this.#volume.open(this.#tempPath, "w");
+    this.#file = await this.#volume.createTemp(this.#tempPath);
   }
 
   #openFile(): VolumeFile {

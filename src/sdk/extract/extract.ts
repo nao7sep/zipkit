@@ -228,7 +228,7 @@ async function verifyEntry(
 
   const hasher = checkSha ? createHash("sha256") : null;
   const linkChunks: Buffer[] = [];
-  const out = stageTo ? await volume.open(stageTo, "w") : null;
+  const out = stageTo ? await volume.createTemp(stageTo) : null;
 
   const sink = async (chunk: Buffer): Promise<void> => {
     throwIfAborted(signal);
