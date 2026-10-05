@@ -14,6 +14,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AbortError, ZipKit } from "../../src/sdk/index.js";
 import { ZipWriter } from "../../src/sdk/write/zipWriter.js";
 import { parseZip, readEntryData } from "../../src/sdk/extract/zipReader.js";
+import pLimit from "p-limit";
+import { extractArchive } from "../../src/sdk/extract/extract.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/sdk/internal/volume.js";
+import { createLogger } from "../../src/sdk/log/logger.js";
+import { buildZipFile } from "../helpers/writeZip.js";
 import { openRead, realVolume } from "../helpers/volume.js";
 
 let dir: string;
@@ -114,41 +119,44 @@ describe("abort propagation", () => {
   });
 
   it("rejects extract() aborted mid-entry and commits no file", async () => {
-    // A large incompressible entry streams over many chunks. The abort is raised
-    // the instant the entry's staging temp file appears — by then the per-entry
-    // pre-walk check has already passed and the inflate loop is running, so the
-    // cancellation lands on the per-chunk sink boundary (not the entry boundary)
-    // and no file may be committed.
-    const big = path.join(dir, "big.bin");
-    await writeFile(big, randomBytes(16 * 1024 * 1024));
-    const archive = path.join(dir, "big.zip");
-    const zip = new ZipKit();
-    await zip.create({ inputs: [big], output: archive });
-
+    // A stored entry sixteen chunks long. The first chunk written to the entry's
+    // staging temp raises the abort, so the per-entry pre-walk check has already
+    // passed and the copy loop is running: the cancellation lands on the
+    // per-chunk sink boundary (not the entry boundary) and no file may be
+    // committed.
+    const chunkSize = 4096;
+    const raw = randomBytes(16 * chunkSize);
+    const { path: archive } = await buildZipFile(
+      [{ name: "big.bin", type: "file", method: "store", uncompressedSize: raw.length, mtimeNs: 0n, atimeNs: 0n, birthtimeNs: 0n, mode: 0o644, raw }],
+      { timeZone: "UTC", chunkSize },
+    );
     const dest = path.join(dir, "out");
-    await mkdir(dest, { recursive: true });
     const controller = new AbortController();
-    const watcher = setInterval(() => {
-      let staged = false;
-      try {
-        staged = readdirSync(dest).some((n) => n.startsWith(".zk-"));
-      } catch {
-        /* dest not yet created */
-      }
-      if (staged) {
-        clearInterval(watcher);
-        controller.abort();
-      }
-    }, 0);
+    let stagedWrites = 0;
+    const port: FileSystemPort = {
+      ...nodeFileSystem,
+      open: async (file, flags) => {
+        const handle = await nodeFileSystem.open(file, flags);
+        if (!path.basename(file).startsWith(".zk-")) return handle;
+        return {
+          ...handle,
+          write: (buffer, offset, length, position) => {
+            stagedWrites++;
+            controller.abort();
+            return handle.write(buffer, offset, length, position);
+          },
+        };
+      },
+    };
 
-    try {
-      await expect(
-        zip.extract({ archive, dest }, { signal: controller.signal }),
-      ).rejects.toBeInstanceOf(AbortError);
-    } finally {
-      clearInterval(watcher);
-    }
-    expect(existsSync(path.join(dest, "big.bin"))).toBe(false);
+    await expect(
+      extractArchive(
+        { archive, dest },
+        { limit: pLimit(1), logger: createLogger(), chunkSize, signal: controller.signal, volume: new Volume(port, 30_000, controller.signal) },
+      ),
+    ).rejects.toBeInstanceOf(AbortError);
+    expect(stagedWrites).toBe(1);
+    expect(readdirSync(dest)).toEqual([]);
   });
 });
 
@@ -179,19 +187,21 @@ describe("abort boundaries (unit)", () => {
   });
 
   it("readEntryData() stops a deflated entry at the aborting chunk, not after a full drain", async () => {
-    // 16 MiB of compressible bytes → one deflated (method 8) entry that inflates
-    // to ~256 output chunks. A sink that throws on its first chunk must tear the
-    // inflate pipeline down there, not drain the whole entry — so the sink is
-    // called a handful of times, not ~256.
-    const big = path.join(dir, "big.txt");
-    await writeFile(big, Buffer.alloc(16 * 1024 * 1024, 0x61));
-    const archive = path.join(dir, "deflated.zip");
-    await new ZipKit().create({ inputs: [big], output: archive });
+    // 1 MiB of compressible bytes → one deflated (method 8) entry that inflates
+    // to 256 output chunks of 4 KiB. A sink that throws on its first chunk must
+    // tear the inflate pipeline down there, not drain the whole entry — so the
+    // sink is called a handful of times, not 256.
+    const chunkSize = 4096;
+    const raw = Buffer.alloc(256 * chunkSize, 0x61);
+    const { path: archive } = await buildZipFile(
+      [{ name: "big.txt", type: "file", method: "deflate", uncompressedSize: raw.length, mtimeNs: 0n, atimeNs: 0n, birthtimeNs: 0n, mode: 0o644, raw }],
+      { timeZone: "UTC", chunkSize },
+    );
 
     const file = await openRead(archive);
     try {
       const parsed = await parseZip(file, statSync(archive).size);
-      const entry = parsed.entries.find((e) => e.archivePath.endsWith("big.txt"));
+      const entry = parsed.entries.find((e) => e.archivePath === "big.txt");
       expect(entry?.method).toBe(8); // guard the assumption: this is the deflate path
 
       let calls = 0;
@@ -199,8 +209,8 @@ describe("abort boundaries (unit)", () => {
         calls++;
         throw new AbortError();
       };
-      await expect(readEntryData(file, entry!, sink, 65536)).rejects.toBeInstanceOf(AbortError);
-      expect(calls).toBeLessThan(8); // tore down at the aborting chunk, not ~256
+      await expect(readEntryData(file, entry!, sink, chunkSize)).rejects.toBeInstanceOf(AbortError);
+      expect(calls).toBeLessThan(8); // tore down at the aborting chunk, not 256
 
       // The archive handle is shared across concurrent entries: the teardown
       // must stop the source without closing it, or a sibling entry's read

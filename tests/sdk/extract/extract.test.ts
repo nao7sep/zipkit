@@ -617,25 +617,26 @@ describe("EOCD-locator robustness", () => {
 });
 
 describe("large-file streaming round-trip", () => {
-  it("round-trips a multi-megabyte file through create then extract with a matching SHA", async () => {
-    // ~6 MB of pseudo-random (incompressible) plus compressible content, larger
-    // than any single chunk, so the streaming read/deflate/write and the
-    // streaming inflate/write both span many chunks.
+  it("round-trips a file many chunks long through create then extract with a matching SHA", async () => {
+    // 256 KiB of pseudo-random (incompressible) plus compressible content under a
+    // 4 KiB chunk size, so the streaming read/deflate/write and the streaming
+    // inflate/write both span well over a hundred chunks.
+    const chunkSize = 4096;
     const src = path.join(dir, "src");
     await rm(src, { recursive: true, force: true });
     const big = Buffer.concat([
-      randomBytes(3 * 1024 * 1024), // incompressible
-      Buffer.from("compress me ".repeat(250_000), "utf8"), // deflate wins here
+      randomBytes(32 * chunkSize), // incompressible
+      Buffer.from("compress me ".repeat(10_000), "utf8"), // deflate wins here
     ]);
     await mkdir(src, { recursive: true });
     await writeFile(path.join(src, "big.bin"), big);
     const expectedSha = createHash("sha256").update(big).digest("hex");
 
     const archive = path.join(dir, "big.zip");
-    await new ZipKit().create({ inputs: [src], output: archive, overwrite: true });
+    await new ZipKit({ chunkSize }).create({ inputs: [src], output: archive, overwrite: true });
 
     const dest = path.join(dir, "big-out");
-    const report = await new ZipKit().extract({ archive, dest });
+    const report = await new ZipKit({ chunkSize }).extract({ archive, dest });
     expect(report.reportOk).toBe(true);
     const roundTripped = await readFile(path.join(dest, "big.bin"));
     expect(createHash("sha256").update(roundTripped).digest("hex")).toBe(expectedSha);
@@ -644,11 +645,11 @@ describe("large-file streaming round-trip", () => {
   it("honors a small chunkSize for both create and extract", async () => {
     const src = path.join(dir, "csrc");
     await mkdir(src, { recursive: true });
-    const content = Buffer.from("chunked streaming ".repeat(5000), "utf8");
+    const content = Buffer.from("chunked streaming ".repeat(500), "utf8");
     await writeFile(path.join(src, "c.txt"), content);
 
     const archive = path.join(dir, "chunked.zip");
-    // A tiny chunk size forces many read/deflate/write cycles per entry.
+    // A tiny chunk size forces over a hundred read/deflate/write cycles per entry.
     await new ZipKit({ chunkSize: 64 }).create({ inputs: [src], output: archive, overwrite: true });
     const dest = path.join(dir, "chunked-out");
     const report = await new ZipKit({ chunkSize: 64 }).extract({ archive, dest });
