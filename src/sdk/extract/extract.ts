@@ -9,8 +9,8 @@
  * Reads are positioned against an open handle, never a whole-archive buffer, and an
  * entry's content streams through inflate to its own output file — so memory
  * stays bounded and entries run CONCURRENTLY (bounded by the pool), each writing
- * an independent file. CRC governs writing: an entry streams to a temp file in
- * the destination, and only a CRC-clean entry that passes the path-safety,
+ * an independent file. CRC governs writing: an entry streams to a temp file
+ * beside its target, and only a CRC-clean entry that passes the path-safety,
  * exclusion, and overwrite gates is renamed into place; a corrupt entry's temp
  * file is discarded. Completeness (missing/extra) is computed from the entry-name
  * sets, independent of the decompression loop.
@@ -493,6 +493,16 @@ export async function extractArchive(
       }
     }
 
+    /** A failure while writing an entry. A stall, and an abort (control flow,
+     *  not a write fault), stay classified rather than mislabeled
+     *  read.write-failed (exit 5); a stall first, since a stalled publication
+     *  may still land. */
+    function writeFailure(entry: ReadEntry, err: unknown): unknown {
+      if (err instanceof StallError) return err;
+      if (signal?.aborted) return toAbortError(signal.reason);
+      return new ReadError("read.write-failed", `cannot write ${entry.archivePath}`, { cause: err });
+    }
+
     async function processEntry(entry: ReadEntry): Promise<ExtractEntryResult> {
       const isManifestEntry = entry.archivePath === manifestEntryPath;
       const checkSha = spec.checkMetadata === true && entry.type !== "dir" && !isManifestEntry;
@@ -526,11 +536,25 @@ export async function extractArchive(
         }
       }
 
-      const willWrite = target !== null && entry.type !== "dir";
-      const tempPath =
-        willWrite && entry.type !== "symlink"
-          ? stagingPath(dest as string)
-          : null;
+      // A file is staged beside its target, once its real parent chain exists,
+      // so publication is a rename within one directory even when a parent is
+      // a mount of another volume. A symlinked parent makes it unsafe.
+      let tempPath: string | null = null;
+      if (target !== null && entry.type === "file") {
+        let parentSafe: boolean;
+        try {
+          parentSafe = await ensureRealDirs(volume, dest as string, segments.slice(0, -1));
+        } catch (err) {
+          throw writeFailure(entry, err);
+        }
+        if (parentSafe) {
+          tempPath = stagingPath(path.dirname(target));
+        } else {
+          target = null;
+          skip = "unsafe";
+          if (onUnsafe === "abort") abort.entry ??= entry;
+        }
+      }
       const captureLink = entry.type === "symlink";
 
       const verified = await verifyEntry(
@@ -585,14 +609,7 @@ export async function extractArchive(
           }
         } catch (err) {
           if (verified.tempPath) await volume.discard(verified.tempPath);
-          // A stall, and an abort (control flow, not a write fault), propagate
-          // classified rather than mislabeled read.write-failed (exit 5); a
-          // stall first, since a stalled publication may still land.
-          if (err instanceof StallError) throw err;
-          if (signal?.aborted) throw toAbortError(signal.reason);
-          throw new ReadError("read.write-failed", `cannot write ${entry.archivePath}`, {
-            cause: err,
-          });
+          throw writeFailure(entry, err);
         }
         if (outcome === "written") {
           didWrite = true;

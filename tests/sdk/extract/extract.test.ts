@@ -623,6 +623,28 @@ describe("symlinks and zip64", () => {
     expect(await readlink(path.join(dir, "keep", "link"))).toBe("target.txt");
   });
 
+  it("stages each file in its own target folder, so publication never crosses a volume", async () => {
+    const archive = await writeArchive([fileEntry("a/b/c.txt", "deep"), fileEntry("top.txt", "top")]);
+    const dest = path.join(dir, "staged");
+    const staged: string[] = [];
+    const recording: FileSystemPort = {
+      ...nodeFileSystem,
+      open: (file, flags) => {
+        if (flags === "wx") staged.push(file);
+        return nodeFileSystem.open(file, flags);
+      },
+    };
+
+    await extractArchive(
+      { archive, dest },
+      { limit: pLimit(2), logger: createLogger(), chunkSize: 65536, volume: new Volume(recording, 30_000) },
+    );
+
+    expect(staged.map((file) => path.dirname(file)).sort()).toEqual([dest, path.join(dest, "a", "b")].sort());
+    expect(await readFile(path.join(dest, "a", "b", "c.txt"), "utf8")).toBe("deep");
+    expect(await readdir(path.join(dest, "a", "b"))).toEqual(["c.txt"]);
+  });
+
   it("keeps an existing file when an overwriting symlink cannot be created", async () => {
     const archive = await writeArchive([symlinkEntry("link", "target.txt")]);
     const dest = path.join(dir, "refused");
