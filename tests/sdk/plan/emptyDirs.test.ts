@@ -1,9 +1,8 @@
 /**
  * Empty-directory pass (pass 5), tested directly. A directory is *occupied* by a
- * content (non-empty) file descendant — a zero-byte file is not content — and an
- * occupied directory is left implied (never emitted explicitly). An unoccupied
- * directory is empty: `prune` drops it, `keep` emits only the leaf empties (those
- * with no included child) so extraction recreates the ancestors.
+ * content (non-empty) file descendant — a zero-byte file is not content. An
+ * unoccupied directory is empty: `prune` drops it, `keep` keeps it. Every
+ * directory that stays is emitted as its own entry, so its times are stored.
  */
 
 import { describe, expect, it } from "vitest";
@@ -15,12 +14,12 @@ const keep = resolvePolicy(undefined, { emptyDirs: "keep" });
 const prune = resolvePolicy(undefined, { emptyDirs: "prune" });
 
 describe("applyEmptyDirs", () => {
-  it("leaves a directory occupied by a content file implied, not emitted", () => {
+  it("emits a directory occupied by a content file", () => {
     const dir = workItem({ archivePath: "d", type: "dir" });
     const file = workItem({ archivePath: "d/a.txt", size: 10 });
-    applyEmptyDirs([dir, file], keep);
+    applyEmptyDirs([dir, file], prune);
     expect(dir.excluded).toBe(false);
-    expect(dir.emitExplicit).toBe(false);
+    expect(dir.emitExplicit).toBe(true);
   });
 
   it("prunes an empty directory", () => {
@@ -38,12 +37,12 @@ describe("applyEmptyDirs", () => {
     expect(dir.emitExplicit).toBe(true);
   });
 
-  it("under keep, emits only the deepest empty directory in a nested chain", () => {
+  it("under keep, emits every empty directory in a nested chain", () => {
     const outer = workItem({ archivePath: "e", type: "dir" });
     const inner = workItem({ archivePath: "e/f", type: "dir" });
     applyEmptyDirs([outer, inner], keep);
-    expect(outer.emitExplicit).toBe(false); // implied by its included child "e/f"
-    expect(inner.emitExplicit).toBe(true); // the leaf empty
+    expect(outer.emitExplicit).toBe(true);
+    expect(inner.emitExplicit).toBe(true);
   });
 
   it("treats a directory holding only a zero-byte file as empty", () => {
@@ -58,6 +57,6 @@ describe("applyEmptyDirs", () => {
     const link = workItem({ archivePath: "d/link", type: "symlink", emitExplicit: true });
     applyEmptyDirs([dir, link], prune);
     expect(dir.excluded).toBe(false);
-    expect(dir.emitExplicit).toBe(false); // implied by the link
+    expect(dir.emitExplicit).toBe(true);
   });
 });

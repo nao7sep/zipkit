@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { crc32 } from "node:zlib";
@@ -105,6 +105,21 @@ describe("extract round-trip", () => {
     expect((await readFile(out)).toString()).toBe("hello world");
     // Restored from the absolute NTFS/UT extra → exact UTC instant.
     expect(Math.abs((await stat(out)).mtimeMs - Y2020_MS)).toBeLessThan(2000);
+  });
+
+  it("restores the time of a folder that holds files, archived by create", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(path.join(proj, "docs"), { recursive: true });
+    await writeFile(path.join(proj, "docs", "file.txt"), "content");
+    const Y2010 = new Date(Date.UTC(2010, 0, 1));
+    await utimes(path.join(proj, "docs"), Y2010, Y2010);
+    const archive = path.join(dir, "docs.zip");
+    await new ZipKit().create({ inputs: [proj], output: archive });
+
+    const dest = path.join(dir, "docs-out");
+    await new ZipKit().extract({ archive, dest });
+
+    expect((await stat(path.join(dest, "docs"))).mtimeMs).toBe(Y2010.getTime());
   });
 
   it("restores folder times after the folder's files are written", async () => {

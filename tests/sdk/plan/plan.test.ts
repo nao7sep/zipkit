@@ -228,17 +228,19 @@ describe("empty directories", () => {
     expect(written(p)).toEqual([]);
   });
 
-  it("keeps only leaf empties", () => {
+  it("keeps every empty directory in a chain", () => {
     const p = plan(tree(), { emptyDirs: "keep" });
-    expect(written(p)).toEqual(["A/B/C"]);
+    expect(written(p)).toEqual(["A", "A/B", "A/B/C"]);
   });
 
-  it("implies a directory occupied by a file rather than writing it", () => {
-    const p = plan(
-      [scanEntry({ archivePath: "A", type: "dir" }), scanEntry({ archivePath: "A/f.txt" })],
-      { emptyDirs: "keep" },
-    );
-    expect(written(p)).toEqual(["A/f.txt"]);
+  it("writes a directory occupied by a file as its own entry, under either policy", () => {
+    for (const emptyDirs of ["keep", "prune"] as const) {
+      const p = plan(
+        [scanEntry({ archivePath: "A", type: "dir" }), scanEntry({ archivePath: "A/f.txt" })],
+        { emptyDirs },
+      );
+      expect(written(p)).toEqual(["A", "A/f.txt"]);
+    }
   });
 });
 

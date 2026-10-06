@@ -45,7 +45,7 @@ describe("output resolution and round-trip", () => {
     const { entries } = readZip(await readFile(result.output));
     const names = entries.map((e) => e.name).sort();
     // Metadata is embedded by default, so it rides along with the flattened content.
-    expect(names).toEqual(["a.txt", "sub/b.bin", "zipkit.json"]);
+    expect(names).toEqual(["a.txt", "sub/", "sub/b.bin", "zipkit.json"]);
     expect(entries.find((e) => e.name === "a.txt")?.content.toString()).toBe(
       "hello hello hello hello",
     );
@@ -213,7 +213,7 @@ describe("metadata", () => {
     // No metadata entry in the archive.
     const names = readZip(await readFile(result.output)).entries.map((e) => e.name);
     expect(names).not.toContain("zipkit.json");
-    expect(names.sort()).toEqual(["a.txt", "sub/b.bin"]);
+    expect(names.sort()).toEqual(["a.txt", "sub/", "sub/b.bin"]);
 
     // The record is still returned (the run's state), with times but no SHA
     // (hashing wasn't requested), so a caller can still inspect the run.
