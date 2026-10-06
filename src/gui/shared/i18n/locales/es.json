@@ -64,7 +64,7 @@
   "quit.cancelAndQuit": "Cancelar el trabajo y salir",
   "quit.keepWorking": "Seguir trabajando",
   "quit.queueNotSavedTitle": "No se guardó la cola",
-  "quit.queueNotSaved": "ZipKit no pudo guardar la cola antes de salir, así que los trabajos agregados o cambiados desde que se guardó por última vez no estarán la próxima vez que se abra.",
+  "quit.queueNotSaved": "ZipKit no pudo guardar la cola antes de salir, así que los trabajos agregados o cambiados desde que se guardó por última vez no aparecerán la próxima vez que se abra ZipKit.",
   "picker.inputsTitle": "Elige las carpetas o archivos que quieres comprimir",
   "picker.outputTitle": "Elige la carpeta de salida",
 
