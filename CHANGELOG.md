@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The "before 1980" and "after 2107" warnings are judged in the time zone the archive's DOS times are written in, so they appear exactly when a time is clamped.
 - Extraction restores folder modification times, once each folder's files are written.
 - Extraction ignores another tool's NTFS time field when it is malformed or unset, and uses the next stored time instead.
+- Extracting a symlink with overwrite onto an existing file keeps that file when the link cannot be created, as on Windows without symlink rights.
+- Saving an archive or extracting a file without overwrite on a FAT volume that refuses hard links no longer fails as if the file already existed.
 
 ## [0.1.0] - 2026-07-08
 
