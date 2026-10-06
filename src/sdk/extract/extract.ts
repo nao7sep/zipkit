@@ -54,6 +54,8 @@ export interface ExtractDeps {
 
 interface WriteOptions {
   overwrite: boolean;
+  /** Read size when comparing a verified entry with the file it would replace. */
+  chunkSize: number;
   restore: boolean;
   timeZone: string;
   symlinks: "restore" | "skip";
@@ -83,8 +85,9 @@ function escapesDest(dest: string, candidate: string): boolean {
 
 /** The outcome of materializing one verified entry on disk. `unsafe` means a
  *  symlink in the entry's path — or an escaping link target — would let it land
- *  outside `dest`; the entry is then written nowhere. */
-type CommitOutcome = "written" | "exists" | "unsafe";
+ *  outside `dest`; the entry is then written nowhere. `unchanged` means an
+ *  overwrite found the target already holding the entry's content, and left it. */
+type CommitOutcome = "written" | "exists" | "unchanged" | "unsafe";
 
 /**
  * Create `dest/<segments>` as real directories, one component at a time, never
@@ -329,6 +332,10 @@ async function commitFile(
   // A replaced file keeps its own permission mode; a new one takes the entry's.
   let replaced = false;
   if (options.overwrite) {
+    if (await sameContent(volume, target, tempPath, entry.uncompSize, options.chunkSize)) {
+      await volume.discard(tempPath);
+      return "unchanged";
+    }
     replaced = await volume.keepMode(target, tempPath);
     await volume.publishRename(tempPath, target);
   } else {
@@ -345,6 +352,48 @@ async function commitFile(
   if (options.restore) await restoreEntryTimes(volume, target, entry, options.timeZone);
   if (!replaced) await restoreEntryMode(volume, target, entry);
   return "written";
+}
+
+/** Whether `target` is a regular file holding exactly the verified bytes in
+ *  `tempPath`, `size` long. A target that cannot be read is treated as
+ *  different, so the replace goes ahead and reports its own failure. */
+async function sameContent(
+  volume: Volume,
+  target: string,
+  tempPath: string,
+  size: number,
+  chunkSize: number,
+): Promise<boolean> {
+  let existing: VolumeFile;
+  try {
+    const st = await volume.lstat(target);
+    if (!st.isFile() || Number(st.size) !== size) return false;
+    existing = await volume.open(target, "r");
+  } catch (err) {
+    if (err instanceof ZipKitError) throw err;
+    return false;
+  }
+  try {
+    const staged = await volume.open(tempPath, "r");
+    try {
+      const a = Buffer.allocUnsafe(chunkSize);
+      const b = Buffer.allocUnsafe(chunkSize);
+      for (let position = 0; position < size; ) {
+        const length = Math.min(chunkSize, size - position);
+        const [readA, readB] = [await existing.read(a, 0, length, position), await staged.read(b, 0, length, position)];
+        if (readA !== length || readB !== length || !a.subarray(0, length).equals(b.subarray(0, length))) return false;
+        position += length;
+      }
+      return true;
+    } finally {
+      await staged.release();
+    }
+  } catch (err) {
+    if (err instanceof ZipKitError) throw err;
+    return false;
+  } finally {
+    await existing.release();
+  }
 }
 
 /** Set a new file's permission bits from its entry's Unix attributes, when the
@@ -391,6 +440,7 @@ export async function extractArchive(
   const timeZone = spec.timezone ?? machineTimeZone();
   const writeOptions: WriteOptions = {
     overwrite: spec.overwrite === true,
+    chunkSize: deps.chunkSize,
     restore: (spec.timestamps ?? "restore") === "restore",
     timeZone,
     symlinks: spec.symlinks ?? "restore",
@@ -615,8 +665,8 @@ export async function extractArchive(
           didWrite = true;
           outputPath = target;
           if (entry.type === "dir") writtenDirs.push({ entry, target });
-        } else if (outcome === "exists") {
-          skip = "exists";
+        } else if (outcome === "exists" || outcome === "unchanged") {
+          skip = outcome;
         } else {
           // A symlink in the path, or a symlink whose target escapes dest, would
           // land the entry outside the destination: treated exactly like a
@@ -786,6 +836,12 @@ async function commitSymlink(
   if (escapesDest(dest, resolved)) return "unsafe";
   if (!(await ensureRealDirs(volume, dest, parentSegments))) return "unsafe";
   if (options.overwrite) {
+    try {
+      const existing = await volume.lstat(target);
+      if (existing.isSymbolicLink() && (await volume.readlink(target)) === linkTarget) return "unchanged";
+    } catch (err) {
+      if (err instanceof ZipKitError) throw err;
+    }
     const staged = stagingPath(path.dirname(target));
     try {
       await volume.symlink(linkTarget, staged);

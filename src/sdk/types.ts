@@ -427,8 +427,9 @@ export interface ExtractEntryResult {
   /** Identity against the manifest, present only under `checkMetadata`. */
   sha?: "ok" | "mismatch" | "absent";
   written: boolean; // state
-  /** Why an entry was not written, when it was not. */
-  skipped?: "dry-run" | "crc-fail" | "unsafe" | "excluded" | "exists" | "symlink-skip";
+  /** Why an entry was not written, when it was not. `unchanged`: an overwrite
+   *  found the destination already holding the entry's content, and left it. */
+  skipped?: "dry-run" | "crc-fail" | "unsafe" | "excluded" | "exists" | "unchanged" | "symlink-skip";
   outputPath?: string;
 }
 

@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { crc32 } from "node:zlib";
@@ -18,7 +18,7 @@ import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/in
 import { createLogger } from "../../../src/sdk/log/logger.js";
 import { MANIFEST_FORMAT_VERSION } from "../../../src/sdk/write/metadata.js";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
-import { fileSymlinksSupported } from "../../helpers/symlink.js";
+import { createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 const Y2020_MS = 1_577_836_800_000;
@@ -643,6 +643,40 @@ describe("symlinks and zip64", () => {
     expect(staged.map((file) => path.dirname(file)).sort()).toEqual([dest, path.join(dest, "a", "b")].sort());
     expect(await readFile(path.join(dest, "a", "b", "c.txt"), "utf8")).toBe("deep");
     expect(await readdir(path.join(dest, "a", "b"))).toEqual(["c.txt"]);
+  });
+
+  it("leaves a file that already holds the entry's content as it is under overwrite", async () => {
+    const archive = await writeArchive([fileEntry("same.txt", "content"), fileEntry("diff.txt", "content")]);
+    const dest = path.join(dir, "unchanged");
+    await mkdir(dest);
+    await writeFile(path.join(dest, "same.txt"), "content");
+    await writeFile(path.join(dest, "diff.txt"), "CONTENT");
+    const same = await stat(path.join(dest, "same.txt"));
+    const diff = await stat(path.join(dest, "diff.txt"));
+
+    const report = await new ZipKit().extract({ archive, dest, overwrite: true });
+
+    const byPath = Object.fromEntries(report.entries.map((e) => [e.archivePath, e]));
+    expect(byPath["same.txt"]).toMatchObject({ written: false, skipped: "unchanged" });
+    expect(byPath["diff.txt"]).toMatchObject({ written: true });
+    expect((await stat(path.join(dest, "same.txt"))).ino).toBe(same.ino);
+    expect((await stat(path.join(dest, "same.txt"))).mtimeMs).toBe(same.mtimeMs);
+    expect((await stat(path.join(dest, "diff.txt"))).ino).not.toBe(diff.ino);
+    expect(await readFile(path.join(dest, "diff.txt"), "utf8")).toBe("content");
+    expect((await readdir(dest)).sort()).toEqual(["diff.txt", "same.txt"]);
+  });
+
+  it.runIf(fileSymlinksSupported)("leaves a symlink with the same target as it is under overwrite", async () => {
+    const archive = await writeArchive([symlinkEntry("link", "target.txt")]);
+    const dest = path.join(dir, "same-link");
+    await mkdir(dest);
+    await createFileLink("target.txt", path.join(dest, "link"));
+    const before = await lstat(path.join(dest, "link"));
+
+    const report = await new ZipKit().extract({ archive, dest, overwrite: true });
+
+    expect(report.entries[0]).toMatchObject({ written: false, skipped: "unchanged" });
+    expect((await lstat(path.join(dest, "link"))).ino).toBe(before.ino);
   });
 
   it("keeps an existing file when an overwriting symlink cannot be created", async () => {

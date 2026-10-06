@@ -129,6 +129,9 @@ export async function writeManagedJson(file: string, text: string, options: { re
   const dir = path.dirname(file);
   await mkdir(dir, { recursive: true });
   const bytes = Buffer.from(text, "utf8");
+  // Content identical to what is on disk is not written again (content-lifecycle conventions).
+  const current = await readFile(file).catch(() => null);
+  if (current !== null && current.equals(bytes)) return;
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   try {
     await writeFile(tmp, bytes);

@@ -143,6 +143,17 @@ describe("writeManagedJson", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("leaves the file as it is when the content is unchanged", async () => {
+    const file = path.join(root, "layout.json");
+    await writeManagedJson(file, '{"a":1}', { record: false });
+    const before = statSync(file);
+
+    await writeManagedJson(file, '{"a":1}', { record: false });
+
+    expect(statSync(file).ino).toBe(before.ino);
+    expect(readdirSync(root)).toEqual(["layout.json"]);
+  });
+
   it("removes its temp and reports the rename's own error when the replace fails", async () => {
     const file = path.join(root, "queue.json");
     await writeManagedJson(file, '{"a":1}', { record: false });
