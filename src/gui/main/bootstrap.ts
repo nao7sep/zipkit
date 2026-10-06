@@ -9,7 +9,7 @@
  * only once the root is known good.
  */
 
-import { app, BrowserWindow, nativeTheme } from "electron";
+import { app, BrowserWindow, nativeTheme, powerMonitor } from "electron";
 import { APP_VERSION } from "../shared/identity.js";
 import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
@@ -22,14 +22,14 @@ import { loadSettings, settingsFile } from "./settings.js";
 import { applyLanguagePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
 import { errorInfo } from "./log.js";
-import { clearMainWindow, ensureMainWindow, getMainWindow, log } from "./runtime.js";
+import { clearMainWindow, ensureMainWindow, getMainWindow, log, sendQueueSaved } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
-import { loadLayout } from "./layout.js";
+import { layoutWritesSettled, loadLayout } from "./layout.js";
 import { loadQueue } from "./persist.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
-import { confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
+import { askQueueNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
-import { createQuitHandler, QUIT_WAIT_MS, stopFlushAndExit } from "./quit.js";
+import { createQuitControl, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
@@ -56,6 +56,15 @@ function createWindow(): BrowserWindow {
   configureWindowActivity(app, win);
 
   let flushQueueOnClose = true;
+  // Off macOS closing the main window quits, so the close becomes the quit:
+  // the window stays open when the user keeps working or cancels the quit, and
+  // the quit's own exit closes it. A window whose document failed to load just
+  // closes.
+  win.on("close", (event) => {
+    if (process.platform === "darwin" || !flushQueueOnClose) return;
+    event.preventDefault();
+    app.quit();
+  });
   win.on("closed", () => {
     clearMainWindow(win);
     if (flushQueueOnClose) {
@@ -122,6 +131,12 @@ function logLanguageError(error: unknown): void {
 }
 
 app.whenReady().then(async () => {
+  // macOS and Linux announce the end of the session before its quit arrives
+  // through before-quit; that quit then asks nothing.
+  powerMonitor.on("shutdown", () => {
+    log.info("session ending");
+    quit.sessionEnding();
+  });
   // The language is settled before anything draws: the saved choice is read
   // straight from config.json so the menu that replaces Electron's default in
   // this same turn is already in it. The store's load below can still reset it.
@@ -193,31 +208,46 @@ app.on("window-all-closed", () => {
   if (quitting) app.quit();
 });
 
-app.on(
-  "before-quit",
-  createQuitHandler({
-    hasRunningJob,
-    confirmQuit: () => confirmQuitDuringWrite(getMainWindow()),
-    shutdown: () =>
-      stopFlushAndExit({
+// What each quit step's failure is logged as. The queue is the user's own
+// work, so the window shows its failure too, until a later save succeeds.
+function logQuitStepFailure(step: QuitStep, error: unknown): void {
+  const info = { error: errorInfo(error) };
+  switch (step) {
+    case "job":
+      log.warn("the cancelled job did not stop in time; quitting without it", info);
+      return;
+    case "queue":
+      log.error("failed to flush the queue before quit", info);
+      sendQueueSaved(false);
+      return;
+    case "layout":
+      log.warn("the pane layout write did not land before quit", info);
+      return;
+    case "backups":
+      log.warn("the backup history did not close before quit", info);
+      return;
+  }
+}
+
+const quit = createQuitControl({
+  hasRunningJob,
+  confirmQuit: (signal) => confirmQuitDuringWrite(getMainWindow(), signal),
+  shutdown: (session) =>
+    stopFlushAndExit(
+      {
         stopJob: cancelRunningJobAndWait,
         flush: flushQueue,
-        onJobStopTimeout: () =>
-          log.warn("the cancelled job did not stop in time; quitting without it", { waitMs: QUIT_WAIT_MS }),
         onFlushed: () => log.info("app quitting"),
-        onFlushError: async (err) => {
-          log.error("failed to flush the queue before quit", { error: errorInfo(err) });
-          const { t } = mainTranslator();
-          await showAppMessageDialog({
-            owner: getMainWindow() ?? undefined,
-            title: t("quit.queueNotSavedTitle"),
-            message: t("quit.queueNotSaved"),
-            button: "ok",
-          });
-        },
+        askQueueNotSaved: (signal) => askQueueNotSaved(getMainWindow(), signal),
+        onCancelled: () => log.info("quit cancelled with the queue not saved"),
+        settleLayout: layoutWritesSettled,
         closeBackups: () => closeBackupStore(),
         closeLog: () => log.close(),
+        onStepFailed: logQuitStepFailure,
         exit: (code) => app.exit(code),
-      }),
-  }),
-);
+      },
+      session,
+    ),
+});
+
+app.on("before-quit", quit.beforeQuit);

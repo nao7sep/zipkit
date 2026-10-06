@@ -64,7 +64,9 @@
   "quit.cancelAndQuit": "Annulla l’operazione ed esci",
   "quit.keepWorking": "Continua a lavorare",
   "quit.queueNotSavedTitle": "La coda non è stata salvata",
-  "quit.queueNotSaved": "ZipKit non è riuscito a salvare la coda prima di uscire, quindi le operazioni aggiunte o modificate dall’ultimo salvataggio non ci saranno alla prossima apertura.",
+  "quit.queueNotSavedMessage": "ZipKit non è riuscito a salvare la coda, quindi non si è chiuso.",
+  "quit.queueNotSavedDetail": "Se esci comunque, le operazioni aggiunte o modificate dall’ultimo salvataggio della coda non ci saranno alla prossima apertura di ZipKit. Riprova a salvare oppure annulla per lasciare ZipKit aperto.",
+  "quit.quitAnyway": "Esci comunque",
   "picker.inputsTitle": "Scegli le cartelle o i file da archiviare",
   "picker.outputTitle": "Scegli la cartella di destinazione",
 

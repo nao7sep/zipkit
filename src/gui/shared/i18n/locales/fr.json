@@ -64,7 +64,9 @@
   "quit.cancelAndQuit": "Annuler la tâche et quitter",
   "quit.keepWorking": "Continuer",
   "quit.queueNotSavedTitle": "La file d’attente n’a pas été enregistrée",
-  "quit.queueNotSaved": "ZipKit n’a pas pu enregistrer la file d’attente avant de quitter\u00a0: les tâches ajoutées ou modifiées depuis son dernier enregistrement n’y seront pas à la prochaine ouverture.",
+  "quit.queueNotSavedMessage": "ZipKit n’a pas pu enregistrer la file d’attente et ne s’est donc pas fermé.",
+  "quit.queueNotSavedDetail": "Si vous quittez quand même, les tâches ajoutées ou modifiées depuis le dernier enregistrement de la file d’attente n’y seront pas à la prochaine ouverture de ZipKit. Réessayez l’enregistrement ou annulez pour garder ZipKit ouvert.",
+  "quit.quitAnyway": "Quitter quand même",
   "picker.inputsTitle": "Choisissez les dossiers ou fichiers à archiver",
   "picker.outputTitle": "Choisissez le dossier de sortie",
 

@@ -64,7 +64,9 @@
   "quit.cancelAndQuit": "Auftrag abbrechen und beenden",
   "quit.keepWorking": "Weiterarbeiten",
   "quit.queueNotSavedTitle": "Die Warteschlange wurde nicht gespeichert",
-  "quit.queueNotSaved": "ZipKit konnte die Warteschlange vor dem Beenden nicht speichern. Seit dem letzten Speichern hinzugefügte oder geänderte Aufträge fehlen daher beim nächsten Start.",
+  "quit.queueNotSavedMessage": "ZipKit konnte die Warteschlange nicht speichern und wurde deshalb nicht beendet.",
+  "quit.queueNotSavedDetail": "Wenn Sie trotzdem beenden, fehlen seit dem letzten Speichern der Warteschlange hinzugefügte oder geänderte Aufträge beim nächsten Start von ZipKit. Versuchen Sie es erneut, oder brechen Sie ab, um ZipKit geöffnet zu lassen.",
+  "quit.quitAnyway": "Trotzdem beenden",
   "picker.inputsTitle": "Zu archivierende Ordner oder Dateien auswählen",
   "picker.outputTitle": "Ausgabeordner auswählen",
 

@@ -64,7 +64,9 @@
   "quit.cancelAndQuit": "取消任务并退出",
   "quit.keepWorking": "继续工作",
   "quit.queueNotSavedTitle": "队列未能保存",
-  "quit.queueNotSaved": "ZipKit 未能在退出前保存队列，自上次保存以来添加或更改的任务在下次打开时将不会出现。",
+  "quit.queueNotSavedMessage": "ZipKit 未能保存队列，因此没有退出。",
+  "quit.queueNotSavedDetail": "如果仍然退出，自上次保存队列以来添加或更改的任务在下次打开 ZipKit 时将不会出现。你可以重试保存，或取消以保持 ZipKit 打开。",
+  "quit.quitAnyway": "仍然退出",
   "picker.inputsTitle": "选择要归档的文件夹或文件",
   "picker.outputTitle": "选择输出文件夹",
 

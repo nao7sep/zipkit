@@ -64,7 +64,9 @@
   "quit.cancelAndQuit": "작업 취소 후 종료",
   "quit.keepWorking": "계속 작업",
   "quit.queueNotSavedTitle": "대기열을 저장하지 못했습니다",
-  "quit.queueNotSaved": "ZipKit이 종료하기 전에 대기열을 저장하지 못했습니다. 마지막으로 저장한 뒤 추가하거나 변경한 작업은 다음에 ZipKit을 열 때 대기열에 없습니다.",
+  "quit.queueNotSavedMessage": "ZipKit이 대기열을 저장하지 못해 종료하지 않았습니다.",
+  "quit.queueNotSavedDetail": "그래도 종료하면 대기열을 마지막으로 저장한 뒤 추가하거나 변경한 작업은 다음에 ZipKit을 열 때 없습니다. 다시 시도하여 저장하거나, 취소하여 ZipKit을 열어 두십시오.",
+  "quit.quitAnyway": "그래도 종료",
   "picker.inputsTitle": "아카이브할 폴더 또는 파일 선택",
   "picker.outputTitle": "출력 폴더 선택",
 

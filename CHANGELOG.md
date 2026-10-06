@@ -27,7 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Archiving a folder that holds ZipKit's own data folder (`~/.zipkit` or `ZIPKIT_DATA_DIR`), such as the home folder, leaves that data folder out, as does an input or followed link inside it.
 - Extraction writes each file's temporary copy in the file's own folder, so extracting into a folder that holds a mounted volume no longer fails there.
 - The message after an unreadable settings or queue file was set aside names the `.invalid` file it was kept as, and a settings file found unreadable while ZipKit runs, such as when the Records window opens, is reported the same way.
-- A queue that cannot be saved is reported: the main window shows a notice until a later save succeeds, and a save that fails while quitting shows a message before ZipKit exits.
+- A queue that cannot be saved is reported: the main window shows a notice until a later save succeeds, and when it fails as you quit, ZipKit stays open and offers Retry, Quit Anyway or Cancel. A logout, restart or shutdown never asks; it logs the failure.
+- On macOS a job still running at logout is cancelled without asking. Every quit step has a bound, so quitting ends within about 4 seconds instead of waiting up to 10 seconds a step, and a pane layout write still in progress at quit lands first.
+- On Windows, closing the main window while a job runs or after a failed queue save keeps it open when you choose to keep working or cancel.
 - A failed save of the settings, queue or layout no longer leaves a temporary file in ZipKit's data folder.
 - Overwriting an archive or an extracted file, and saving ZipKit's own settings, queue and layout, keep the replaced file's permissions.
 

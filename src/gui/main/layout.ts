@@ -87,6 +87,12 @@ function persist(next: StoredLayout): Promise<void> {
   return write;
 }
 
+/** Settles when every layout write started so far has, rejecting when the last one failed. Quit
+ *  waits for it within a bound, so a write in flight is not cut off mid-file. */
+export function layoutWritesSettled(): Promise<void> {
+  return writes;
+}
+
 /** Persist the main window's pane widths, keeping the Records window's. */
 export function saveLayout(layout: PaneLayout): Promise<void> {
   return persist({ ...current, ...clampLayout(layout) });

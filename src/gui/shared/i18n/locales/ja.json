@@ -64,7 +64,9 @@
   "quit.cancelAndQuit": "ジョブをキャンセルして終了",
   "quit.keepWorking": "作業を続ける",
   "quit.queueNotSavedTitle": "キューを保存できませんでした",
-  "quit.queueNotSaved": "ZipKit は終了前にキューを保存できませんでした。最後に保存したあとで追加または変更したジョブは、次に開いたときには含まれません。",
+  "quit.queueNotSavedMessage": "キューを保存できなかったため、ZipKit は終了していません。",
+  "quit.queueNotSavedDetail": "このまま終了すると、キューを最後に保存したあとで追加または変更したジョブは、次に ZipKit を開いたときに含まれません。再試行してもう一度保存するか、キャンセルして ZipKit を開いたままにしてください。",
+  "quit.quitAnyway": "このまま終了",
   "picker.inputsTitle": "アーカイブするフォルダまたはファイルを選択",
   "picker.outputTitle": "出力先フォルダを選択",
 

@@ -64,7 +64,9 @@
   "quit.cancelAndQuit": "Cancelar o Trabalho e Sair",
   "quit.keepWorking": "Continuar Trabalhando",
   "quit.queueNotSavedTitle": "A fila não foi salva",
-  "quit.queueNotSaved": "O ZipKit não conseguiu salvar a fila antes de sair, então trabalhos adicionados ou alterados desde o último salvamento não estarão lá na próxima vez que ele abrir.",
+  "quit.queueNotSavedMessage": "O ZipKit não conseguiu salvar a fila, então não foi encerrado.",
+  "quit.queueNotSavedDetail": "Se você sair mesmo assim, trabalhos adicionados ou alterados desde o último salvamento da fila não aparecerão na próxima vez que o ZipKit abrir. Tente novamente para salvar a fila ou cancele para manter o ZipKit aberto.",
+  "quit.quitAnyway": "Sair Mesmo Assim",
   "picker.inputsTitle": "Escolha as pastas ou os arquivos a compactar",
   "picker.outputTitle": "Escolha a pasta de saída",
 
