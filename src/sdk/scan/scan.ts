@@ -13,6 +13,10 @@
  * against escaping the input tree unless `followExternal` is set. A symlink
  * given directly as a top-level input is always followed, as it is explicit.
  *
+ * ZipKit's own storage root is never archived: the walk does not descend into
+ * it, and an input or followed link inside it is skipped, so archiving the home
+ * folder leaves out ZipKit's settings, queue, records and live logs.
+ *
  * Every filesystem call goes through the run's bounded {@link Volume}, so a
  * source on a stalled volume fails the scan with a `StallError` naming the
  * path instead of hanging it. The places that deliberately tolerate a failed
@@ -35,6 +39,7 @@ import {
   joinArchivePath,
   normalizeInputs,
 } from "../plan/arcname.js";
+import { storageRoot } from "../storage.js";
 import { resolveOutputPath } from "./output.js";
 import type { ArchivePolicy, ArchiveSpec } from "../types.js";
 
@@ -73,6 +78,8 @@ interface ScanContext {
    * `archive.zip.20240604`, which is the worse failure.
    */
   artifactIds: Set<string>;
+  /** The canonical path of ZipKit's storage root, or null when it does not exist. */
+  appRoot: string | null;
   entries: ScanEntry[];
   prunedDirs: PrunedDir[];
   skipped: SkippedEntry[];
@@ -141,6 +148,17 @@ function isWithin(root: string, target: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+/** Whether canonical `target` is the app's storage root or inside it, comparing
+ *  names as macOS and Windows volumes do, without regard to case. */
+function inAppRoot(ctx: ScanContext, target: string): boolean {
+  if (ctx.appRoot === null) return false;
+  const fold = process.platform === "darwin" || process.platform === "win32"
+    ? (p: string) => p.toLowerCase()
+    : (p: string) => p;
+  const rel = path.relative(fold(ctx.appRoot), fold(target));
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+}
+
 /** Rethrow a stall or a cancel from a call whose ordinary failure is tolerated. */
 function rethrowClassified(err: unknown): void {
   if (err instanceof ZipKitError) throw err;
@@ -177,6 +195,9 @@ async function handleSymlink(
     return;
   }
 
+  // ZipKit's own files, reached through a link. Silent, like the output archive.
+  if (inAppRoot(ctx, real)) return;
+
   const root = ctx.inputRoots[inputIndex] ?? "";
   if (!ctx.followExternal && !isWithin(root, real)) {
     skip(ctx, paths, "external-link");
@@ -202,7 +223,7 @@ async function handleSymlink(
     // silent: the first visit already archived that content.
     if (ctx.followedDirs.has(real)) return;
     ctx.followedDirs.add(real);
-    await crawlDirectory(ctx, real, paths, inputIndex);
+    await crawlDirectory(ctx, real, real, paths, inputIndex);
   } else if (resolved.isFile()) {
     ctx.entries.push(makeEntry(real, inputIndex, paths, "file", resolved));
   } else {
@@ -249,9 +270,15 @@ const WALK_BATCH = 16;
  * is `handleSymlink`'s decision. A subdirectory that cannot be listed is
  * recorded in `unlistedDirs` and its contents are missing, while a stall or a
  * cancel ends the scan. Only the input root itself failing to list is a scan
- * fault.
+ * fault. `canonicalDir` is `absDir`'s real path, against which ZipKit's own
+ * storage root is left out without being listed.
  */
-async function walkTree(ctx: ScanContext, absDir: string, anchors: EntryPaths): Promise<string[]> {
+async function walkTree(
+  ctx: ScanContext,
+  absDir: string,
+  canonicalDir: string,
+  anchors: EntryPaths,
+): Promise<string[]> {
   const found: string[] = [];
   let level = [absDir];
   while (level.length > 0) {
@@ -277,6 +304,7 @@ async function walkTree(ctx: ScanContext, absDir: string, anchors: EntryPaths): 
         for (const entry of entries) {
           const abs = path.join(dir, entry.name);
           if (entry.isDirectory()) {
+            if (inAppRoot(ctx, path.join(canonicalDir, path.relative(absDir, abs)))) continue;
             const archive = joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, abs)));
             const rule = archive === "" ? null : ctx.matcher.match(archive, true);
             if (rule) {
@@ -299,10 +327,11 @@ async function walkTree(ctx: ScanContext, absDir: string, anchors: EntryPaths): 
 async function crawlDirectory(
   ctx: ScanContext,
   absDir: string,
+  canonicalDir: string,
   anchors: EntryPaths,
   inputIndex: number,
 ): Promise<void> {
-  const results = await walkTree(ctx, absDir, anchors);
+  const results = await walkTree(ctx, absDir, canonicalDir, anchors);
 
   const tasks: Promise<void>[] = [];
   for (const abs of results) {
@@ -412,16 +441,21 @@ export async function scan(
   const canonicalRoots: string[] = [];
   for (let i = 0; i < inputs.length; i++) {
     const real = realInputPaths[i] as string;
-    if (!isDir[i]) {
-      canonicalRoots.push(real);
-      continue;
-    }
     try {
       canonicalRoots.push(await deps.volume.realpath(real));
     } catch (err) {
       rethrowClassified(err);
       canonicalRoots.push(real);
     }
+  }
+
+  // ZipKit's own storage root, from the one resolver, in the same canonical
+  // space. An absent or unresolvable root has nothing in it to leave out.
+  let appRoot: string | null = null;
+  try {
+    appRoot = await deps.volume.realpath(storageRoot());
+  } catch (err) {
+    rethrowClassified(err);
   }
 
   const ctx: ScanContext = {
@@ -433,6 +467,7 @@ export async function scan(
     logger: deps.logger,
     volume: deps.volume,
     artifactIds,
+    appRoot,
     entries: [],
     prunedDirs: [],
     skipped: [],
@@ -455,9 +490,11 @@ export async function scan(
       archive: anchors[i] ?? "",
       source: path.basename(inputs[i]?.path ?? real),
     };
+    // An input that is ZipKit's own storage root, or inside it.
+    if (inAppRoot(ctx, canonicalRoots[i] as string)) continue;
     if (isDir[i]) {
       ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: real });
-      await crawlDirectory(ctx, real, anchorPaths, i);
+      await crawlDirectory(ctx, real, canonicalRoots[i] as string, anchorPaths, i);
     } else {
       let fileStats: BigIntStats;
       try {

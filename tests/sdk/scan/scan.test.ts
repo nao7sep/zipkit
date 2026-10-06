@@ -227,3 +227,51 @@ describe("scan over a real tree", () => {
     expect(names(result)).toEqual(["keep.txt"]);
   });
 });
+
+describe("ZipKit's own storage root", () => {
+  const previous = process.env.ZIPKIT_DATA_DIR;
+  let home: string;
+
+  beforeEach(async () => {
+    home = path.join(dir, "home");
+    await mkdir(path.join(home, ".zipkit", "logs"), { recursive: true });
+    await writeFile(path.join(home, ".zipkit", "queue.json"), "{}");
+    await writeFile(path.join(home, ".zipkit", "logs", "session.log"), "live");
+    await writeFile(path.join(home, "notes.txt"), "mine");
+    process.env.ZIPKIT_DATA_DIR = path.join(home, ".zipkit");
+  });
+
+  afterEach(() => {
+    process.env.ZIPKIT_DATA_DIR = previous;
+  });
+
+  it("is left out of a folder that contains it", async () => {
+    expect(names(await runScan({ inputs: [home] }))).toEqual(["notes.txt"]);
+  });
+
+  it("is left out when it is an input, or an input lies inside it", async () => {
+    const root = path.join(home, ".zipkit");
+    const result = await runScan({ inputs: [root, path.join(root, "queue.json"), path.join(home, "notes.txt")], output: path.join(dir, "out.zip") });
+    expect(names(result)).toEqual(["notes.txt"]);
+  });
+
+  it.runIf(fileSymlinksSupported)("is left out when a followed link reaches it", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    await writeFile(path.join(proj, "a.txt"), "a");
+    await createDirectoryLink(path.join(home, ".zipkit"), path.join(proj, "data"));
+    await createFileLink(path.join(home, ".zipkit", "queue.json"), path.join(proj, "queue.json"));
+
+    const result = await runScan({ inputs: [proj] }, { symlinks: "follow", followExternal: true });
+
+    expect(names(result)).toEqual(["a.txt"]);
+  });
+
+  it.runIf(process.platform === "darwin" || process.platform === "win32")(
+    "is left out when the relocation names it in another case",
+    async () => {
+      process.env.ZIPKIT_DATA_DIR = path.join(home, ".ZIPKIT");
+      expect(names(await runScan({ inputs: [home] }))).toEqual(["notes.txt"]);
+    },
+  );
+});
