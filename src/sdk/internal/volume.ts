@@ -314,9 +314,11 @@ export class VolumeFile {
     return this.#run("work", "stat", () => this.#handle.stat());
   }
 
-  /** The handle's identity (`dev:ino`). */
+  /** The handle's identity (`dev:ino`). A cleanup call, like
+   *  {@link Volume.identity}: it decides whether a failed publication removes
+   *  its own claim, so a cancel does not stop it. */
   async identity(): Promise<string> {
-    const st = await this.stat();
+    const st = await this.#run("cleanup", "fstat", () => this.#handle.stat());
     return `${st.dev}:${st.ino}`;
   }
 

@@ -67,6 +67,9 @@ async function copyExclusive(
   signal?.throwIfAborted();
   const source = await operations.openRead(tempPath);
   let destination: PublishDestination | null = null;
+  // The claim's identity as last read from its own handle. FAT ids change once
+  // bytes are written, so it is re-read after the content is complete and before
+  // a failed claim is removed; the empty claim's id only marks that a claim exists.
   let claimIdentity: string | null = null;
   let committed = false;
   try {
@@ -92,13 +95,17 @@ async function copyExclusive(
     signal?.throwIfAborted();
     await destination.sync();
     signal?.throwIfAborted();
+    claimIdentity = await destination.identity();
     await destination.close();
     destination = null;
     signal?.throwIfAborted();
     if (await operations.pathIdentity(output) !== claimIdentity) throw destinationChanged(output);
     committed = true;
   } catch (err) {
-    if (destination) await destination.close().catch(() => {});
+    if (destination) {
+      if (claimIdentity !== null) claimIdentity = await destination.identity().catch(() => claimIdentity);
+      await destination.close().catch(() => {});
+    }
     let failure = err;
     if (claimIdentity !== null && !committed) {
       const currentIdentity = await operations.pathIdentity(output).catch(() => null);

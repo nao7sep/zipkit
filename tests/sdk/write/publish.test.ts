@@ -194,4 +194,51 @@ describe("portable no-overwrite publication", () => {
     expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
     expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
   });
+
+  describe("on a FAT volume whose file id changes once bytes are written", () => {
+    /** The claim reports one id while empty and another once written, from its
+     *  handle and from its path alike. */
+    function fatOperations(sourceBytes: Buffer, writeFailure?: Error) {
+      let written = false;
+      const fixture = memoryOperations(sourceBytes, {
+        link: vi.fn().mockRejectedValue(failure("EPERM")),
+        pathIdentity: vi.fn(async () => (written ? "written" : "empty")),
+      });
+      const destination: PublishDestination = {
+        write: vi.fn(async (buffer, offset, length) => {
+          if (written && writeFailure) throw writeFailure;
+          written = true;
+          fixture.published.push(Buffer.from(buffer.subarray(offset, offset + length)));
+          return { bytesWritten: length };
+        }),
+        sync: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        identity: vi.fn(async () => (written ? "written" : "empty")),
+      };
+      vi.mocked(fixture.operations.openExclusive).mockResolvedValue(destination);
+      return fixture;
+    }
+
+    it("publishes a completed copy", async () => {
+      const bytes = Buffer.alloc(600_000, 0x5a);
+      const fixture = fatOperations(bytes);
+
+      await publishNoOverwrite("temp", "out", undefined, fixture.operations);
+
+      expect(Buffer.concat(fixture.published).equals(bytes)).toBe(true);
+      expect(fixture.operations.unlink).toHaveBeenCalledWith("temp");
+      expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
+    });
+
+    it("removes its partially written claim when a later write fails", async () => {
+      const writeFailure = failure("EIO");
+      const fixture = fatOperations(Buffer.alloc(600_000), writeFailure);
+
+      await expect(
+        publishNoOverwrite("temp", "out", undefined, fixture.operations),
+      ).rejects.toBe(writeFailure);
+      expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
+      expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
+    });
+  });
 });
