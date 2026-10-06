@@ -60,6 +60,20 @@ function symlinkEntry(name: string, linkTarget: string): EntryWithData {
   };
 }
 
+/** A manifest record carrying every field a create writes and a verify checks. */
+function manifestRecord(entry: EntryWithData, sha256?: string): Record<string, unknown> {
+  const record: Record<string, unknown> = {
+    archivePath: entry.name,
+    sourcePath: entry.name,
+    type: entry.type,
+    size: entry.raw.length,
+    crc32: crc32(entry.raw),
+    mtime: { ns: entry.mtimeNs.toString() },
+  };
+  if (sha256 !== undefined) record.sha256 = sha256;
+  return record;
+}
+
 let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), "zk-extract-"));
@@ -195,8 +209,8 @@ describe("heavy validation against a manifest", () => {
     const manifest = {
       formatVersion: MANIFEST_FORMAT_VERSION,
       entries: [
-        { archivePath: "a.txt", sha256: createHash("sha256").update(aData).digest("hex") },
-        { archivePath: "c.txt", sha256: "deadbeef" },
+        manifestRecord(fileEntry("a.txt", "alpha"), createHash("sha256").update(aData).digest("hex")),
+        manifestRecord(fileEntry("c.txt", "gamma"), "de".repeat(32)),
       ],
     };
     const archive = await writeArchive([
@@ -260,10 +274,7 @@ describe("heavy validation against a manifest", () => {
 });
 
 describe("manifest size and CRC-32", () => {
-  /** A manifest record carrying the entry's true size and CRC-32, as create writes it. */
-  function recordFor(entry: EntryWithData): { archivePath: string; size: number; crc32: number } {
-    return { archivePath: entry.name, size: entry.raw.length, crc32: crc32(entry.raw) };
-  }
+  const recordFor = (entry: EntryWithData) => manifestRecord(entry);
 
   async function verify(entries: EntryWithData[], records: object[], opts?: Partial<BuildOptions>) {
     const archive = await writeArchive(
@@ -303,10 +314,28 @@ describe("manifest size and CRC-32", () => {
     }
   });
 
-  it("does not compare a record without numeric size or CRC-32", async () => {
+  it.each([
+    ["a size that is not a number", { size: "5" }],
+    ["no CRC-32", { crc32: undefined }],
+    ["no modification time", { mtime: undefined }],
+    ["no archive path", { archivePath: undefined }],
+    ["a malformed SHA-256", { sha256: "deadbeef" }],
+  ])("rejects a manifest whose record has %s", async (_label, change) => {
     const a = fileEntry("a.txt", "alpha");
-    const report = await verify([a], [{ archivePath: "a.txt", size: "5", crc32: null }]);
-    expect(report.reportOk).toBe(true);
+    await expect(verify([a], [{ ...recordFor(a), ...change }])).rejects.toMatchObject({
+      code: "read.manifest-invalid",
+    });
+  });
+
+  it("rejects a manifest that records one path twice or holds no entries list", async () => {
+    const a = fileEntry("a.txt", "alpha");
+    await expect(verify([a], [recordFor(a), recordFor(a)])).rejects.toMatchObject({
+      code: "read.manifest-invalid",
+    });
+    const archive = await writeArchive([a, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION }))]);
+    await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({
+      code: "read.manifest-invalid",
+    });
   });
 
   it("leaves a CRC-only verify unchanged", async () => {
@@ -753,8 +782,8 @@ describe("per-failure logging", () => {
     const manifest = {
       formatVersion: MANIFEST_FORMAT_VERSION,
       entries: [
-        { archivePath: "a.txt", sha256: createHash("sha256").update("not-alpha").digest("hex") },
-        { archivePath: "c.txt", sha256: "deadbeef" },
+        manifestRecord(fileEntry("a.txt", "alpha"), createHash("sha256").update("not-alpha").digest("hex")),
+        manifestRecord(fileEntry("c.txt", "gamma"), "de".repeat(32)),
       ],
     };
     const archive = await writeArchive([

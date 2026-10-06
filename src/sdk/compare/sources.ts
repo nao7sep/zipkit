@@ -7,8 +7,7 @@
  * are left out, so an untouched tree always matches.
  *
  * Pure: the caller gathers the fresh plan's write entries and the manifest
- * records. A record that does not carry a source path, type, size and
- * modification time cannot be confirmed, so it never matches.
+ * records, which the manifest load has already checked.
  */
 
 import type { WriteEntry } from "../internal/types.js";
@@ -27,14 +26,8 @@ function add(map: Map<string, string[]>, key: string, value: string): void {
 }
 
 function recordSignature(record: ManifestRecord): { sourcePath: string; signature: string } | null {
-  const { sourcePath, type, size, mtime } = record;
-  if (type === "dir") return null;
-  const ns = typeof mtime === "object" && mtime !== null ? (mtime as { ns?: unknown }).ns : undefined;
-  if (typeof sourcePath !== "string" || typeof type !== "string" || typeof size !== "number" || typeof ns !== "string") {
-    // Unconfirmable: keyed so it can never equal a fresh entry.
-    return { sourcePath: typeof sourcePath === "string" ? sourcePath : "", signature: "\0unconfirmable" };
-  }
-  return { sourcePath, signature: signature(type, size, ns) };
+  if (record.type === "dir") return null;
+  return { sourcePath: record.sourcePath, signature: signature(record.type, record.size, record.mtime.ns) };
 }
 
 export function compareWithManifest(

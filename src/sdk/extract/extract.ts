@@ -116,21 +116,40 @@ async function ensureRealDirs(volume: Volume, dest: string, segments: string[]):
   return true;
 }
 
-/** One `entries` record of an embedded manifest, as untrusted JSON. */
+/** One `entries` record of an embedded manifest: the fields verification and
+ *  source comparison consume, checked when the manifest is loaded. */
 export interface ManifestRecord {
-  archivePath?: unknown;
-  sourcePath?: unknown;
-  type?: unknown;
-  size?: unknown;
-  crc32?: unknown;
-  sha256?: unknown;
-  mtime?: unknown;
+  archivePath: string;
+  sourcePath: string;
+  type: "file" | "dir" | "symlink";
+  size: number;
+  crc32: number;
+  /** Absent when the writer's hash policy omitted it. */
+  sha256?: string;
+  mtime: { ns: string };
+}
+
+/** Whether an untrusted `entries` item holds every field a {@link ManifestRecord} requires. */
+function isManifestRecord(value: unknown): value is ManifestRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const r = value as Record<string, unknown>;
+  const mtime = r.mtime as Record<string, unknown> | null | undefined;
+  return (
+    typeof r.archivePath === "string" && r.archivePath !== "" &&
+    typeof r.sourcePath === "string" &&
+    (r.type === "file" || r.type === "dir" || r.type === "symlink") &&
+    Number.isSafeInteger(r.size) && (r.size as number) >= 0 &&
+    Number.isInteger(r.crc32) && (r.crc32 as number) >= 0 && (r.crc32 as number) <= 0xffffffff &&
+    (r.sha256 === undefined || (typeof r.sha256 === "string" && /^[0-9a-f]{64}$/.test(r.sha256))) &&
+    typeof mtime === "object" && mtime !== null && typeof mtime.ns === "string" && /^-?\d+$/.test(mtime.ns)
+  );
 }
 
 /** Find and parse the embedded manifest `name` among an open archive's entries.
- *  Absent is `read.manifest-missing`; unparseable is `read.manifest-invalid`; one
- *  a newer ZipKit wrote is `read.manifest-newer`, never read as this build's
- *  format. A manifest without `formatVersion` is unparseable. */
+ *  Absent is `read.manifest-missing`; unparseable, or holding a malformed or
+ *  duplicate record, is `read.manifest-invalid`; one a newer ZipKit wrote is
+ *  `read.manifest-newer`, never read as this build's format. A manifest without
+ *  `formatVersion` is unparseable. */
 async function loadManifest(
   archive: VolumeFile,
   entries: ReadEntry[],
@@ -162,8 +181,20 @@ async function loadManifest(
       `manifest ${name} has format version ${formatVersion}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
     );
   }
-  const records = Array.isArray(doc?.entries) ? (doc.entries as ManifestRecord[]) : [];
-  return { entry: inside, records: records.filter((r) => typeof r === "object" && r !== null) };
+  if (!Array.isArray(doc.entries)) {
+    throw new ReadError("read.manifest-invalid", `manifest ${name} has no entries list`);
+  }
+  const paths = new Set<string>();
+  for (const record of doc.entries as unknown[]) {
+    if (!isManifestRecord(record)) {
+      throw new ReadError("read.manifest-invalid", `manifest ${name} holds a malformed entry record`);
+    }
+    if (paths.has(record.archivePath)) {
+      throw new ReadError("read.manifest-invalid", `manifest ${name} records '${record.archivePath}' twice`);
+    }
+    paths.add(record.archivePath);
+  }
+  return { entry: inside, records: doc.entries as ManifestRecord[] };
 }
 
 /** Open an archive and read its embedded manifest's entry records. */
@@ -190,15 +221,9 @@ export async function readManifest(volume: Volume, archivePath: string, name: st
   }
 }
 
-/**
- * Whether a manifest record's size or CRC-32 disagrees with the archive's
- * central directory. A field the record does not hold as a number (an older or
- * third-party manifest) is not compared, so it is never a mismatch.
- */
+/** Whether a manifest record's size or CRC-32 disagrees with the archive's central directory. */
 function recordMismatches(record: ManifestRecord, entry: ReadEntry): boolean {
-  if (typeof record.size === "number" && record.size !== entry.uncompSize) return true;
-  if (typeof record.crc32 === "number" && record.crc32 >>> 0 !== entry.crc32 >>> 0) return true;
-  return false;
+  return record.size !== entry.uncompSize || record.crc32 !== entry.crc32 >>> 0;
 }
 
 /** The verified outcome of streaming one entry through inflate. */
@@ -406,9 +431,7 @@ export async function extractArchive(
       const loaded = await loadManifest(archive, parsed.entries, name);
       manifestEntryPath = loaded.entry.archivePath;
       manifest = { name };
-      for (const m of loaded.records) {
-        if (typeof m.archivePath === "string") manifestMap.set(m.archivePath, m);
-      }
+      for (const m of loaded.records) manifestMap.set(m.archivePath, m);
     }
 
     if (write && dest !== undefined) await volume.mkdir(dest, true);
@@ -456,8 +479,7 @@ export async function extractArchive(
       const isManifestEntry = entry.archivePath === manifestEntryPath;
       const checkSha = spec.checkMetadata === true && entry.type !== "dir" && !isManifestEntry;
       const record = checkSha ? manifestMap.get(entry.archivePath) : undefined;
-      const storedSha =
-        record && typeof record.sha256 === "string" ? record.sha256 : null;
+      const storedSha = record?.sha256 ?? null;
       // The archive's own header is all the CRC check compares against, so a
       // replaced entry passes it; comparing the central directory's size and
       // CRC-32 with the manifest catches it even without a recorded SHA-256.

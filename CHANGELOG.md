@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `app`, `version`, `repository`, `createdAtUtc` and `formatVersion`, replacing `tool` and `createdUtc`. Verify looks for `zipkit.json` only. A 0.1.0 manifest (`_metadata.json`) carries no `formatVersion`, so checking an archive against it fails with `read.manifest-invalid`; the CRC-32 check without `checkMetadata` still verifies such an archive.
 - ZipKit's own files (`config.json`, `queue.json`, `layout.json` and the records and backups databases) record their format version; `queue.json` and `layout.json` carry `formatVersion` in place of `version`. A launch that finds one of the JSON files written by a newer ZipKit stops, names the file and leaves it unchanged; one without `formatVersion`, such as 0.1.0's settings and queue, is set aside as unreadable and reported. A database without its format version is left unchanged and not used.
 - Verify refuses an embedded manifest whose `formatVersion` is newer than the running build reads, with the error code `read.manifest-newer`, and one without `formatVersion` with `read.manifest-invalid`.
+- Verify and the source check before deleting originals refuse an embedded manifest with a malformed or repeated entry record with `read.manifest-invalid`, instead of skipping the checks that record could not support.
 
 ### Fixed
 

@@ -84,16 +84,13 @@ describe("compareWithManifest", () => {
     const e = scanEntry({ archivePath: sourcePath, sourcePath, size });
     return { ...e, method: "store" as const, originalPath: e.archivePath, transformations: [] };
   };
-  const record = (sourcePath: string, size = 5) => ({
+  const record = (sourcePath: string, size = 5, type: "file" | "dir" = "file") => ({
     archivePath: sourcePath,
     sourcePath,
-    type: "file",
+    type,
     size,
+    crc32: 0,
     mtime: { ns: fresh(sourcePath).mtimeNs.toString() },
-  });
-
-  it("never confirms a record without a source path, size or time", () => {
-    expect(compareWithManifest([fresh("a")], [], [{ archivePath: "a", sourcePath: "a", type: "file" }]).matches).toBe(false);
   });
 
   it("tells two inputs sharing a basename apart by count", () => {
@@ -102,6 +99,6 @@ describe("compareWithManifest", () => {
   });
 
   it("ignores folder records", () => {
-    expect(compareWithManifest([], [], [{ sourcePath: "d", type: "dir" }]).matches).toBe(true);
+    expect(compareWithManifest([], [], [record("d", 0, "dir")]).matches).toBe(true);
   });
 });
