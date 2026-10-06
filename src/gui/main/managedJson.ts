@@ -1,6 +1,6 @@
 /** Shared safe loading and atomic writing for the GUI's managed JSON stores. */
 
-import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { defaultSessionTimestamp } from "../../sdk/log/session.js";
@@ -130,9 +130,15 @@ export async function writeManagedJson(file: string, text: string, options: { re
   await mkdir(dir, { recursive: true });
   const bytes = Buffer.from(text, "utf8");
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
-  await writeFile(tmp, bytes);
-  const existing = await stat(file).catch(() => null);
-  if (existing) await chmod(tmp, existing.mode & 0o7777).catch(() => {});
-  await rename(tmp, file);
+  try {
+    await writeFile(tmp, bytes);
+    const existing = await stat(file).catch(() => null);
+    if (existing) await chmod(tmp, existing.mode & 0o7777).catch(() => {});
+    await rename(tmp, file);
+  } catch (err) {
+    // A failed write removes its own unpublished temp; the write's error is the one reported.
+    await rm(tmp, { force: true }).catch(() => {});
+    throw err;
+  }
   if (options.record !== false) void record(file, bytes);
 }

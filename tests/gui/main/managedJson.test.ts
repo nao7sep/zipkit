@@ -143,6 +143,18 @@ describe("writeManagedJson", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("removes its temp and reports the rename's own error when the replace fails", async () => {
+    const file = path.join(root, "queue.json");
+    await writeManagedJson(file, '{"a":1}', { record: false });
+    const injected = Object.assign(new Error("EPERM: replace refused"), { code: "EPERM" });
+    armedRenameError.current = injected;
+
+    await expect(writeManagedJson(file, '{"a":2}', { record: false })).rejects.toBe(injected);
+
+    expect(readdirSync(root)).toEqual(["queue.json"]);
+    expect(readFileSync(file, "utf8")).toBe('{"a":1}');
+  });
+
   // POSIX permissions; Windows keeps only a read-only flag, which a replace cannot write through.
   it.skipIf(process.platform === "win32")("keeps an existing file's permission mode when a changed save replaces it", async () => {
     const file = path.join(root, "queue.json");

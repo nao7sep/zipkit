@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Saving an archive or extracting a file without overwrite on a FAT volume that refuses hard links no longer fails as if the file already existed.
 - Archiving a folder that holds ZipKit's own data folder (`~/.zipkit` or `ZIPKIT_DATA_DIR`), such as the home folder, leaves that data folder out, as does an input or followed link inside it.
 - Extraction writes each file's temporary copy in the file's own folder, so extracting into a folder that holds a mounted volume no longer fails there.
+- A failed save of the settings, queue or layout no longer leaves a temporary file in ZipKit's data folder.
 - Overwriting an archive or an extracted file, and saving ZipKit's own settings, queue and layout, keep the replaced file's permissions.
 
 ## [0.1.0] - 2026-07-08
