@@ -22,15 +22,18 @@ import { findExtra, type ReadEntry } from "./zipReader.js";
 // 100-ns ticks between the FILETIME epoch (1601) and the Unix epoch (1970).
 const NTFS_EPOCH_OFFSET = 116_444_736_000_000_000n;
 
+/** The stored times at the precision their field carries, as Unix epoch
+ *  nanoseconds: 100 ns from the NTFS extra, seconds from the UT extra and the
+ *  DOS field's two seconds. */
 export interface RestoreTimes {
-  /** Modification time, epoch milliseconds. */
-  mtimeMs: number;
-  /** Access time, epoch milliseconds. */
-  atimeMs: number;
+  /** Modification time, epoch nanoseconds. */
+  mtimeNs: bigint;
+  /** Access time, epoch nanoseconds. */
+  atimeNs: bigint;
 }
 
-function filetimeToMs(ticks: bigint): number {
-  return Number((ticks - NTFS_EPOCH_OFFSET) / 10_000n);
+function filetimeToNs(ticks: bigint): bigint {
+  return (ticks - NTFS_EPOCH_OFFSET) * 100n;
 }
 
 /**
@@ -52,8 +55,8 @@ function ntfsTimes(value: Buffer): RestoreTimes | null {
       const mtime = value.readBigUInt64LE(p + 4);
       const atime = value.readBigUInt64LE(p + 12);
       if (mtime === 0n) return null;
-      const mtimeMs = filetimeToMs(mtime);
-      return { mtimeMs, atimeMs: atime === 0n ? mtimeMs : filetimeToMs(atime) };
+      const mtimeNs = filetimeToNs(mtime);
+      return { mtimeNs, atimeNs: atime === 0n ? mtimeNs : filetimeToNs(atime) };
     }
     p += 4 + size;
   }
@@ -67,8 +70,8 @@ export function restoreTimes(entry: ReadEntry, timeZone: string): RestoreTimes {
 
   const ut = findExtra(entry.extra, 0x5455);
   if (ut && ut.length >= 5 && (ut[0]! & 0x01) === 0x01) {
-    const ms = ut.readInt32LE(1) * 1000;
-    return { mtimeMs: ms, atimeMs: ms };
+    const ns = BigInt(ut.readInt32LE(1)) * 1_000_000_000n;
+    return { mtimeNs: ns, atimeNs: ns };
   }
 
   // DOS field: local wall-clock, no zone — interpret it in the configured zone.
@@ -83,5 +86,6 @@ export function restoreTimes(entry: ReadEntry, timeZone: string): RestoreTimes {
     },
     timeZone,
   );
-  return { mtimeMs: ms, atimeMs: ms };
+  const ns = BigInt(ms) * 1_000_000n;
+  return { mtimeNs: ns, atimeNs: ns };
 }

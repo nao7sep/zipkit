@@ -70,8 +70,17 @@ export interface FileSystemPort {
   symlink(target: string, path: string): Promise<void>;
   unlink(path: string): Promise<void>;
   rm(path: string): Promise<void>;
-  utimes(path: string, atime: Date, mtime: Date): Promise<void>;
+  /** Set access and modification times, given as Unix epoch nanoseconds. */
+  utimes(path: string, atimeNs: bigint, mtimeNs: bigint): Promise<void>;
   chmod(path: string, mode: number): Promise<void>;
+}
+
+/** Epoch nanoseconds as the fractional seconds `fs.utimes` takes. Node carries
+ *  the time as a double, so the set time is the nearest one the double holds:
+ *  within about 120 ns for present-day times. Splitting the whole seconds from
+ *  the fraction rounds once, where `Number(ns) / 1e9` would round twice. */
+function epochSeconds(ns: bigint): number {
+  return Number(ns / 1_000_000_000n) + Number(ns % 1_000_000_000n) / 1e9;
 }
 
 export const nodeFileSystem: FileSystemPort = {
@@ -98,7 +107,7 @@ export const nodeFileSystem: FileSystemPort = {
   symlink: (target, path) => fsp.symlink(target, path),
   unlink: (path) => fsp.unlink(path),
   rm: (path) => fsp.rm(path, { force: true }),
-  utimes: (path, atime, mtime) => fsp.utimes(path, atime, mtime),
+  utimes: (path, atimeNs, mtimeNs) => fsp.utimes(path, epochSeconds(atimeNs), epochSeconds(mtimeNs)),
   chmod: (path, mode) => fsp.chmod(path, mode),
 };
 
@@ -161,8 +170,8 @@ export class Volume {
     return this.#run("work", "remove", path, () => this.#port.rm(path));
   }
 
-  utimes(path: string, atime: Date, mtime: Date): Promise<void> {
-    return this.#run("work", "utimes", path, () => this.#port.utimes(path, atime, mtime));
+  utimes(path: string, atimeNs: bigint, mtimeNs: bigint): Promise<void> {
+    return this.#run("work", "utimes", path, () => this.#port.utimes(path, atimeNs, mtimeNs));
   }
 
   chmod(path: string, mode: number): Promise<void> {

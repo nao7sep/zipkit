@@ -157,6 +157,36 @@ describe("extract round-trip", () => {
     expect((await stat(path.join(untouched, "docs"))).mtimeMs).toBeGreaterThan(Y2020_MS);
   });
 
+  it("restores file and folder times at the NTFS extra's 100 ns", async () => {
+    // 2020-01-01T00:00:00.1234567Z: digits below the millisecond, down to the
+    // FILETIME's last 100 ns.
+    const storedNs = Y2020_NS + 123_456_700n;
+    const archive = await writeArchive([
+      {
+        name: "docs",
+        type: "dir",
+        method: "store",
+        raw: Buffer.alloc(0),
+        uncompressedSize: 0,
+        mtimeNs: storedNs,
+        atimeNs: storedNs,
+        birthtimeNs: storedNs,
+        mode: 0o755,
+      },
+      { ...fileEntry("docs/a.txt", "a"), mtimeNs: storedNs, atimeNs: storedNs },
+    ]);
+    const dest = path.join(dir, "out");
+    await new ZipKit().extract({ archive, dest });
+
+    for (const name of ["docs", path.join("docs", "a.txt")]) {
+      const restored = await stat(path.join(dest, name), { bigint: true });
+      for (const ns of [restored.mtimeNs, restored.atimeNs]) {
+        const diff = ns - storedNs;
+        expect(diff < 0n ? -diff : diff).toBeLessThan(100n);
+      }
+    }
+  });
+
   it("preserves an existing file unless overwrite is set", async () => {
     const archive = await writeArchive([fileEntry("a.txt", "new")]);
     const dest = path.join(dir, "out");

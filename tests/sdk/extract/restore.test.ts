@@ -12,6 +12,7 @@ import type { ReadEntry } from "../../../src/sdk/extract/zipReader.js";
 
 const NTFS_EPOCH_OFFSET = 116_444_736_000_000_000n;
 const filetime = (ms: number): bigint => BigInt(ms) * 10_000n + NTFS_EPOCH_OFFSET;
+const ns = (ms: number): bigint => BigInt(ms) * 1_000_000n;
 
 /** A full NTFS (0x000a) extra field carrying mtime/atime/ctime as FILETIME. */
 function ntfsExtra(mtimeMs: number, atimeMs: number, ctimeMs = 0): Buffer {
@@ -67,15 +68,15 @@ describe("restoreTimes source selection", () => {
     const mtime = Date.UTC(2020, 0, 1, 12, 0, 0);
     const atime = Date.UTC(2020, 0, 2, 6, 30, 0);
     const t = restoreTimes(entryWith(ntfsExtra(mtime, atime)), "UTC");
-    expect(t.mtimeMs).toBe(mtime);
-    expect(t.atimeMs).toBe(atime);
+    expect(t.mtimeNs).toBe(ns(mtime));
+    expect(t.atimeNs).toBe(ns(atime));
   });
 
   it("prefers the NTFS extra over the UT extra when both are present", () => {
     const ntfsMs = Date.UTC(2020, 0, 1, 0, 0, 0);
     const utSec = Date.UTC(1999, 5, 6, 0, 0, 0) / 1000;
     const extra = Buffer.concat([utExtra(utSec), ntfsExtra(ntfsMs, ntfsMs)]);
-    expect(restoreTimes(entryWith(extra), "UTC").mtimeMs).toBe(ntfsMs);
+    expect(restoreTimes(entryWith(extra), "UTC").mtimeNs).toBe(ns(ntfsMs));
   });
 
   it("finds the time attribute after another NTFS attribute", () => {
@@ -85,7 +86,7 @@ describe("restoreTimes source selection", () => {
     const other = Buffer.from([0x02, 0x00, 0x04, 0x00, 1, 2, 3, 4]);
     const value = Buffer.concat([ntfs.subarray(4, 8), other, ntfs.subarray(8)]);
     const field = Buffer.concat([Buffer.from([0x0a, 0x00, value.length, 0x00]), value]);
-    expect(restoreTimes(entryWith(field), "UTC").mtimeMs).toBe(mtime);
+    expect(restoreTimes(entryWith(field), "UTC").mtimeNs).toBe(ns(mtime));
   });
 
   it("skips an NTFS extra whose attribute tag or size is wrong, or whose mtime is unset", () => {
@@ -101,7 +102,7 @@ describe("restoreTimes source selection", () => {
     short.writeUInt16LE(16, 2);
     for (const ntfs of [badTag, badSize, unset, short]) {
       const t = restoreTimes(entryWith(Buffer.concat([ntfs, utExtra(sec)])), "UTC");
-      expect(t.mtimeMs).toBe(sec * 1000);
+      expect(t.mtimeNs).toBe(ns(sec * 1000));
     }
   });
 
@@ -110,24 +111,24 @@ describe("restoreTimes source selection", () => {
     const ntfs = ntfsExtra(mtime, mtime);
     ntfs.writeBigUInt64LE(0n, 20); // atime FILETIME 0
     const t = restoreTimes(entryWith(ntfs), "UTC");
-    expect(t.atimeMs).toBe(mtime);
+    expect(t.atimeNs).toBe(ns(mtime));
   });
 
   it("falls back to the UT extra (UTC seconds) when there is no NTFS extra", () => {
     const sec = Date.UTC(2010, 6, 15, 8, 9, 10) / 1000;
     const t = restoreTimes(entryWith(utExtra(sec)), "UTC");
-    expect(t.mtimeMs).toBe(sec * 1000);
-    expect(t.atimeMs).toBe(sec * 1000); // central UT carries only mtime; atime mirrors it
+    expect(t.mtimeNs).toBe(ns(sec * 1000));
+    expect(t.atimeNs).toBe(ns(sec * 1000)); // central UT carries only mtime; atime mirrors it
   });
 
   it("decodes the DOS field in UTC when no absolute extra is present", () => {
     const t = restoreTimes(entryWith(Buffer.alloc(0), dosFields(2003, 4, 5, 6, 7, 8)), "UTC");
-    expect(t.mtimeMs).toBe(Date.UTC(2003, 3, 5, 6, 7, 8));
+    expect(t.mtimeNs).toBe(ns(Date.UTC(2003, 3, 5, 6, 7, 8)));
   });
 
   it("interprets the zone-less DOS field in the configured timezone", () => {
     // Asia/Tokyo is UTC+9 year-round; that wall clock is nine hours earlier in UTC.
     const t = restoreTimes(entryWith(Buffer.alloc(0), dosFields(2003, 4, 5, 6, 7, 8)), "Asia/Tokyo");
-    expect(t.mtimeMs).toBe(Date.UTC(2003, 3, 5, 6, 7, 8) - 9 * 3600 * 1000);
+    expect(t.mtimeNs).toBe(ns(Date.UTC(2003, 3, 5, 6, 7, 8) - 9 * 3600 * 1000));
   });
 });

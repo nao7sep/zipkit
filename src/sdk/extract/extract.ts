@@ -416,7 +416,7 @@ async function restoreEntryMode(volume: Volume, target: string, entry: ReadEntry
 async function restoreEntryTimes(volume: Volume, target: string, entry: ReadEntry, timeZone: string): Promise<void> {
   const t = restoreTimes(entry, timeZone);
   try {
-    await volume.utimes(target, new Date(t.atimeMs), new Date(t.mtimeMs));
+    await volume.utimes(target, t.atimeNs, t.mtimeNs);
   } catch (err) {
     if (err instanceof ZipKitError) throw err;
     /* times are advisory; the content is what matters */
