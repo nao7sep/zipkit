@@ -63,6 +63,8 @@
   "quit.detail": "现在退出将取消该任务。归档不会完成，尚未送到废纸篓的原始项目会保留。",
   "quit.cancelAndQuit": "取消任务并退出",
   "quit.keepWorking": "继续工作",
+  "quit.queueNotSavedTitle": "队列未能保存",
+  "quit.queueNotSaved": "ZipKit 未能在退出前保存队列，自上次保存以来添加或更改的任务在下次打开时将不会出现。",
   "picker.inputsTitle": "选择要归档的文件夹或文件",
   "picker.outputTitle": "选择输出文件夹",
 
@@ -115,6 +117,8 @@
   "header.records": "日志",
   "layout.notSaved": "面板布局未能保存。当前布局仍在使用；调整任一面板的大小即可再次尝试保存。",
   "layout.close": "关闭面板布局保存结果",
+  "queue.notSaved": "队列未能保存，自上次保存以来添加或更改的任务在下次打开 ZipKit 时可能会缺失。ZipKit 会在下次更改时和退出时再次尝试保存。",
+  "queue.notSavedClose": "关闭队列保存结果",
   "records.openFailed": "无法打开日志窗口。",
   "records.openFailedClose": "关闭日志窗口打开结果",
   "records.title": "日志",

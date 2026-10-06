@@ -25,8 +25,9 @@ export interface QuitSteps {
   /** The job did not stop within the bound; quit continues without it. */
   onJobStopTimeout(): void;
   onFlushed(): void;
-  /** The flush failed or did not finish within the bound. */
-  onFlushError(error: unknown): void;
+  /** The flush failed or did not finish within the bound: report it. Quit
+   *  waits for the report within the bound, then exits regardless. */
+  onFlushError(error: unknown): Promise<void>;
   /** Write the backup history's records still in flight. */
   closeBackups(): Promise<void>;
   /** Write the log's records still in flight. */
@@ -51,12 +52,14 @@ async function settlesWithin(work: Promise<void>, ms: number): Promise<boolean> 
 export async function stopFlushAndExit(steps: QuitSteps, waitMs = QUIT_WAIT_MS): Promise<void> {
   try {
     if (!(await settlesWithin(steps.stopJob(), waitMs))) steps.onJobStopTimeout();
+    let flushError: unknown;
     try {
       if (await settlesWithin(steps.flush(), waitMs)) steps.onFlushed();
-      else steps.onFlushError(new Error(`the queue flush did not finish within ${waitMs} ms`));
+      else flushError = new Error(`the queue flush did not finish within ${waitMs} ms`);
     } catch (error) {
-      steps.onFlushError(error);
+      flushError = error;
     }
+    if (flushError !== undefined) await settlesWithin(steps.onFlushError(flushError), waitMs).catch(() => {});
     // The backup history may log a failure, so the log closes last.
     await settlesWithin(steps.closeBackups(), waitMs);
     await settlesWithin(steps.closeLog(), waitMs);

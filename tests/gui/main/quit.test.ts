@@ -7,7 +7,7 @@ function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
     flush: vi.fn(async () => {}),
     onJobStopTimeout: vi.fn(),
     onFlushed: vi.fn(),
-    onFlushError: vi.fn(),
+    onFlushError: vi.fn(async () => {}),
     closeBackups: vi.fn(async () => {}),
     closeLog: vi.fn(async () => {}),
     exit: vi.fn(),
@@ -49,6 +49,23 @@ describe("stopFlushAndExit", () => {
     await stopFlushAndExit(s);
 
     expect(s.onFlushError).toHaveBeenCalledWith(error);
+    expect(s.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("waits for the failed flush's report within the bound, then exits", async () => {
+    vi.useFakeTimers();
+    const s = steps({
+      flush: async () => { throw new Error("flush failed"); },
+      onFlushError: vi.fn(() => new Promise<void>(() => {})),
+    });
+
+    const quitting = stopFlushAndExit(s);
+    await vi.advanceTimersByTimeAsync(QUIT_WAIT_MS - 1);
+    expect(s.exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await quitting;
+
+    expect(s.onFlushError).toHaveBeenCalledOnce();
     expect(s.exit).toHaveBeenCalledWith(0);
   });
 

@@ -63,6 +63,8 @@
   "quit.detail": "지금 종료하면 해당 작업이 취소됩니다. 아카이브는 완성되지 않으며, 아직 휴지통으로 보내지 않은 원본은 유지됩니다.",
   "quit.cancelAndQuit": "작업 취소 후 종료",
   "quit.keepWorking": "계속 작업",
+  "quit.queueNotSavedTitle": "대기열을 저장하지 못했습니다",
+  "quit.queueNotSaved": "ZipKit이 종료하기 전에 대기열을 저장하지 못했습니다. 마지막으로 저장한 뒤 추가하거나 변경한 작업은 다음에 열 때 없습니다.",
   "picker.inputsTitle": "아카이브할 폴더 또는 파일 선택",
   "picker.outputTitle": "출력 폴더 선택",
 
@@ -115,6 +117,8 @@
   "header.records": "로그",
   "layout.notSaved": "패널 레이아웃을 저장하지 못했습니다. 현재 레이아웃은 계속 사용할 수 있습니다. 패널 크기를 조절하면 다시 저장을 시도합니다.",
   "layout.close": "패널 레이아웃 저장 결과 닫기",
+  "queue.notSaved": "대기열을 저장하지 못했습니다. 마지막으로 저장한 뒤 추가하거나 변경한 작업은 다음에 ZipKit을 열 때 없을 수 있습니다. ZipKit은 다음 변경 시와 종료 시 다시 저장을 시도합니다.",
+  "queue.notSavedClose": "대기열 저장 결과 닫기",
   "records.openFailed": "로그 윈도우를 열 수 없습니다.",
   "records.openFailedClose": "로그 윈도우 열기 결과 닫기",
   "records.title": "로그",

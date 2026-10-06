@@ -11,7 +11,7 @@ import { nanoid } from "nanoid";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
-import { log, sendQueue, startProgressRun, zip } from "./runtime.js";
+import { log, sendQueue, sendQueueSaved, startProgressRun, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, toResumable } from "./persist.js";
 import { resolveOutputPath } from "./output.js";
@@ -99,9 +99,15 @@ const engine = createQueueEngine({
   emit: (jobs) => {
     pendingJobs = toResumable(jobs);
     clearTimeout(saveTimer);
+    // The window shows a failed save until a later save succeeds; the failed
+    // snapshot stays pending, so the next change or quit tries it again.
     saveTimer = setTimeout(() => {
-      void flushQueue().catch((err) =>
-        log.error("failed to persist the queue", { error: errorInfo(err) }),
+      void flushQueue().then(
+        () => sendQueueSaved(true),
+        (err) => {
+          log.error("failed to persist the queue", { error: errorInfo(err) });
+          sendQueueSaved(false);
+        },
       );
     }, 500);
     sendQueue(jobs);

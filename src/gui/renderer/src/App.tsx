@@ -145,6 +145,7 @@ export function App() {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [layoutSaveFailed, setLayoutSaveFailed] = useState(false);
   const [recordsOpenFailed, setRecordsOpenFailed] = useState(false);
+  const [queueSaveFailed, setQueueSaveFailed] = useState(false);
   const layoutSaveAttempt = useRef(0);
   const layoutSaveChain = useRef<Promise<void>>(Promise.resolve());
 
@@ -200,6 +201,9 @@ export function App() {
       unsubscribe();
     };
   }, [loadAttempt]);
+
+  // A failed queue save stays shown until a later save succeeds or it is dismissed.
+  useEffect(() => window.zipkit.onQueueSaved((saved) => setQueueSaveFailed(!saved)), []);
 
   // Apply the configured UI font by overriding the `--font-ui` CSS variable on :root; blank reverts
   // to the index.css default. The string is handed to CSS verbatim (system fonts only — the CSP
@@ -547,6 +551,9 @@ export function App() {
       />
       {layoutSaveFailed && (
         <ShellNotice message="layout.notSaved" closeLabel="layout.close" onDismiss={() => setLayoutSaveFailed(false)} />
+      )}
+      {queueSaveFailed && (
+        <ShellNotice message="queue.notSaved" closeLabel="queue.notSavedClose" onDismiss={() => setQueueSaveFailed(false)} />
       )}
       {recordsOpenFailed && (
         <ShellNotice

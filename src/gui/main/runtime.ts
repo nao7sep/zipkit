@@ -68,6 +68,11 @@ export function sendQueue(jobs: Job[]): void {
   liveWindow()?.webContents.send("zipkit:queue", jobs);
 }
 
+/** Tell the window whether the latest queue save succeeded. */
+export function sendQueueSaved(saved: boolean): void {
+  liveWindow()?.webContents.send("zipkit:queueSaved", saved);
+}
+
 export function toGuiError(err: unknown): GuiError {
   if (err instanceof StallError) {
     return { type: err.errorType, code: err.code, presentation: message("error.stalled", { path: err.path }) };

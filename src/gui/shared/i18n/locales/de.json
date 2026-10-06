@@ -63,6 +63,8 @@
   "quit.detail": "Wenn Sie jetzt beenden, wird dieser Auftrag abgebrochen. Das Archiv wird nicht fertiggestellt, und Originale, die noch nicht in den Papierkorb gelegt wurden, bleiben erhalten.",
   "quit.cancelAndQuit": "Auftrag abbrechen und beenden",
   "quit.keepWorking": "Weiterarbeiten",
+  "quit.queueNotSavedTitle": "Die Warteschlange wurde nicht gespeichert",
+  "quit.queueNotSaved": "ZipKit konnte die Warteschlange vor dem Beenden nicht speichern. Seit dem letzten Speichern hinzugefügte oder geänderte Aufträge fehlen daher beim nächsten Start.",
   "picker.inputsTitle": "Zu archivierende Ordner oder Dateien auswählen",
   "picker.outputTitle": "Ausgabeordner auswählen",
 
@@ -115,6 +117,8 @@
   "header.records": "Protokoll",
   "layout.notSaved": "Die Bereichsanordnung wurde nicht gespeichert. Die aktuelle Anordnung bleibt in Gebrauch; ändern Sie die Größe eines Bereichs, um sie erneut zu speichern.",
   "layout.close": "Ergebnis beim Speichern der Bereichsanordnung schließen",
+  "queue.notSaved": "Die Warteschlange wurde nicht gespeichert. Seit dem letzten Speichern hinzugefügte oder geänderte Aufträge fehlen daher möglicherweise beim nächsten Start von ZipKit. ZipKit versucht es bei der nächsten Änderung und beim Beenden erneut.",
+  "queue.notSavedClose": "Ergebnis beim Speichern der Warteschlange schließen",
   "records.openFailed": "Das Protokollfenster konnte nicht geöffnet werden.",
   "records.openFailedClose": "Ergebnis beim Öffnen des Protokollfensters schließen",
   "records.title": "Protokoll",

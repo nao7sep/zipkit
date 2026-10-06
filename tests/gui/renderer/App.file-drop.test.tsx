@@ -50,6 +50,7 @@ describe("App file-drop receivers", () => {
       configurable: true,
       value: {
         onQueue: () => () => {},
+        onQueueSaved: () => () => {},
         getQueue,
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,

@@ -205,7 +205,16 @@ app.on(
         onJobStopTimeout: () =>
           log.warn("the cancelled job did not stop in time; quitting without it", { waitMs: QUIT_WAIT_MS }),
         onFlushed: () => log.info("app quitting"),
-        onFlushError: (err) => log.error("failed to flush the queue before quit", { error: errorInfo(err) }),
+        onFlushError: async (err) => {
+          log.error("failed to flush the queue before quit", { error: errorInfo(err) });
+          const { t } = mainTranslator();
+          await showAppMessageDialog({
+            owner: getMainWindow() ?? undefined,
+            title: t("quit.queueNotSavedTitle"),
+            message: t("quit.queueNotSaved"),
+            button: "ok",
+          });
+        },
         closeBackups: () => closeBackupStore(),
         closeLog: () => log.close(),
         exit: (code) => app.exit(code),

@@ -54,6 +54,7 @@ describe("a job that finishes mid-edit", () => {
           pushQueue = listener;
           return () => {};
         },
+        onQueueSaved: () => () => {},
         getQueue: async () => [readyJob],
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,

@@ -153,6 +153,8 @@ export interface ZipKitGuiApi {
   getQueue(): Promise<Job[]>;
   /** Subscribe to the job list; returns an unsubscribe function. */
   onQueue(callback: (jobs: Job[]) => void): () => void;
+  /** Follow whether the latest queue save succeeded; returns an unsubscribe function. */
+  onQueueSaved(callback: (saved: boolean) => void): () => void;
 
   /** Verify a job's archive on demand: CRC always, plus manifest + SHA when set.
    *  The job id tags the verify's progress events to that job's Progress stream. */

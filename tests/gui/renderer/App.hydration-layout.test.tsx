@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
@@ -45,6 +45,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     getPlan: vi.fn(async () => null),
     getQueue: vi.fn(async () => []),
     onQueue: vi.fn(() => () => {}),
+    onQueueSaved: vi.fn(() => () => {}),
     verify: vi.fn(),
     reveal: vi.fn(),
     getJobEvents: vi.fn(async () => []),
@@ -79,6 +80,27 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe("queue save result", () => {
+  it("shows a failed queue save until a later save succeeds", async () => {
+    let publish: ((saved: boolean) => void) | undefined;
+    const bridge = api({
+      onQueueSaved: vi.fn((callback) => {
+        publish = callback;
+        return () => {};
+      }),
+    });
+
+    renderApp(bridge);
+    await screen.findByRole("heading", { name: "Jobs" });
+
+    act(() => publish?.(false));
+    expect(await screen.findByText(/The queue wasn’t saved/)).toBeTruthy();
+
+    act(() => publish?.(true));
+    await waitFor(() => expect(screen.queryByText(/The queue wasn’t saved/)).toBeNull());
+  });
 });
 
 describe("required app hydration", () => {

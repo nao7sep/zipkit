@@ -63,6 +63,8 @@
   "quit.detail": "Si sales ahora, se cancelará ese trabajo. El archivo comprimido no se terminará y se conservarán los originales que aún no se hayan enviado a la papelera.",
   "quit.cancelAndQuit": "Cancelar el trabajo y salir",
   "quit.keepWorking": "Seguir trabajando",
+  "quit.queueNotSavedTitle": "No se guardó la cola",
+  "quit.queueNotSaved": "ZipKit no pudo guardar la cola antes de salir, así que los trabajos agregados o cambiados desde que se guardó por última vez no estarán la próxima vez que se abra.",
   "picker.inputsTitle": "Elige las carpetas o archivos que quieres comprimir",
   "picker.outputTitle": "Elige la carpeta de salida",
 
@@ -115,6 +117,8 @@
   "header.records": "Registros",
   "layout.notSaved": "No se guardó la distribución de los paneles. Tu distribución actual sigue en uso; cambia el tamaño de un panel para volver a intentar guardarla.",
   "layout.close": "Cerrar el resultado del guardado de la distribución",
+  "queue.notSaved": "No se guardó la cola, así que los trabajos agregados o cambiados desde que se guardó por última vez podrían faltar la próxima vez que se abra ZipKit. ZipKit lo vuelve a intentar con el siguiente cambio y al salir.",
+  "queue.notSavedClose": "Cerrar el resultado del guardado de la cola",
   "records.openFailed": "No se pudo abrir la ventana de registros.",
   "records.openFailedClose": "Cerrar el resultado de la apertura de la ventana de registros",
   "records.title": "Registros",

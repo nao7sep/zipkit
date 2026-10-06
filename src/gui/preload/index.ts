@@ -58,6 +58,13 @@ const api = {
       ipcRenderer.removeListener("zipkit:queue", handler);
     };
   },
+  onQueueSaved: (callback: (saved: boolean) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, saved: boolean): void => callback(saved);
+    ipcRenderer.on("zipkit:queueSaved", handler);
+    return () => {
+      ipcRenderer.removeListener("zipkit:queueSaved", handler);
+    };
+  },
   verify: (jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> =>
     ipcRenderer.invoke("zipkit:verify", jobId, archive, checkMetadata),
   reveal: (path: string): Promise<void> => ipcRenderer.invoke("zipkit:reveal", path),

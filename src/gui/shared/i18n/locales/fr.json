@@ -63,6 +63,8 @@
   "quit.detail": "Quitter maintenant annule cette tâche. L’archive ne sera pas terminée, et les originaux pas encore placés dans la corbeille sont conservés.",
   "quit.cancelAndQuit": "Annuler la tâche et quitter",
   "quit.keepWorking": "Continuer",
+  "quit.queueNotSavedTitle": "La file d’attente n’a pas été enregistrée",
+  "quit.queueNotSaved": "ZipKit n’a pas pu enregistrer la file d’attente avant de quitter\u00a0: les tâches ajoutées ou modifiées depuis son dernier enregistrement n’y seront pas à la prochaine ouverture.",
   "picker.inputsTitle": "Choisissez les dossiers ou fichiers à archiver",
   "picker.outputTitle": "Choisissez le dossier de sortie",
 
@@ -115,6 +117,8 @@
   "header.records": "Journal",
   "layout.notSaved": "La disposition des volets n’a pas été enregistrée. Votre disposition actuelle reste utilisée\u00a0; redimensionnez un volet pour réessayer de l’enregistrer.",
   "layout.close": "Fermer le résultat de l’enregistrement de la disposition",
+  "queue.notSaved": "La file d’attente n’a pas été enregistrée\u00a0: les tâches ajoutées ou modifiées depuis son dernier enregistrement risquent de manquer à la prochaine ouverture de ZipKit. ZipKit réessaie à la prochaine modification et quand vous quittez.",
+  "queue.notSavedClose": "Fermer le résultat de l’enregistrement de la file d’attente",
   "records.openFailed": "La fenêtre du journal n’a pas pu être ouverte.",
   "records.openFailedClose": "Fermer le résultat de l’ouverture du journal",
   "records.title": "Journal",

@@ -63,6 +63,8 @@
   "quit.detail": "Quitting now cancels that job. The archive will not be completed, and originals not yet sent to Trash are kept.",
   "quit.cancelAndQuit": "Cancel the Job and Quit",
   "quit.keepWorking": "Keep Working",
+  "quit.queueNotSavedTitle": "The queue wasn’t saved",
+  "quit.queueNotSaved": "ZipKit couldn’t save the queue before quitting, so jobs added or changed since its last save won’t be there the next time it opens.",
   "picker.inputsTitle": "Choose directories or files to archive",
   "picker.outputTitle": "Choose the output directory",
 
@@ -115,6 +117,8 @@
   "header.records": "Records",
   "layout.notSaved": "The pane layout wasn’t saved. Your current layout is still in use; resize a pane to try saving it again.",
   "layout.close": "Close pane layout save result",
+  "queue.notSaved": "The queue wasn’t saved, so jobs added or changed since its last save may be missing the next time ZipKit opens. ZipKit tries again with the next change and when you quit.",
+  "queue.notSavedClose": "Close queue save result",
   "records.openFailed": "The records window could not be opened.",
   "records.openFailedClose": "Close records window result",
   "records.title": "Records",
