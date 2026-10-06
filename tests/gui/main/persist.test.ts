@@ -13,6 +13,7 @@ import {
   loadQueue,
   parseQueue,
   saveQueue,
+  saveQueueWithin,
   serializeQueue,
   toResumable,
 } from "../../../src/gui/main/persist.js";
@@ -97,6 +98,24 @@ describe("queue file location and persistence", () => {
     expect(managedEntries(root)).toEqual(["queue.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ formatVersion: 1 });
     expect((await loadQueue()).value).toEqual(jobs);
+  });
+
+  it("saves the queue before returning for the end of a session, through the same atomic write", async () => {
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+
+    saveQueueWithin(jobs, 10_000);
+
+    expect(managedEntries(root)).toEqual(["queue.json"]);
+    expect((await loadQueue()).value).toEqual(jobs);
+  });
+
+  it("throws when the session-end save fails", () => {
+    // A file where the root's directory should be: the write cannot create its temp beside queue.json.
+    const blocked = path.join(root, "blocked");
+    writeFileSync(blocked, "", "utf8");
+    process.env.ZIPKIT_DATA_DIR = blocked;
+
+    expect(() => saveQueueWithin([], 10_000)).toThrow(/blocked/);
   });
 
   it("loads an empty queue when no file exists under the root", async () => {

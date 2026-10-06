@@ -17,7 +17,7 @@ import { buildRecoveryDialogs, startupHaltMessage } from "./recoveryDialogs.js";
 import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
-import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue } from "./queue.js";
+import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd } from "./queue.js";
 import { loadSettings, settingsFile } from "./settings.js";
 import { applyLanguagePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
@@ -29,7 +29,7 @@ import { loadQueue } from "./persist.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { askQueueNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
-import { createQuitControl, stopFlushAndExit, type QuitStep } from "./quit.js";
+import { createQuitControl, endSessionNow, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
@@ -64,6 +64,17 @@ function createWindow(): BrowserWindow {
     if (process.platform === "darwin" || !flushQueueOnClose) return;
     event.preventDefault();
     app.quit();
+  });
+  // Windows ends the session without a quit event (unsaved-edits-conventions,
+  // Quitting); macOS and Linux announce it through powerMonitor below.
+  win.on("session-end", () => {
+    log.info("session ending", { runningJob: hasRunningJob() });
+    endSessionNow({
+      saveQueueNow: saveQueueBeforeSessionEnd,
+      onSaved: () => log.info("app quitting"),
+      onStepFailed: logQuitStepFailure,
+      exit: (code) => app.exit(code),
+    });
   });
   win.on("closed", () => {
     clearMainWindow(win);

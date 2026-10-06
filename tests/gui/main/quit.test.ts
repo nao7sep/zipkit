@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createQuitControl,
+  endSessionNow,
   QUIT_BOUNDS_MS,
+  SESSION_END_SAVE_MS,
   stopFlushAndExit,
   type QuitSession,
   type QuitSteps,
+  type SessionEndSteps,
 } from "../../../src/gui/main/quit.js";
 
 function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
@@ -198,6 +201,44 @@ describe("stopFlushAndExit", () => {
 
   it("keeps the whole quit under the five seconds an ending session allows", () => {
     expect(totalBound).toBeLessThan(5_000);
+    expect(SESSION_END_SAVE_MS).toBeLessThan(5_000);
+  });
+});
+
+describe("endSessionNow (the end of a Windows session)", () => {
+  function sessionEndSteps(overrides: Partial<SessionEndSteps> = {}): SessionEndSteps {
+    return {
+      saveQueueNow: vi.fn(),
+      onSaved: vi.fn(),
+      onStepFailed: vi.fn(),
+      exit: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it("saves the queue within its bound and exits before returning", () => {
+    const order: string[] = [];
+    const s = sessionEndSteps({
+      saveQueueNow: vi.fn(() => { order.push("save"); }),
+      exit: vi.fn(() => { order.push("exit"); }),
+    });
+
+    endSessionNow(s);
+
+    expect(s.saveQueueNow).toHaveBeenCalledWith(SESSION_END_SAVE_MS);
+    expect(s.onSaved).toHaveBeenCalledOnce();
+    expect(order).toEqual(["save", "exit"]);
+  });
+
+  it("logs a failed save, asks nothing, and still exits before returning", () => {
+    const error = new Error("disk full");
+    const s = sessionEndSteps({ saveQueueNow: vi.fn(() => { throw error; }) });
+
+    endSessionNow(s);
+
+    expect(s.onStepFailed).toHaveBeenCalledWith("queue", error);
+    expect(s.onSaved).not.toHaveBeenCalled();
+    expect(s.exit).toHaveBeenCalledWith(0);
   });
 });
 

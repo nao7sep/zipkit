@@ -22,6 +22,9 @@
     "verbatimModuleSyntax": false,
     "skipLibCheck": true,
     "noEmit": true,
+    // A worker thread's source names its imports with their .ts extension, so
+    // the tests can run it with Node's own type stripping (managed-write-worker.ts).
+    "allowImportingTsExtensions": true,
     "composite": true,
     "outDir": "./out/.tsbuild",
     "lib": ["ES2022"],

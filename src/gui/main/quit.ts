@@ -28,6 +28,9 @@ export const QUIT_BOUNDS_MS = {
   log: 500,
 } as const;
 
+/** How long the end of a Windows session waits for the queue save. */
+export const SESSION_END_SAVE_MS = 2_000;
+
 /** The steps whose failure quit logs and goes on from. */
 export type QuitStep = "job" | "queue" | "layout" | "backups";
 
@@ -117,6 +120,31 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
       await failureWithin(steps.closeLog, QUIT_BOUNDS_MS.log, "the log");
       steps.exit(0);
     }
+  }
+}
+
+export interface SessionEndSteps {
+  /** Save the queue before returning, within the bound; throws when it could not. */
+  saveQueueNow(boundMs: number): void;
+  onSaved(): void;
+  onStepFailed(step: QuitStep, error: unknown): void;
+  exit(code: number): void;
+}
+
+/**
+ * The end of a Windows session (logoff, restart, shutdown). Electron emits no
+ * `before-quit` then, and the OS ends the process as soon as the main window's
+ * `session-end` handler returns, so this saves the queue synchronously within
+ * its bound, logs a failure, and exits before returning. It never asks.
+ */
+export function endSessionNow(steps: SessionEndSteps): void {
+  try {
+    steps.saveQueueNow(SESSION_END_SAVE_MS);
+    steps.onSaved();
+  } catch (error) {
+    steps.onStepFailed("queue", error);
+  } finally {
+    steps.exit(0);
   }
 }
 

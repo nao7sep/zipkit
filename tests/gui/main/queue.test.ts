@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   saveQueue: vi.fn(),
+  saveQueueWithin: vi.fn(),
+  snapshot: vi.fn((): unknown[] => []),
   toResumable: vi.fn((jobs: unknown) => jobs),
   restore: vi.fn(),
   deps: undefined as
@@ -22,6 +24,7 @@ vi.mock("electron", () => ({
 vi.mock("nanoid", () => ({ nanoid: () => "test-id" }));
 vi.mock("../../../src/gui/main/persist.js", () => ({
   saveQueue: mocks.saveQueue,
+  saveQueueWithin: mocks.saveQueueWithin,
   toResumable: mocks.toResumable,
 }));
 vi.mock("../../../src/gui/main/runtime.js", () => ({
@@ -39,7 +42,7 @@ vi.mock("../../../src/gui/main/queue-engine.js", () => ({
     ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[] }>;
   }) => {
     mocks.deps = deps;
-    return { restore: mocks.restore };
+    return { restore: mocks.restore, snapshot: mocks.snapshot };
   },
 }));
 vi.mock("../../../src/gui/shared/spec.js", () => ({ buildSpec: vi.fn() }));
@@ -47,7 +50,7 @@ vi.mock("../../../src/gui/main/output.js", () => ({ resolveOutputPath: vi.fn() }
 vi.mock("../../../src/gui/main/inputs.js", () => ({ classifyPaths: vi.fn() }));
 
 import { shell } from "electron";
-import { flushQueue, restoreQueue } from "../../../src/gui/main/queue.js";
+import { flushQueue, restoreQueue, saveQueueBeforeSessionEnd } from "../../../src/gui/main/queue.js";
 import type { SavedJob } from "../../../src/gui/shared/queue.js";
 
 const trashItem = vi.mocked(shell.trashItem);
@@ -127,6 +130,26 @@ describe("restoreQueue", () => {
     releaseSecond();
     await Promise.all([firstFlush, quitFlush]);
     expect(quitFinished).toBe(true);
+  });
+});
+
+describe("saveQueueBeforeSessionEnd", () => {
+  it("saves the jobs as they stand within the bound, in place of the pending debounced save", () => {
+    vi.useFakeTimers();
+    try {
+      const jobs = [{ id: "running" }, { id: "queued" }];
+      mocks.snapshot.mockReturnValueOnce(jobs);
+      mocks.saveQueue.mockReset();
+      mocks.deps!.emit(jobs);
+
+      saveQueueBeforeSessionEnd(2_000);
+
+      expect(mocks.saveQueueWithin).toHaveBeenCalledWith(jobs, 2_000);
+      vi.advanceTimersByTime(1_000);
+      expect(mocks.saveQueue).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

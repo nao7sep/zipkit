@@ -1,11 +1,11 @@
 /** Shared safe loading and atomic writing for the GUI's managed JSON stores. */
 
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, rename } from "node:fs/promises";
 import path from "node:path";
-import { nanoid } from "nanoid";
 import { defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { record } from "./backupStore.js";
 import { NewerFormatError } from "./formatVersions.js";
+import { writeManagedText } from "./managed-write.js";
 import { nullLog, type AppLog } from "./log.js";
 
 export class InvalidManagedJsonError extends Error {
@@ -113,11 +113,12 @@ export async function loadManagedJson<T>(
  * (layout.ts), and queue.json (persist.ts) — one shape, and one home for the data-backup hook. A
  * managed-text write that bypasses this helper is a silent backup gap; there is deliberately no
  * second atomic-write path in the app. Volatile state that is state and nothing else (layout.json)
- * passes `{ record: false }` to skip the backup record while keeping the same atomic write.
+ * passes `{ record: false }` to skip the backup record while keeping the same atomic write. The one
+ * save without a record is the queue's at the end of a Windows session (persist.ts), which the
+ * session leaves no time to record.
  *
- * Writes `text` to a same-directory temp named `<stem>-<nanoid>.tmp`, then atomically renames it
- * over `file` (storage-path conventions), carrying an existing file's permission mode to the temp
- * first so the replace keeps it (content-lifecycle conventions). Throws on failure; the caller logs it.
+ * Writes `text` through {@link writeManagedText} (./managed-write), the one atomic write. Throws on
+ * failure; the caller logs it.
  *
  * The data-backup record fires strictly AFTER the rename lands, from the same `bytes` buffer just
  * written — never before the rename (a backup of a save that never happened) and never a re-read
@@ -126,22 +127,6 @@ export async function loadManagedJson<T>(
  * (data-backup conventions).
  */
 export async function writeManagedJson(file: string, text: string, options: { record?: boolean } = {}): Promise<void> {
-  const dir = path.dirname(file);
-  await mkdir(dir, { recursive: true });
   const bytes = Buffer.from(text, "utf8");
-  // Content identical to what is on disk is not written again (content-lifecycle conventions).
-  const current = await readFile(file).catch(() => null);
-  if (current !== null && current.equals(bytes)) return;
-  const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
-  try {
-    await writeFile(tmp, bytes);
-    const existing = await stat(file).catch(() => null);
-    if (existing) await chmod(tmp, existing.mode & 0o7777).catch(() => {});
-    await rename(tmp, file);
-  } catch (err) {
-    // A failed write removes its own unpublished temp; the write's error is the one reported.
-    await rm(tmp, { force: true }).catch(() => {});
-    throw err;
-  }
-  if (options.record !== false) void record(file, bytes);
+  if ((await writeManagedText(file, bytes)) && options.record !== false) void record(file, bytes);
 }

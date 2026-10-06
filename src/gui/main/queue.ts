@@ -13,7 +13,7 @@ import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanData } from "../shared/api.js";
 import { log, sendQueue, sendQueueSaved, startProgressRun, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
-import { saveQueue, toResumable } from "./persist.js";
+import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { resolveOutputPath } from "./output.js";
 import { classifyPaths } from "./inputs.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
@@ -152,6 +152,15 @@ export async function flushQueue(): Promise<void> {
     // emission and extended saveChain already, so join the changed chain as well.
     if (!pendingJobs && saveChain === joined) return;
   }
+}
+
+/** Save the queue as it stands before returning, within `boundMs`, for the end of a Windows
+ *  session, where nothing asynchronous runs after the handler returns. The debounced save it
+ *  replaces would have written these same jobs. Throws when the save failed or did not finish. */
+export function saveQueueBeforeSessionEnd(boundMs: number): void {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  saveQueueWithin(toResumable(engine.snapshot()), boundMs);
 }
 
 /** Re-plan the jobs startup loaded from the queue file, each one fresh. Startup

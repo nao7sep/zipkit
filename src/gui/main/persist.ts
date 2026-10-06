@@ -14,6 +14,7 @@ import type { Job, SavedJob } from "../shared/queue.js";
 import { nullLog, type AppLog } from "./log.js";
 import { FORMAT_VERSIONS } from "./formatVersions.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { writeManagedTextWithin } from "./managed-write.js";
 import { parseGuiOptions } from "./settings.js";
 
 /** The queue file under the resolved storage root. Computed lazily (not frozen
@@ -81,4 +82,12 @@ export async function loadQueue(logger: AppLog = nullLog): Promise<ManagedJsonLo
  *  save (data-backup conventions). Throws on failure; the caller logs it through the session log. */
 export async function saveQueue(jobs: SavedJob[]): Promise<void> {
   await writeManagedJson(queueFile(), serializeQueue(jobs));
+}
+
+/** Persist resumable jobs before returning, within `boundMs`, for the end of a Windows session,
+ *  which follows as soon as its handler returns. The same atomic write runs on its own thread
+ *  (managed-write.ts); the data-backup record is skipped, because the session ends before the
+ *  backups thread could take it. Throws when the write failed or did not finish in time. */
+export function saveQueueWithin(jobs: SavedJob[], boundMs: number): void {
+  writeManagedTextWithin(queueFile(), serializeQueue(jobs), boundMs);
 }
