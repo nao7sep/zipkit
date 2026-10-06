@@ -174,7 +174,7 @@ app.whenReady().then(async () => {
     await showAppMessageDialog({
       owner: initialWindow,
       title: t(recoveryDialog.title),
-      message: t(recoveryDialog.message),
+      message: t(recoveryDialog.message.key, recoveryDialog.message.values),
       button: "ok",
     });
   }

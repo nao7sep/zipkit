@@ -4,11 +4,12 @@ import { NewerFormatError } from "./formatVersions.js";
 
 export interface RecoveryDialog {
   title: MessageKey;
-  message: MessageKey;
+  /** Names where the unreadable file was preserved and what ZipKit uses instead. */
+  message: Message;
 }
 
-/** Where startup's material stores were quarantined, when they were (null = the
- *  store loaded fine). Layout is disposable view state and stays log-only. */
+/** Where material stores were quarantined, when they were (null = the store
+ *  loaded fine). Layout is disposable view state and stays log-only. */
 export interface StartupQuarantines {
   settingsQuarantinedTo: string | null;
   queueQuarantinedTo: string | null;
@@ -19,11 +20,17 @@ export function buildRecoveryDialogs(quarantines: StartupQuarantines): RecoveryD
   const dialogs: RecoveryDialog[] = [];
 
   if (quarantines.settingsQuarantinedTo !== null) {
-    dialogs.push({ title: "recovery.settingsTitle", message: "recovery.settingsMessage" });
+    dialogs.push({
+      title: "recovery.settingsTitle",
+      message: message("recovery.settingsMessage", { file: quarantines.settingsQuarantinedTo }),
+    });
   }
 
   if (quarantines.queueQuarantinedTo !== null) {
-    dialogs.push({ title: "recovery.queueTitle", message: "recovery.queueMessage" });
+    dialogs.push({
+      title: "recovery.queueTitle",
+      message: message("recovery.queueMessage", { file: quarantines.queueQuarantinedTo }),
+    });
   }
 
   return dialogs;

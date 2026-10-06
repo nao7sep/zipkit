@@ -9,10 +9,13 @@ const mocks = vi.hoisted(() => ({
   logWarn: vi.fn(),
   records: vi.fn(),
   openRecordsWindow: vi.fn(),
+  loadSettings: vi.fn(),
+  showAppMessageDialog: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
   app: { getName: vi.fn(() => "ZipKit"), getVersion: vi.fn(() => "0.1.0") },
+  BrowserWindow: { fromWebContents: vi.fn(() => null) },
   dialog: { showOpenDialog: vi.fn() },
   ipcMain: {
     on: vi.fn(),
@@ -37,9 +40,17 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
   zip: {},
 }));
 vi.mock("../../../src/gui/main/settings.js", () => ({
-  loadSettings: vi.fn(),
+  loadSettings: mocks.loadSettings,
   saveSettings: vi.fn(),
 }));
+vi.mock("../../../src/gui/main/startup-dialog.js", () => ({ showAppMessageDialog: mocks.showAppMessageDialog }));
+vi.mock("../../../src/gui/main/i18n.js", async (importActual) => {
+  const { createTranslator } = await import("../../../src/gui/shared/i18n/translate.js");
+  return {
+    ...(await importActual<typeof import("../../../src/gui/main/i18n.js")>()),
+    mainTranslator: () => createTranslator("en"),
+  };
+});
 vi.mock("../../../src/gui/main/layout.js", () => ({
   loadLayout: mocks.loadLayout,
   saveLayout: mocks.saveLayout,
@@ -69,6 +80,35 @@ describe("pane-layout IPC", () => {
       "failed to persist layout",
       expect.objectContaining({ error: expect.anything() }),
     );
+  });
+});
+
+describe("settings IPC", () => {
+  beforeEach(() => {
+    mocks.handlers.clear();
+    mocks.loadSettings.mockReset();
+    mocks.showAppMessageDialog.mockReset().mockResolvedValue(undefined);
+    registerIpc();
+  });
+
+  it("reports a settings file quarantined mid-session by its preserved path", async () => {
+    const value = { defaults: {}, uiFontFamily: "", theme: "system", language: "system" };
+    mocks.loadSettings.mockResolvedValue({ value, quarantinedTo: "/data/config-20261006-000000-000-utc.invalid", missing: false });
+
+    await expect(mocks.handlers.get("zipkit:getSettings")!({ sender: {} })).resolves.toBe(value);
+
+    expect(mocks.showAppMessageDialog).toHaveBeenCalledOnce();
+    expect(mocks.showAppMessageDialog.mock.calls[0]![0]).toMatchObject({
+      title: "Settings were reset",
+      message: expect.stringContaining("preserved as /data/config-20261006-000000-000-utc.invalid"),
+      button: "ok",
+    });
+  });
+
+  it("reports nothing when the settings loaded as they were", async () => {
+    mocks.loadSettings.mockResolvedValue({ value: {}, quarantinedTo: null, missing: false });
+    await mocks.handlers.get("zipkit:getSettings")!({ sender: {} });
+    expect(mocks.showAppMessageDialog).not.toHaveBeenCalled();
   });
 });
 

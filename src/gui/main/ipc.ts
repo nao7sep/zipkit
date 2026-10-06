@@ -4,7 +4,7 @@
  * plan/write/verify/trash live in queue.ts.
  */
 
-import { dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import type { AppInfo, JobEvent, VerifyResult } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
 import { clampLayout, type PaneLayout } from "../shared/layout.js";
@@ -26,15 +26,30 @@ import { applyLanguagePreference, languageEnvironment, mainTranslator } from "./
 import { loadLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
+import { buildRecoveryDialogs } from "./recoveryDialogs.js";
+import { showAppMessageDialog } from "./startup-dialog.js";
 
 export function registerIpc(): void {
   ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {
     log.error("renderer operation failed", { context, error });
   });
 
-  // A mid-session quarantine here is already warned to the session log by the
-  // loader; the startup report in bootstrap covers the material case.
-  ipcMain.handle("zipkit:getSettings", async (): Promise<GuiSettings> => (await loadSettings(log)).value);
+  // A settings file that became unreadable mid-session (the Records window reads
+  // it) is quarantined by the load; it is reported with the startup recovery
+  // dialog, without holding the reply.
+  ipcMain.handle("zipkit:getSettings", async (event): Promise<GuiSettings> => {
+    const load = await loadSettings(log);
+    for (const recovery of buildRecoveryDialogs({ settingsQuarantinedTo: load.quarantinedTo, queueQuarantinedTo: null })) {
+      const { t } = mainTranslator();
+      void showAppMessageDialog({
+        owner: BrowserWindow.fromWebContents(event.sender) ?? undefined,
+        title: t(recovery.title),
+        message: t(recovery.message.key, recovery.message.values),
+        button: "ok",
+      }).catch((error) => log.error("settings recovery dialog failed", { error: errorInfo(error) }));
+    }
+    return load.value;
+  });
 
   ipcMain.handle("zipkit:setSettings", async (_event, draft: GuiSettings): Promise<GuiSettings> => {
     let settings: GuiSettings;

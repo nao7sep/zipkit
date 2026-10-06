@@ -14,11 +14,10 @@ describe("buildRecoveryDialogs", () => {
 
     expect(dialogs).toHaveLength(1);
     expect(t(dialogs[0]!.title)).toBe("Saved queue was reset");
-    const message = t(dialogs[0]!.message);
+    const message = t(dialogs[0]!.message.key, dialogs[0]!.message.values);
     expect(message).toContain("saved pending jobs");
+    expect(message).toContain("preserved as /tmp/.zipkit/queue-20260817-000000-000-utc.invalid");
     expect(message).toContain("started with an empty queue");
-    expect(message).toContain("Check the ZipKit log");
-    expect(message).not.toContain("/tmp/.zipkit");
     expect(message).not.toContain("settings file");
   });
 
@@ -32,10 +31,10 @@ describe("buildRecoveryDialogs", () => {
       "Settings were reset",
       "Saved queue was reset",
     ]);
-    for (const dialog of dialogs) {
-      expect(t(dialog.message)).not.toContain("/tmp/.zipkit");
-      expect(t(dialog.message)).toContain("Check the ZipKit log");
-    }
+    const [settings, queue] = dialogs.map((dialog) => t(dialog.message.key, dialog.message.values));
+    expect(settings).toContain("preserved as /tmp/.zipkit/config.invalid");
+    expect(settings).toContain("using default settings");
+    expect(queue).toContain("preserved as /tmp/.zipkit/queue.invalid");
   });
 
   it("builds nothing when both stores loaded clean", () => {
