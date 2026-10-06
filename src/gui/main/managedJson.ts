@@ -1,6 +1,6 @@
 /** Shared safe loading and atomic writing for the GUI's managed JSON stores. */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { defaultSessionTimestamp } from "../../sdk/log/session.js";
@@ -116,7 +116,8 @@ export async function loadManagedJson<T>(
  * passes `{ record: false }` to skip the backup record while keeping the same atomic write.
  *
  * Writes `text` to a same-directory temp named `<stem>-<nanoid>.tmp`, then atomically renames it
- * over `file` (storage-path conventions). Throws on failure; the caller logs it.
+ * over `file` (storage-path conventions), carrying an existing file's permission mode to the temp
+ * first so the replace keeps it (content-lifecycle conventions). Throws on failure; the caller logs it.
  *
  * The data-backup record fires strictly AFTER the rename lands, from the same `bytes` buffer just
  * written — never before the rename (a backup of a save that never happened) and never a re-read
@@ -130,6 +131,8 @@ export async function writeManagedJson(file: string, text: string, options: { re
   const bytes = Buffer.from(text, "utf8");
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   await writeFile(tmp, bytes);
+  const existing = await stat(file).catch(() => null);
+  if (existing) await chmod(tmp, existing.mode & 0o7777).catch(() => {});
   await rename(tmp, file);
   if (options.record !== false) void record(file, bytes);
 }

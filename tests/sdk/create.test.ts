@@ -5,7 +5,7 @@
  * overwrite gate, deterministic output, and content round-trip.
  */
 
-import { link, mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -76,6 +76,20 @@ describe("output resolution and round-trip", () => {
     expect(names).toContain("archive.zip.20240604");
     expect(names).toContain("archive.zip.notes");
   });
+});
+
+// POSIX permissions; Windows keeps only a read-only flag, which a replace cannot write through.
+it.skipIf(process.platform === "win32")("keeps an existing archive's permission mode when overwriting it", async () => {
+  const proj = await makeTree();
+  const output = path.join(dir, "out.zip");
+  await new ZipKit().create({ inputs: [proj], output });
+  await chmod(output, 0o600);
+  await writeFile(path.join(proj, "a.txt"), "changed");
+
+  await new ZipKit().create({ inputs: [proj], output, overwrite: true });
+
+  expect(readZip(await readFile(output)).entries.find((e) => e.name === "a.txt")?.content.toString()).toBe("changed");
+  expect((await stat(output)).mode & 0o777).toBe(0o600);
 });
 
 describe("metadata", () => {

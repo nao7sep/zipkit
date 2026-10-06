@@ -551,6 +551,19 @@ describe("path safety and exclusion", () => {
   });
 });
 
+// POSIX permissions; Windows keeps only a read-only flag, which a replace cannot write through.
+it.skipIf(process.platform === "win32")("keeps an existing file's permission mode when extraction overwrites it", async () => {
+  const archive = await writeArchive([fileEntry("a.txt", "new")]);
+  const dest = path.join(dir, "kept");
+  await mkdir(dest);
+  await writeFile(path.join(dest, "a.txt"), "old", { mode: 0o600 });
+
+  await new ZipKit().extract({ archive, dest, overwrite: true });
+
+  expect(await readFile(path.join(dest, "a.txt"), "utf8")).toBe("new");
+  expect((await stat(path.join(dest, "a.txt"))).mode & 0o777).toBe(0o600);
+});
+
 describe("symlinks and zip64", () => {
   it("restores a symlink entry when supported and always honors symlinks: skip", async () => {
     const link: EntryWithData = {

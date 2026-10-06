@@ -573,6 +573,7 @@ export class ZipWriter {
     // data-backup layer (data-backup conventions: binary output is never recorded), and the SDK has no
     // dependency on the GUI's backup store.
     if (this.#options.overwrite === true) {
+      await this.#volume.keepMode(this.#output, this.#tempPath);
       await this.#volume.publishRename(this.#tempPath, this.#output);
     } else {
       await publishNoOverwrite(this.#tempPath, this.#output, signal, volumePublishOperations(this.#volume));

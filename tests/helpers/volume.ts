@@ -77,6 +77,7 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
     unlink: (path) => gate("unlink", path, () => real.unlink(path)),
     rm: (path) => gate("rm", path, () => real.rm(path)),
     utimes: (path, atime, mtime) => gate("utimes", path, () => real.utimes(path, atime, mtime)),
+    chmod: (path, mode) => gate("chmod", path, () => real.chmod(path, mode)),
   };
   return {
     port,

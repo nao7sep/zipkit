@@ -16,11 +16,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadLayout } from "../../../src/gui/main/layout.js";
+import { writeManagedJson } from "../../../src/gui/main/managedJson.js";
 import { loadQueue } from "../../../src/gui/main/persist.js";
 import { loadSettings } from "../../../src/gui/main/settings.js";
 
@@ -128,5 +129,29 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     armedReadError.current = injected;
     await expect(loadSettings()).rejects.toBe(injected);
     expect(readFileSync(file, "utf8")).toContain('"formatVersion":1');
+  });
+});
+
+describe("writeManagedJson", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "zipkit-managed-"));
+    armedRenameError.current = null;
+    armedReadError.current = null;
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  // POSIX permissions; Windows keeps only a read-only flag, which a replace cannot write through.
+  it.skipIf(process.platform === "win32")("keeps an existing file's permission mode when a changed save replaces it", async () => {
+    const file = path.join(root, "queue.json");
+    await writeManagedJson(file, '{"a":1}', { record: false });
+    chmodSync(file, 0o600);
+
+    await writeManagedJson(file, '{"a":2}', { record: false });
+
+    expect(readFileSync(file, "utf8")).toBe('{"a":2}');
+    expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 });

@@ -37,7 +37,7 @@
 
 import type { BigIntStats } from "node:fs";
 import * as fsp from "node:fs/promises";
-import { StallError, toAbortError } from "../errors.js";
+import { AbortError, StallError, toAbortError } from "../errors.js";
 
 /** A directory entry as the walker needs it. */
 export interface DirEntry {
@@ -71,6 +71,7 @@ export interface FileSystemPort {
   unlink(path: string): Promise<void>;
   rm(path: string): Promise<void>;
   utimes(path: string, atime: Date, mtime: Date): Promise<void>;
+  chmod(path: string, mode: number): Promise<void>;
 }
 
 export const nodeFileSystem: FileSystemPort = {
@@ -98,6 +99,7 @@ export const nodeFileSystem: FileSystemPort = {
   unlink: (path) => fsp.unlink(path),
   rm: (path) => fsp.rm(path, { force: true }),
   utimes: (path, atime, mtime) => fsp.utimes(path, atime, mtime),
+  chmod: (path, mode) => fsp.chmod(path, mode),
 };
 
 type Mode = "work" | "commit" | "cleanup";
@@ -161,6 +163,21 @@ export class Volume {
 
   utimes(path: string, atime: Date, mtime: Date): Promise<void> {
     return this.#run("work", "utimes", path, () => this.#port.utimes(path, atime, mtime));
+  }
+
+  /**
+   * Give a finished temp the permission mode of the `target` it will replace,
+   * so the replace keeps it (content-lifecycle conventions). Best-effort: an
+   * absent target, or a volume that cannot hold the mode, changes nothing; a
+   * stall or a cancel still ends the run.
+   */
+  async keepMode(target: string, temp: string): Promise<void> {
+    try {
+      const mode = Number((await this.stat(target)).mode) & 0o7777;
+      await this.#run("work", "chmod", temp, () => this.#port.chmod(temp, mode));
+    } catch (err) {
+      if (err instanceof StallError || err instanceof AbortError) throw err;
+    }
   }
 
   /** Publish a finished temp file by renaming it over `to`. */

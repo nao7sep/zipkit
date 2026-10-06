@@ -327,6 +327,7 @@ async function commitFile(
   // reloads. It lives outside `~/.zipkit/` and is not captured by the data-backup layer (data-backup
   // conventions). The SDK is also a separate layer with no dependency on the GUI's backup store.
   if (options.overwrite) {
+    await volume.keepMode(target, tempPath);
     await volume.publishRename(tempPath, target);
   } else {
     try {
