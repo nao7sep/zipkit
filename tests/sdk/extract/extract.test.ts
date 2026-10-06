@@ -11,7 +11,11 @@ import os from "node:os";
 import path from "node:path";
 import { crc32 } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import pLimit from "p-limit";
 import { ZipKit } from "../../../src/sdk/index.js";
+import { extractArchive } from "../../../src/sdk/extract/extract.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/internal/volume.js";
+import { createLogger } from "../../../src/sdk/log/logger.js";
 import { MANIFEST_FORMAT_VERSION } from "../../../src/sdk/write/metadata.js";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
 import { fileSymlinksSupported } from "../../helpers/symlink.js";
@@ -544,6 +548,38 @@ describe("symlinks and zip64", () => {
     const restored = await restore;
     expect(restored.entries[0]?.written).toBe(true);
     expect(await readlink(path.join(dir, "keep", "link"))).toBe("target.txt");
+  });
+
+  it("keeps an existing file when an overwriting symlink cannot be created", async () => {
+    const archive = await writeArchive([symlinkEntry("link", "target.txt")]);
+    const dest = path.join(dir, "refused");
+    await mkdir(dest);
+    await writeFile(path.join(dest, "link"), "original");
+    const refusing: FileSystemPort = {
+      ...nodeFileSystem,
+      symlink: () => Promise.reject(Object.assign(new Error("symlink refused"), { code: "EPERM" })),
+    };
+
+    await expect(
+      extractArchive(
+        { archive, dest, overwrite: true },
+        { limit: pLimit(1), logger: createLogger(), chunkSize: 65536, volume: new Volume(refusing, 30_000) },
+      ),
+    ).rejects.toMatchObject({ code: "read.write-failed" });
+    expect(await readFile(path.join(dest, "link"), "utf8")).toBe("original");
+    expect(await readdir(dest)).toEqual(["link"]);
+  });
+
+  it.runIf(fileSymlinksSupported)("replaces an existing file with a restored symlink under overwrite", async () => {
+    const archive = await writeArchive([symlinkEntry("link", "target.txt")]);
+    const dest = path.join(dir, "replaced");
+    await mkdir(dest);
+    await writeFile(path.join(dest, "link"), "original");
+
+    const report = await new ZipKit().extract({ archive, dest, overwrite: true });
+    expect(report.entries[0]?.written).toBe(true);
+    expect(await readlink(path.join(dest, "link"))).toBe("target.txt");
+    expect(await readdir(dest)).toEqual(["link"]);
   });
 
   it("rejects an oversized symlink target before buffering its decompressed bytes", async () => {

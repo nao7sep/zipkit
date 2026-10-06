@@ -489,7 +489,7 @@ export async function extractArchive(
       const willWrite = target !== null && entry.type !== "dir";
       const tempPath =
         willWrite && entry.type !== "symlink"
-          ? path.join(dest as string, `.zk-${process.pid}-${randomTag()}.tmp`)
+          ? stagingPath(dest as string)
           : null;
       const captureLink = entry.type === "symlink";
 
@@ -714,7 +714,9 @@ export async function extractArchive(
 /** Restore a symlink. A link whose target resolves outside `dest`, or one whose
  *  parent chain crosses a symlink, is `unsafe` and never created — restoring it
  *  would leave an escape hatch a later entry (or the user) could write through.
- *  `exists` means an existing target was preserved. */
+ *  `exists` means an existing target was preserved. An overwrite creates the
+ *  link under a sibling temp name and renames it over the target, so a refused
+ *  link creation leaves the existing target intact. */
 async function commitSymlink(
   volume: Volume,
   dest: string,
@@ -726,17 +728,27 @@ async function commitSymlink(
   const resolved = path.resolve(path.dirname(target), linkTarget);
   if (escapesDest(dest, resolved)) return "unsafe";
   if (!(await ensureRealDirs(volume, dest, parentSegments))) return "unsafe";
-  if (options.overwrite) await volume.remove(target);
+  if (options.overwrite) {
+    const staged = stagingPath(path.dirname(target));
+    try {
+      await volume.symlink(linkTarget, staged);
+      await volume.publishRename(staged, target);
+    } catch (err) {
+      await volume.discard(staged);
+      throw err;
+    }
+    return "written";
+  }
   try {
     await volume.symlink(linkTarget, target);
   } catch (err) {
-    if (!options.overwrite && (err as NodeJS.ErrnoException).code === "EEXIST") return "exists";
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return "exists";
     throw err;
   }
   return "written"; // link times are not restored: no portable lutimes guarantee
 }
 
-/** A short, collision-resistant suffix for a per-entry temp file. */
-function randomTag(): string {
-  return nanoid(10);
+/** A unique per-entry temp path in `dir`. */
+function stagingPath(dir: string): string {
+  return path.join(dir, `.zk-${process.pid}-${nanoid(10)}.tmp`);
 }
