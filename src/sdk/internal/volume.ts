@@ -165,19 +165,30 @@ export class Volume {
     return this.#run("work", "utimes", path, () => this.#port.utimes(path, atime, mtime));
   }
 
+  chmod(path: string, mode: number): Promise<void> {
+    return this.#run("work", "chmod", path, () => this.#port.chmod(path, mode));
+  }
+
   /**
    * Give a finished temp the permission mode of the `target` it will replace,
-   * so the replace keeps it (content-lifecycle conventions). Best-effort: an
-   * absent target, or a volume that cannot hold the mode, changes nothing; a
-   * stall or a cancel still ends the run.
+   * so the replace keeps it (content-lifecycle conventions), and say whether a
+   * target was found. Best-effort: a volume that cannot hold the mode changes
+   * nothing; a stall or a cancel still ends the run.
    */
-  async keepMode(target: string, temp: string): Promise<void> {
+  async keepMode(target: string, temp: string): Promise<boolean> {
+    let mode: number;
     try {
-      const mode = Number((await this.stat(target)).mode) & 0o7777;
-      await this.#run("work", "chmod", temp, () => this.#port.chmod(temp, mode));
+      mode = Number((await this.stat(target)).mode) & 0o7777;
+    } catch (err) {
+      if (err instanceof StallError || err instanceof AbortError) throw err;
+      return false;
+    }
+    try {
+      await this.chmod(temp, mode);
     } catch (err) {
       if (err instanceof StallError || err instanceof AbortError) throw err;
     }
+    return true;
   }
 
   /** Publish a finished temp file by renaming it over `to`. */

@@ -564,6 +564,22 @@ it.skipIf(process.platform === "win32")("keeps an existing file's permission mod
   expect((await stat(path.join(dest, "a.txt"))).mode & 0o777).toBe(0o600);
 });
 
+// POSIX permissions; Windows keeps only a read-only flag.
+it.skipIf(process.platform === "win32")("restores each new file's permission mode from the archive", async () => {
+  const proj = path.join(dir, "proj");
+  await mkdir(proj);
+  await writeFile(path.join(proj, "tool.sh"), "#!/bin/sh\n", { mode: 0o755 });
+  await writeFile(path.join(proj, "secret.txt"), "private", { mode: 0o600 });
+  const archive = path.join(dir, "modes.zip");
+  await new ZipKit().create({ inputs: [proj], output: archive });
+
+  const dest = path.join(dir, "modes");
+  await new ZipKit().extract({ archive, dest });
+
+  expect((await stat(path.join(dest, "tool.sh"))).mode & 0o777).toBe(0o755);
+  expect((await stat(path.join(dest, "secret.txt"))).mode & 0o777).toBe(0o600);
+});
+
 describe("symlinks and zip64", () => {
   it("restores a symlink entry when supported and always honors symlinks: skip", async () => {
     const link: EntryWithData = {

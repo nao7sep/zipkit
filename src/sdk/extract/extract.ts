@@ -326,8 +326,10 @@ async function commitFile(
   // (arbitrary, often binary) the app writes for the user and then forgets, not managed state the app
   // reloads. It lives outside `~/.zipkit/` and is not captured by the data-backup layer (data-backup
   // conventions). The SDK is also a separate layer with no dependency on the GUI's backup store.
+  // A replaced file keeps its own permission mode; a new one takes the entry's.
+  let replaced = false;
   if (options.overwrite) {
-    await volume.keepMode(target, tempPath);
+    replaced = await volume.keepMode(target, tempPath);
     await volume.publishRename(tempPath, target);
   } else {
     try {
@@ -341,7 +343,22 @@ async function commitFile(
     }
   }
   if (options.restore) await restoreEntryTimes(volume, target, entry, options.timeZone);
+  if (!replaced) await restoreEntryMode(volume, target, entry);
   return "written";
+}
+
+/** Set a new file's permission bits from its entry's Unix attributes, when the
+ *  entry carries a regular-file mode; a FAT-host entry carries none. Never the
+ *  set-id or sticky bits, which an archive should not grant. Best-effort like
+ *  the times: a volume that cannot hold the mode keeps the file as written. */
+async function restoreEntryMode(volume: Volume, target: string, entry: ReadEntry): Promise<void> {
+  const unixMode = (entry.externalAttr >>> 16) & 0xffff;
+  if ((unixMode & 0xf000) !== 0x8000) return;
+  try {
+    await volume.chmod(target, unixMode & 0o777);
+  } catch (err) {
+    if (err instanceof ZipKitError) throw err;
+  }
 }
 
 /** Set a written entry's stored modification and access times on `target`.

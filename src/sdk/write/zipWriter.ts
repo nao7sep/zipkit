@@ -9,8 +9,11 @@
  * clean-byte contract is encoded here:
  *
  * - The general-purpose flag has bit 11 set (names are UTF-8).
- * - Version-made-by uses host byte 0 (FAT), so no Unix mode leaks; external
- *   attributes carry only the DOS attribute byte (`0x10` for a directory).
+ * - A regular file carries its Unix permission mode: host byte 3 (Unix) and the
+ *   mode in the external attributes' high half, so extraction restores it. A
+ *   directory, and an entry with no regular-file mode (the embedded manifest),
+ *   uses host byte 0 (FAT) with only the DOS attribute byte (`0x10` for a
+ *   directory).
  * - The extra-field length is zero except the Zip64 extra (`0x0001`) when
  *   genuinely needed, plus the Info-ZIP extended-timestamp extra (`0x5455`,
  *   UTC seconds) and the NTFS extra (`0x000a`, UTC 100-ns FILETIME), which are
@@ -23,8 +26,8 @@
  *   record.
  * - The path separator is always a forward slash.
  *
- * The single deliberate exception is a preserved symlink: it carries a Unix
- * host byte and link mode, because there is no other faithful representation.
+ * A preserved symlink likewise carries a Unix host byte and its link mode,
+ * because there is no other faithful representation.
  *
  * CRC-32 and the compressed size are not known until an entry has streamed, but
  * the uncompressed size (from `stat`) and a worst-case bound on the compressed
@@ -74,7 +77,7 @@ export interface WriteEntryInput {
   mtimeNs: bigint;
   atimeNs: bigint;
   birthtimeNs: bigint; // creation time; the NTFS/UT "creation" field
-  mode: number; // used only for a preserved symlink's external attributes
+  mode: number; // a regular file's or preserved symlink's Unix external attributes
 }
 
 export interface ZipWriterOptions {
@@ -221,6 +224,8 @@ function hostInfo(entry: WriteEntryInput): { madeBy: number; extAttr: number; ba
   }
   const baseVersion = entry.method === "deflate" ? 20 : 10;
   if (entry.type === "dir") return { madeBy: 20, extAttr: 0x10, baseVersion };
+  const mode = entry.mode & 0xffff;
+  if ((mode & 0xf000) === 0x8000) return { madeBy: (3 << 8) | 20, extAttr: (mode * 0x10000) >>> 0, baseVersion };
   return { madeBy: 20, extAttr: 0, baseVersion };
 }
 

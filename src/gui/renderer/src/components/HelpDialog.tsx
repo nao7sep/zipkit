@@ -40,14 +40,14 @@ const SECTIONS: ReadonlyArray<{ title: MessageKey; items: readonly MessageKey[] 
     title: "help.archiveTitle",
     items: [
       "help.archiveUtf8",
-      "help.archiveFat",
+      "help.archiveModes",
       "help.archiveZip64",
       "help.archiveStored",
       "help.archiveSafe",
       "help.archiveManifest",
     ],
   },
-  { title: "help.notCarriedTitle", items: ["help.notCarriedAttributes", "help.notCarriedModes"] },
+  { title: "help.notCarriedTitle", items: ["help.notCarriedAttributes"] },
 ];
 
 export function HelpDialog({ onClose }: { onClose: () => void }) {

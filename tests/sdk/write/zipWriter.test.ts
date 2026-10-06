@@ -1,11 +1,11 @@
 /**
  * Writer byte-contract tests. The writer streams to a file now, so each test
  * builds a real archive, reads it back, and asserts the cleanliness guarantees:
- * the UTF-8 flag is set, the host byte is 0 (FAT), the always-on timestamp
- * extras (UT + NTFS) are the only extras present, directories end in a slash, and
- * stored/deflated content round-trips with a matching CRC. The deliberate
- * exceptions — Zip64 structures and a preserved symlink's Unix host byte and
- * mode — are asserted where they apply. Because the writer computes the CRC and
+ * the UTF-8 flag is set, the host byte is 0 (FAT) unless an entry carries a Unix
+ * mode, the always-on timestamp extras (UT + NTFS) are the only extras present,
+ * directories end in a slash, and stored/deflated content round-trips with a
+ * matching CRC. Zip64 structures and the Unix host byte and mode of a regular
+ * file or preserved symlink are asserted where they apply. Because the writer computes the CRC and
  * compressed size from the streamed bytes (no precomputed data buffer), the
  * tests also implicitly cover the seek-back header patching.
  */
@@ -216,7 +216,14 @@ describe("timestamps", () => {
   });
 });
 
-describe("symlink exception", () => {
+describe("Unix modes", () => {
+  it("carries a Unix host byte and the permission mode for a regular file", async () => {
+    const file = { ...fileEntry("tool.sh", Buffer.from("#!/bin/sh\n"), false), mode: 0o100755 };
+    const { entries } = await build([file]);
+    expect(entries[0]?.hostByte).toBe(3); // Unix
+    expect((entries[0]!.externalAttr >>> 16)).toBe(0o100755);
+  });
+
   it("carries a Unix host byte and link mode for a preserved symlink", async () => {
     const link: EntryWithData = {
       name: "link",
