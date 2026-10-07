@@ -21,6 +21,8 @@
     "verbatimModuleSyntax": false,
     "skipLibCheck": true,
     "noEmit": true,
+    // Native source workers and their shared writer use Node-loadable .ts imports.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"]

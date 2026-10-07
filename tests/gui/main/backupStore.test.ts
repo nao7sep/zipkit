@@ -238,6 +238,8 @@ describe("format version", () => {
 
   it.each([
     ["a newer build wrote", (v: number) => `PRAGMA user_version = ${v + 1}`, /newer than this build/],
+    ["has a negative marker without tables", () => "PRAGMA user_version = -1", /invalid format version/],
+    ["has a negative marker with tables", () => "CREATE TABLE kept (x); PRAGMA user_version = -1", /invalid format version/],
     ["has tables but no format version", () => "CREATE TABLE kept (x)", /no format version/],
   ])("leaves a store that %s untouched, with one warn naming why, and records nothing", async (_case, setup, reason) => {
     const { FORMAT_VERSIONS } = await import("../../../src/gui/main/formatVersions.js");

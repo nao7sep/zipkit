@@ -254,6 +254,7 @@ class RecordsStore {
       // SQLite's unset value, on one with tables is a missing marker.
       const stored = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
       const isNew = (db.prepare("SELECT count(*) AS n FROM sqlite_master").get() as { n: number }).n === 0;
+      if (stored < 0) throw new Error(`${this.#database} has an invalid format version ${stored}`);
       if (!isNew && stored === 0) throw new Error(`${this.#database} has no format version`);
       if (stored > this.#formatVersion) {
         throw new Error(`${this.#database} has format version ${stored}, newer than this build's ${this.#formatVersion}`);

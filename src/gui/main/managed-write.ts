@@ -6,10 +6,12 @@
  * write in the app.
  */
 
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from "node:worker_threads";
 import { nanoid } from "nanoid";
+import { parseJsonObject, storedFormatVersion } from "./managed-json-envelope.ts";
+import { NewerFormatError } from "./formatVersions.ts";
 
 /**
  * Writes `bytes` to a same-directory temp named `<stem>-<nanoid>.tmp`, then atomically renames it
@@ -18,20 +20,53 @@ import { nanoid } from "nanoid";
  * disk is not written again (content-lifecycle conventions). Resolves `true` when the file was
  * written, `false` when it already held these bytes; throws on failure.
  */
-export async function writeManagedText(file: string, bytes: Buffer): Promise<boolean> {
+export async function writeManagedText(file: string, bytes: Buffer, signal?: AbortSignal): Promise<boolean> {
   const dir = path.dirname(file);
+  signal?.throwIfAborted();
   await mkdir(dir, { recursive: true });
-  const current = await readFile(file).catch(() => null);
+  signal?.throwIfAborted();
+  const supported = storedFormatVersion(parseJsonObject(bytes.toString("utf8"), file), file);
+  const admittedCurrent = async (): Promise<Buffer | null> => {
+    signal?.throwIfAborted();
+    const current = await readFile(file).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    signal?.throwIfAborted();
+    if (current !== null) {
+      const found = storedFormatVersion(parseJsonObject(current.toString("utf8"), file), file);
+      if (found > supported) throw new NewerFormatError(file, found, supported);
+    }
+    return current;
+  };
+  const current = await admittedCurrent();
   if (current !== null && current.equals(bytes)) return false;
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
+  let owned = false;
   try {
-    await writeFile(tmp, bytes);
-    const existing = await stat(file).catch(() => null);
-    if (existing) await chmod(tmp, existing.mode & 0o7777).catch(() => {});
+    const handle = await open(tmp, "wx", 0o600);
+    owned = true;
+    try {
+      signal?.throwIfAborted();
+      await handle.writeFile(bytes);
+    } catch (error) {
+      await handle.close().catch(() => {});
+      throw error;
+    }
+    await handle.close();
+    signal?.throwIfAborted();
+    const existing = await stat(file).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    signal?.throwIfAborted();
+    await chmod(tmp, existing ? existing.mode & 0o7777 : 0o666 & ~process.umask());
+    await admittedCurrent();
+    signal?.throwIfAborted();
     await rename(tmp, file);
   } catch (err) {
     // A failed write removes its own unpublished temp; the write's error is the one reported.
-    await rm(tmp, { force: true }).catch(() => {});
+    if (owned) await rm(tmp, { force: true }).catch(() => {});
     throw err;
   }
   return true;

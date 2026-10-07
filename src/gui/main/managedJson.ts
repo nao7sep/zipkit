@@ -4,41 +4,13 @@ import { readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { record } from "./backupStore.js";
+import { InvalidManagedJsonError, parseJsonObject, storedFormatVersion } from "./managed-json-envelope.js";
 import { NewerFormatError } from "./formatVersions.js";
+import { managedIO } from "./managed-io.js";
 import { writeManagedText } from "./managed-write.js";
 import { nullLog, type AppLog } from "./log.js";
 
-export class InvalidManagedJsonError extends Error {
-  constructor(store: string, detail: string) {
-    super(`${store} is invalid: ${detail}`);
-    this.name = "InvalidManagedJsonError";
-  }
-}
-
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/** Parse a managed JSON document's root object. */
-function parseJsonObject(text: string, store: string): Record<string, unknown> {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new InvalidManagedJsonError(store, "not valid JSON");
-  }
-  if (!isPlainObject(value)) throw new InvalidManagedJsonError(store, "root must be an object");
-  return value;
-}
-
-/** The format version a document's `formatVersion` records; a document without one is unreadable. */
-function storedFormatVersion(root: Record<string, unknown>, store: string): number {
-  const value = root.formatVersion;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw new InvalidManagedJsonError(store, "formatVersion must be a positive integer");
-  }
-  return value;
-}
+export { InvalidManagedJsonError, isPlainObject } from "./managed-json-envelope.js";
 
 /** A managed document's text: its format version first, then the store's own keys. */
 export function managedJsonText(formatVersion: number, body: Record<string, unknown>): string {
@@ -86,7 +58,7 @@ export async function loadManagedJson<T>(
 ): Promise<ManagedJsonLoad<T>> {
   let text: string;
   try {
-    text = await readFile(file, "utf8");
+    text = await managedIO(file, (signal) => readFile(file, { encoding: "utf8", signal }));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       return { value: onDefault(), quarantinedTo: null, missing: true };
@@ -128,5 +100,7 @@ export async function loadManagedJson<T>(
  */
 export async function writeManagedJson(file: string, text: string, options: { record?: boolean } = {}): Promise<void> {
   const bytes = Buffer.from(text, "utf8");
-  if ((await writeManagedText(file, bytes)) && options.record !== false) void record(file, bytes);
+  await managedIO(file, async (signal) => {
+    if (await writeManagedText(file, bytes, signal) && options.record !== false) void record(file, bytes);
+  });
 }
