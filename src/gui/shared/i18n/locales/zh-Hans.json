@@ -410,6 +410,7 @@
   "settings.resetDefaults": "恢复默认参数",
   "settings.saving": "正在保存…",
   "settings.saveFailed": "设置未能保存。你的更改仍然保留，请再次尝试保存。",
+  "settings.savedApplyFailed": "设置已保存，但界面未能完全更新。请重启 ZipKit 以应用设置。",
   "settings.discardTitle": "放弃未保存的更改？",
   "settings.discardMessage": "你对设置的更改尚未保存。",
   "settings.discard": "放弃",

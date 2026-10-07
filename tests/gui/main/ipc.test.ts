@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   records: vi.fn(),
   openRecordsWindow: vi.fn(),
   loadSettings: vi.fn(),
+  saveSettings: vi.fn(),
+  applyTheme: vi.fn(),
+  applyLanguage: vi.fn(),
   showAppMessageDialog: vi.fn(),
 }));
 
@@ -41,14 +44,16 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
 }));
 vi.mock("../../../src/gui/main/settings.js", () => ({
   loadSettings: mocks.loadSettings,
-  saveSettings: vi.fn(),
+  saveSettings: mocks.saveSettings,
 }));
+vi.mock("../../../src/gui/main/theme.js", () => ({ applyThemePreference: mocks.applyTheme }));
 vi.mock("../../../src/gui/main/startup-dialog.js", () => ({ showAppMessageDialog: mocks.showAppMessageDialog }));
 vi.mock("../../../src/gui/main/i18n.js", async (importActual) => {
   const { createTranslator } = await import("../../../src/gui/shared/i18n/translate.js");
   return {
     ...(await importActual<typeof import("../../../src/gui/main/i18n.js")>()),
     mainTranslator: () => createTranslator("en"),
+    applyLanguagePreference: mocks.applyLanguage,
   };
 });
 vi.mock("../../../src/gui/main/layout.js", () => ({
@@ -60,6 +65,7 @@ vi.mock("../../../src/gui/main/layout.js", () => ({
 vi.mock("../../../src/gui/main/records-window.js", () => ({ openRecordsWindow: mocks.openRecordsWindow }));
 vi.mock("../../../src/gui/main/url.js", () => ({ isHttpUrl: vi.fn(() => true) }));
 
+import { DEFAULT_SETTINGS } from "../../../src/gui/shared/spec.js";
 import { registerIpc } from "../../../src/gui/main/ipc.js";
 
 describe("pane-layout IPC", () => {
@@ -84,6 +90,35 @@ describe("pane-layout IPC", () => {
 });
 
 describe("settings IPC", () => {
+  it("returns committed settings with a safe warning when applying the interface fails", async () => {
+    registerIpc();
+    mocks.saveSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    const failure = new Error("hostile EPERM /private/internal sentinel");
+    mocks.applyTheme.mockImplementation(() => { throw failure; });
+    mocks.applyLanguage.mockRejectedValue(failure);
+    mocks.showAppMessageDialog.mockResolvedValue(undefined);
+    mocks.logWarn.mockClear();
+    await expect(mocks.handlers.get("zipkit:setSettings")!({ sender: {} }, DEFAULT_SETTINGS)).resolves.toEqual(DEFAULT_SETTINGS);
+    expect(mocks.applyLanguage).toHaveBeenCalled();
+    expect(mocks.logWarn).toHaveBeenCalledWith("settings saved but interface application was incomplete", expect.objectContaining({ errors: expect.any(Array) }));
+    const shown = mocks.showAppMessageDialog.mock.calls.at(-1)![0] as { message: string };
+    expect(shown.message).toContain("Settings were saved");
+    expect(shown.message).not.toContain("sentinel");
+    mocks.applyTheme.mockReset(); mocks.applyLanguage.mockReset(); mocks.saveSettings.mockReset();
+  });
+
+  it("a failed settings write rejects without applying or showing a saved warning", async () => {
+    registerIpc();
+    const failure = new Error("write failed");
+    mocks.saveSettings.mockRejectedValue(failure);
+    mocks.applyTheme.mockClear(); mocks.applyLanguage.mockClear(); mocks.showAppMessageDialog.mockClear();
+    await expect(mocks.handlers.get("zipkit:setSettings")!({ sender: {} }, DEFAULT_SETTINGS)).rejects.toBe(failure);
+    expect(mocks.applyTheme).not.toHaveBeenCalled();
+    expect(mocks.applyLanguage).not.toHaveBeenCalled();
+    expect(mocks.showAppMessageDialog).not.toHaveBeenCalled();
+    mocks.saveSettings.mockReset();
+  });
+
   beforeEach(() => {
     mocks.handlers.clear();
     mocks.loadSettings.mockReset();

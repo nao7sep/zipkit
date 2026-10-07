@@ -410,6 +410,7 @@
   "settings.resetDefaults": "既定のパラメータに戻す",
   "settings.saving": "保存中…",
   "settings.saveFailed": "設定を保存できませんでした。変更内容はまだ残っています。もう一度保存してください。",
+  "settings.savedApplyFailed": "設定は保存されましたが、画面にすべて反映できませんでした。ZipKitを再起動すると反映されます。",
   "settings.discardTitle": "保存していない変更を破棄しますか？",
   "settings.discardMessage": "設定の変更はまだ保存されていません。",
   "settings.discard": "破棄",

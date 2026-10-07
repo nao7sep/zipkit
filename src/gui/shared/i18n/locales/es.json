@@ -410,6 +410,7 @@
   "settings.resetDefaults": "Restablecer los parámetros predeterminados",
   "settings.saving": "Guardando…",
   "settings.saveFailed": "No se guardó la configuración. Tus cambios siguen abiertos; vuelve a intentar guardarlos.",
+  "settings.savedApplyFailed": "Los ajustes se guardaron, pero la interfaz no pudo actualizarse por completo. Reinicia ZipKit para aplicarlos.",
   "settings.discardTitle": "¿Descartar los cambios sin guardar?",
   "settings.discardMessage": "Tus cambios en la configuración no se han guardado.",
   "settings.discard": "Descartar",

@@ -51,7 +51,7 @@ export function registerIpc(): void {
     return load.value;
   });
 
-  ipcMain.handle("zipkit:setSettings", async (_event, draft: GuiSettings): Promise<GuiSettings> => {
+  ipcMain.handle("zipkit:setSettings", async (event, draft: GuiSettings): Promise<GuiSettings> => {
     let settings: GuiSettings;
     try {
       settings = await saveSettings(draft, log);
@@ -61,10 +61,21 @@ export function registerIpc(): void {
     }
     // Settings apply on Save, the theme and the language included (app-chrome
     // conventions, Theme; localization conventions).
-    applyThemePreference(settings.theme);
-    await applyLanguagePreference(settings.language, (error) =>
-      log.warn("the interface language could not reach a native surface", { error: errorInfo(error) }),
-    );
+    const failures: unknown[] = [];
+    try { applyThemePreference(settings.theme); } catch (error) { failures.push(error); }
+    try {
+      await applyLanguagePreference(settings.language, (error) => failures.push(error));
+    } catch (error) { failures.push(error); }
+    if (failures.length > 0) {
+      log.warn("settings saved but interface application was incomplete", { errors: failures.map(errorInfo) });
+      const { t } = mainTranslator();
+      void showAppMessageDialog({
+        owner: BrowserWindow.fromWebContents(event.sender) ?? undefined,
+        title: t("settings.title"),
+        message: t("settings.savedApplyFailed"),
+        button: "ok",
+      }).catch((error) => log.error("saved settings warning could not be shown", { error: errorInfo(error) }));
+    }
     return settings;
   });
 

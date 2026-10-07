@@ -410,6 +410,7 @@
   "settings.resetDefaults": "Rétablir les paramètres par défaut",
   "settings.saving": "Enregistrement…",
   "settings.saveFailed": "Les réglages n’ont pas été enregistrés. Vos modifications sont toujours ouvertes\u00a0; réessayez d’enregistrer.",
+  "settings.savedApplyFailed": "Les réglages ont été enregistrés, mais l’interface n’a pas pu être entièrement mise à jour. Redémarrez ZipKit pour les appliquer.",
   "settings.discardTitle": "Abandonner les modifications non enregistrées\u00a0?",
   "settings.discardMessage": "Vos modifications des réglages n’ont pas été enregistrées.",
   "settings.discard": "Abandonner",
