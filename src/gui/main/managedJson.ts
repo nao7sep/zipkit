@@ -1,6 +1,8 @@
 /** Shared safe loading and atomic writing for the GUI's managed JSON stores. */
 
-import { readFile, rename } from "node:fs/promises";
+import { copyFile, link, readFile, stat, unlink, utimes } from "node:fs/promises";
+import { constants } from "node:fs";
+import { nanoid } from "nanoid";
 import path from "node:path";
 import { defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { record } from "./backupStore.js";
@@ -22,13 +24,33 @@ async function quarantineInvalid(
   file: string,
   logger: AppLog = nullLog,
   now: Date = new Date(),
+  signal?: AbortSignal,
 ): Promise<string> {
   const dir = path.dirname(file);
   const stem = path.parse(file).name;
-  const quarantined = path.join(dir, `${stem}-${defaultSessionTimestamp(now)}.invalid`);
-  // not recorded: a move-aside of an already-unreadable managed file, not a managed-text write. The
-  // next user write through writeManagedJson records the new managed content.
-  await rename(file, quarantined);
+  const stamp = defaultSessionTimestamp(now);
+  let quarantined = path.join(dir, `${stem}-${stamp}.invalid`);
+  for (;;) {
+    signal?.throwIfAborted();
+    try {
+      try {
+        await link(file, quarantined);
+      } catch (error) {
+        if (!["ENOSYS", "ENOTSUP", "EOPNOTSUPP", "EPERM", "EACCES", "EMLINK"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+        const original = await stat(file);
+        signal?.throwIfAborted();
+        await copyFile(file, quarantined, constants.COPYFILE_EXCL);
+        await utimes(quarantined, original.atime, original.mtime);
+      }
+      // The exclusive destination now holds the recoverable original. A failed
+      // source removal propagates; defaults never overwrite the live bytes.
+      await unlink(file);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      quarantined = path.join(dir, `${stem}-${stamp}-${nanoid()}.invalid`);
+    }
+  }
   logger.warn("quarantined a corrupt managed file; falling back to defaults", {
     original: file,
     quarantined,
@@ -56,28 +78,30 @@ export async function loadManagedJson<T>(
   onDefault: () => T,
   logger: AppLog = nullLog,
 ): Promise<ManagedJsonLoad<T>> {
-  let text: string;
-  try {
-    text = await managedIO(file, (signal) => readFile(file, { encoding: "utf8", signal }));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { value: onDefault(), quarantinedTo: null, missing: true };
+  return managedIO(file, async (signal) => {
+    let text: string;
+    try {
+      text = await readFile(file, { encoding: "utf8", signal });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return { value: onDefault(), quarantinedTo: null, missing: true };
+      }
+      throw err;
     }
-    throw err;
-  }
-  const store = path.basename(file);
-  try {
-    const root = parseJsonObject(text, store);
-    const found = storedFormatVersion(root, store);
-    if (found > formatVersion) throw new NewerFormatError(file, found, formatVersion);
-    return { value: parse(root), quarantinedTo: null, missing: false };
-  } catch (err) {
-    if (!(err instanceof InvalidManagedJsonError)) throw err;
-    // Quarantine is outside the read catch. Rename failure propagates and leaves
-    // the invalid live bytes untouched.
-    const quarantinedTo = await quarantineInvalid(file, logger);
-    return { value: onDefault(), quarantinedTo, missing: false };
-  }
+    const store = path.basename(file);
+    try {
+      const root = parseJsonObject(text, store);
+      const found = storedFormatVersion(root, store);
+      if (found > formatVersion) throw new NewerFormatError(file, found, formatVersion);
+      return { value: parse(root), quarantinedTo: null, missing: false };
+    } catch (err) {
+      if (!(err instanceof InvalidManagedJsonError)) throw err;
+      // Quarantine is outside the read catch. Publication failure propagates and leaves
+      // the invalid live bytes untouched.
+      const quarantinedTo = await quarantineInvalid(file, logger, new Date(), signal);
+      return { value: onDefault(), quarantinedTo, missing: false };
+    }
+  });
 }
 
 /**
@@ -98,9 +122,11 @@ export async function loadManagedJson<T>(
  * bytes to the backups thread, swallows its own failures and never breaks or delays the save
  * (data-backup conventions).
  */
-export async function writeManagedJson(file: string, text: string, options: { record?: boolean } = {}): Promise<void> {
-  const bytes = Buffer.from(text, "utf8");
+export async function writeManagedJson(file: string, text: string | (() => string), options: { record?: boolean; onWritten?: () => void } = {}): Promise<void> {
   await managedIO(file, async (signal) => {
+    // Field patches derive from the last physical commit, including a late one.
+    const bytes = Buffer.from(typeof text === "function" ? text() : text, "utf8");
     if (await writeManagedText(file, bytes, signal) && options.record !== false) void record(file, bytes);
+    options.onWritten?.();
   });
 }

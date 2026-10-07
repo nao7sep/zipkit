@@ -70,21 +70,31 @@ let writes: Promise<void> = Promise.resolve();
  *  over the corrupt bytes. The shared {@link loadManagedJson} owns that quarantine-outside-the-catch
  *  shape, identical to config.json and queue.json. Layout is disposable view state, so callers leave
  *  its quarantine outcome log-only rather than raising a recovery dialog. */
-export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<StoredLayout>> {
-  const load = await loadManagedJson(layoutFile(), FORMAT_VERSIONS.layout, parseLayout, freshLayout, logger);
-  current = { ...load.value };
-  return load;
+export function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<StoredLayout>> {
+  return inOrder(async () => {
+    const load = await loadManagedJson(layoutFile(), FORMAT_VERSIONS.layout, parseLayout, freshLayout, logger);
+    current = { ...load.value };
+    return load;
+  });
 }
 
-// Persist through the shared managed-text atomic write (temp file + rename), after
-// every write before it. Layout is volatile view state, so it is not recorded to
-// the data-backup store. Rejects on write failure; the caller logs it.
-function persist(next: StoredLayout): Promise<void> {
-  current = next;
-  const text = serializeLayout(next);
-  const write = writes.catch(() => {}).then(() => writeManagedJson(layoutFile(), text, { record: false }));
-  writes = write;
-  return write;
+/** Reads and patches share one order; a failed save never advances saved state. */
+function inOrder<T>(operation: () => Promise<T>): Promise<T> {
+  const result = writes.catch(() => {}).then(operation);
+  writes = result.then(() => {});
+  // The caller receives the failure; retaining the tail must not create an unhandled rejection.
+  void writes.catch(() => {});
+  return result;
+}
+
+function persist(patch: Partial<StoredLayout>): Promise<void> {
+  return inOrder(async () => {
+    let next: StoredLayout;
+    await writeManagedJson(layoutFile(), () => {
+      next = { ...current, ...patch };
+      return serializeLayout(next);
+    }, { record: false, onWritten: () => { current = next; } });
+  });
 }
 
 /** Settles when every layout write started so far has, rejecting when the last one failed. Quit
@@ -95,7 +105,7 @@ export function layoutWritesSettled(): Promise<void> {
 
 /** Persist the main window's pane widths, keeping the Records window's. */
 export function saveLayout(layout: PaneLayout): Promise<void> {
-  return persist({ ...current, ...clampLayout(layout) });
+  return persist(clampLayout(layout));
 }
 
 /** The Records window's list width, as last loaded or saved. */
@@ -107,6 +117,6 @@ export function recordsListWidth(): number {
  *  returns the width stored. */
 export async function saveRecordsListWidth(width: number): Promise<number> {
   const stored = clampRecordsListWidth(width);
-  await persist({ ...current, recordsListWidth: stored });
+  await persist({ recordsListWidth: stored });
   return stored;
 }

@@ -3,6 +3,7 @@
  * unreadable documents follow the shared managed-store quarantine path.
  */
 
+import { managedIO } from "./managed-io.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
@@ -90,7 +91,7 @@ export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJso
 
 async function storedText(): Promise<string | null> {
   try {
-    return await readFile(settingsFile(), "utf8");
+    return await managedIO(settingsFile(), (signal) => readFile(settingsFile(), { encoding: "utf8", signal }));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw err;

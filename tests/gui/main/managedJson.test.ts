@@ -1,22 +1,22 @@
 /**
  * Pins the ONE invariant the shared managed-JSON loader centralizes: the corrupt-file quarantine
- * runs OUTSIDE the read's failure handling, so a quarantine-rename failure PROPAGATES rather than
+ * runs OUTSIDE the read's failure handling, so a quarantine publication failure PROPAGATES rather than
  * being swallowed into "return the defaults". The swallowed-failure bug this guards against is the
- * storage-path convention's forbidden "silently reset over a corrupt file": if the rename that moves
- * the corrupt bytes aside throws (a transient lock, an AV hold, a permission hiccup) and the loader
+ * storage-path convention's forbidden "silently reset over a corrupt file": if publication of
+ * the corrupt bytes throws (a transient lock, an AV hold, a permission hiccup) and the loader
  * caught it and returned defaults, the corrupt bytes would still sit at the store path and the very
  * next save would overwrite them — the user's recoverable original gone with no `.invalid` copy.
  *
  * All three managed stores (config.json / layout.json / queue.json) route through
- * {@link loadManagedJson}, so the failure is injected once, at `node:fs/promises`' `rename`, and
+ * {@link loadManagedJson}, so the failure is injected once, at `node:fs/promises`' `link`, and
  * asserted for each store: the load throws, and the corrupt bytes stay exactly where they were (no
  * quarantine created, no reset, nothing overwritten). The mock delegates every other fs call to the
- * real implementation and only fails `rename` when a test arms a one-shot failure, so the real
+ * real implementation and only fails the armed publication call when a test arms a one-shot failure, so the real
  * writeFile/mkdir/readFile used to set each case up still hit the throwaway root.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -27,6 +27,7 @@ import { loadSettings } from "../../../src/gui/main/settings.js";
 
 // A one-shot rename failure armed per test; when unarmed, the mock delegates to the real rename so
 // every atomic write (saveSettings/saveLayout/saveQueue) in setup still works against the real root.
+const quarantineFault = vi.hoisted(() => ({ unsupported: false, unlink: null as Error | null }));
 const armedRenameError = vi.hoisted(() => ({ current: null as Error | null }));
 const stageFault = vi.hoisted(() => ({ collision: false, write: null as Error | null, close: null as Error | null, future: null as { file: string; text: string } | null }));
 const armedChmodError = vi.hoisted(() => ({ current: null as Error | null }));
@@ -77,6 +78,23 @@ vi.mock("node:fs/promises", async (importActual) => {
       }
       return actual.readFile(...args);
     },
+    link: (from: string, to: string) => {
+      if (quarantineFault.unsupported) return Promise.reject(Object.assign(new Error("links unsupported"), { code: "ENOTSUP" }));
+      if (armedRenameError.current) {
+        const error = armedRenameError.current;
+        armedRenameError.current = null;
+        return Promise.reject(error);
+      }
+      return actual.link(from, to);
+    },
+    unlink: (...args: Parameters<typeof actual.unlink>) => {
+      if (quarantineFault.unlink) {
+        const error = quarantineFault.unlink;
+        quarantineFault.unlink = null;
+        return Promise.reject(error);
+      }
+      return actual.unlink(...args);
+    },
     rename: (from: string, to: string) => {
       if (armedRenameError.current) {
         const err = armedRenameError.current;
@@ -88,7 +106,7 @@ vi.mock("node:fs/promises", async (importActual) => {
   };
 });
 
-describe("loadManagedJson: a quarantine-rename failure propagates, never resets over corrupt bytes", () => {
+describe("loadManagedJson: a quarantine publication failure propagates, never resets over corrupt bytes", () => {
   // Each store's load resolves its file under the ZIPKIT_DATA_DIR-relocated throwaway root, matching the
   // other file-I/O suites (settings/layout/persist).
   let root: string;
@@ -105,6 +123,8 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     stageFault.write = null;
     stageFault.close = null;
     stageFault.future = null;
+    quarantineFault.unsupported = false;
+    quarantineFault.unlink = null;
   });
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
@@ -117,6 +137,8 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     stageFault.write = null;
     stageFault.close = null;
     stageFault.future = null;
+    quarantineFault.unsupported = false;
+    quarantineFault.unlink = null;
     await rm(root, { recursive: true, force: true });
   });
 
@@ -124,7 +146,7 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     const file = path.join(root, "config.json");
     const corruptBytes = "{ not json";
     writeFileSync(file, corruptBytes, "utf8");
-    armedRenameError.current = new Error("EBUSY: quarantine rename blocked");
+    armedRenameError.current = new Error("EBUSY: quarantine publication blocked");
 
     await expect(loadSettings()).rejects.toThrow("EBUSY");
 
@@ -138,7 +160,7 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     const file = path.join(root, "layout.json");
     const corruptBytes = "not json";
     writeFileSync(file, corruptBytes, "utf8");
-    armedRenameError.current = new Error("EACCES: quarantine rename blocked");
+    armedRenameError.current = new Error("EACCES: quarantine publication blocked");
 
     await expect(loadLayout()).rejects.toThrow("EACCES");
 
@@ -150,7 +172,7 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     const file = path.join(root, "queue.json");
     const corruptBytes = "{ not json";
     writeFileSync(file, corruptBytes, "utf8");
-    armedRenameError.current = new Error("EPERM: quarantine rename blocked");
+    armedRenameError.current = new Error("EPERM: quarantine publication blocked");
 
     await expect(loadQueue()).rejects.toThrow("EPERM");
 
@@ -158,15 +180,56 @@ describe("loadManagedJson: a quarantine-rename failure propagates, never resets 
     expect(readFileSync(file, "utf8")).toBe(corruptBytes);
   });
 
-  it("the propagated failure is the rename error itself, so the caller logs the real cause", async () => {
-    // The loader must not repackage or swallow the rename error — the caller's session log needs the
+  it("the propagated failure is the publication error itself, so the caller logs the real cause", async () => {
+    // The loader must not repackage or swallow the publication error — the caller's session log needs the
     // actual EBUSY/EACCES cause to diagnose why the corrupt file could not be quarantined.
     const file = path.join(root, "config.json");
     writeFileSync(file, "{ not json", "utf8");
-    const injected = new Error("EBUSY: quarantine rename blocked");
+    const injected = new Error("EBUSY: quarantine publication blocked");
     armedRenameError.current = injected;
 
     await expect(loadSettings()).rejects.toBe(injected);
+  });
+
+  it("same-millisecond quarantines preserve both corrupt originals without replacing the first", async () => {
+    const file = path.join(root, "config.json");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-02T03:04:05.006Z"));
+    try {
+      writeFileSync(file, "first corrupt original");
+      const first = await loadSettings();
+      writeFileSync(file, "second corrupt original");
+      const second = await loadSettings();
+      expect(first.quarantinedTo).not.toBe(second.quarantinedTo);
+      expect(readFileSync(first.quarantinedTo!, "utf8")).toBe("first corrupt original");
+      expect(readFileSync(second.quarantinedTo!, "utf8")).toBe("second corrupt original");
+      expect(readdirSync(root)).toHaveLength(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a filesystem without links preserves bytes, ordinary mode and modified time through exclusive copy", async () => {
+    const file = path.join(root, "config.json");
+    writeFileSync(file, "corrupt original");
+    chmodSync(file, 0o640);
+    utimesSync(file, new Date("2000-01-01T00:00:00Z"), new Date("2001-01-01T00:00:00Z"));
+    const before = statSync(file);
+    quarantineFault.unsupported = true;
+    const loaded = await loadSettings();
+    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe("corrupt original");
+    expect(statSync(loaded.quarantinedTo!).mtimeMs).toBe(before.mtimeMs);
+    if (process.platform !== "win32") expect(statSync(loaded.quarantinedTo!).mode & 0o777).toBe(0o640);
+    expect(readdirSync(root)).toHaveLength(1);
+  });
+
+  it("failed original removal after exclusive quarantine refuses defaults and keeps recoverable bytes", async () => {
+    const file = path.join(root, "config.json");
+    writeFileSync(file, "corrupt original");
+    const error = Object.assign(new Error("original removal refused"), { code: "EACCES" });
+    quarantineFault.unlink = error;
+    await expect(loadSettings()).rejects.toBe(error);
+    expect(readFileSync(file, "utf8")).toBe("corrupt original");
+    const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"));
+    expect(readFileSync(path.join(root, quarantined!), "utf8")).toBe("corrupt original");
   });
 
   it("a non-ENOENT read failure propagates instead of being treated as absence", async () => {
@@ -191,6 +254,8 @@ describe("writeManagedJson", () => {
     stageFault.write = null;
     stageFault.close = null;
     stageFault.future = null;
+    quarantineFault.unsupported = false;
+    quarantineFault.unlink = null;
   });
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
