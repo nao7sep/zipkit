@@ -37,7 +37,7 @@
 
 import type { BigIntStats } from "node:fs";
 import * as fsp from "node:fs/promises";
-import { AbortError, StallError, toAbortError } from "../errors.js";
+import { StallError, toAbortError } from "../errors.js";
 
 /** A directory entry as the walker needs it. */
 export interface DirEntry {
@@ -58,7 +58,7 @@ export interface FileHandlePort {
 /** The raw filesystem the SDK runs on: Node's `fs/promises` in production, a
  *  fake in tests. It carries no timing policy; the {@link Volume} adds that. */
 export interface FileSystemPort {
-  open(path: string, flags: string): Promise<FileHandlePort>;
+  open(path: string, flags: string, mode?: number): Promise<FileHandlePort>;
   stat(path: string): Promise<BigIntStats>;
   lstat(path: string): Promise<BigIntStats>;
   realpath(path: string): Promise<string>;
@@ -75,6 +75,11 @@ export interface FileSystemPort {
   chmod(path: string, mode: number): Promise<void>;
 }
 
+/** Only explicit filesystem capability failures permit omitting ordinary modes. */
+export function isModeUnsupported(error: unknown): boolean {
+  return ["ENOSYS", "ENOTSUP", "EOPNOTSUPP"].includes((error as NodeJS.ErrnoException)?.code ?? "");
+}
+
 /** Epoch nanoseconds as the fractional seconds `fs.utimes` takes. Node carries
  *  the time as a double, so the set time is the nearest one the double holds:
  *  within about 120 ns for present-day times. Splitting the whole seconds from
@@ -84,8 +89,8 @@ function epochSeconds(ns: bigint): number {
 }
 
 export const nodeFileSystem: FileSystemPort = {
-  open: async (path, flags) => {
-    const handle = await fsp.open(path, flags);
+  open: async (path, flags, mode) => {
+    const handle = await fsp.open(path, flags, mode);
     return {
       read: (buffer, offset, length, position) => handle.read(buffer, offset, length, position),
       write: (buffer, offset, length, position) => handle.write(buffer, offset, length, position),
@@ -181,23 +186,32 @@ export class Volume {
   /**
    * Give a finished temp the permission mode of the `target` it will replace,
    * so the replace keeps it (content-lifecycle conventions), and say whether a
-   * target was found. Best-effort: a volume that cannot hold the mode changes
-   * nothing; a stall or a cancel still ends the run.
+   * target was found. Only an explicit unsupported-mode error is tolerated;
+   * read and permission failures stop publication.
    */
   async keepMode(target: string, temp: string): Promise<boolean> {
     let mode: number;
     try {
       mode = Number((await this.stat(target)).mode) & 0o7777;
     } catch (err) {
-      if (err instanceof StallError || err instanceof AbortError) throw err;
-      return false;
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw err;
     }
     try {
       await this.chmod(temp, mode);
     } catch (err) {
-      if (err instanceof StallError || err instanceof AbortError) throw err;
+      if (!isModeUnsupported(err)) throw err;
     }
     return true;
+  }
+
+  /** Give a completed new output the runtime's ordinary creation mode. */
+  async prepareNewMode(path: string, mode = 0o666 & ~process.umask()): Promise<void> {
+    try {
+      await this.chmod(path, mode);
+    } catch (error) {
+      if (!isModeUnsupported(error)) throw error;
+    }
   }
 
   /** Publish a finished temp file by renaming it over `to`. */
@@ -251,7 +265,7 @@ export class Volume {
    * cancelled or stalled run never leaves its temp behind.
    */
   async createTemp(path: string): Promise<VolumeFile> {
-    const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx"), {
+    const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx", 0o600), {
       onLateValue: (late) => void late.close().catch(() => {}).then(() => this.discard(path)),
     });
     return new VolumeFile(this, handle, path);

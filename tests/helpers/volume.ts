@@ -53,8 +53,8 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
   }
   const real = nodeFileSystem;
   const port: FileSystemPort = {
-    open: async (path, flags) => {
-      const handle = await gate("open", path, () => real.open(path, flags));
+    open: async (path, flags, mode) => {
+      const handle = await gate("open", path, () => real.open(path, flags, mode));
       return {
         read: (buffer, offset, length, position) =>
           gate("read", path, () => handle.read(buffer, offset, length, position)),
@@ -101,8 +101,8 @@ type PortHandle = Awaited<ReturnType<FileSystemPort["open"]>>;
 export function fileSystemWith(path: string, wrap: (handle: PortHandle) => PortHandle): FileSystemPort {
   return {
     ...nodeFileSystem,
-    open: async (p, flags) => {
-      const handle = await nodeFileSystem.open(p, flags);
+    open: async (p, flags, mode) => {
+      const handle = await nodeFileSystem.open(p, flags, mode);
       return p === path ? wrap(handle) : handle;
     },
   };

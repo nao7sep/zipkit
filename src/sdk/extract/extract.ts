@@ -330,15 +330,16 @@ async function commitFile(
   // reloads. It lives outside `~/.zipkit/` and is not captured by the data-backup layer (data-backup
   // conventions). The SDK is also a separate layer with no dependency on the GUI's backup store.
   // A replaced file keeps its own permission mode; a new one takes the entry's.
-  let replaced = false;
   if (options.overwrite) {
     if (await sameContent(volume, target, tempPath, entry.uncompSize, options.chunkSize)) {
       await volume.discard(tempPath);
       return "unchanged";
     }
-    replaced = await volume.keepMode(target, tempPath);
+    const replaced = await volume.keepMode(target, tempPath);
+    if (!replaced) await restoreEntryMode(volume, tempPath, entry);
     await volume.publishRename(tempPath, target);
   } else {
+    await restoreEntryMode(volume, tempPath, entry);
     try {
       await publishNoOverwrite(tempPath, target, signal, volumePublishOperations(volume));
     } catch (err) {
@@ -350,7 +351,6 @@ async function commitFile(
     }
   }
   if (options.restore) await restoreEntryTimes(volume, target, entry, options.timeZone);
-  if (!replaced) await restoreEntryMode(volume, target, entry);
   return "written";
 }
 
@@ -398,16 +398,12 @@ async function sameContent(
 
 /** Set a new file's permission bits from its entry's Unix attributes, when the
  *  entry carries a regular-file mode; a FAT-host entry carries none. Never the
- *  set-id or sticky bits, which an archive should not grant. Best-effort like
- *  the times: a volume that cannot hold the mode keeps the file as written. */
+ *  set-id or sticky bits, which an archive should not grant. Prepared before
+ *  publication; only an explicit unsupported-mode error is tolerated. */
 async function restoreEntryMode(volume: Volume, target: string, entry: ReadEntry): Promise<void> {
   const unixMode = (entry.externalAttr >>> 16) & 0xffff;
-  if ((unixMode & 0xf000) !== 0x8000) return;
-  try {
-    await volume.chmod(target, unixMode & 0o777);
-  } catch (err) {
-    if (err instanceof ZipKitError) throw err;
-  }
+  const mode = (unixMode & 0xf000) === 0x8000 ? unixMode & 0o777 : 0o666 & ~process.umask();
+  await volume.prepareNewMode(target, mode);
 }
 
 /** Set a written entry's stored modification and access times on `target`.
