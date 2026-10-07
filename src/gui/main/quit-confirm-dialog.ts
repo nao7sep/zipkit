@@ -8,12 +8,13 @@
  * per the modal-dialog conventions; the safe choice is both the default and
  * the Escape/close outcome, so a reflexive dismissal never loses work. When the
  * OS ends the session, `signal` closes an open question as if cancelled, and
- * quit goes on without it (on macOS only a question with an owner window can
- * be closed that way).
+ * quit goes on without it. A parentless macOS native question ignores abort,
+ * so that case uses the existing standalone app shell.
  */
 
 import { BrowserWindow, dialog } from "electron";
 import { mainTranslator } from "./i18n.js";
+import { showAppQuestionDialog } from "./startup-dialog.js";
 import type { QueueNotSavedChoice } from "./quit.js";
 
 /** Resolves `true` if the user chose to quit anyway (cancelling the running
@@ -32,6 +33,17 @@ export async function confirmQuitDuringWrite(owner: BrowserWindow | null, signal
     detail: t("quit.detail"),
     signal,
   };
+  if (!owner && process.platform === "darwin") {
+    const response = await showAppQuestionDialog({
+      title: options.title,
+      message: `${options.message}\n\n${options.detail}`,
+      labels: options.buttons,
+      defaultId: options.defaultId,
+      cancelId: options.cancelId,
+      signal,
+    });
+    return response === 0;
+  }
   const result = await (owner ? dialog.showMessageBox(owner, options) : dialog.showMessageBox(options));
   return result.response === 0;
 }
@@ -53,6 +65,17 @@ export async function askQueueNotSaved(owner: BrowserWindow | null, signal: Abor
     detail: t("quit.queueNotSavedDetail"),
     signal,
   };
+  if (!owner && process.platform === "darwin") {
+    const response = await showAppQuestionDialog({
+      title: options.title,
+      message: `${options.message}\n\n${options.detail}`,
+      labels: options.buttons,
+      defaultId: options.defaultId,
+      cancelId: options.cancelId,
+      signal,
+    });
+    return choices[response] ?? "cancel";
+  }
   const result = await (owner ? dialog.showMessageBox(owner, options) : dialog.showMessageBox(options));
   return choices[result.response] ?? "cancel";
 }

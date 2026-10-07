@@ -29,7 +29,7 @@ import { loadQueue } from "./persist.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { askQueueNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
-import { createQuitControl, endSessionNow, stopFlushAndExit, type QuitStep } from "./quit.js";
+import { createQuitControl, endSessionNow, finishStartupHalt, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { mainWindowOptions } from "./window-options.js";
@@ -131,10 +131,13 @@ function activateMainWindow(): void {
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
   const halt = startupHaltMessage(error);
-  await notifyStartupFailure(halt.key, halt.values);
-  await closeBackupStore();
-  await log.close();
-  app.exit(1);
+  await finishStartupHalt({
+    present: () => notifyStartupFailure(halt.key, halt.values),
+    closeBackups: () => closeBackupStore(),
+    closeLog: () => log.close(),
+    onFailed: (failure) => log.error("startup failure presentation or cleanup failed", { error: errorInfo(failure) }),
+    exit: (code) => app.exit(code),
+  });
 }
 
 function logLanguageError(error: unknown): void {
@@ -151,7 +154,7 @@ app.whenReady().then(async () => {
   // The language is settled before anything draws: the saved choice is read
   // straight from config.json so the menu that replaces Electron's default in
   // this same turn is already in it. The store's load below can still reset it.
-  await settleLanguage(readSavedPreference(readConfigText(settingsFile())), logLanguageError);
+  await settleLanguage(readSavedPreference(await readConfigText(settingsFile())), logLanguageError);
   installAppMenu(mainTranslator());
   onLanguageChanged(installAppMenu);
   log.info("app started", {
@@ -234,6 +237,9 @@ function logQuitStepFailure(step: QuitStep, error: unknown): void {
     case "layout":
       log.warn("the pane layout write did not land before quit", info);
       return;
+    case "question":
+      log.error("quit question could not be presented; user quit cancelled", info);
+      return;
     case "backups":
       log.warn("the backup history did not close before quit", info);
       return;
@@ -241,6 +247,7 @@ function logQuitStepFailure(step: QuitStep, error: unknown): void {
 }
 
 const quit = createQuitControl({
+  onFailed: (error) => log.error("quit request failed; the app remains open", { error: errorInfo(error) }),
   hasRunningJob,
   confirmQuit: (signal) => confirmQuitDuringWrite(getMainWindow(), signal),
   shutdown: (session) =>

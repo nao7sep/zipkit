@@ -32,7 +32,7 @@ export const QUIT_BOUNDS_MS = {
 export const SESSION_END_SAVE_MS = 2_000;
 
 /** The steps whose failure quit logs and goes on from. */
-export type QuitStep = "job" | "queue" | "layout" | "backups";
+export type QuitStep = "job" | "queue" | "layout" | "backups" | "question";
 
 /** What the user chose about a queue that could not be saved. */
 export type QueueNotSavedChoice = "retry" | "quit" | "cancel";
@@ -101,7 +101,16 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
       }
       steps.onStepFailed("queue", flushError);
       if (session.ending) break;
-      const choice = await steps.askQueueNotSaved(session.signal);
+      let choice: QueueNotSavedChoice;
+      try {
+        choice = await steps.askQueueNotSaved(session.signal);
+      } catch (error) {
+        steps.onStepFailed("question", error);
+        if (session.ending) break;
+        cancelled = true;
+        steps.onCancelled();
+        return;
+      }
       if (session.ending || choice === "quit") break;
       if (choice === "cancel") {
         cancelled = true;
@@ -120,6 +129,26 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
       await failureWithin(steps.closeLog, QUIT_BOUNDS_MS.log, "the log");
       steps.exit(0);
     }
+  }
+}
+
+/** Startup presentation failure still reaches a bounded cleanup and exit tail. */
+export async function finishStartupHalt(steps: {
+  present(): Promise<void>;
+  closeBackups(): Promise<void>;
+  closeLog(): Promise<void>;
+  onFailed(error: unknown): void;
+  exit(code: number): void;
+}): Promise<void> {
+  try {
+    await steps.present();
+  } catch (error) {
+    steps.onFailed(error);
+  } finally {
+    const backups = await failureWithin(steps.closeBackups, QUIT_BOUNDS_MS.backups, "startup backup cleanup");
+    if (backups !== undefined) steps.onFailed(backups);
+    await failureWithin(steps.closeLog, QUIT_BOUNDS_MS.log, "startup log cleanup");
+    steps.exit(1);
   }
 }
 
@@ -155,6 +184,8 @@ export interface QuitRequestSteps {
   confirmQuit(signal: AbortSignal): Promise<boolean>;
   /** The quit sequence; it ends the process unless the user keeps the app open. */
   shutdown(session: QuitSession): Promise<void>;
+  /** A failed confirmation or shutdown leaves the user-started quit retryable. */
+  onFailed(error: unknown): void;
 }
 
 export interface QuitControl {
@@ -195,8 +226,20 @@ export function createQuitControl(steps: QuitRequestSteps): QuitControl {
           // so quitting must choose: cancel it (its writer removes its own temp
           // file, within quit's bound) or let the user keep working. An ending
           // session cancels it without asking.
-          if (!ending && steps.hasRunningJob() && !(await steps.confirmQuit(questions.signal)) && !ending) return;
+          if (!ending && steps.hasRunningJob()) {
+            let confirmed: boolean;
+            try {
+              confirmed = await steps.confirmQuit(questions.signal);
+            } catch (error) {
+              steps.onFailed(error);
+              if (!ending) return;
+              confirmed = false;
+            }
+            if (!confirmed && !ending) return;
+          }
           await steps.shutdown(session);
+        } catch (error) {
+          steps.onFailed(error);
         } finally {
           pending = false;
         }

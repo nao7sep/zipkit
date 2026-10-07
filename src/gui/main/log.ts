@@ -411,7 +411,16 @@ export function createAppLog(
     // every close waits for it.
     return closing.then(() => {
       settleInFlight();
-      return fallbackTail;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([
+        fallbackTail,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            toStderr(`zipkit: log fallback did not finish within ${waitMs} ms; its outcome is unknown\n`);
+            resolve();
+          }, waitMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
     });
   };
 

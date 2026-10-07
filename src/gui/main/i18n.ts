@@ -9,7 +9,8 @@
  * that reading for the whole session.
  */
 
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { managedIO } from "./managed-io.js";
 import { app, BrowserWindow, systemPreferences } from "electron";
 import {
   effectiveLanguage,
@@ -50,9 +51,9 @@ export function readSavedPreference(configText: string | null): LanguagePreferen
 }
 
 /** config.json's text, or null when it cannot be read. */
-export function readConfigText(file: string): string | null {
+export async function readConfigText(file: string): Promise<string | null> {
   try {
-    return readFileSync(file, "utf8");
+    return await managedIO(file, (signal) => readFile(file, { encoding: "utf8", signal }));
   } catch {
     return null;
   }

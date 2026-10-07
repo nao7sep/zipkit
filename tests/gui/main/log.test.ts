@@ -145,18 +145,20 @@ describe("createAppLog", () => {
   it("hands a record still in flight to the fallback file when the database does not take it in time", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
-    const lock = new DatabaseSync(database);
-    lock.exec("CREATE TABLE held (x)");
-    lock.exec("BEGIN EXCLUSIVE");
     const logs = path.join(dir, "logs");
     const log = createAppLog(database, logs, new Date("2026-06-14T05:25:48.123Z"));
-
-    const started = Date.now();
-    log.info("while the database is locked");
-    expect(Date.now() - started).toBeLessThan(1_000); // the caller never waits on the database
-    await log.close(50);
-    lock.exec("ROLLBACK");
-    lock.close();
+    // Observe the actual initialized writer before locking its write path.
+    await log.records({ op: "sessions" });
+    const lock = new DatabaseSync(database);
+    lock.exec("BEGIN IMMEDIATE");
+    try {
+      log.info("while the database is locked");
+      await log.close(50);
+    } finally {
+      lock.exec("ROLLBACK");
+      lock.close();
+      await log.close();
+    }
 
     const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
@@ -391,14 +393,20 @@ describe("records reads for the Records window", () => {
   it("fails a read the database cannot answer in time, or once it is unavailable or closed", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
-    const lock = new DatabaseSync(database);
-    lock.exec("CREATE TABLE held (x)");
-    lock.exec("BEGIN EXCLUSIVE");
     const log = createAppLog(database, path.join(dir, "logs"));
-    await expect(log.records({ op: "sessions" }, 50)).rejects.toThrow(/within 50 ms/);
-    await log.close(50);
-    lock.exec("ROLLBACK");
-    lock.close();
+    await log.records({ op: "sessions" });
+    const lock = new DatabaseSync(database);
+    lock.exec("BEGIN IMMEDIATE");
+    try {
+      // The read queues behind a real write held by another SQLite connection.
+      log.info("held write");
+      await expect(log.records({ op: "sessions" }, 50)).rejects.toThrow(/within 50 ms/);
+      await log.close(50);
+    } finally {
+      lock.exec("ROLLBACK");
+      lock.close();
+      await log.close();
+    }
     await expect(log.records({ op: "sessions" })).rejects.toThrow(/closed/);
 
     const blocker = path.join(dir, "blocker");

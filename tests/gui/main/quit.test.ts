@@ -169,6 +169,28 @@ describe("stopFlushAndExit", () => {
     expect(s.exit).toHaveBeenCalledWith(0);
   });
 
+  it("a failed queue-save question cancels the user quit without closing stores or exiting", async () => {
+    const error = new Error("presenter failed");
+    const s = steps({ flush: async () => { throw new Error("save failed"); }, askQueueNotSaved: async () => { throw error; } });
+    await stopFlushAndExit(s, userQuit());
+    expect(s.onStepFailed).toHaveBeenCalledWith("question", error);
+    expect(s.onCancelled).toHaveBeenCalledOnce();
+    expect(s.closeBackups).not.toHaveBeenCalled();
+    expect(s.closeLog).not.toHaveBeenCalled();
+    expect(s.exit).not.toHaveBeenCalled();
+  });
+
+  it("a question rejection caused by session end still finishes bounded shutdown", async () => {
+    const session = userQuit();
+    const s = steps({
+      flush: async () => { throw new Error("save failed"); },
+      askQueueNotSaved: async () => { session.end(); throw new Error("aborted presenter"); },
+    });
+    await stopFlushAndExit(s, session);
+    expect(s.onCancelled).not.toHaveBeenCalled();
+    expect(s.exit).toHaveBeenCalledWith(0);
+  });
+
   it("logs a failed layout write and still exits", async () => {
     const error = new Error("layout write failed");
     const s = steps({ settleLayout: async () => { throw error; } });
@@ -243,6 +265,20 @@ describe("endSessionNow (the end of a Windows session)", () => {
 });
 
 describe("createQuitControl", () => {
+  it("reports a failed running-job question and releases the claim for a later quit", async () => {
+    const failure = new Error("presenter failed");
+    const confirmQuit = vi.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce(true);
+    const shutdown = vi.fn(async () => {});
+    const onFailed = vi.fn();
+    const control = createQuitControl({ hasRunningJob: () => true, confirmQuit, shutdown, onFailed });
+    const event = { preventDefault: vi.fn() };
+    control.beforeQuit(event);
+    await vi.waitFor(() => expect(onFailed).toHaveBeenCalledWith(failure));
+    expect(shutdown).not.toHaveBeenCalled();
+    control.beforeQuit(event);
+    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+  });
+
   const quitEvent = () => ({ preventDefault: vi.fn() });
 
   it("holds a second quit during a pending shutdown, which alone ends the process", async () => {
@@ -257,7 +293,7 @@ describe("createQuitControl", () => {
           };
         }),
     );
-    const quit = createQuitControl({ hasRunningJob: () => false, confirmQuit: vi.fn(), shutdown });
+    const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => false, confirmQuit: vi.fn(), shutdown });
 
     const first = quitEvent();
     quit.beforeQuit(first);
@@ -278,7 +314,7 @@ describe("createQuitControl", () => {
     const shutdown = vi.fn(async (_session: QuitSession) => {});
     let answer = false;
     const confirmQuit = vi.fn(async () => answer);
-    const quit = createQuitControl({ hasRunningJob: () => true, confirmQuit, shutdown });
+    const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => true, confirmQuit, shutdown });
 
     quit.beforeQuit(quitEvent());
     await vi.waitFor(() => expect(confirmQuit).toHaveBeenCalledOnce());
@@ -296,7 +332,7 @@ describe("createQuitControl", () => {
   it("asks nothing once the session is ending, and tells the shutdown so", async () => {
     const shutdown = vi.fn(async (_session: QuitSession) => {});
     const confirmQuit = vi.fn(async () => false);
-    const quit = createQuitControl({ hasRunningJob: () => true, confirmQuit, shutdown });
+    const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => true, confirmQuit, shutdown });
 
     quit.sessionEnding();
     quit.beforeQuit(quitEvent());
@@ -311,7 +347,7 @@ describe("createQuitControl", () => {
     const confirmQuit = vi.fn(
       (signal: AbortSignal) => new Promise<boolean>((resolve) => signal.addEventListener("abort", () => resolve(false))),
     );
-    const quit = createQuitControl({ hasRunningJob: () => true, confirmQuit, shutdown });
+    const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => true, confirmQuit, shutdown });
 
     quit.beforeQuit(quitEvent());
     await vi.waitFor(() => expect(confirmQuit).toHaveBeenCalledOnce());

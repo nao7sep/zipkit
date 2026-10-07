@@ -266,7 +266,9 @@ export class Volume {
    */
   async createTemp(path: string): Promise<VolumeFile> {
     const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx", 0o600), {
-      onLateValue: (late) => void late.close().catch(() => {}).then(() => this.discard(path)),
+      onLateValue: (late) => void this.#run("cleanup", "close", path, () => late.close(), {
+        onLateValue: () => void this.discard(path),
+      }).catch(() => {}).then(() => this.discard(path)),
     });
     return new VolumeFile(this, handle, path);
   }
