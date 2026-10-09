@@ -430,6 +430,10 @@ export interface ExtractEntryResult {
   /** Why an entry was not written, when it was not. `unchanged`: an overwrite
    *  found the destination already holding the entry's content, and left it. */
   skipped?: "dry-run" | "crc-fail" | "unsafe" | "excluded" | "exists" | "unchanged" | "symlink-skip";
+  /** Where the entry was written. On Windows a name it cannot hold (a reserved
+   *  device name, `< > : " | ? *`, control characters, trailing dots or spaces) is
+   *  renamed the way ZipKit fixes names when it creates an archive, so this path
+   *  can differ from `archivePath` there. */
   outputPath?: string;
 }
 

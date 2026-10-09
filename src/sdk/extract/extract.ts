@@ -38,6 +38,7 @@ import { MANIFEST_FORMAT_VERSION } from "../write/metadata.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
 import { findTargetCollision } from "./targetCollision.js";
+import { extractionSegments } from "./windowsNames.js";
 import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipReader.js";
 
 const MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
@@ -67,8 +68,10 @@ interface WriteOptions {
  * the parent chain as real directories, never following a symlink.
  */
 function safeJoin(dest: string, archivePath: string): { target: string; segments: string[] } | null {
-  const { segments, escaped } = resolveSegments(toForwardSlash(archivePath));
-  if (escaped || segments.length === 0) return null;
+  const resolved = resolveSegments(toForwardSlash(archivePath));
+  if (resolved.escaped || resolved.segments.length === 0) return null;
+  // On Windows a name it cannot hold is renamed, as ./windowsNames describes.
+  const segments = extractionSegments(resolved.segments);
   const target = path.join(dest, ...segments);
   if (escapesDest(dest, target)) return null;
   return { target, segments };

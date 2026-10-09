@@ -6,6 +6,7 @@
  */
 
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
+import { extractionSegments } from "./windowsNames.js";
 import type { ReadEntry } from "./zipReader.js";
 
 interface TargetRecord {
@@ -29,15 +30,16 @@ function isPrefix(ancestor: readonly string[], candidate: readonly string[]): bo
   return ancestor.every((segment, index) => segment === candidate[index]);
 }
 
-/** The first colliding pair after deterministic normalized target ordering. */
-export function findTargetCollision(entries: readonly ReadEntry[]): [string, string] | null {
+/** The first colliding pair after deterministic normalized target ordering, comparing the names
+ *  as they would be written on `platform` (renamed on Windows, see ./windowsNames). */
+export function findTargetCollision(entries: readonly ReadEntry[], platform: NodeJS.Platform = process.platform): [string, string] | null {
   const records: TargetRecord[] = [];
   for (const entry of entries) {
     const resolved = resolveSegments(toForwardSlash(entry.archivePath));
     if (resolved.escaped || resolved.segments.length === 0) continue;
     records.push({
       entry,
-      segments: resolved.segments.map((segment) => segment.normalize("NFC").toLowerCase()),
+      segments: extractionSegments(resolved.segments, platform).map((segment) => segment.normalize("NFC").toLowerCase()),
     });
   }
   records.sort(compareSegments);

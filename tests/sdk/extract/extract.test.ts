@@ -487,6 +487,31 @@ describe("path safety and exclusion", () => {
     await expect(stat(dest)).rejects.toThrow();
   });
 
+  it.runIf(process.platform === "win32")("renames names Windows cannot hold, writing nothing outside the destination", async () => {
+    const deep = `${"d".repeat(60)}/`.repeat(4) + "long-name-past-260-characters.txt";
+    const archive = await writeArchive([
+      fileEntry("CON", "device"),
+      fileEntry("aux.txt", "device with extension"),
+      fileEntry("notes:stream", "would be an alternate data stream"),
+      fileEntry("trailing. ", "trailing dot and space"),
+      fileEntry("A.txt", "upper"),
+      fileEntry(deep, "deep"),
+    ]);
+    const dest = path.join(dir, "windows-names");
+
+    const report = await new ZipKit({ concurrency: 1 }).extract({ archive, dest });
+
+    const written = (name: string) => report.entries.find((e) => e.archivePath === name)?.outputPath;
+    expect(written("CON")).toBe(path.join(dest, "CON_"));
+    expect(written("aux.txt")).toBe(path.join(dest, "aux_.txt"));
+    expect(written("notes:stream")).toBe(path.join(dest, "notes_stream"));
+    expect(written("trailing. ")).toBe(path.join(dest, "trailing"));
+    expect(await readFile(path.join(dest, "notes_stream"), "utf8")).toBe("would be an alternate data stream");
+    expect(await readFile(path.join(dest, ...deep.split("/")), "utf8")).toBe("deep");
+    expect((await readdir(dest)).sort()).toEqual(["A.txt", "CON_", "aux_.txt", "d".repeat(60), "notes_stream", "trailing"].sort());
+    await expect(stat(path.join(dir, "notes"))).rejects.toThrow();
+  });
+
   it.runIf(fileSymlinksSupported)("refuses a link that climbs back out through another restored link", async () => {
     // Each target passes alone: `x/s` points at dest itself, and `x/t`'s text
     // resolves inside dest. On disk `x/t` follows `s` to dest, then climbs past it.
