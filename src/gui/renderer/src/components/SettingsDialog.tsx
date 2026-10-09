@@ -97,6 +97,7 @@ export function SettingsDialog({
       title: t("settings.discardTitle"),
       message: t("settings.discardMessage"),
       confirmLabel: t("settings.discard"),
+      cancelLabel: t("common.keepEditing"),
       danger: true,
     });
     if (discard) onClose();

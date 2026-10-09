@@ -1,6 +1,7 @@
 {
   "common.add": "Добавить",
   "common.cancel": "Отмена",
+  "common.keepEditing": "Продолжить редактирование",
   "common.close": "Закрыть",
   "common.choose": "Выбрать",
   "common.remove": "Удалить",
@@ -411,9 +412,9 @@
   "settings.saving": "Сохранение…",
   "settings.saveFailed": "Настройки не сохранены. Ваши изменения по-прежнему открыты; попробуйте сохранить ещё раз.",
   "settings.savedApplyFailed": "Настройки сохранены, но интерфейс не удалось полностью обновить. Перезапустите ZipKit, чтобы применить их.",
-  "settings.discardTitle": "Отказаться от несохранённых изменений?",
-  "settings.discardMessage": "Изменения настроек не сохранены.",
-  "settings.discard": "Не сохранять",
+  "settings.discardTitle": "Отказаться от изменений?",
+  "settings.discardMessage": "Есть несохранённые изменения. Отказаться от них и закрыть?",
+  "settings.discard": "Отказаться",
 
   "shortcuts.title": "Сочетания клавиш",
   "shortcuts.general": "Общие",

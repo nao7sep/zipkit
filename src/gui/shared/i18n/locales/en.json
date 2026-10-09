@@ -1,6 +1,7 @@
 {
   "common.add": "Add",
   "common.cancel": "Cancel",
+  "common.keepEditing": "Keep editing",
   "common.close": "Close",
   "common.choose": "Choose",
   "common.remove": "Remove",
@@ -411,8 +412,8 @@
   "settings.saving": "Saving…",
   "settings.saveFailed": "Settings were not saved. Your changes are still open; try saving again.",
   "settings.savedApplyFailed": "Settings were saved, but the interface could not fully update. Restart ZipKit to apply them.",
-  "settings.discardTitle": "Discard unsaved changes?",
-  "settings.discardMessage": "Your changes to the settings have not been saved.",
+  "settings.discardTitle": "Discard changes?",
+  "settings.discardMessage": "You have unsaved changes. Discard them and close?",
   "settings.discard": "Discard",
 
   "shortcuts.title": "Keyboard shortcuts",

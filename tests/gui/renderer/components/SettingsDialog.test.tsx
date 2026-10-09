@@ -215,7 +215,7 @@ describe("SettingsDialog while a save runs", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.queryByText("Discard unsaved changes?")).toBeNull();
+    expect(screen.queryByText("Discard changes?")).toBeNull();
 
     save.resolve();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));

@@ -1,6 +1,7 @@
 {
   "common.add": "Adicionar",
   "common.cancel": "Cancelar",
+  "common.keepEditing": "Continuar editando",
   "common.close": "Fechar",
   "common.choose": "Escolher",
   "common.remove": "Remover",
@@ -411,8 +412,8 @@
   "settings.saving": "Salvando…",
   "settings.saveFailed": "As configurações não foram salvas. Suas alterações continuam abertas; tente salvar novamente.",
   "settings.savedApplyFailed": "As configurações foram salvas, mas a interface não pôde ser atualizada por completo. Reinicie o ZipKit para aplicá-las.",
-  "settings.discardTitle": "Descartar as alterações não salvas?",
-  "settings.discardMessage": "Suas alterações nas configurações não foram salvas.",
+  "settings.discardTitle": "Descartar as alterações?",
+  "settings.discardMessage": "Há alterações não salvas. Descartá-las e fechar?",
   "settings.discard": "Descartar",
 
   "shortcuts.title": "Atalhos de teclado",

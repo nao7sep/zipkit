@@ -1,6 +1,7 @@
 {
   "common.add": "Agregar",
   "common.cancel": "Cancelar",
+  "common.keepEditing": "Seguir editando",
   "common.close": "Cerrar",
   "common.choose": "Elegir",
   "common.remove": "Quitar",
@@ -411,8 +412,8 @@
   "settings.saving": "Guardando…",
   "settings.saveFailed": "No se guardó la configuración. Tus cambios siguen abiertos; vuelve a intentar guardarlos.",
   "settings.savedApplyFailed": "Los ajustes se guardaron, pero la interfaz no pudo actualizarse por completo. Reinicia ZipKit para aplicarlos.",
-  "settings.discardTitle": "¿Descartar los cambios sin guardar?",
-  "settings.discardMessage": "Tus cambios en la configuración no se han guardado.",
+  "settings.discardTitle": "¿Descartar los cambios?",
+  "settings.discardMessage": "Tienes cambios sin guardar. ¿Descartarlos y cerrar?",
   "settings.discard": "Descartar",
 
   "shortcuts.title": "Atajos de teclado",

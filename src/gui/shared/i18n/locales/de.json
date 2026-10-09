@@ -1,6 +1,7 @@
 {
   "common.add": "Hinzufügen",
   "common.cancel": "Abbrechen",
+  "common.keepEditing": "Weiter bearbeiten",
   "common.close": "Schließen",
   "common.choose": "Auswählen",
   "common.remove": "Entfernen",
@@ -411,8 +412,8 @@
   "settings.saving": "Wird gespeichert …",
   "settings.saveFailed": "Die Einstellungen wurden nicht gespeichert. Ihre Änderungen sind noch offen; versuchen Sie erneut zu speichern.",
   "settings.savedApplyFailed": "Die Einstellungen wurden gespeichert, aber die Oberfläche konnte nicht vollständig aktualisiert werden. Starten Sie ZipKit neu, um sie anzuwenden.",
-  "settings.discardTitle": "Nicht gespeicherte Änderungen verwerfen?",
-  "settings.discardMessage": "Ihre Änderungen an den Einstellungen wurden nicht gespeichert.",
+  "settings.discardTitle": "Änderungen verwerfen?",
+  "settings.discardMessage": "Sie haben nicht gespeicherte Änderungen. Verwerfen und schließen?",
   "settings.discard": "Verwerfen",
 
   "shortcuts.title": "Tastaturkurzbefehle",

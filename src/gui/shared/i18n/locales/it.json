@@ -1,6 +1,7 @@
 {
   "common.add": "Aggiungi",
   "common.cancel": "Annulla",
+  "common.keepEditing": "Continua a modificare",
   "common.close": "Chiudi",
   "common.choose": "Scegli",
   "common.remove": "Rimuovi",
@@ -411,8 +412,8 @@
   "settings.saving": "Salvataggio…",
   "settings.saveFailed": "Le impostazioni non sono state salvate. Le tue modifiche sono ancora aperte; riprova a salvare.",
   "settings.savedApplyFailed": "Le impostazioni sono state salvate, ma l’interfaccia non è stata aggiornata completamente. Riavvia ZipKit per applicarle.",
-  "settings.discardTitle": "Scartare le modifiche non salvate?",
-  "settings.discardMessage": "Le tue modifiche alle impostazioni non sono state salvate.",
+  "settings.discardTitle": "Scartare le modifiche?",
+  "settings.discardMessage": "Hai modifiche non salvate. Scartarle e chiudere?",
   "settings.discard": "Scarta",
 
   "shortcuts.title": "Scorciatoie da tastiera",
