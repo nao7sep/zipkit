@@ -17,6 +17,7 @@ import { resolvePolicy } from "../../../src/sdk/policy.js";
 import { scan } from "../../../src/sdk/scan/scan.js";
 import type { ArchivePolicy, ArchiveSpec } from "../../../src/sdk/types.js";
 import { realVolume } from "../../helpers/volume.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/internal/volume.js";
 import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 let dir: string;
@@ -39,9 +40,9 @@ function deps(policy: ArchivePolicy) {
   };
 }
 
-async function runScan(spec: ArchiveSpec, partial: Partial<ArchivePolicy> = {}) {
+async function runScan(spec: ArchiveSpec, partial: Partial<ArchivePolicy> = {}, volume?: Volume) {
   const policy = resolvePolicy(undefined, partial);
-  return scan(spec, policy, deps(policy));
+  return scan(spec, policy, { ...deps(policy), ...(volume ? { volume } : {}) });
 }
 
 function names(result: { entries: { archivePath: string }[] }): string[] {
@@ -265,6 +266,31 @@ describe("ZipKit's own storage root", () => {
     const result = await runScan({ inputs: [proj] }, { symlinks: "follow", followExternal: true });
 
     expect(names(result)).toEqual(["a.txt"]);
+  });
+
+  it("keeps a distinct folder whose name differs from it only in case, as a case-sensitive volume holds one", async () => {
+    // The real folder `user-folder` is presented as `.ZipKit` beside the real `.zipkit`, the way a
+    // case-sensitive volume lists two folders that a case-insensitive one cannot hold together.
+    const real = path.join(home, "user-folder");
+    const shown = path.join(home, ".ZipKit");
+    await mkdir(real);
+    await writeFile(path.join(real, "kept.txt"), "mine");
+    const inward = (p: string): string => (p === shown || p.startsWith(shown + path.sep) ? real + p.slice(shown.length) : p);
+    const outward = (p: string): string => (p === real || p.startsWith(real + path.sep) ? shown + p.slice(real.length) : p);
+    const port: FileSystemPort = {
+      ...nodeFileSystem,
+      open: (p, flags, mode) => nodeFileSystem.open(inward(p), flags, mode),
+      stat: (p) => nodeFileSystem.stat(inward(p)),
+      lstat: (p) => nodeFileSystem.lstat(inward(p)),
+      realpath: async (p) => outward(await nodeFileSystem.realpath(inward(p))),
+      readlink: (p) => nodeFileSystem.readlink(inward(p)),
+      readdir: async (p) => (await nodeFileSystem.readdir(inward(p))).map((entry) =>
+        p === home && entry.name === "user-folder" ? { name: ".ZipKit", isDirectory: () => entry.isDirectory() } : entry),
+    };
+
+    const result = await runScan({ inputs: [home] }, {}, new Volume(port, 30_000));
+
+    expect(names(result)).toEqual([".ZipKit", ".ZipKit/kept.txt", "notes.txt"]);
   });
 
   it.runIf(process.platform === "darwin" || process.platform === "win32")(

@@ -148,14 +148,14 @@ function isWithin(root: string, target: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-/** Whether canonical `target` is the app's storage root or inside it, comparing
- *  names as macOS and Windows volumes do, without regard to case. */
+/** Whether canonical `target` is the app's storage root or inside it. Both sides
+ *  already carry their on-disk case (the root and every input come through
+ *  realpath, walked names through readdir), so they compare exactly: folding
+ *  case would also match a distinct folder that differs only in case on a
+ *  case-sensitive volume, leaving it out of the archive. */
 function inAppRoot(ctx: ScanContext, target: string): boolean {
   if (ctx.appRoot === null) return false;
-  const fold = process.platform === "darwin" || process.platform === "win32"
-    ? (p: string) => p.toLowerCase()
-    : (p: string) => p;
-  const rel = path.relative(fold(ctx.appRoot), fold(target));
+  const rel = path.relative(ctx.appRoot, target);
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 

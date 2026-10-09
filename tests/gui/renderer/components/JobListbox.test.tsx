@@ -91,6 +91,19 @@ describe("JobListbox", () => {
     expect(onRemove).not.toHaveBeenCalled(); // a running job is not removable
   });
 
+  it("a job moving files to Trash offers Cancel but no ✕, and ignores Delete", () => {
+    const onCancel = vi.fn();
+    const onRemove = vi.fn();
+    renderListbox({ jobs: [{ ...job("a", "done"), trashing: true }], selectedId: "a", onRemove, onCancel });
+    const list = screen.getByRole("listbox");
+    rows()[0]!.focus();
+    expect(screen.queryByTitle("Remove (Delete)")).toBeNull();
+    fireEvent.keyDown(list, { key: "Delete" });
+    expect(onRemove).not.toHaveBeenCalled();
+    fireEvent.keyDown(list, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledWith("a");
+  });
+
   it("Esc cancels a queued active row, and a queued job is still removable", () => {
     const onCancel = vi.fn();
     const onRemove = vi.fn();

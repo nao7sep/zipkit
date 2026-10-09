@@ -31,7 +31,7 @@ import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
 import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
-import { message, sentences, type Message } from "../shared/i18n/translate.js";
+import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 
 export type { TrashResult } from "./trash-outcome.js";
@@ -135,13 +135,23 @@ function changedSourcePath(err: unknown): string | undefined {
   return typeof path === "string" ? path : undefined;
 }
 
+/** Whether a stall struck while a finished archive was being published, so the
+ *  archive may still appear once the stalled call completes. */
+function stalledWhileCommitting(err: unknown): boolean {
+  return stalledPath(err) !== undefined && (err as { committing?: unknown }).committing === true;
+}
+
 /** A failed write's job message: a source file that changed while it was read
- *  is named, so the user knows the archive was refused rather than broken. */
-function writeFailureMessage(err: unknown): Message {
+ *  is named, so the user knows the archive was refused rather than broken, and a
+ *  publication that stalled says the archive may still appear rather than that
+ *  it could not be written (an unknown outcome is reported as unknown). */
+function writeFailureMessage(err: unknown, output: string): Message {
   const changed = changedSourcePath(err);
-  return changed !== undefined
-    ? message("job.sourceChanged", { path: changed })
-    : failureMessage(err, "job.writeFailed");
+  if (changed !== undefined) return message("job.sourceChanged", { path: changed });
+  if (stalledWhileCommitting(err)) {
+    return failureMessage(err, "job.writeUnconfirmed", { path: output });
+  }
+  return failureMessage(err, "job.writeFailed");
 }
 
 /** Why the originals may not go to Trash, from {@link EngineDeps}' checks in
@@ -201,10 +211,10 @@ function explainMoved(comparison: SourceComparison, present: string[], moved: st
 
 /** A failed step's job message: the step's own sentence, led by the path that
  *  stopped responding when the failure was a stalled volume. */
-function failureMessage(err: unknown, key: MessageKey): Message {
+function failureMessage(err: unknown, key: MessageKey, values?: MessageValues): Message {
   const path = stalledPath(err);
-  if (path === undefined) return message(key);
-  return sentences([message("error.stalled", { path }), message(key)]) ?? message(key);
+  if (path === undefined) return message(key, values);
+  return sentences([message("error.stalled", { path }), message(key, values)]) ?? message(key, values);
 }
 
 /** Whether a plan found a folder it could not list. */
@@ -414,7 +424,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     try {
       bytes = await deps.write(plan, signal, onProgress);
     } catch (err) {
-      set(rec, { state: "failed", message: writeFailureMessage(err) });
+      set(rec, { state: "failed", message: writeFailureMessage(err, plan.output) });
       deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
       return null;
     }
@@ -671,6 +681,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // lands (maybeRunPending), which keeps "edit a field, then Create" from
       // being dropped mid-re-plan.
       if (s !== "planning" && !(s !== "queued" && isRunnable(rec.job))) return;
+      // A failed job whose archive is being moved to Trash waits for that to end.
+      if (rec.job.trashing) return;
       if (refusesRun(rec)) return;
       if (!pending.includes(id)) pending.push(id);
       deps.log.info("job run requested", { jobId: id, state: s });
@@ -687,15 +699,22 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // A done archive-and-trash is NOT removable — its originals are already gone.
       const removable =
         (rec.job.state === "done" && rec.job.intent === "save") || rec.job.state === "failed";
+      // One Trash action in flight per job, the same claim the originals take:
+      // taken here, before the first await, so a second click, Retry, Move
+      // originals or removing the job all wait for this one to end.
       if (!removable || rec.job.trashing) return;
       const output = rec.publishedOutput;
+      const aborter = new AbortController();
+      rec.aborter = aborter;
+      set(rec, { trashing: true, actionResult: undefined });
+      emit();
       deps.log.info("remove archive requested", { jobId: id, output });
-      void (async () => {
+      const work = (async () => {
+        let removed = false;
         try {
-          // A standalone Trash action, not tied to a running job's own
-          // cancellation — bounded by `trash`'s own per-path timeout, but with
-          // nothing (yet) for the user to cancel it through.
-          const result = await deps.trash([output], new AbortController().signal);
+          // Cancel, and quit, stop the wait, not the OS call: an archive the
+          // wait was cut short on is reported as possibly reaching Trash.
+          const result = await deps.trash([output], aborter.signal);
           if (result.unconfirmed.length > 0) {
             set(rec, {
               actionResult: {
@@ -703,11 +722,18 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
                 message: message("action.archiveTrashUnconfirmed"),
               },
             });
-            deps.log.warn("remove archive unconfirmed", { jobId: id, output });
-            emit();
-            return;
+            deps.log.warn("remove archive unconfirmed", { jobId: id, output, cancelled: aborter.signal.aborted });
+          } else if (result.failed.length > 0) {
+            set(rec, {
+              actionResult: {
+                severity: "error",
+                message: message("action.archiveTrashFailed"),
+              },
+            });
+            deps.log.error("remove archive failed", { jobId: id, failed: result.failed });
+          } else {
+            removed = true;
           }
-          if (result.failed.length > 0) throw new Error("archive trash failed");
         } catch (err) {
           set(rec, {
             actionResult: {
@@ -716,9 +742,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             },
           });
           deps.log.error("remove archive failed", { jobId: id, error: errorInfo(err) });
+        }
+        if (rec.aborter === aborter) rec.aborter = null;
+        set(rec, { trashing: false });
+        if (!removed) {
           emit();
           return;
         }
+        deps.log.info("archive removed", { jobId: id, output });
         // Back to an editable, re-planned job so options can be adjusted and the
         // archive created again.
         set(rec, {
@@ -733,6 +764,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         emit();
         void planJob(id);
       })();
+      actions.add(work);
+      void work.finally(() => actions.delete(work));
     },
     trashOriginals(id) {
       const rec = recs.get(id);

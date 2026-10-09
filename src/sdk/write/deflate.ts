@@ -37,12 +37,11 @@ export interface CompressResult {
 export class EntryCompressor {
   readonly #sink: ChunkSink;
   readonly #deflate: zlib.DeflateRaw | null;
+  /** The one reader of the deflate stream's output (see {@link EntryCompressor.#forward}). */
+  readonly #pump: Promise<void>;
   #crc = 0;
   #uncompressedSize = 0;
   #compressedSize = 0;
-  /** A serial chain of sink writes: each output chunk waits for the previous to
-   *  finish, so the bytes reach the sink in deflate-stream order. */
-  #chain: Promise<void> = Promise.resolve();
   #error: unknown;
 
   constructor(method: "store" | "deflate", sink: ChunkSink, chunkSize: number, level: number) {
@@ -54,18 +53,35 @@ export class EntryCompressor {
       // on (a flush per chunk adds bytes and could push a near-4 GiB entry past
       // the bound). Do not introduce intermediate flushes here.
       this.#deflate = zlib.createDeflateRaw({ chunkSize, level });
-      // Output chunks arrive on the stream's "data" events, already in order.
-      // Forward each to the sink strictly sequentially — the sink advances a
-      // shared file offset, so overlapping writes would interleave the bytes.
-      this.#deflate.on("data", (chunk: Buffer) => {
-        this.#compressedSize += chunk.length;
-        this.#chain = this.#chain.then(() =>
-          this.#sink(chunk).catch((err) => void (this.#error ??= err)),
-        );
-      });
-      this.#deflate.on("error", (err) => void (this.#error ??= err));
+      this.#pump = this.#forward(this.#deflate);
     } else {
       this.#deflate = null;
+      this.#pump = Promise.resolve();
+    }
+  }
+
+  /**
+   * Hand the deflate output to the sink one chunk at a time, in stream order
+   * (the sink advances a shared file offset, so overlapping writes would
+   * interleave the bytes). Reading only as fast as the sink accepts is what
+   * bounds memory: a slow destination leaves output in the stream's buffer,
+   * zlib stops, and `update` waits for the drain. After a sink failure the
+   * output is still read, and dropped, so a waiting `update` or `finish` is
+   * never left behind a stream nobody reads.
+   */
+  async #forward(deflate: zlib.DeflateRaw): Promise<void> {
+    try {
+      for await (const chunk of deflate as AsyncIterable<Buffer>) {
+        if (this.#error !== undefined) continue;
+        this.#compressedSize += chunk.length;
+        try {
+          await this.#sink(chunk);
+        } catch (err) {
+          this.#error ??= err;
+        }
+      }
+    } catch (err) {
+      this.#error ??= err;
     }
   }
 
@@ -81,8 +97,8 @@ export class EntryCompressor {
       await this.#sink(chunk);
       return;
     }
-    // Respect backpressure: when the deflate stream's buffer is full, wait for
-    // it to drain before feeding more, so memory stays bounded under fast input.
+    // Respect backpressure: when the deflate stream's buffer is full — fast
+    // input, or a sink slower than zlib — wait for it to drain before feeding more.
     if (!this.#deflate.write(chunk)) {
       await awaitDrain(this.#deflate);
     }
@@ -91,12 +107,8 @@ export class EntryCompressor {
   /** Flush trailing deflate output and return the CRC and sizes. */
   async finish(): Promise<CompressResult> {
     if (this.#deflate !== null) {
-      await new Promise<void>((resolve, reject) => {
-        this.#deflate!.once("end", resolve);
-        this.#deflate!.once("error", reject);
-        this.#deflate!.end();
-      });
-      await this.#chain;
+      this.#deflate.end();
+      await this.#pump;
     }
     if (this.#error !== undefined) throw this.#error;
     return {
@@ -104,5 +116,12 @@ export class EntryCompressor {
       compressedSize: this.#compressedSize,
       uncompressedSize: this.#uncompressedSize,
     };
+  }
+
+  /** End an entry that failed before `finish`: stop the stream and wait for the
+   *  sink write in flight, so no work on the entry outlives it. */
+  async dispose(): Promise<void> {
+    this.#deflate?.destroy();
+    await this.#pump;
   }
 }

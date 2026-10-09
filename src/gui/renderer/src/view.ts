@@ -154,7 +154,7 @@ export function isTerminal(state: Job["state"]): boolean {
 }
 
 /** Jobs that can be cancelled: in-flight work (`planning`/`running`), waiting
- *  its turn (`queued`), or a finished job moving its originals to Trash.
+ *  its turn (`queued`), or a job moving its archive or originals to Trash.
  *  Cancelling a run re-plans the job back to an editable state. Drives the
  *  listbox Cancel affordance (button + Escape). */
 export function isCancelable(job: Job): boolean {
@@ -179,6 +179,8 @@ export { manifestRequiredButMissing, scanBlocksTrash };
  *  and neither does a Move-to-Trash job without its manifest or with a folder
  *  its scan could not list, whose note says why. */
 export function jobCommands(job: Job): JobCommand[] {
+  // Moving the archive or the originals to Trash on request: busy until it ends or is cancelled.
+  if (job.trashing) return ["cancel"];
   const runnable = !manifestRequiredButMissing(job.intent, job.options.metadata) && !scanBlocksTrash(job);
   switch (job.state) {
     case "planning":
@@ -203,8 +205,6 @@ export function jobCommands(job: Job): JobCommand[] {
       if (job.archiveWritten) return runnable ? ["retry", "reveal", "remove-archive"] : ["reveal", "remove-archive"];
       return runnable ? ["retry"] : [];
     case "done":
-      // Moving the originals to Trash on request: busy until it ends or is cancelled.
-      if (job.trashing) return ["cancel"];
       if (job.intent !== "save") return ["verify", "reveal"];
       // A saved archive: verify/reveal it, remove the archive to edit and
       // re-create, or (only while they still exist, and only when the archive

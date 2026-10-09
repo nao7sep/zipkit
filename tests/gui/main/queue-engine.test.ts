@@ -1154,3 +1154,129 @@ describe("queue engine", () => {
     });
   });
 });
+
+describe("removing a job's archive", () => {
+  /** A Trash that holds each call until released, and reports a cut-short wait as unconfirmed. */
+  function heldTrash() {
+    const releases: Array<() => void> = [];
+    const trash: EngineDeps["trash"] = (paths, signal) =>
+      new Promise((resolve) => {
+        const moved = () => resolve({ moved: paths, failed: [], unconfirmed: [] });
+        releases.push(moved);
+        signal.addEventListener("abort", () => resolve({ moved: [], failed: [], unconfirmed: paths }), { once: true });
+      });
+    return { trash, release: () => releases.splice(0).forEach((resolve) => resolve()) };
+  }
+
+  async function doneSaveJob(overrides: Partial<EngineDeps> = {}) {
+    const made = makeDeps(overrides);
+    const engine = createQueueEngine(made.deps);
+    const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    return { ...made, engine, id };
+  }
+
+  it("claims the job: a second click, Move originals and removing the job wait until it ends", async () => {
+    const held = heldTrash();
+    const { engine, id, deps, calls } = await doneSaveJob();
+    deps.trash = async (paths, signal) => {
+      calls.trash.push(paths);
+      return held.trash(paths, signal);
+    };
+
+    engine.removeArchive(id);
+    expect(engine.snapshot()[0]?.trashing).toBe(true);
+    expect(engine.hasRunningJob()).toBe(true);
+    engine.removeArchive(id);
+    engine.trashOriginals(id);
+    engine.remove(id);
+    await tick();
+    expect(calls.trash).toEqual([["/tmp/out.zip"]]);
+    expect(engine.snapshot().map((job) => job.id)).toEqual([id]);
+
+    held.release();
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    expect(engine.snapshot()[0]?.trashing).toBe(false);
+    expect(engine.hasRunningJob()).toBe(false);
+  });
+
+  it("holds Retry on a failed job until its archive's Trash ends", async () => {
+    const held = heldTrash();
+    const { deps, calls } = makeDeps({ verify: async () => false });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, "archive-and-trash");
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    deps.trash = held.trash;
+    const verifies = calls.verify;
+
+    engine.removeArchive(id);
+    engine.run(id);
+    await tick();
+
+    expect(engine.snapshot()[0]?.state).toBe("failed");
+    expect(calls.verify).toBe(verifies);
+    held.release();
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+  });
+
+  it("Cancel stops waiting and says the archive may still reach Trash, keeping the job as it was", async () => {
+    const held = heldTrash();
+    const { engine, id, deps } = await doneSaveJob();
+    deps.trash = held.trash;
+
+    engine.removeArchive(id);
+    engine.cancel(id);
+
+    await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+    const job = engine.snapshot()[0]!;
+    expect(job.state).toBe("done");
+    expect(job.actionResult?.severity).toBe("warning");
+    expect(say(job.actionResult?.message)).toContain("may yet reach recoverable Trash");
+    expect(engine.hasRunningJob()).toBe(false);
+  });
+
+  it("quit stops waiting on an archive's Trash and settles once the removal has ended", async () => {
+    const held = heldTrash();
+    const { engine, id, deps } = await doneSaveJob();
+    deps.trash = held.trash;
+
+    engine.removeArchive(id);
+    await engine.shutdown();
+
+    expect(engine.snapshot()[0]?.trashing).toBe(false);
+    expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("may yet reach recoverable Trash");
+  });
+});
+
+describe("a write that stalls", () => {
+  function stall(committing: boolean): Error {
+    return Object.assign(new Error("stalled"), { errorType: "stall", path: "/Volumes/Share/out.zip", committing });
+  }
+
+  async function failedWith(error: Error): Promise<string> {
+    const { deps } = makeDeps({ write: async () => { throw error; } });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a"], DEFAULT_OPTIONS, "save");
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    engine.run(id);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    return say(engine.snapshot()[0]?.message);
+  }
+
+  it("while publishing the archive says it may still appear, not that it could not be written", async () => {
+    const text = await failedWith(stall(true));
+    expect(text).toContain("stopped responding");
+    expect(text).toContain("may already be at /tmp/out.zip or may still appear there");
+    expect(text).not.toContain("could not be written");
+  });
+
+  it("before publishing says the archive could not be written", async () => {
+    const text = await failedWith(stall(false));
+    expect(text).toContain("stopped responding");
+    expect(text).toContain("could not be written");
+  });
+});

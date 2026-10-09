@@ -123,6 +123,7 @@ async function streamFile(
         await file.release();
       }
     } catch (err) {
+      await compressor.dispose();
       // A cancel, a stall, or a destination fault surfacing through the
       // compressor is already classified; only a raw source error is wrapped.
       if (err instanceof ZipKitError) throw err;
@@ -144,7 +145,12 @@ async function streamBuffer(
 ): Promise<StreamResult> {
   return writer.streamEntry(input, async (sink) => {
     const compressor = new EntryCompressor(input.method, sink, chunkSize, level);
-    if (raw.length > 0) await compressor.update(raw);
+    try {
+      if (raw.length > 0) await compressor.update(raw);
+    } catch (err) {
+      await compressor.dispose();
+      throw err;
+    }
     return compressor.finish();
   });
 }

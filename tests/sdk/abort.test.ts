@@ -16,6 +16,7 @@ import { ZipWriter } from "../../src/sdk/write/zipWriter.js";
 import { parseZip, readEntryData } from "../../src/sdk/extract/zipReader.js";
 import pLimit from "p-limit";
 import { extractArchive } from "../../src/sdk/extract/extract.js";
+import { writeArchive } from "../../src/sdk/write/write.js";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/sdk/internal/volume.js";
 import { createLogger } from "../../src/sdk/log/logger.js";
 import { buildZipFile } from "../helpers/writeZip.js";
@@ -157,6 +158,52 @@ describe("abort propagation", () => {
     ).rejects.toBeInstanceOf(AbortError);
     expect(stagedWrites).toBe(1);
     expect(readdirSync(dest)).toEqual([]);
+  });
+  it("rejects a write cancelled while a destination write is held, and leaves no temp file once it lands", async () => {
+    const proj = path.join(dir, "big");
+    await mkdir(proj);
+    await writeFile(path.join(proj, "noise.bin"), randomBytes(4 * 1024 * 1024));
+    const output = path.join(dir, "held.zip");
+    const plan = await new ZipKit().plan({ inputs: [proj], output });
+    const controller = new AbortController();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let entered!: () => void;
+    const holding = new Promise<void>((resolve) => { entered = resolve; });
+    let writes = 0;
+    const port: FileSystemPort = {
+      ...nodeFileSystem,
+      open: async (file, flags, mode) => {
+        const handle = await nodeFileSystem.open(file, flags, mode);
+        if (!file.endsWith(".tmp")) return handle;
+        return {
+          ...handle,
+          write: async (buffer, offset, length, position) => {
+            // The second chunk to the archive is held, as a stalled destination holds it.
+            if (++writes === 2) {
+              entered();
+              await held;
+            }
+            return handle.write(buffer, offset, length, position);
+          },
+        };
+      },
+    };
+
+    const run = writeArchive(plan, {
+      logger: createLogger(),
+      chunkSize: 64 * 1024,
+      signal: controller.signal,
+      volume: new Volume(port, 30_000, controller.signal),
+    });
+    const outcome = run.then(() => "written", (error: unknown) => error);
+    await holding;
+    controller.abort();
+
+    expect(await outcome).toBeInstanceOf(AbortError);
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(readdirSync(dir).sort()).toEqual(["big"]);
   });
 });
 
