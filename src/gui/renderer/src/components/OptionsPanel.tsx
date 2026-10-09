@@ -17,15 +17,21 @@ import { useI18n } from "../i18n/I18nContext";
 export function OptionsPanel({
   options,
   onChange,
+  onType,
   disabled,
 }: {
   options: GuiOptions;
+  /** A finished change: a box, a choice, a chosen or entered folder, a field left. */
   onChange: (o: GuiOptions) => void;
+  /** A keystroke in a field still being edited; finished changes when absent. */
+  onType?: (o: GuiOptions) => void;
   disabled: boolean;
 }) {
   const { t, rich } = useI18n();
   const set = <K extends keyof GuiOptions>(key: K, value: GuiOptions[K]) =>
     onChange({ ...options, [key]: value });
+  const type = <K extends keyof GuiOptions>(key: K, value: GuiOptions[K]) =>
+    (onType ?? onChange)({ ...options, [key]: value });
 
   return (
     // The fieldset is the grid; its columns follow the pane's width.
@@ -55,7 +61,7 @@ export function OptionsPanel({
             min={1}
             max={9}
             value={options.level}
-            onChange={(e) => set("level", Number(e.target.value))}
+            onChange={(e) => type("level", Number(e.target.value))}
             style={{ width: "3.5rem" }}
           />
         </Field>
@@ -104,7 +110,7 @@ export function OptionsPanel({
         <textarea
           value={options.comment}
           rows={2}
-          onChange={(e) => set("comment", e.target.value)}
+          onChange={(e) => type("comment", e.target.value)}
           onBlur={(e) => set("comment", multiline(e.target.value))}
           style={S.textarea}
         />

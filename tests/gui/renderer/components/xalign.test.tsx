@@ -135,7 +135,7 @@ describe("per-item X alignment: first line, not the wrapped block's middle", () 
   });
 
   it("ShellNotice keeps the row/message untouched; only the dismiss button gets a static nudge", () => {
-    render(<ShellNotice message="layout.notSaved" closeLabel="layout.close" onDismiss={vi.fn()} />);
+    render(<ShellNotice message="queue.notSaved" closeLabel="queue.notSavedClose" onDismiss={vi.fn()} />);
     const notice = screen.getByRole("alert");
     expect(notice.style.alignItems).toBe("flex-start");
     const message_ = notice.querySelector("span") as HTMLElement;

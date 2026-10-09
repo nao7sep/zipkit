@@ -15,8 +15,6 @@ import type { RecordDetail, RecordKind, RecordsPage, RecordsQuery, RecordSummary
 
 export interface RecordsWorkerData {
   database: string;
-  /** The records format this build reads and writes, kept in `PRAGMA user_version`. */
-  formatVersion: number;
 }
 
 /** One log line. `session` is the launch's start; `jobId` is the queue job the
@@ -231,17 +229,13 @@ class RecordsStore {
   #statements: Statements | null = null;
   #openFailure: unknown = null;
   readonly #database: string;
-  readonly #formatVersion: number;
 
-  constructor(database: string, formatVersion: number) {
+  constructor(database: string) {
     this.#database = database;
-    this.#formatVersion = formatVersion;
   }
 
   /** Opened on the first request, so a process that never logs creates no
-   *  database; a failed open is not retried. A database without its format
-   *  version, or one a newer build wrote, fails to open and is left as it is
-   *  (store-recovery conventions). */
+   *  database; a failed open is not retried. */
   #open(): Statements {
     if (this.#statements) return this.#statements;
     if (this.#openFailure !== null) throw this.#openFailure;
@@ -250,17 +244,7 @@ class RecordsStore {
       mkdirSync(path.dirname(this.#database), { recursive: true });
       db = new DatabaseSync(this.#database);
       db.exec("PRAGMA busy_timeout = 5000");
-      // A database with no tables is new and is stamped as it is created; 0,
-      // SQLite's unset value, on one with tables is a missing marker.
-      const stored = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
-      const isNew = (db.prepare("SELECT count(*) AS n FROM sqlite_master").get() as { n: number }).n === 0;
-      if (stored < 0) throw new Error(`${this.#database} has an invalid format version ${stored}`);
-      if (!isNew && stored === 0) throw new Error(`${this.#database} has no format version`);
-      if (stored > this.#formatVersion) {
-        throw new Error(`${this.#database} has format version ${stored}, newer than this build's ${this.#formatVersion}`);
-      }
       db.exec("PRAGMA journal_mode = WAL");
-      if (isNew) db.exec(`PRAGMA user_version = ${this.#formatVersion}`);
       db.exec(SCHEMA);
       this.#db = db;
       this.#statements = {
@@ -341,8 +325,8 @@ function answer(store: RecordsStore, request: Exclude<RecordsRequest, { type: "c
 
 if (parentPort) {
   const port = parentPort;
-  const { database, formatVersion } = workerData as RecordsWorkerData;
-  const store = new RecordsStore(database, formatVersion);
+  const { database } = workerData as RecordsWorkerData;
+  const store = new RecordsStore(database);
   const reply = (response: RecordsResponse): void => port.postMessage(response);
   port.on("message", (request: RecordsRequest) => {
     if (request.type === "close") {

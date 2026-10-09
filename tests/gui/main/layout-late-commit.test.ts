@@ -15,7 +15,7 @@ vi.mock("node:fs/promises", async (importActual) => {
   } };
 });
 
-it("a layout patch follows the physical late commit and retains the other window's committed width", async () => {
+it("a held layout save stays pending, and a later pane save follows its commit and keeps the other window's width", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-layout-late-"));
   const previousRoot = process.env.ZIPKIT_DATA_DIR;
   process.env.ZIPKIT_DATA_DIR = root;
@@ -27,14 +27,15 @@ it("a layout patch follows the physical late commit and retains the other window
     controls.held = new Promise<void>((resolve) => { release = resolve; });
     const entered = new Promise<void>((resolve) => { controls.entered = resolve; });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const save = saveRecordsListWidth(420);
-    const failed = expect(save).rejects.toThrow(`did not finish within ${MANAGED_IO_WAIT_MS} ms`);
+    let listSaved = false;
+    const list = saveRecordsListWidth(420).then((width) => { listSaved = true; return width; });
     await entered;
-    await vi.advanceTimersByTimeAsync(MANAGED_IO_WAIT_MS);
-    await failed;
+    await vi.advanceTimersByTimeAsync(10 * MANAGED_IO_WAIT_MS);
+    expect(listSaved).toBe(false);
     expect(recordsListWidth()).toBe(500);
     const pane = saveLayout({ jobsWidth: 320, progressWidth: 380 });
     release();
+    expect(await list).toBe(420);
     await pane;
     expect(recordsListWidth()).toBe(420);
     expect(JSON.parse(await readFile(file, "utf8")).layout)

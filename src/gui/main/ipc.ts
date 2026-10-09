@@ -7,7 +7,7 @@
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import type { AppInfo, JobEvent, VerifyResult } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
-import { clampLayout, type PaneLayout } from "../shared/layout.js";
+import type { PaneLayout } from "../shared/layout.js";
 import {
   RECORDS_PAGE_SIZE,
   isRecordKind,
@@ -20,13 +20,12 @@ import type { RecordsRead, RecordsReadResults } from "./records-worker.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log, startProgressRun, toGuiError, zip } from "./runtime.js";
-import { loadSettings, saveSettings } from "./settings.js";
+import { currentSettings, saveSettings } from "./settings.js";
 import { applyThemePreference } from "./theme.js";
 import { applyLanguagePreference, languageEnvironment, mainTranslator } from "./i18n.js";
-import { loadLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
+import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
-import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { showAppMessageDialog } from "./startup-dialog.js";
 
 export function registerIpc(): void {
@@ -34,22 +33,9 @@ export function registerIpc(): void {
     log.error("renderer operation failed", { context, error });
   });
 
-  // A settings file that became unreadable mid-session (the Records window reads
-  // it) is quarantined by the load; it is reported with the startup recovery
-  // dialog, without holding the reply.
-  ipcMain.handle("zipkit:getSettings", async (event): Promise<GuiSettings> => {
-    const load = await loadSettings(log);
-    for (const recovery of buildRecoveryDialogs({ settingsQuarantinedTo: load.quarantinedTo, queueQuarantinedTo: null })) {
-      const { t } = mainTranslator();
-      void showAppMessageDialog({
-        owner: BrowserWindow.fromWebContents(event.sender) ?? undefined,
-        title: t(recovery.title),
-        message: t(recovery.message.key, recovery.message.values),
-        button: "ok",
-      }).catch((error) => log.error("settings recovery dialog failed", { error: errorInfo(error) }));
-    }
-    return load.value;
-  });
+  // Main's copy, from the startup load or the last save: a window opened or
+  // reloaded mid-session never rereads the file.
+  ipcMain.handle("zipkit:getSettings", (): GuiSettings => currentSettings());
 
   ipcMain.handle("zipkit:setSettings", async (event, draft: GuiSettings): Promise<GuiSettings> => {
     let settings: GuiSettings;
@@ -81,15 +67,15 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:getLanguageEnvironment", async () => languageEnvironment());
 
-  ipcMain.handle("zipkit:getLayout", async (): Promise<PaneLayout> => clampLayout((await loadLayout(log)).value));
+  ipcMain.handle("zipkit:getLayout", (): PaneLayout => paneLayout());
 
   ipcMain.handle("zipkit:setLayout", async (_event, layout: PaneLayout): Promise<void> => {
     try {
       await saveLayout(layout);
     } catch (err) {
       log.error("failed to persist layout", { error: errorInfo(err) });
-      // The in-memory layout remains valid and usable, but the renderer owns the
-      // persistent user-facing result for this user gesture.
+      // The layout in use stays as it is; layout is optional state, so nothing
+      // beyond this record reaches the user (unsaved-edits conventions).
       throw err;
     }
   });

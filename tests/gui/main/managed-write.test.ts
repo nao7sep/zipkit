@@ -5,13 +5,13 @@ import { describe, expect, it } from "vitest";
 import { writeManagedTextWithin } from "../../../src/gui/main/managed-write.js";
 
 describe("writeManagedTextWithin", () => {
-  it("the actual session-end worker refuses a newer queue without touching it", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "zipkit-session-marker-"));
+  it("the actual session-end worker refuses to replace an unreadable queue and leaves it untouched", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "zipkit-session-unreadable-"));
     try {
       const file = path.join(root, "queue.json");
-      const current = '{"formatVersion":2,"kept":true}';
+      const current = "{ not json";
       writeFileSync(file, current);
-      expect(() => writeManagedTextWithin(file, '{"formatVersion":1,"jobs":[]}', 2_000)).toThrow(/newer than this build/);
+      expect(() => writeManagedTextWithin(file, '{"jobs":[]}', 2_000)).toThrow(/is invalid/);
       expect(readFileSync(file, "utf8")).toBe(current);
       expect(readdirSync(root)).toEqual(["queue.json"]);
     } finally {

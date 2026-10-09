@@ -217,48 +217,22 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
   });
 });
 
-describe("format version", () => {
-  const userVersion = (file: string): number => {
-    const db = new DatabaseSync(file, { readOnly: true });
-    try {
-      return (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-    } finally {
-      db.close();
-    }
-  };
+describe("existing stores open as they are", () => {
+  it.each([
+    ["an earlier build's format marker", "PRAGMA user_version = 1"],
+    ["a higher marker", "PRAGMA user_version = 7"],
+    ["no marker and a table of its own", "CREATE TABLE kept (x)"],
+  ])("records into a store with %s", async (_case, setup) => {
+    const db = new DatabaseSync(path.join(root, "backups.sqlite3"));
+    db.exec(setup);
+    db.close();
 
-  it("stamps a new store with the backups format version at creation", async () => {
-    const { FORMAT_VERSIONS } = await import("../../../src/gui/main/formatVersions.js");
     const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
     await record(path.join(root, "config.json"), Buffer.from("a", "utf8"));
     await closeBackupStore();
-    expect(userVersion(path.join(root, "backups.sqlite3"))).toBe(FORMAT_VERSIONS.backups);
+
     expect(readRows(root)).toHaveLength(1);
-  });
-
-  it.each([
-    ["a newer build wrote", (v: number) => `PRAGMA user_version = ${v + 1}`, /newer than this build/],
-    ["has a negative marker without tables", () => "PRAGMA user_version = -1", /invalid format version/],
-    ["has a negative marker with tables", () => "CREATE TABLE kept (x); PRAGMA user_version = -1", /invalid format version/],
-    ["has tables but no format version", () => "CREATE TABLE kept (x)", /no format version/],
-  ])("leaves a store that %s untouched, with one warn naming why, and records nothing", async (_case, setup, reason) => {
-    const { FORMAT_VERSIONS } = await import("../../../src/gui/main/formatVersions.js");
-    const file = path.join(root, "backups.sqlite3");
-    const db = new DatabaseSync(file);
-    db.exec(setup(FORMAT_VERSIONS.backups));
-    db.close();
-    const { readFileSync } = await import("node:fs");
-    const before = readFileSync(file);
-
-    const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
-    await expect(record(path.join(root, "config.json"), Buffer.from("a", "utf8"))).resolves.toBeUndefined();
-    await expect(record(path.join(root, "config.json"), Buffer.from("b", "utf8"))).resolves.toBeUndefined();
-    await closeBackupStore();
-
-    expect(readFileSync(file).equals(before)).toBe(true);
-    expect(logCalls.warn).toHaveLength(1);
-    expect(logCalls.warn[0]!.message).toMatch(/could not open/i);
-    expect(String((logCalls.warn[0]!.fields?.error as { message?: unknown }).message)).toMatch(reason);
+    expect(logCalls.warn).toHaveLength(0);
   });
 });
 

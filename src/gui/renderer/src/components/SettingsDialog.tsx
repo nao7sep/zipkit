@@ -9,6 +9,11 @@
  * edits — via Cancel, Escape, or the backdrop — routes through one guard that
  * asks before discarding them. A job's own options can still override these
  * defaults later in its Parameters pane.
+ *
+ * While a save runs, the fields and every close path are disabled until it
+ * actually settles, which normally takes milliseconds: the dialog then closes on
+ * success or stays open with the error. An edit, a discard or a reopened dialog
+ * can therefore never meet a late result.
  */
 
 import { useState } from "react";
@@ -83,6 +88,7 @@ export function SettingsDialog({
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):
   // ask before throwing away unsaved edits; close immediately when clean.
   async function requestClose() {
+    if (saving) return;
     if (!dirty) {
       onClose();
       return;
@@ -106,8 +112,8 @@ export function SettingsDialog({
         // reset or Save. The reset is pulled to the far left (flex order + auto
         // margin); Save stays last.
         <>
-          <button data-modal-autofocus onClick={() => void requestClose()}>{t("common.cancel")}</button>
-          <button style={S.resetDefaultParameters} onClick={resetDefaultParameters}>
+          <button data-modal-autofocus disabled={saving} onClick={() => void requestClose()}>{t("common.cancel")}</button>
+          <button style={S.resetDefaultParameters} disabled={saving} onClick={resetDefaultParameters}>
             {t("settings.resetDefaults")}
           </button>
           <button className="accent" disabled={!canSave || saving} onClick={() => void save()}>
@@ -123,6 +129,7 @@ export function SettingsDialog({
         <span style={S.fontLabel}>{t("settings.language")}</span>
         <select
           value={draft.language}
+          disabled={saving}
           onChange={(e) => setDraft({ ...draft, language: normalizeLanguagePreference(e.target.value) })}
           style={S.languageSelect}
         >
@@ -147,6 +154,7 @@ export function SettingsDialog({
                 name="theme"
                 value={value}
                 checked={draft.theme === value}
+                disabled={saving}
                 onChange={() => setDraft({ ...draft, theme: value })}
               />
               {t(label)}
@@ -159,6 +167,7 @@ export function SettingsDialog({
         <span style={S.fontLabel}>{t("settings.uiFont")}</span>
         <input
           value={draft.uiFontFamily}
+          disabled={saving}
           placeholder={fontStack}
           onChange={(e) => setDraft({ ...draft, uiFontFamily: e.target.value })}
           onBlur={(e) => setDraft({ ...draft, uiFontFamily: singleLine(e.target.value) })}
@@ -168,7 +177,7 @@ export function SettingsDialog({
       <OptionsPanel
         options={draft.defaults}
         onChange={(o) => setDraft({ ...draft, defaults: o })}
-        disabled={false}
+        disabled={saving}
       />
       {saveError && <p role="alert" style={S.error}>{t("settings.saveFailed")}</p>}
     </ModalShell>

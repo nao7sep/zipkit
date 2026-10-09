@@ -16,7 +16,6 @@ import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { storageRoot } from "../../sdk/storage.js";
-import { FORMAT_VERSIONS } from "./formatVersions.js";
 import { JOB_EVENT_LIMIT, type JobAction, type JobEvent, type LogEvent } from "../shared/api.js";
 import type {
   JobEventRow,
@@ -245,7 +244,7 @@ export function createAppLog(
 
   const ensureWorker = (): Worker => {
     if (worker) return worker;
-    const created = new Worker(workerUrl(), { workerData: { database: databaseFile, formatVersion: FORMAT_VERSIONS.records } satisfies RecordsWorkerData });
+    const created = new Worker(workerUrl(), { workerData: { database: databaseFile } satisfies RecordsWorkerData });
     // The thread never keeps the process alive; `close` is what waits for it.
     created.unref();
     created.on("message", (response: RecordsResponse) => {

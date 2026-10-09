@@ -9,7 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `app`, `version`, `repository`, `createdAtUtc` and `formatVersion`, replacing `tool` and `createdUtc`. Verify looks for `zipkit.json` only. A 0.1.0 manifest (`_metadata.json`) carries no `formatVersion`, so checking an archive against it fails with `read.manifest-invalid`; the CRC-32 check without `checkMetadata` still verifies such an archive.
-- ZipKit's own files (`config.json`, `queue.json`, `layout.json` and the records and backups databases) record their format version; `queue.json` and `layout.json` carry `formatVersion` in place of `version`. A launch that finds one of the JSON files written by a newer ZipKit stops, names the file and leaves it unchanged; one without `formatVersion`, such as 0.1.0's settings and queue, is set aside as unreadable and reported. A database without its format version is left unchanged and not used.
+- The environment variable that moves ZipKit's data folder is now `ZIPKIT_DATA_DIR` (was `ZIPKIT_HOME`). `ZIPKIT_HOME` is no longer read: a ZipKit started with only it set uses `~/.zipkit`, and the folder it named is left as it is.
+- `queue.json` and `layout.json` no longer carry a `version` key; one left by 0.1.0 is ignored and dropped at the next save. A file ZipKit cannot read is never overwritten. Running an older ZipKit on files a newer one wrote is not supported.
+- A damaged `layout.json` puts the panes back at their default widths without a message, and a failed pane layout save is only logged.
 - Verify refuses an embedded manifest whose `formatVersion` is newer than the running build reads, with the error code `read.manifest-newer`, and one without `formatVersion` with `read.manifest-invalid`.
 - ZipKit no longer rewrites its queue or layout file when nothing in it changed, and extraction with overwrite leaves a file or symlink that already holds the entry's content as it is, reporting the entry as skipped with `unchanged`.
 - Every folder an archive keeps is written as its own entry, not only empty ones, so its modification time is stored and extraction restores it.
@@ -26,7 +28,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Saving an archive or extracting a file without overwrite on a FAT volume that refuses hard links no longer fails as if the file already existed.
 - Archiving a folder that holds ZipKit's own data folder (`~/.zipkit` or `ZIPKIT_DATA_DIR`), such as the home folder, leaves that data folder out, as does an input or followed link inside it.
 - Extraction writes each file's temporary copy in the file's own folder, so extracting into a folder that holds a mounted volume no longer fails there.
-- The message after an unreadable settings or queue file was set aside names the `.invalid` file it was kept as, and a settings file found unreadable while ZipKit runs, such as when the Records window opens, is reported the same way.
+- The message after an unreadable settings or queue file was set aside names the `.invalid` file it was kept as.
+- A saved queue with some jobs that cannot be read restores the jobs it can read; the whole file, with every job in it, is set aside and reported.
+- One invalid saved default job option resets only itself; the comment, output folder and file name saved beside it are kept.
+- Changing a job's options and then selecting another job no longer loses the change: boxes, choices and folders are sent as soon as they change, and typing still waiting is sent when another job is selected. Quitting within about a quarter-second of typing can still lose those last characters.
+- Settings no longer reports a save as failed while it may still complete. The dialog stays as it is, its fields and Cancel disabled, until the save finishes, then closes, or stays open with the error.
 - A queue that cannot be saved is reported: the main window shows a notice until a later save succeeds, and when it fails as you quit, ZipKit stays open and offers Retry, Quit Anyway or Cancel. A logout, restart or shutdown never asks; it logs the failure.
 - A Windows logoff, restart or shutdown saves the queue before ZipKit ends, and on macOS a job still running at logout is cancelled without asking. Every quit step has a bound, so quitting ends within about 4 seconds instead of waiting up to 10 seconds a step, and a pane layout write still in progress at quit lands first.
 - On Windows, closing the main window while a job runs or after a failed queue save keeps it open when you choose to keep working or cancel.

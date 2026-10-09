@@ -20,7 +20,6 @@
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { storageRoot } from "../../sdk/storage.js";
-import { FORMAT_VERSIONS } from "./formatVersions.js";
 import { log } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import type { BackupsRequest, BackupsResponse, BackupsWorkerData } from "./backups-worker.js";
@@ -74,7 +73,7 @@ function disable(message: string, error: unknown): void {
 function ensureWorker(): Worker {
   if (worker) return worker;
   file = storeFile();
-  const created = new Worker(workerUrl(), { workerData: { database: file, formatVersion: FORMAT_VERSIONS.backups } satisfies BackupsWorkerData });
+  const created = new Worker(workerUrl(), { workerData: { database: file } satisfies BackupsWorkerData });
   // The thread never keeps the process alive; closeBackupStore is what waits for it.
   created.unref();
   // A thread that closeBackupStore has already let go of no longer speaks for the store.

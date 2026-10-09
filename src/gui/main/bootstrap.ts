@@ -13,7 +13,7 @@ import { app, BrowserWindow, nativeTheme, powerMonitor } from "electron";
 import { APP_VERSION } from "../shared/identity.js";
 import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
-import { buildRecoveryDialogs, startupHaltMessage } from "./recoveryDialogs.js";
+import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
@@ -126,13 +126,11 @@ function activateMainWindow(): void {
 }
 
 // Any startup failure reaches the user and halts. The diagnostic stays in the
-// log; the app-authored dialog carries stable recovery guidance, and names the
-// file when a newer build wrote it.
+// log; the app-authored dialog carries stable recovery guidance.
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
-  const halt = startupHaltMessage(error);
   await finishStartupHalt({
-    present: () => notifyStartupFailure(halt.key, halt.values),
+    present: () => notifyStartupFailure("startup.halted"),
     closeBackups: () => closeBackupStore(),
     closeLog: () => log.close(),
     onFailed: (failure) => log.error("startup failure presentation or cleanup failed", { error: errorInfo(failure) }),
@@ -173,10 +171,10 @@ app.whenReady().then(async () => {
   log.onStored(notifyRecordsChanged);
 
   // Load every store before any window exists, so the renderer can never save
-  // over an unreadable file or one a newer build wrote. This also keeps failed
-  // quarantines and newer formats on the startup error path. Each load returns
-  // its own quarantine outcome; layout is disposable view state and its
-  // recovery stays log-only.
+  // over an unreadable file before it is set aside, and a failure to set one
+  // aside halts here. These are the only reads: main keeps the settings and the
+  // layout from now on. Each load returns its own set-aside outcome; layout is
+  // disposable view state and its recovery stays log-only.
   const settingsLoad = await loadSettings(log);
   const { quarantinedTo: settingsQuarantinedTo } = settingsLoad;
   // The saved theme reaches the title bar, the renderer's prefers-color-scheme,
@@ -196,9 +194,13 @@ app.whenReady().then(async () => {
     activationPending = false;
     focusWindow(initialWindow);
   }
-  restoreQueue(queueLoad.value);
+  restoreQueue(queueLoad.value.jobs);
 
-  for (const recoveryDialog of buildRecoveryDialogs({ settingsQuarantinedTo, queueQuarantinedTo: queueLoad.quarantinedTo })) {
+  for (const recoveryDialog of buildRecoveryDialogs({
+    settingsQuarantinedTo,
+    queueQuarantinedTo: queueLoad.quarantinedTo,
+    queueJobsRestored: queueLoad.value.jobs.length,
+  })) {
     const { t } = mainTranslator();
     await showAppMessageDialog({
       owner: initialWindow,

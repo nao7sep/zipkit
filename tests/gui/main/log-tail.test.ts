@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,9 +17,8 @@ vi.mock("node:fs/promises", async (importActual) => {
 it("a held fallback filesystem tail cannot hold log close, and its late physical work remains ordered", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-log-tail-"));
   const database = path.join(root, "records.sqlite3");
-  const db = new DatabaseSync(database);
-  db.exec("PRAGMA user_version = 2");
-  db.close();
+  // A directory where the database belongs: the records thread cannot open it.
+  mkdirSync(database);
   controls.path = path.join(root, "logs");
   let release!: () => void;
   controls.held = new Promise<void>((resolve) => { release = resolve; });

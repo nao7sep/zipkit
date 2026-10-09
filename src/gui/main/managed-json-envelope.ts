@@ -22,12 +22,3 @@ export function parseJsonObject(text: string, store: string): Record<string, unk
   if (!isPlainObject(value)) throw new InvalidManagedJsonError(store, "root must be an object");
   return value;
 }
-
-/** The format version a document's `formatVersion` records; a document without one is unreadable. */
-export function storedFormatVersion(root: Record<string, unknown>, store: string): number {
-  const value = root.formatVersion;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw new InvalidManagedJsonError(store, "formatVersion must be a positive integer");
-  }
-  return value;
-}

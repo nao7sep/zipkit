@@ -1,17 +1,16 @@
 /** Settings are whole user copies of independent sets; absent sets use code defaults.
  * Reads never create a config file. Invalid sets fall back independently, while
- * unreadable documents follow the shared managed-store quarantine path.
+ * unreadable documents follow the shared managed-store set-aside path. Main holds
+ * the settings in memory from the startup load on; every reader gets that copy,
+ * and only a save changes it.
  */
 
-import { managedIO } from "./managed-io.js";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { changedSettings, DEFAULT_OPTIONS, DEFAULT_SETTINGS, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
 import { multiline, singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
-import { FORMAT_VERSIONS } from "./formatVersions.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** Computed on each call, not frozen at import, so `ZIPKIT_DATA_DIR` is read after
@@ -53,8 +52,16 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
     const value = root[key];
     switch (key) {
       case "defaults":
-        if (isPlainObject(value) && OPTION_CHECKS.every(([member, valid]) => valid(value[member]))) {
-          settings.defaults = Object.fromEntries(OPTION_CHECKS.map(([member]) => [member, value[member]])) as unknown as GuiOptions;
+        // Each job option is independent of the others, so an invalid one reverts alone
+        // and the authored comment, output folder and file name beside it survive.
+        if (isPlainObject(value)) {
+          const reverted: string[] = [];
+          settings.defaults = Object.fromEntries(OPTION_CHECKS.map(([member, valid]) => {
+            if (valid(value[member])) return [member, value[member]];
+            reverted.push(member);
+            return [member, DEFAULT_OPTIONS[member]];
+          })) as unknown as GuiOptions;
+          if (reverted.length > 0) logger.warn("invalid default job options; using their built-ins", { key, members: reverted });
           continue;
         }
         break;
@@ -82,20 +89,21 @@ export function parseSettings(root: Record<string, unknown>, logger: AppLog = nu
 }
 
 export function serializeSettings(stored: Partial<GuiSettings>): string {
-  return managedJsonText(FORMAT_VERSIONS.config, stored);
+  return managedJsonText(stored);
 }
 
+let current: GuiSettings = freshSettings();
+
+/** The settings as last loaded or saved. */
+export function currentSettings(): GuiSettings {
+  return current;
+}
+
+/** Load config.json once, at startup, before any window exists. */
 export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJsonLoad<GuiSettings>> {
-  return loadManagedJson(settingsFile(), FORMAT_VERSIONS.config, (root) => parseSettings(root, logger), freshSettings, logger);
-}
-
-async function storedText(): Promise<string | null> {
-  try {
-    return await managedIO(settingsFile(), (signal) => readFile(settingsFile(), { encoding: "utf8", signal }));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw err;
-  }
+  const load = await loadManagedJson(settingsFile(), (root) => parseSettings(root, logger), freshSettings, logger);
+  current = load.value;
+  return load;
 }
 
 /** The one owner of what config.json holds (config-sets conventions, Reading and
@@ -109,10 +117,8 @@ export async function saveSettings(settings: GuiSettings, logger: AppLog = nullL
     defaults: { ...checked.defaults, comment: multiline(checked.defaults.comment) },
   };
   const stored = changedSettings(DEFAULT_SETTINGS, effective);
-  const text = serializeSettings(stored);
-  const current = await storedText();
-  if (current === null ? Object.keys(stored).length > 0 : current !== text) {
-    await writeManagedJson(settingsFile(), text);
-  }
+  // Settings that are all built-in leave no file behind; identical bytes are not rewritten.
+  await writeManagedJson(settingsFile(), serializeSettings(stored), { createAbsent: Object.keys(stored).length > 0 });
+  current = effective;
   return effective;
 }

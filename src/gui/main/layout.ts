@@ -6,17 +6,19 @@
  * {@link storageRoot}, beside the queue, settings, and logs). Kept in its own
  * file — separate from the new-job-defaults `config.json` — because layout and
  * archive defaults are unrelated concerns. Parsing validates the schema then
- * clamps into bounds; invalid bytes are quarantined and real I/O errors surface.
+ * clamps into bounds; a damaged file falls back to the default layout with a log
+ * line and is replaced by the next save, since it holds no authored work. Real
+ * I/O errors surface.
  *
- * Main holds the layout last loaded or saved, so each window saves only its own
- * widths and keeps the other's; the writes go out one at a time, in order.
+ * Main holds the layout from the startup load on, so each window saves only its
+ * own widths and keeps the other's, and a reopened window gets that copy; the
+ * writes go out one at a time, in the order the windows sent them.
  */
 
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { DEFAULT_LAYOUT, RECORDS_LIST_WIDTH, clampLayout, clampRecordsListWidth, type PaneLayout } from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
-import { FORMAT_VERSIONS } from "./formatVersions.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** Every width the layout file holds: the main window's panes and the Records
@@ -56,7 +58,7 @@ export function parseLayout(root: Record<string, unknown>): StoredLayout {
 
 /** Serialize a layout to file text. Pure. */
 export function serializeLayout(layout: StoredLayout): string {
-  return managedJsonText(FORMAT_VERSIONS.layout, {
+  return managedJsonText({
     layout: { ...clampLayout(layout), recordsListWidth: clampRecordsListWidth(layout.recordsListWidth) },
   });
 }
@@ -64,15 +66,12 @@ export function serializeLayout(layout: StoredLayout): string {
 let current: StoredLayout = freshLayout();
 let writes: Promise<void> = Promise.resolve();
 
-/** Load the persisted layout; the default layout if there is no readable file. A present-but-corrupt
- *  file (invalid JSON) is quarantined aside — never silently reset in place — before the default
- *  layout is returned; a quarantine-rename failure propagates rather than degrading to the default
- *  over the corrupt bytes. The shared {@link loadManagedJson} owns that quarantine-outside-the-catch
- *  shape, identical to config.json and queue.json. Layout is disposable view state, so callers leave
- *  its quarantine outcome log-only rather than raising a recovery dialog. */
+/** Load the persisted layout once, at startup; the default layout if there is no file or it is
+ *  damaged. Layout is disposable view state (store-recovery conventions), so a damaged file is not
+ *  set aside or reported beyond a log line, and the next save replaces it. */
 export function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<StoredLayout>> {
   return inOrder(async () => {
-    const load = await loadManagedJson(layoutFile(), FORMAT_VERSIONS.layout, parseLayout, freshLayout, logger);
+    const load = await loadManagedJson(layoutFile(), parseLayout, freshLayout, logger, { setAsideInvalid: false });
     current = { ...load.value };
     return load;
   });
@@ -93,7 +92,7 @@ function persist(patch: Partial<StoredLayout>): Promise<void> {
     await writeManagedJson(layoutFile(), () => {
       next = { ...current, ...patch };
       return serializeLayout(next);
-    }, { record: false, onWritten: () => { current = next; } });
+    }, { record: false, replaceUnreadable: true, onWritten: () => { current = next; } });
   });
 }
 
@@ -106,6 +105,11 @@ export function layoutWritesSettled(): Promise<void> {
 /** Persist the main window's pane widths, keeping the Records window's. */
 export function saveLayout(layout: PaneLayout): Promise<void> {
   return persist(clampLayout(layout));
+}
+
+/** The main window's pane widths, as last loaded or saved. */
+export function paneLayout(): PaneLayout {
+  return clampLayout(current);
 }
 
 /** The Records window's list width, as last loaded or saved. */

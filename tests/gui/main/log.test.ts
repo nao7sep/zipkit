@@ -11,7 +11,6 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAppLog, errorInfo } from "../../../src/gui/main/log.js";
-import { FORMAT_VERSIONS } from "../../../src/gui/main/formatVersions.js";
 import type { LogEvent } from "../../../src/gui/shared/api.js";
 import type { RecordsPage } from "../../../src/gui/shared/records.js";
 
@@ -177,49 +176,23 @@ describe("createAppLog", () => {
   });
 });
 
-describe("format version", () => {
-  const userVersion = (file: string): number => {
-    const db = new DatabaseSync(file, { readOnly: true });
-    try {
-      return (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-    } finally {
-      db.close();
-    }
-  };
-
-  it("stamps a new records database with the records format version at creation", async () => {
-    const dir = tempDir();
-    const database = path.join(dir, "records.sqlite3");
-    const log = createAppLog(database, path.join(dir, "logs"));
-    log.info("first");
-    await log.close();
-    expect(userVersion(database)).toBe(FORMAT_VERSIONS.records);
-    expect(rows(database).map((row) => row.message)).toEqual(["first"]);
-  });
-
+describe("existing records databases open as they are", () => {
   it.each([
-    ["a newer build wrote", (v: number) => `PRAGMA user_version = ${v + 1}`, /newer than this build/],
-    ["has a negative marker without tables", () => "PRAGMA user_version = -1", /invalid format version/],
-    ["has a negative marker with tables", () => "CREATE TABLE kept (x); PRAGMA user_version = -1", /invalid format version/],
-    ["has tables but no format version", () => "CREATE TABLE kept (x)", /no format version/],
-  ])("leaves a records database that %s untouched and keeps its lines in the fallback file", async (_case, setup, reason) => {
+    ["an earlier build's format marker", "PRAGMA user_version = 1"],
+    ["a higher marker", "PRAGMA user_version = 7"],
+    ["no marker and a table of its own", "CREATE TABLE kept (x)"],
+  ])("writes into a database with %s", async (_case, setup) => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const db = new DatabaseSync(database);
-    db.exec(setup(FORMAT_VERSIONS.records));
+    db.exec(setup);
     db.close();
-    const before = readFileSync(database);
-    const logs = path.join(dir, "logs");
 
-    const log = createAppLog(database, logs, new Date("2026-06-14T05:25:48.123Z"));
+    const log = createAppLog(database, path.join(dir, "logs"));
     log.info("kept");
     await log.close();
 
-    expect(readFileSync(database).equals(before)).toBe(true);
-    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
-      .map((line) => JSON.parse(line) as { message: string; fields: { error?: { message?: string } } });
-    expect(lines.map((line) => line.message)).toEqual(["records database unavailable", "kept"]);
-    expect(lines[0]?.fields.error?.message).toMatch(reason);
+    expect(rows(database).map((row) => row.message)).toEqual(["kept"]);
   });
 });
 

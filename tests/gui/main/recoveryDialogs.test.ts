@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRecoveryDialogs, startupHaltMessage } from "../../../src/gui/main/recoveryDialogs.js";
-import { NewerFormatError } from "../../../src/gui/main/formatVersions.js";
+import { buildRecoveryDialogs } from "../../../src/gui/main/recoveryDialogs.js";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
 
 const { t } = createTranslator("en");
@@ -9,14 +8,15 @@ describe("buildRecoveryDialogs", () => {
   it("identifies a recovered queue as pending work, not settings", () => {
     const dialogs = buildRecoveryDialogs({
       settingsQuarantinedTo: null,
-      queueQuarantinedTo: "/tmp/.zipkit/queue-20260817-000000-000-utc.invalid",
+      queueQuarantinedTo: "/tmp/.zipkit/queue-20260817-000000-utc.invalid",
+      queueJobsRestored: 0,
     });
 
     expect(dialogs).toHaveLength(1);
     expect(t(dialogs[0]!.title)).toBe("Saved queue was reset");
     const message = t(dialogs[0]!.message.key, dialogs[0]!.message.values);
     expect(message).toContain("saved pending jobs");
-    expect(message).toContain("preserved as /tmp/.zipkit/queue-20260817-000000-000-utc.invalid");
+    expect(message).toContain("preserved as /tmp/.zipkit/queue-20260817-000000-utc.invalid");
     expect(message).toContain("started with an empty queue");
     expect(message).not.toContain("settings file");
   });
@@ -25,6 +25,7 @@ describe("buildRecoveryDialogs", () => {
     const dialogs = buildRecoveryDialogs({
       settingsQuarantinedTo: "/tmp/.zipkit/config.invalid",
       queueQuarantinedTo: "/tmp/.zipkit/queue.invalid",
+      queueJobsRestored: 0,
     });
 
     expect(dialogs.map((dialog) => t(dialog.title))).toEqual([
@@ -39,22 +40,23 @@ describe("buildRecoveryDialogs", () => {
 
   it("builds nothing when both stores loaded clean", () => {
     expect(
-      buildRecoveryDialogs({ settingsQuarantinedTo: null, queueQuarantinedTo: null }),
+      buildRecoveryDialogs({ settingsQuarantinedTo: null, queueQuarantinedTo: null, queueJobsRestored: 3 }),
     ).toEqual([]);
   });
-});
 
-describe("startupHaltMessage", () => {
-  it("names a store a newer build wrote by its path and says it was left unchanged", () => {
-    const halt = startupHaltMessage(new NewerFormatError("/Users/me/.zipkit/queue.json", 2, 1));
-    expect(halt).toEqual({ key: "startup.newerStore", values: { file: "/Users/me/.zipkit/queue.json" } });
-    const text = t(halt.key, halt.values);
-    expect(text).toContain("/Users/me/.zipkit/queue.json");
-    expect(text).toContain("newer version of ZipKit");
-    expect(text).toContain("left unchanged");
-  });
+  it("says the readable jobs were restored when only some saved jobs could not be read", () => {
+    const dialogs = buildRecoveryDialogs({
+      settingsQuarantinedTo: null,
+      queueQuarantinedTo: "/tmp/.zipkit/queue-20260817-000000-utc.invalid",
+      queueJobsRestored: 2,
+    });
 
-  it("keeps the general guidance, without the diagnostic, for any other failure", () => {
-    expect(startupHaltMessage(new Error("EACCES: /private/tmp/secret"))).toEqual({ key: "startup.halted" });
+    expect(dialogs).toHaveLength(1);
+    expect(t(dialogs[0]!.title)).toBe("Some saved jobs were not restored");
+    const message = t(dialogs[0]!.message.key, dialogs[0]!.message.values);
+    expect(message).toContain("some of its saved pending jobs");
+    expect(message).toContain("with every job in it, was preserved as /tmp/.zipkit/queue-20260817-000000-utc.invalid");
+    expect(message).toContain("restored the jobs it could read");
+    expect(message).not.toContain("empty queue");
   });
 });

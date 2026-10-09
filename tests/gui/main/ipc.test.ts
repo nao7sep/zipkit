@@ -4,12 +4,12 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   saveLayout: vi.fn(),
   saveRecordsListWidth: vi.fn(),
-  loadLayout: vi.fn(),
+  paneLayout: vi.fn(),
   logError: vi.fn(),
   logWarn: vi.fn(),
   records: vi.fn(),
   openRecordsWindow: vi.fn(),
-  loadSettings: vi.fn(),
+  currentSettings: vi.fn(),
   saveSettings: vi.fn(),
   applyTheme: vi.fn(),
   applyLanguage: vi.fn(),
@@ -43,7 +43,7 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
   zip: {},
 }));
 vi.mock("../../../src/gui/main/settings.js", () => ({
-  loadSettings: mocks.loadSettings,
+  currentSettings: mocks.currentSettings,
   saveSettings: mocks.saveSettings,
 }));
 vi.mock("../../../src/gui/main/theme.js", () => ({ applyThemePreference: mocks.applyTheme }));
@@ -57,7 +57,7 @@ vi.mock("../../../src/gui/main/i18n.js", async (importActual) => {
   };
 });
 vi.mock("../../../src/gui/main/layout.js", () => ({
-  loadLayout: mocks.loadLayout,
+  paneLayout: mocks.paneLayout,
   saveLayout: mocks.saveLayout,
   recordsListWidth: () => 450,
   saveRecordsListWidth: mocks.saveRecordsListWidth,
@@ -76,7 +76,7 @@ describe("pane-layout IPC", () => {
     registerIpc();
   });
 
-  it("logs a failed save and rejects so the renderer can own the persistent result", async () => {
+  it("logs a failed save and rejects", async () => {
     const failure = new Error("read-only store");
     mocks.saveLayout.mockRejectedValue(failure);
     const handler = mocks.handlers.get("zipkit:setLayout")!;
@@ -121,28 +121,18 @@ describe("settings IPC", () => {
 
   beforeEach(() => {
     mocks.handlers.clear();
-    mocks.loadSettings.mockReset();
+    mocks.currentSettings.mockReset();
     mocks.showAppMessageDialog.mockReset().mockResolvedValue(undefined);
     registerIpc();
   });
 
-  it("reports a settings file quarantined mid-session by its preserved path", async () => {
+  it("answers from main's copy of the settings, without reading the file or showing anything", async () => {
     const value = { defaults: {}, uiFontFamily: "", theme: "system", language: "system" };
-    mocks.loadSettings.mockResolvedValue({ value, quarantinedTo: "/data/config-20261006-000000-000-utc.invalid", missing: false });
+    mocks.currentSettings.mockReturnValue(value);
 
-    await expect(mocks.handlers.get("zipkit:getSettings")!({ sender: {} })).resolves.toBe(value);
+    expect(mocks.handlers.get("zipkit:getSettings")!({ sender: {} })).toBe(value);
 
-    expect(mocks.showAppMessageDialog).toHaveBeenCalledOnce();
-    expect(mocks.showAppMessageDialog.mock.calls[0]![0]).toMatchObject({
-      title: "Settings were reset",
-      message: expect.stringContaining("preserved as /data/config-20261006-000000-000-utc.invalid"),
-      button: "ok",
-    });
-  });
-
-  it("reports nothing when the settings loaded as they were", async () => {
-    mocks.loadSettings.mockResolvedValue({ value: {}, quarantinedTo: null, missing: false });
-    await mocks.handlers.get("zipkit:getSettings")!({ sender: {} });
+    expect(mocks.currentSettings).toHaveBeenCalledOnce();
     expect(mocks.showAppMessageDialog).not.toHaveBeenCalled();
   });
 });
@@ -153,7 +143,7 @@ describe("Records window IPC", () => {
 
   beforeEach(() => {
     mocks.handlers.clear();
-    for (const mock of [mocks.records, mocks.logWarn, mocks.logError, mocks.openRecordsWindow, mocks.saveRecordsListWidth, mocks.loadLayout]) {
+    for (const mock of [mocks.records, mocks.logWarn, mocks.logError, mocks.openRecordsWindow, mocks.saveRecordsListWidth, mocks.paneLayout]) {
       mock.mockReset();
     }
     registerIpc();
@@ -199,9 +189,9 @@ describe("Records window IPC", () => {
     expect(mocks.saveRecordsListWidth).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the main window's layout to its own panes", async () => {
-    mocks.loadLayout.mockResolvedValue({ value: { jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 }, quarantinedTo: null });
-    await expect(invoke("zipkit:getLayout")).resolves.toEqual({ jobsWidth: 300, progressWidth: 360 });
+  it("answers the main window's layout from main's copy", async () => {
+    mocks.paneLayout.mockReturnValue({ jobsWidth: 300, progressWidth: 360 });
+    expect(invoke("zipkit:getLayout")).toEqual({ jobsWidth: 300, progressWidth: 360 });
   });
 
   it("opens the Records window, recording a failure before it rejects", async () => {

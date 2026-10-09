@@ -163,41 +163,33 @@ describe("required app hydration", () => {
 });
 
 describe("pane-layout persistence results", () => {
-  it("keeps the live layout after failure and clears its shell alert on a later successful save", async () => {
-    const setLayout = vi
-      .fn<ZipKitGuiApi["setLayout"]>()
-      .mockRejectedValueOnce(new Error("disk full"))
-      .mockResolvedValueOnce(undefined);
-    renderApp(api({ setLayout }));
+  it("records a failed layout save, shows nothing, and keeps the layout in use", async () => {
+    const setLayout = vi.fn<ZipKitGuiApi["setLayout"]>().mockRejectedValue(new Error("disk full"));
+    const bridge = api({ setLayout });
+    renderApp(bridge);
     const splitter = await screen.findByRole("separator", { name: "Resize Jobs pane" });
 
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
 
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("current layout is still in use");
-    const firstWidth = Number(splitter.getAttribute("aria-valuenow"));
-    expect(firstWidth).toBeGreaterThan(DEFAULT_LAYOUT.jobsWidth);
-    expect(setLayout).toHaveBeenNthCalledWith(1, { ...DEFAULT_LAYOUT, jobsWidth: firstWidth });
-
-    fireEvent.keyDown(splitter, { key: "ArrowRight" });
-
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    const secondWidth = Number(splitter.getAttribute("aria-valuenow"));
-    expect(secondWidth).toBeGreaterThan(firstWidth);
-    expect(setLayout).toHaveBeenNthCalledWith(2, { ...DEFAULT_LAYOUT, jobsWidth: secondWidth });
+    await waitFor(() => expect(bridge.reportError).toHaveBeenCalledWith("persist pane layout", expect.objectContaining({ message: "disk full" })));
+    expect(screen.queryByRole("alert")).toBeNull();
+    const width = Number(splitter.getAttribute("aria-valuenow"));
+    expect(width).toBeGreaterThan(DEFAULT_LAYOUT.jobsWidth);
+    expect(setLayout).toHaveBeenCalledWith({ ...DEFAULT_LAYOUT, jobsWidth: width });
   });
 
-  it("allows dismissal without rolling back the unsaved in-memory layout", async () => {
-    const setLayout = vi.fn<ZipKitGuiApi["setLayout"]>().mockRejectedValue(new Error("read only"));
+  it("sends each resize to main as it happens, without waiting for the previous save", async () => {
+    const setLayout = vi.fn<ZipKitGuiApi["setLayout"]>().mockReturnValue(new Promise<void>(() => {}));
     renderApp(api({ setLayout }));
     const splitter = await screen.findByRole("separator", { name: "Resize Jobs pane" });
+
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
-    await screen.findByRole("alert");
+    fireEvent.keyDown(splitter, { key: "ArrowRight" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Close pane layout save result" }));
-
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(splitter.getAttribute("aria-valuenow")).toBe("298");
+    // Main writes them in the order they arrive (layout.ts), so the newest is what stays on disk.
+    const widths = setLayout.mock.calls.map(([layout]) => layout.jobsWidth);
+    expect(widths).toHaveLength(2);
+    expect(widths[1]).toBeGreaterThan(widths[0]!);
   });
 });
 

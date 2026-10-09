@@ -1,66 +1,49 @@
 /** Shared safe loading and atomic writing for the GUI's managed JSON stores. */
 
-import { copyFile, link, readFile, stat, unlink, utimes } from "node:fs/promises";
-import { constants } from "node:fs";
-import { nanoid } from "nanoid";
+import { lstat, readFile, rename } from "node:fs/promises";
 import path from "node:path";
-import { defaultSessionTimestamp } from "../../sdk/log/session.js";
 import { record } from "./backupStore.js";
-import { InvalidManagedJsonError, parseJsonObject, storedFormatVersion } from "./managed-json-envelope.js";
-import { NewerFormatError } from "./formatVersions.js";
-import { managedIO } from "./managed-io.js";
-import { writeManagedText } from "./managed-write.js";
+import { InvalidManagedJsonError, parseJsonObject } from "./managed-json-envelope.js";
+import { MANAGED_IO_WAIT_MS, managedIO } from "./managed-io.js";
+import { writeManagedText, type ManagedWriteOptions } from "./managed-write.js";
 import { nullLog, type AppLog } from "./log.js";
 
 export { InvalidManagedJsonError, isPlainObject } from "./managed-json-envelope.js";
 
-/** A managed document's text: its format version first, then the store's own keys. */
-export function managedJsonText(formatVersion: number, body: Record<string, unknown>): string {
-  return JSON.stringify({ formatVersion, ...body }, null, 2);
+/** A managed document's text: the store's own keys, with no format marker (a leftover
+ *  `formatVersion` or 0.1.0 `version` key is ignored on load and dropped by the next save). */
+export function managedJsonText(body: Record<string, unknown>): string {
+  return JSON.stringify(body, null, 2);
 }
 
-/** Move an invalid store aside with its original bytes intact. */
-async function quarantineInvalid(
-  file: string,
-  logger: AppLog = nullLog,
-  now: Date = new Date(),
-  signal?: AbortSignal,
-): Promise<string> {
-  const dir = path.dirname(file);
-  const stem = path.parse(file).name;
-  const stamp = defaultSessionTimestamp(now);
-  let quarantined = path.join(dir, `${stem}-${stamp}.invalid`);
-  for (;;) {
-    signal?.throwIfAborted();
-    try {
-      try {
-        await link(file, quarantined);
-      } catch (error) {
-        if (!["ENOSYS", "ENOTSUP", "EOPNOTSUPP", "EPERM", "EACCES", "EMLINK"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
-        const original = await stat(file);
-        signal?.throwIfAborted();
-        await copyFile(file, quarantined, constants.COPYFILE_EXCL);
-        await utimes(quarantined, original.atime, original.mtime);
-      }
-      // The exclusive destination now holds the recoverable original. A failed
-      // source removal propagates; defaults never overwrite the live bytes.
-      await unlink(file);
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      quarantined = path.join(dir, `${stem}-${stamp}-${nanoid()}.invalid`);
-    }
-  }
-  logger.warn("quarantined a corrupt managed file; falling back to defaults", {
-    original: file,
-    quarantined,
+/** `yyyymmdd-hhmmss-utc`. Seconds are enough (timestamp conventions): one ZipKit instance runs at
+ *  a time, and it sets a store aside at most once per launch. */
+function setAsideStamp(now: Date): string {
+  return now.toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "").replace("T", "-") + "-utc";
+}
+
+/** Move an unreadable store aside by one rename in its own directory, so its bytes and modified
+ *  time stay as they were. An earlier copy under the same name is never replaced: the clash fails
+ *  the load like any other failure to set aside, and the live bytes stay where they are. rename()
+ *  itself would replace, so absence is checked first; with one instance and each store's I/O in
+ *  order, nothing in ZipKit can take the name in between. */
+async function setAside(file: string, logger: AppLog, now: Date, signal?: AbortSignal): Promise<string> {
+  const target = path.join(path.dirname(file), `${path.parse(file).name}-${setAsideStamp(now)}.invalid`);
+  signal?.throwIfAborted();
+  const taken = await lstat(target).then(() => true, (error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return false;
+    throw error;
   });
-  return quarantined;
+  if (taken) throw Object.assign(new Error(`cannot set ${file} aside: ${target} already exists`), { code: "EEXIST" });
+  signal?.throwIfAborted();
+  await rename(file, target);
+  logger.warn("set aside an unreadable managed file", { original: file, setAside: target });
+  return target;
 }
 
-/** A load's parsed value plus where a corrupt original was set aside (null when the file was fine or
- *  absent). Each load reports its own outcome to its caller — there is no shared journal, so a
- *  reporting surface can never drain empty because it ran before the loads, and an unreported
+/** A load's parsed value plus where an unreadable original was set aside (null when the file was
+ *  fine or absent). Each load reports its own outcome to its caller — there is no shared journal, so
+ *  a reporting surface can never drain empty because it ran before the loads, and an unreported
  *  outcome is visible in the caller's code rather than rotting in a global. */
 export interface ManagedJsonLoad<T> {
   value: T;
@@ -68,15 +51,24 @@ export interface ManagedJsonLoad<T> {
   missing: boolean;
 }
 
-/** Load without ever returning defaults while corrupt bytes remain at the live path. The
- *  document's envelope (JSON object, format version) is checked here for every store; `parse`
- *  reads the store's own keys from the root object. A newer format propagates untouched. */
+export interface ManagedJsonLoadOptions<T> {
+  /** False for a store whose damaged bytes hold nothing worth keeping (layout.json): it falls back
+   *  to its default with a log line, and its next save replaces the bytes. */
+  setAsideInvalid?: boolean;
+  /** Whether a parsed value left part of the file unread (a queue job that could not be read): the
+   *  original is then set aside whole while the readable part is used. */
+  incomplete?: (value: T) => boolean;
+}
+
+/** Load at startup without ever returning defaults while unreadable bytes remain at the live path.
+ *  The document must be a JSON object; `parse` reads the store's own keys from it. A failure to set
+ *  the file aside propagates, leaving the live bytes untouched. */
 export async function loadManagedJson<T>(
   file: string,
-  formatVersion: number,
   parse: (root: Record<string, unknown>) => T,
   onDefault: () => T,
   logger: AppLog = nullLog,
+  options: ManagedJsonLoadOptions<T> = {},
 ): Promise<ManagedJsonLoad<T>> {
   return managedIO(file, async (signal) => {
     let text: string;
@@ -89,19 +81,23 @@ export async function loadManagedJson<T>(
       throw err;
     }
     const store = path.basename(file);
+    let value: T;
     try {
-      const root = parseJsonObject(text, store);
-      const found = storedFormatVersion(root, store);
-      if (found > formatVersion) throw new NewerFormatError(file, found, formatVersion);
-      return { value: parse(root), quarantinedTo: null, missing: false };
+      value = parse(parseJsonObject(text, store));
     } catch (err) {
       if (!(err instanceof InvalidManagedJsonError)) throw err;
-      // Quarantine is outside the read catch. Publication failure propagates and leaves
-      // the invalid live bytes untouched.
-      const quarantinedTo = await quarantineInvalid(file, logger, new Date(), signal);
-      return { value: onDefault(), quarantinedTo, missing: false };
+      if (options.setAsideInvalid === false) {
+        logger.warn("unreadable managed file; using defaults until the next save replaces it", { file, error: err.message });
+        return { value: onDefault(), quarantinedTo: null, missing: false };
+      }
+      // Setting aside is outside the parse catch, so its failure propagates.
+      return { value: onDefault(), quarantinedTo: await setAside(file, logger, new Date(), signal), missing: false };
     }
-  });
+    if (options.incomplete?.(value)) {
+      return { value, quarantinedTo: await setAside(file, logger, new Date(), signal), missing: false };
+    }
+    return { value, quarantinedTo: null, missing: false };
+  }, MANAGED_IO_WAIT_MS);
 }
 
 /**
@@ -113,8 +109,9 @@ export async function loadManagedJson<T>(
  * save without a record is the queue's at the end of a Windows session (persist.ts), which the
  * session leaves no time to record.
  *
- * Writes `text` through {@link writeManagedText} (./managed-write), the one atomic write. Throws on
- * failure; the caller logs it.
+ * Writes `text` through {@link writeManagedText} (./managed-write), the one atomic write, passing on
+ * its `createAbsent` and `replaceUnreadable` options. It waits for the write's actual outcome, with
+ * no caller timeout; quit bounds its own wait. Throws on failure; the caller logs it.
  *
  * The data-backup record fires strictly AFTER the rename lands, from the same `bytes` buffer just
  * written — never before the rename (a backup of a save that never happened) and never a re-read
@@ -122,11 +119,15 @@ export async function loadManagedJson<T>(
  * bytes to the backups thread, swallows its own failures and never breaks or delays the save
  * (data-backup conventions).
  */
-export async function writeManagedJson(file: string, text: string | (() => string), options: { record?: boolean; onWritten?: () => void } = {}): Promise<void> {
+export async function writeManagedJson(
+  file: string,
+  text: string | (() => string),
+  options: ManagedWriteOptions & { record?: boolean; onWritten?: () => void } = {},
+): Promise<void> {
   await managedIO(file, async (signal) => {
     // Field patches derive from the last physical commit, including a late one.
     const bytes = Buffer.from(typeof text === "function" ? text() : text, "utf8");
-    if (await writeManagedText(file, bytes, signal) && options.record !== false) void record(file, bytes);
+    if (await writeManagedText(file, bytes, signal, options) && options.record !== false) void record(file, bytes);
     options.onWritten?.();
   });
 }

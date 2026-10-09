@@ -10,7 +10,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { managedIO } from "./managed-io.js";
+import { MANAGED_IO_WAIT_MS, managedIO } from "./managed-io.js";
 import { app, BrowserWindow, systemPreferences } from "electron";
 import {
   effectiveLanguage,
@@ -53,7 +53,7 @@ export function readSavedPreference(configText: string | null): LanguagePreferen
 /** config.json's text, or null when it cannot be read. */
 export async function readConfigText(file: string): Promise<string | null> {
   try {
-    return await managedIO(file, (signal) => readFile(file, { encoding: "utf8", signal }));
+    return await managedIO(file, (signal) => readFile(file, { encoding: "utf8", signal }), MANAGED_IO_WAIT_MS);
   } catch {
     return null;
   }

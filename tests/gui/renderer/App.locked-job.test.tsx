@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 /**
- * A job that finishes while an edit is still in flight. The pane commits option
- * changes on a 250 ms debounce, and that timer outlives the edit: it used to land
- * on a job the engine had already finished. The engine now refuses such a write,
- * so the pane must not keep showing a value the job never took.
+ * When a job's option edits reach the engine. A finished change (a box, a choice)
+ * is sent at once; typing waits 250 ms after the last keystroke. That wait outlives
+ * the edit: a job that finishes inside it no longer accepts the change, so the pane
+ * must not keep showing a value the job never took, and selecting another job must
+ * send what is still waiting rather than drop it.
  */
 
 import { act } from "react";
@@ -36,6 +37,13 @@ const readyJob: Job = {
   intent: "save",
   state: "ready",
 };
+const otherJob: Job = { ...readyJob, id: "job-2", inputs: ["/tmp/other.txt"], entries: [{ path: "/tmp/other.txt", kind: "file" }] };
+
+/** Type into a React-controlled textarea the way a keystroke does, without leaving it. */
+function typeInto(field: HTMLTextAreaElement, value: string): void {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}
 
 describe("a job that finishes mid-edit", () => {
   let root: Root | null = null;
@@ -55,7 +63,7 @@ describe("a job that finishes mid-edit", () => {
           return () => {};
         },
         onQueueSaved: () => () => {},
-        getQueue: async () => [readyJob],
+        getQueue: async () => [readyJob, otherJob],
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,
         getPlan: async () => null,
@@ -78,7 +86,12 @@ describe("a job that finishes mid-edit", () => {
     vi.useRealTimers();
   });
 
-  it("drops the pending option commit and shows the options the job kept", async () => {
+  async function openJob(id: string): Promise<void> {
+    const row = container.querySelector<HTMLElement>(`[data-job-id="${id}"]`)!;
+    await act(async () => row.click());
+  }
+
+  async function renderApp(): Promise<void> {
     await act(async () => {
       root?.render(
         <DialogHost>
@@ -86,26 +99,55 @@ describe("a job that finishes mid-edit", () => {
         </DialogHost>,
       );
     });
+  }
 
-    const row = container.querySelector<HTMLElement>('[data-job-id="job-1"]')!;
-    await act(async () => row.click());
+  const junk = (): HTMLInputElement => {
+    const label = [...container.querySelectorAll("label")]
+      .find((node) => node.textContent?.includes("Drop OS junk files"))!;
+    return label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  };
+  const comment = (): HTMLTextAreaElement => container.querySelector("textarea")!;
 
-    const junk = (): HTMLInputElement => {
-      const label = [...container.querySelectorAll("label")]
-        .find((node) => node.textContent?.includes("Drop OS junk files"))!;
-      return label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    };
+  it("sends a checkbox change at once", async () => {
+    await renderApp();
+    await openJob("job-1");
+
     expect(junk().checked).toBe(true);
     await act(async () => junk().click());
-    expect(junk().checked).toBe(false);
 
-    // The job runs and finishes inside the debounce window.
-    await act(async () => pushQueue([{ ...readyJob, state: "done", output: "/tmp/thing.zip" }]));
+    expect(updateJob).toHaveBeenCalledWith("job-1", { options: { ...CUSTOM_OPTIONS, junk: false } });
+  });
+
+  it("drops the pending typed change and shows the options the job kept", async () => {
+    await renderApp();
+    await openJob("job-1");
+
+    await act(async () => typeInto(comment(), "late words"));
+    expect(comment().value).toBe("late words");
+
+    // The job runs and finishes inside the typing delay.
+    await act(async () => pushQueue([{ ...readyJob, state: "done", output: "/tmp/thing.zip" }, otherJob]));
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
 
     expect(updateJob).not.toHaveBeenCalled();
-    expect(junk().checked).toBe(true);
+    expect(comment().value).toBe(CUSTOM_OPTIONS.comment);
+  });
+
+  it("sends typing still waiting when another job is selected", async () => {
+    await renderApp();
+    await openJob("job-1");
+
+    await act(async () => typeInto(comment(), "for the client"));
+    expect(updateJob).not.toHaveBeenCalled();
+    await openJob("job-2");
+
+    expect(updateJob).toHaveBeenCalledTimes(1);
+    expect(updateJob).toHaveBeenCalledWith("job-1", { options: { ...CUSTOM_OPTIONS, comment: "for the client" } });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(updateJob).toHaveBeenCalledTimes(1);
   });
 });

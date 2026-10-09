@@ -10,22 +10,31 @@ import { chmod, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises
 import path from "node:path";
 import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from "node:worker_threads";
 import { nanoid } from "nanoid";
-import { parseJsonObject, storedFormatVersion } from "./managed-json-envelope.ts";
-import { NewerFormatError } from "./formatVersions.ts";
+import { parseJsonObject } from "./managed-json-envelope.ts";
+
+export interface ManagedWriteOptions {
+  /** False when the write should not create an absent file: settings that are all built-in leave
+   *  no config.json behind (config-sets conventions). */
+  createAbsent?: boolean;
+  /** True for a store whose damaged bytes hold nothing worth keeping (layout.json), so a save
+   *  replaces them instead of being refused. */
+  replaceUnreadable?: boolean;
+}
 
 /**
  * Writes `bytes` to a same-directory temp named `<stem>-<nanoid>.tmp`, then atomically renames it
  * over `file` (storage-path conventions), carrying an existing file's permission mode to the temp
  * first so the replace keeps it (content-lifecycle conventions). Content identical to what is on
- * disk is not written again (content-lifecycle conventions). Resolves `true` when the file was
- * written, `false` when it already held these bytes; throws on failure.
+ * disk is not written again (content-lifecycle conventions). A live file that does not parse as a
+ * JSON object is never overwritten (store-recovery conventions) unless `replaceUnreadable` says its
+ * bytes are disposable. Resolves `true` when the file was written, `false` when it already held
+ * these bytes or was absent and `createAbsent` is false; throws on failure.
  */
-export async function writeManagedText(file: string, bytes: Buffer, signal?: AbortSignal): Promise<boolean> {
+export async function writeManagedText(file: string, bytes: Buffer, signal?: AbortSignal, options: ManagedWriteOptions = {}): Promise<boolean> {
   const dir = path.dirname(file);
   signal?.throwIfAborted();
   await mkdir(dir, { recursive: true });
   signal?.throwIfAborted();
-  const supported = storedFormatVersion(parseJsonObject(bytes.toString("utf8"), file), file);
   const admittedCurrent = async (): Promise<Buffer | null> => {
     signal?.throwIfAborted();
     const current = await readFile(file).catch((error: NodeJS.ErrnoException) => {
@@ -33,14 +42,11 @@ export async function writeManagedText(file: string, bytes: Buffer, signal?: Abo
       throw error;
     });
     signal?.throwIfAborted();
-    if (current !== null) {
-      const found = storedFormatVersion(parseJsonObject(current.toString("utf8"), file), file);
-      if (found > supported) throw new NewerFormatError(file, found, supported);
-    }
+    if (current !== null && options.replaceUnreadable !== true) parseJsonObject(current.toString("utf8"), file);
     return current;
   };
   const current = await admittedCurrent();
-  if (current !== null && current.equals(bytes)) return false;
+  if (current === null ? options.createAbsent === false : current.equals(bytes)) return false;
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   let owned = false;
   try {

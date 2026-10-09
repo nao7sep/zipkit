@@ -191,3 +191,49 @@ describe("SettingsDialog reset", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+describe("SettingsDialog while a save runs", () => {
+  function deferred() {
+    let settle!: { resolve: () => void; reject: (error: Error) => void };
+    const promise = new Promise<void>((resolve, reject) => { settle = { resolve, reject }; });
+    return { promise, ...settle };
+  }
+
+  it("freezes every field and close path until the save settles, then closes once", async () => {
+    const save = deferred();
+    const onClose = vi.fn();
+    render(<SettingsDialog settings={CUSTOM} onSave={() => save.promise} onClose={onClose} />);
+    fireEvent.change(fontInput(), { target: { value: "Menlo" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => expect(fontInput().disabled).toBe(true));
+    expect(levelInput().matches(":disabled")).toBe(true); // through the options fieldset
+    expect((screen.getByRole("combobox", { name: "Language" }) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole("radio", { name: "Light" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByText("Cancel") as HTMLButtonElement).disabled).toBe(true);
+    expect((reset() as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText("Discard unsaved changes?")).toBeNull();
+
+    save.resolve();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("unfreezes and stays open with the error when the save actually fails", async () => {
+    const save = deferred();
+    const onClose = vi.fn();
+    render(<SettingsDialog settings={CUSTOM} onSave={() => save.promise} onClose={onClose} />);
+    fireEvent.change(fontInput(), { target: { value: "Menlo" } });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(fontInput().disabled).toBe(true));
+
+    save.reject(new Error("disk full"));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Settings were not saved"));
+    expect(fontInput().disabled).toBe(false);
+    expect(fontInput().value).toBe("Menlo");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

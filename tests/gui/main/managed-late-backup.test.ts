@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import { writeManagedJson } from "../../../src/gui/main/managedJson.js";
 import { MANAGED_IO_WAIT_MS } from "../../../src/gui/main/managed-io.js";
 
-const controls = vi.hoisted(() => ({ entered: null as (() => void) | null, held: null as Promise<void> | null, recorded: null as (() => void) | null, records: [] as Array<{ file: string; bytes: Buffer }> }));
+const controls = vi.hoisted(() => ({ entered: null as (() => void) | null, held: null as Promise<void> | null, records: [] as Array<{ file: string; bytes: Buffer }> }));
 vi.mock("node:fs/promises", async (importActual) => {
   const actual = await importActual<typeof import("node:fs/promises")>();
   return { ...actual, rename: async (...args: Parameters<typeof actual.rename>) => {
@@ -16,29 +16,30 @@ vi.mock("node:fs/promises", async (importActual) => {
 });
 vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: async (file: string, bytes: Buffer) => {
   controls.records.push({ file, bytes });
-  controls.recorded?.();
 } }));
 
-it("a rename that commits after caller timeout records its exact committed bytes once", async () => {
+it("a save held at its rename waits for the actual outcome, never a caller timeout, and records its bytes once", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-late-backup-"));
   let release!: () => void;
   try {
     const file = path.join(root, "queue.json");
-    await writeFile(file, '{"formatVersion":1,"jobs":[]}');
-    const text = '{"formatVersion":1,"jobs":[{"id":"committed"}]}';
+    await writeFile(file, '{"jobs":[]}');
+    const text = '{"jobs":[{"id":"committed"}]}';
     controls.held = new Promise<void>((resolve) => { release = resolve; });
     const entered = new Promise<void>((resolve) => { controls.entered = resolve; });
-    const recorded = new Promise<void>((resolve) => { controls.recorded = resolve; });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const save = writeManagedJson(file, text);
-    const failed = expect(save).rejects.toThrow(`did not finish within ${MANAGED_IO_WAIT_MS} ms`);
+    let outcome: "pending" | "saved" | "failed" = "pending";
+    const save = writeManagedJson(file, text).then(() => { outcome = "saved"; }, () => { outcome = "failed"; });
     await entered;
-    await vi.advanceTimersByTimeAsync(MANAGED_IO_WAIT_MS);
-    await failed;
+    // Well past the startup read bound: an in-session save does not report failure while its
+    // write may still land.
+    await vi.advanceTimersByTimeAsync(10 * MANAGED_IO_WAIT_MS);
+    expect(outcome).toBe("pending");
     expect(controls.records).toEqual([]);
-    expect(await readFile(file, "utf8")).toBe('{"formatVersion":1,"jobs":[]}');
+    expect(await readFile(file, "utf8")).toBe('{"jobs":[]}');
     release();
-    await recorded;
+    await save;
+    expect(outcome).toBe("saved");
     expect(await readFile(file, "utf8")).toBe(text);
     expect(controls.records).toEqual([{ file, bytes: Buffer.from(text) }]);
     await writeManagedJson(file, text);
