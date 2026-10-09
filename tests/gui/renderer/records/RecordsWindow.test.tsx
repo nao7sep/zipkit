@@ -262,11 +262,11 @@ describe("RecordsWindow", () => {
     expect(lastQuery().search).toBe("gone");
   });
 
-  it("offers Needs attention first among the levels, with the level filter off", async () => {
+  it("offers Warnings and errors first among the levels, with the level filter off", async () => {
     await mount();
     const level = document.querySelectorAll("select")[2]!;
     expect(Array.from(level.options).map((option) => option.textContent)).toEqual([
-      "All levels", "Needs attention", "Error", "Warning", "Info", "Debug",
+      "All levels", "Warnings and errors", "Error", "Warning", "Info", "Debug",
     ]);
     expect(level.value).toBe("");
   });
@@ -469,6 +469,21 @@ describe("RecordsWindow", () => {
 
     expect(saveRecordsListWidth).toHaveBeenCalledExactlyOnceWith(RECORDS_LIST_WIDTH.max);
     expect(listColumn()).toBe(`${RECORDS_LIST_WIDTH.max}px`);
+  });
+
+  it("moves the list 16 px per arrow press and saves once, when the key is released", async () => {
+    await mount();
+    const splitter = document.querySelector<HTMLElement>('[role="separator"]')!;
+    const press = (type: "keydown" | "keyup", repeat = false) =>
+      act(async () => { splitter.dispatchEvent(new KeyboardEvent(type, { key: "ArrowRight", bubbles: true, repeat })); });
+
+    await press("keydown");
+    await press("keydown", true);
+    expect(listColumn()).toBe(`${RECORDS_LIST_WIDTH.default + 32}px`);
+    expect(saveRecordsListWidth).not.toHaveBeenCalled();
+    await press("keyup");
+
+    expect(saveRecordsListWidth).toHaveBeenCalledExactlyOnceWith(RECORDS_LIST_WIDTH.default + 32);
   });
 
   it("saves nothing for a drag that is cancelled", async () => {

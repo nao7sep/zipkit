@@ -20,6 +20,7 @@ describe("Splitter keyboard resizing", () => {
         onDragEnd={vi.fn()}
         onDragCancel={vi.fn()}
         onKeyboardDelta={onKeyboardDelta}
+        onKeyboardCommit={vi.fn()}
       />,
     );
     const splitter = screen.getByRole("separator");
@@ -29,7 +30,28 @@ describe("Splitter keyboard resizing", () => {
     fireEvent.keyDown(splitter, { key: "ArrowLeft" });
     fireEvent.keyDown(splitter, { key: "Home" });
     fireEvent.keyDown(splitter, { key: "End" });
-    expect(onKeyboardDelta.mock.calls.map(([delta]) => delta)).toEqual([10, -10, -100, 180]);
+    expect(onKeyboardDelta.mock.calls.map(([delta]) => delta)).toEqual([16, -16, -100, 180]);
+  });
+
+  it("commits the keyboard's moves once, when the key is released or focus leaves", () => {
+    const onKeyboardCommit = vi.fn();
+    render(
+      <Splitter label="Resize Jobs pane" value={300} min={200} max={480}
+        onDragStart={vi.fn()} onDragDelta={vi.fn()} onDragEnd={vi.fn()} onDragCancel={vi.fn()}
+        onKeyboardDelta={vi.fn()} onKeyboardCommit={onKeyboardCommit} />,
+    );
+    const splitter = screen.getByRole("separator");
+    fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    fireEvent.keyDown(splitter, { key: "ArrowRight", repeat: true });
+    expect(onKeyboardCommit).not.toHaveBeenCalled();
+    fireEvent.keyUp(splitter, { key: "ArrowRight" });
+    expect(onKeyboardCommit).toHaveBeenCalledTimes(1);
+    fireEvent.keyUp(splitter, { key: "ArrowRight" });
+    fireEvent.blur(splitter);
+    expect(onKeyboardCommit).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(splitter, { key: "End" });
+    fireEvent.blur(splitter);
+    expect(onKeyboardCommit).toHaveBeenCalledTimes(2);
   });
 
   it("maps Home/End to physical bounds for a reverse-width pane", () => {
@@ -38,7 +60,7 @@ describe("Splitter keyboard resizing", () => {
       <Splitter label="Resize Progress pane" value={320} min={240} max={600} direction={-1}
         onDragStart={vi.fn()} onDragDelta={vi.fn()} onDragEnd={vi.fn()}
         onDragCancel={vi.fn()}
-        onKeyboardDelta={onKeyboardDelta} />,
+        onKeyboardDelta={onKeyboardDelta} onKeyboardCommit={vi.fn()} />,
     );
     const splitter = screen.getByRole("separator");
     fireEvent.keyDown(splitter, { key: "Home" });
@@ -61,6 +83,7 @@ describe("Splitter keyboard resizing", () => {
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
         onKeyboardDelta={vi.fn()}
+        onKeyboardCommit={vi.fn()}
       />,
     );
 

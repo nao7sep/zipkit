@@ -170,6 +170,7 @@ describe("pane-layout persistence results", () => {
     const splitter = await screen.findByRole("separator", { name: "Resize Jobs pane" });
 
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    fireEvent.keyUp(splitter, { key: "ArrowRight" });
 
     await waitFor(() => expect(bridge.reportError).toHaveBeenCalledWith("persist pane layout", expect.objectContaining({ message: "disk full" })));
     expect(screen.queryByRole("alert")).toBeNull();
@@ -178,18 +179,21 @@ describe("pane-layout persistence results", () => {
     expect(setLayout).toHaveBeenCalledWith({ ...DEFAULT_LAYOUT, jobsWidth: width });
   });
 
-  it("sends each resize to main as it happens, without waiting for the previous save", async () => {
+  it("saves a keyboard resize once on release, and each release without waiting for the previous save", async () => {
     const setLayout = vi.fn<ZipKitGuiApi["setLayout"]>().mockReturnValue(new Promise<void>(() => {}));
     renderApp(api({ setLayout }));
     const splitter = await screen.findByRole("separator", { name: "Resize Jobs pane" });
 
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    fireEvent.keyDown(splitter, { key: "ArrowRight", repeat: true });
+    expect(setLayout).not.toHaveBeenCalled();
+    fireEvent.keyUp(splitter, { key: "ArrowRight" });
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    fireEvent.keyUp(splitter, { key: "ArrowRight" });
 
     // Main writes them in the order they arrive (layout.ts), so the newest is what stays on disk.
     const widths = setLayout.mock.calls.map(([layout]) => layout.jobsWidth);
-    expect(widths).toHaveLength(2);
-    expect(widths[1]).toBeGreaterThan(widths[0]!);
+    expect(widths).toEqual([DEFAULT_LAYOUT.jobsWidth + 32, DEFAULT_LAYOUT.jobsWidth + 48]);
   });
 });
 

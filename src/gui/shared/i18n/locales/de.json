@@ -134,7 +134,7 @@
   "records.kindJobEvent": "Fortschrittsereignis",
   "records.level": "Stufe",
   "records.allLevels": "Alle Stufen",
-  "records.levelAttention": "Handlungsbedarf",
+  "records.levelAttention": "Warnungen und Fehler",
   "records.loading": "Protokoll wird geladen …",
   "records.empty": "Keine Einträge entsprechen diesen Filtern.",
   "records.loadFailed": "Das Protokoll konnte nicht gelesen werden.",

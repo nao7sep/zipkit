@@ -134,7 +134,7 @@
   "records.kindJobEvent": "進行状況のイベント",
   "records.level": "レベル",
   "records.allLevels": "すべてのレベル",
-  "records.levelAttention": "要対応",
+  "records.levelAttention": "警告とエラー",
   "records.loading": "ログを読み込み中…",
   "records.empty": "条件に一致する項目はありません。",
   "records.loadFailed": "ログを読み込めませんでした。",

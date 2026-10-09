@@ -134,7 +134,7 @@
   "records.kindJobEvent": "Evento di avanzamento",
   "records.level": "Livello",
   "records.allLevels": "Tutti i livelli",
-  "records.levelAttention": "Richiede attenzione",
+  "records.levelAttention": "Avvisi ed errori",
   "records.loading": "Caricamento del registro…",
   "records.empty": "Nessuna voce corrisponde a questi filtri.",
   "records.loadFailed": "Impossibile leggere il registro.",

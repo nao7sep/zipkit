@@ -3,6 +3,8 @@ import {
   createQuitControl,
   endSessionNow,
   QUIT_BOUNDS_MS,
+  SESSION_END_MARK_MS,
+  StepTimeout,
   SESSION_END_SAVE_MS,
   stopFlushAndExit,
   type QuitSession,
@@ -22,6 +24,7 @@ function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
     closeLog: vi.fn(async () => {}),
     onStepFailed: vi.fn(),
     exit: vi.fn(),
+    forceExit: vi.fn(),
     ...overrides,
   };
 }
@@ -221,7 +224,9 @@ describe("stopFlushAndExit", () => {
 
     expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["job", "queue", "layout"]);
     expect(s.closeBackups).not.toHaveBeenCalled();
-    expect(s.exit).toHaveBeenCalledWith(0);
+    // Work left behind may be stuck in a native call, so the exit does not wait for it.
+    expect(s.forceExit).toHaveBeenCalledOnce();
+    expect(s.exit).not.toHaveBeenCalled();
   });
 
   it("closes the backup history within its bound on an ordinary quit", async () => {
@@ -233,7 +238,17 @@ describe("stopFlushAndExit", () => {
 
     expect(s.closeBackups).toHaveBeenCalledOnce();
     expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["backups"]);
+    expect(s.forceExit).toHaveBeenCalledOnce();
+  });
+
+  it("exits normally when a step fails without being left behind", async () => {
+    const s = steps({ settleLayout: async () => { throw new Error("layout write failed"); } });
+
+    await stopFlushAndExit(s, userQuit());
+
+    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["layout"]);
     expect(s.exit).toHaveBeenCalledWith(0);
+    expect(s.forceExit).not.toHaveBeenCalled();
   });
 
   it("keeps the whole quit under the five seconds an ending session allows", () => {
@@ -243,12 +258,25 @@ describe("stopFlushAndExit", () => {
 });
 
 describe("endSessionNow (the end of a Windows session)", () => {
+  it("forces the exit when the save thread did not answer, and exits normally after a plain failure", () => {
+    const timedOut = sessionEndSteps({ saveQueueNow: vi.fn(() => { throw new StepTimeout("no answer"); }) });
+    endSessionNow(timedOut);
+    expect(timedOut.forceExit).toHaveBeenCalledOnce();
+    expect(timedOut.exit).not.toHaveBeenCalled();
+
+    const failed = sessionEndSteps({ saveQueueNow: vi.fn(() => { throw new Error("disk full"); }) });
+    endSessionNow(failed);
+    expect(failed.exit).toHaveBeenCalledWith(0);
+    expect(failed.forceExit).not.toHaveBeenCalled();
+  });
+
   function sessionEndSteps(overrides: Partial<SessionEndSteps> = {}): SessionEndSteps {
     return {
       saveQueueNow: vi.fn(),
       onSaved: vi.fn(),
       onStepFailed: vi.fn(),
       exit: vi.fn(),
+      forceExit: vi.fn(),
       ...overrides,
     };
   }
@@ -355,6 +383,46 @@ describe("createQuitControl", () => {
     await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
     expect(confirmQuit).not.toHaveBeenCalled();
     expect(shutdown.mock.calls[0]?.[0]).toMatchObject({ ending: true });
+  });
+
+  it("asks again once a session end passes with no quit, as when another app cancels the logout", async () => {
+    vi.useFakeTimers();
+    try {
+      const shutdown = vi.fn(async (_session: QuitSession) => {});
+      const confirmQuit = vi.fn(async () => true);
+      const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => true, confirmQuit, shutdown });
+
+      quit.sessionEnding();
+      await vi.advanceTimersByTimeAsync(SESSION_END_MARK_MS);
+      quit.beforeQuit(quitEvent());
+
+      await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+      expect(confirmQuit).toHaveBeenCalledOnce();
+      const [signal] = confirmQuit.mock.calls[0] as unknown as [AbortSignal];
+      expect(signal.aborted).toBe(false);
+      expect(shutdown.mock.calls[0]?.[0]).toMatchObject({ ending: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a quit that started inside the session end's window ending", async () => {
+    vi.useFakeTimers();
+    try {
+      let finish!: () => void;
+      const shutdown = vi.fn((_session: QuitSession) => new Promise<void>((resolve) => { finish = resolve; }));
+      const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => false, confirmQuit: vi.fn(), shutdown });
+
+      quit.sessionEnding();
+      await vi.advanceTimersByTimeAsync(SESSION_END_MARK_MS - 1);
+      quit.beforeQuit(quitEvent());
+      await vi.advanceTimersByTimeAsync(SESSION_END_MARK_MS);
+
+      expect(shutdown.mock.calls[0]?.[0].ending).toBe(true);
+      finish();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("answers an open job question when the session starts ending, and quits", async () => {

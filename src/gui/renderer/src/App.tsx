@@ -459,9 +459,10 @@ export function App() {
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
         const next = clampLayout({ ...intentRef.current, jobsWidth: intentRef.current.jobsWidth + dx });
+        intentRef.current = next;
         setIntent(next);
-        persistLayout(next);
       }}
+      onKeyboardCommit={() => persistLayout(intentRef.current)}
     />
   );
   const progressSplitter = (
@@ -481,9 +482,10 @@ export function App() {
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
         const next = clampLayout({ ...intentRef.current, progressWidth: intentRef.current.progressWidth - dx });
+        intentRef.current = next;
         setIntent(next);
-        persistLayout(next);
       }}
+      onKeyboardCommit={() => persistLayout(intentRef.current)}
     />
   );
 

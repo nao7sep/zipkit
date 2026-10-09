@@ -134,7 +134,7 @@
   "records.kindJobEvent": "Événement de progression",
   "records.level": "Niveau",
   "records.allLevels": "Tous les niveaux",
-  "records.levelAttention": "Attention requise",
+  "records.levelAttention": "Avertissements et erreurs",
   "records.loading": "Chargement du journal…",
   "records.empty": "Aucune entrée ne correspond à ces filtres.",
   "records.loadFailed": "Le journal n’a pas pu être lu.",

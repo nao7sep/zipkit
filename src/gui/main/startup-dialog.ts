@@ -67,6 +67,8 @@ button{min-width:76px;border:1px solid #7d826c;border-radius:7px;padding:7px 16p
 }
 
 export interface AppQuestionDialogOptions {
+  /** The window the question belongs to; none for a question with no window open. */
+  owner?: BrowserWindow;
   title: string;
   message: string;
   labels: string[];

@@ -32,6 +32,7 @@ import { configureWindowActivity } from "./windowActivity.js";
 import { createQuitControl, endSessionNow, finishStartupHalt, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
 import { configureWindowMinimum } from "./window-minimum.js";
+import { forceExitProcess } from "./force-exit.js";
 import { mainWindowOptions } from "./window-options.js";
 import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
 
@@ -74,6 +75,7 @@ function createWindow(): BrowserWindow {
       onSaved: () => log.info("app quitting"),
       onStepFailed: logQuitStepFailure,
       exit: (code) => app.exit(code),
+      forceExit: forceExitProcess,
     });
   });
   win.on("closed", () => {
@@ -135,6 +137,7 @@ async function reportStartupHalt(error: unknown): Promise<void> {
     closeLog: () => log.close(),
     onFailed: (failure) => log.error("startup failure presentation or cleanup failed", { error: errorInfo(failure) }),
     exit: (code) => app.exit(code),
+    forceExit: forceExitProcess,
   });
 }
 
@@ -265,6 +268,7 @@ const quit = createQuitControl({
         closeLog: () => log.close(),
         onStepFailed: logQuitStepFailure,
         exit: (code) => app.exit(code),
+        forceExit: forceExitProcess,
       },
       session,
     ),

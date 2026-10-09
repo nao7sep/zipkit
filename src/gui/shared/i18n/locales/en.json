@@ -134,7 +134,7 @@
   "records.kindJobEvent": "Progress event",
   "records.level": "Level",
   "records.allLevels": "All levels",
-  "records.levelAttention": "Needs attention",
+  "records.levelAttention": "Warnings and errors",
   "records.loading": "Loading records…",
   "records.empty": "No records match these filters.",
   "records.loadFailed": "The records could not be read.",

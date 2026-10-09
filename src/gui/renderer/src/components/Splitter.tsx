@@ -3,11 +3,17 @@
  * on mouse-down it reports the start, streams the horizontal delta while dragging
  * (so the parent recomputes the adjacent column's width and clamps it), and
  * reports the end (so the parent persists). It is also a focusable ARIA separator:
- * arrows move it by 10px and Home/End move to its bounds through the same parent
- * width authority.
+ * arrows move it by 16px and Home/End move to its bounds through the same parent
+ * width authority, and the keyboard's moves are committed once, when the key is
+ * released or focus leaves (the fleet's Records splitter behavior, as BigMouth's),
+ * so a held arrow does not save on every repeat.
  */
 
 import { useEffect, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+
+/** How far one arrow press moves a splitter. */
+export const SPLITTER_KEY_STEP = 16;
+const MOVE_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
 
 export function Splitter({
   onDragStart,
@@ -15,6 +21,7 @@ export function Splitter({
   onDragEnd,
   onDragCancel,
   onKeyboardDelta,
+  onKeyboardCommit,
   value,
   min,
   max,
@@ -26,6 +33,8 @@ export function Splitter({
   onDragEnd: () => void;
   onDragCancel: () => void;
   onKeyboardDelta: (dx: number) => void;
+  /** The keyboard's moves since the last commit are done: persist them. */
+  onKeyboardCommit: () => void;
   value: number;
   min: number;
   max: number;
@@ -34,6 +43,7 @@ export function Splitter({
   direction?: 1 | -1;
 }) {
   const clearGestureRef = useRef<((commit: boolean, notify: boolean) => void) | null>(null);
+  const keyMoved = useRef(false);
 
   useEffect(
     () => () => {
@@ -84,13 +94,20 @@ export function Splitter({
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     let delta: number | null = null;
-    if (e.key === "ArrowLeft") delta = -10;
-    else if (e.key === "ArrowRight") delta = 10;
+    if (e.key === "ArrowLeft") delta = -SPLITTER_KEY_STEP;
+    else if (e.key === "ArrowRight") delta = SPLITTER_KEY_STEP;
     else if (e.key === "Home") delta = ((direction === 1 ? min : max) - value) / direction;
     else if (e.key === "End") delta = ((direction === 1 ? max : min) - value) / direction;
     if (delta === null) return;
     e.preventDefault();
+    keyMoved.current = true;
     onKeyboardDelta(delta);
+  }
+
+  function commitKeyboard() {
+    if (!keyMoved.current) return;
+    keyMoved.current = false;
+    onKeyboardCommit();
   }
 
   return (
@@ -103,6 +120,10 @@ export function Splitter({
       aria-valuenow={value}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onKeyUp={(e) => {
+        if (MOVE_KEYS.has(e.key)) commitKeyboard();
+      }}
+      onBlur={commitKeyboard}
       onMouseDown={onMouseDown}
       style={S.splitter}
     >

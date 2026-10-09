@@ -11,6 +11,7 @@ import path from "node:path";
 import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from "node:worker_threads";
 import { nanoid } from "nanoid";
 import { parseJsonObject } from "./managed-json-envelope.ts";
+import { StepTimeout } from "./step-timeout.ts";
 
 export interface ManagedWriteOptions {
   /** False when the write should not create an absent file: settings that are all built-in leave
@@ -124,6 +125,6 @@ export function writeManagedTextWithin(file: string, text: string, boundMs: numb
   const reply = receiveMessageOnPort(port1)?.message as ManagedWriteReply | undefined;
   port1.close();
   void worker.terminate();
-  if (reply === undefined) throw new Error(`the write of ${file} did not finish within ${boundMs} ms`);
+  if (reply === undefined) throw new StepTimeout(`the write of ${file} did not finish within ${boundMs} ms`);
   if (!reply.ok) throw new Error(reply.message);
 }

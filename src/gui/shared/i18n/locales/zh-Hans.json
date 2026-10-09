@@ -134,7 +134,7 @@
   "records.kindJobEvent": "进度事件",
   "records.level": "级别",
   "records.allLevels": "所有级别",
-  "records.levelAttention": "需要关注",
+  "records.levelAttention": "警告和错误",
   "records.loading": "正在加载日志…",
   "records.empty": "没有符合这些筛选条件的条目。",
   "records.loadFailed": "无法读取日志。",

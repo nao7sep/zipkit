@@ -134,7 +134,7 @@
   "records.kindJobEvent": "Событие хода работы",
   "records.level": "Уровень",
   "records.allLevels": "Все уровни",
-  "records.levelAttention": "Требует внимания",
+  "records.levelAttention": "Предупреждения и ошибки",
   "records.loading": "Загрузка журнала…",
   "records.empty": "Нет записей, соответствующих этим фильтрам.",
   "records.loadFailed": "Не удалось прочитать журнал.",

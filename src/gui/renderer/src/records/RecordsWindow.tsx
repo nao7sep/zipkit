@@ -501,7 +501,14 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
           dragWidthRef.current = null;
           setDragWidth(null);
         }}
-        onKeyboardDelta={(dx) => commitListWidth(shownListWidth + dx)}
+        onKeyboardDelta={(dx) => {
+          const next = clampRecordsListWidth((dragWidthRef.current ?? shownListWidth) + dx);
+          dragWidthRef.current = next;
+          setDragWidth(next);
+        }}
+        onKeyboardCommit={() => {
+          if (dragWidthRef.current !== null) commitListWidth(dragWidthRef.current);
+        }}
       />
       <section className="records-pane" aria-busy={detail.status === "loading"}>
         {detail.status === "ready" ? (

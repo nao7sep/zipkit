@@ -16,7 +16,7 @@ describe("parseRecordsQuery", () => {
     expect(parseRecordsQuery(query)).toEqual(query);
   });
 
-  it("offers Needs attention first, then each level from the loudest", () => {
+  it("offers Warnings and errors first, then each level from the loudest", () => {
     expect(RECORD_LEVEL_FILTERS).toEqual(["attention", "error", "warn", "info", "debug"]);
   });
 

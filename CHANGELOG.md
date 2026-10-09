@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `queue.json` and `layout.json` no longer carry a `version` key; one left by 0.1.0 is ignored and dropped at the next save. A file ZipKit cannot read is never overwritten. Running an older ZipKit on files a newer one wrote is not supported.
 - The backup history in `backups.sqlite3` keeps one copy of the settings file per launch, the last one saved in that launch, instead of one per save, and no longer keeps copies of the job list. Copies already kept stay as earlier history.
 - An SDK session log is named `yyyymmdd-hhmmss-utc-<id>.log` (was `yyyymmdd-hhmmss-fff-utc.log`) and created exclusively, so instances started at the same moment never write into one file. ZipKit's own fallback log is named to the second.
+- The questions ZipKit asks when quitting use its own dialog, on the main window when one is open.
+- The Records window's combined level filter is called "Warnings and errors" (was "Needs attention"); it shows the same records.
+- Arrow keys move a pane divider 16 pixels at a time (was 10), and a keyboard resize is saved once, when the key is released.
 - A damaged `layout.json` puts the panes back at their default widths without a message, and a failed pane layout save is only logged.
 - Verify refuses an embedded manifest whose `formatVersion` is newer than the running build reads, with the error code `read.manifest-newer`, and one without `formatVersion` with `read.manifest-invalid`.
 - ZipKit no longer rewrites its queue or layout file when nothing in it changed, and extraction with overwrite leaves a file or symlink that already holds the entry's content as it is, reporting the entry as skipped with `unchanged`.
@@ -39,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A destination that stops responding while the finished archive is being saved into place is reported as the archive possibly still appearing at its path, not as an archive that could not be written.
 - Move archive to Trash works like Move originals to Trash: the job offers only Cancel until it ends, a second click, Retry, Move originals and removing the job wait for it, and Cancel or quitting stops the wait and says the archive may still reach the Trash. Quitting while either is in progress asks first, and says that files already sent to the Trash may still arrive there.
 - While a job moves files to the Trash, its row no longer shows a remove button that did nothing.
+- On macOS, after another app cancels a logout, quitting ZipKit asks its questions again once a minute has passed, instead of quitting silently for the rest of the session.
+- A quit whose steps could not finish in time, such as with a network drive that stopped responding, now ends ZipKit instead of leaving it hanging without a window.
 - Settings no longer reports a save as failed while it may still complete. The dialog stays as it is, its fields and Cancel disabled, until the save finishes, then closes, or stays open with the error.
 - A queue that cannot be saved is reported: the main window shows a notice until a later save succeeds, and when it fails as you quit, ZipKit stays open and offers Retry, Quit Anyway or Cancel. A logout, restart or shutdown never asks; it logs the failure.
 - A Windows logoff, restart or shutdown saves the queue before ZipKit ends, and on macOS a job still running at logout is cancelled without asking. Every quit step has a bound, so quitting ends within about 4 seconds instead of waiting up to 10 seconds a step, and a pane layout write still in progress at quit lands first.
