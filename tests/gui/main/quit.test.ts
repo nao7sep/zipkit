@@ -207,17 +207,32 @@ describe("stopFlushAndExit", () => {
       stopJob: never,
       flush: never,
       settleLayout: never,
-      closeBackups: never,
+      closeBackups: vi.fn(never),
       closeLog: never,
     });
 
+    // An ending session skips the backup history's pending writes, so its bound is not spent.
+    const endingBound = totalBound - QUIT_BOUNDS_MS.backups;
     const quitting = stopFlushAndExit(s, endingSession());
-    await vi.advanceTimersByTimeAsync(totalBound - 1);
+    await vi.advanceTimersByTimeAsync(endingBound - 1);
     expect(s.exit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await quitting;
 
-    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["job", "queue", "layout", "backups"]);
+    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["job", "queue", "layout"]);
+    expect(s.closeBackups).not.toHaveBeenCalled();
+    expect(s.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("closes the backup history within its bound on an ordinary quit", async () => {
+    const s = steps({ closeBackups: vi.fn(never) });
+
+    const quitting = stopFlushAndExit(s, userQuit());
+    await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.backups);
+    await quitting;
+
+    expect(s.closeBackups).toHaveBeenCalledOnce();
+    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["backups"]);
     expect(s.exit).toHaveBeenCalledWith(0);
   });
 

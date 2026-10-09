@@ -1,9 +1,9 @@
 /**
- * The write-through data-backup store (data-backup conventions). It owns one add-only SQLite file,
+ * The write-through data-backup store (data-backup conventions). It owns one SQLite file,
  * `backups.sqlite3`, directly under zipkit's storage root (`ZIPKIT_DATA_DIR` or `~/.zipkit`, resolved in
- * one place by the SDK's {@link storageRoot} — never a hardcoded path). Every managed *text* save
- * records the exact bytes it just wrote here, strictly AFTER its atomic rename lands, so the history
- * is always as current as the last save. There is no startup scan, no periodic pass, no restore path.
+ * one place by the SDK's {@link storageRoot} — never a hardcoded path). The one protected file,
+ * `config.json`, records the exact bytes it just wrote here, strictly AFTER its atomic rename lands,
+ * keeping one row per launch. There is no startup scan, no periodic pass, no restore path.
  *
  * The database is written by the backups thread (./backups-worker), so a slow or locked store never
  * holds the main process; this module posts each record and hears back how it went.
@@ -73,7 +73,7 @@ function disable(message: string, error: unknown): void {
 function ensureWorker(): Worker {
   if (worker) return worker;
   file = storeFile();
-  const created = new Worker(workerUrl(), { workerData: { database: file } satisfies BackupsWorkerData });
+  const created = new Worker(workerUrl(), { workerData: { database: file, session: log.session } satisfies BackupsWorkerData });
   // The thread never keeps the process alive; closeBackupStore is what waits for it.
   created.unref();
   // A thread that closeBackupStore has already let go of no longer speaks for the store.
@@ -103,7 +103,8 @@ function ensureWorker(): Worker {
 /**
  * Record one managed-text write: `absolutePath` is the FULL absolute path of the file as written;
  * `bytes` is the exact raw bytes just written (the caller already holds them — never re-read the file).
- * The thread dedups by content hash per path, so an unchanged re-save writes no row.
+ * The thread keeps one row per path for this launch and writes nothing for content equal to the
+ * path's latest row.
  *
  * Best-effort and silent on success. It never throws and never breaks the save; the returned promise
  * never rejects and settles once the thread has answered (or recording has stopped), so a caller that

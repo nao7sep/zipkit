@@ -102,18 +102,16 @@ export async function loadManagedJson<T>(
 
 /**
  * The single managed-text atomic-write choke point, shared by config.json (settings.ts), layout.json
- * (layout.ts), and queue.json (persist.ts) — one shape, and one home for the data-backup hook. A
- * managed-text write that bypasses this helper is a silent backup gap; there is deliberately no
- * second atomic-write path in the app. Volatile state that is state and nothing else (layout.json)
- * passes `{ record: false }` to skip the backup record while keeping the same atomic write. The one
- * save without a record is the queue's at the end of a Windows session (persist.ts), which the
- * session leaves no time to record.
+ * (layout.ts), and queue.json (persist.ts) — one shape, and one home for the data-backup hook; there
+ * is deliberately no second atomic-write path in the app. Backup eligibility is explicit at the
+ * owner (data-backup conventions): only a protected file passes `{ record: true }`, which today is
+ * config.json alone. The job list is transient work and the layout is state, so neither records.
  *
  * Writes `text` through {@link writeManagedText} (./managed-write), the one atomic write, passing on
  * its `createAbsent` and `replaceUnreadable` options. It waits for the write's actual outcome, with
  * no caller timeout; quit bounds its own wait. Throws on failure; the caller logs it.
  *
- * The data-backup record fires strictly AFTER the rename lands, from the same `bytes` buffer just
+ * A requested data-backup record fires strictly AFTER the rename lands, from the same `bytes` buffer just
  * written — never before the rename (a backup of a save that never happened) and never a re-read
  * (which could capture a concurrent writer's content). Best-effort and not awaited: record() hands the
  * bytes to the backups thread, swallows its own failures and never breaks or delays the save
@@ -127,7 +125,7 @@ export async function writeManagedJson(
   await managedIO(file, async (signal) => {
     // Field patches derive from the last physical commit, including a late one.
     const bytes = Buffer.from(typeof text === "function" ? text() : text, "utf8");
-    if (await writeManagedText(file, bytes, signal, options) && options.record !== false) void record(file, bytes);
+    if (await writeManagedText(file, bytes, signal, options) && options.record === true) void record(file, bytes);
     options.onWritten?.();
   });
 }

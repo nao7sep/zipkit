@@ -1,6 +1,6 @@
 /**
  * End-to-end: one ZipKit instance keeps one session log under its `logDir`,
- * named with the `-fff` stamp; events carry the `time`/`message` envelope;
+ * named with a seconds stamp and a random id; events carry the `time`/`message` envelope;
  * `debug` is gated; `result.log` identifies the file; the `onProgress` stream
  * carries exactly what the file holds; and `sessionLog: false` writes no file.
  */
@@ -42,14 +42,14 @@ async function sessionLines(): Promise<Record<string, unknown>[]> {
 }
 
 describe("SDK session log", () => {
-  it("plan() then write() on one instance share a single -fff session log named by result.log", async () => {
+  it("plan() then write() on one instance share a single session log named by result.log", async () => {
     const zip = new ZipKit({ logDir });
     const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") });
     const result = await zip.write(plan);
 
     const files = (await readdir(logDir)).filter((f) => f.endsWith(".log"));
     expect(files).toHaveLength(1);
-    expect(files[0]).toMatch(/^\d{8}-\d{6}-\d{3}-utc\.log$/);
+    expect(files[0]).toMatch(/^\d{8}-\d{6}-utc-[0-9a-z]{12}\.log$/);
     expect(result.log).toBe(path.join(logDir, files[0]!));
     expect(plan.log).toBe(result.log); // one instance, one session
   });
@@ -175,7 +175,7 @@ describe("SDK without a session log", () => {
 
   it("keeps the session log on by default and with sessionLog: true", async () => {
     const result = await new ZipKit({ logDir, sessionLog: true }).create({ inputs: [proj], output: path.join(root, "o.zip") });
-    expect(result.log).toMatch(/\d{8}-\d{6}-\d{3}-utc\.log$/);
+    expect(result.log).toMatch(/\d{8}-\d{6}-utc-[0-9a-z]{12}\.log$/);
     expect((await sessionLines()).length).toBeGreaterThan(0);
   });
 

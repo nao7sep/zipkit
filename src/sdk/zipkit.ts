@@ -7,7 +7,7 @@
  * is self-contained. The per-call policy is merged over the instance policy.
  *
  * **One instance is one logging session.** Each instance opens a single
- * per-session log — `<logDir>/yyyymmdd-hhmmss-fff-utc.log`, JSON Lines — lazily
+ * per-session log — `<logDir>/yyyymmdd-hhmmss-utc-<id>.log`, JSON Lines — lazily
  * on its first verb call, and every verb on the instance appends its events
  * there; each result's `log` field names the file. `logDir` defaults to
  * `ZIPKIT_LOG_DIR`, else `<ZIPKIT_DATA_DIR or ~/.zipkit>/logs`. Lines are appended synchronously, so
@@ -35,8 +35,8 @@ import { createLogger, type LogSink } from "./log/logger.js";
 import type { Logger } from "./log/logger.js";
 import {
   defaultLogDir,
-  defaultSessionTimestamp,
   openSessionLog,
+  sessionLogName,
   type SessionLog,
 } from "./log/session.js";
 import { compareWithManifest } from "./compare/sources.js";
@@ -135,7 +135,7 @@ export class ZipKit {
       options.ioTimeoutMs !== undefined ? validateIoTimeout(options.ioTimeoutMs) : DEFAULT_IO_TIMEOUT_MS;
     if (validateSessionLog(options.sessionLog, options.logDir)) {
       const logDir = options.logDir ?? process.env.ZIPKIT_LOG_DIR ?? defaultLogDir();
-      this.#sessionPath = path.join(logDir, `${defaultSessionTimestamp()}.log`);
+      this.#sessionPath = path.join(logDir, sessionLogName());
     } else {
       this.#sessionPath = null;
     }

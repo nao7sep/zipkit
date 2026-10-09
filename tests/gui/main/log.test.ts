@@ -112,7 +112,7 @@ describe("createAppLog", () => {
     log.warn("second");
     await log.close();
 
-    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
+    const lines = readFileSync(path.join(logs, "20260614-052548-utc.log"), "utf8").trim().split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(lines.map((line) => [line.level, line.message])).toEqual([
       ["error", "records database unavailable"],
@@ -127,7 +127,7 @@ describe("createAppLog", () => {
     const blocker = path.join(dir, "blocker");
     writeFileSync(blocker, "a file, not a directory");
     const logs = path.join(dir, "logs");
-    const expectedPath = path.join(logs, "20260614-052548-123-utc.log");
+    const expectedPath = path.join(logs, "20260614-052548-utc.log");
     mkdirSync(logs);
     writeFileSync(expectedPath, "first-process-line\n");
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -159,7 +159,7 @@ describe("createAppLog", () => {
       await log.close();
     }
 
-    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
+    const lines = readFileSync(path.join(logs, "20260614-052548-utc.log"), "utf8").trim().split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(lines.map((line) => line.message)).toEqual(["while the database is locked"]);
   });
@@ -172,7 +172,7 @@ describe("createAppLog", () => {
     log.info("late");
     await log.close();
 
-    expect(readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8")).toContain("\"late\"");
+    expect(readFileSync(path.join(logs, "20260614-052548-utc.log"), "utf8")).toContain("\"late\"");
   });
 });
 
@@ -231,7 +231,7 @@ describe("job events", () => {
     expect(await log.jobEvents("a")).toEqual([]);
     await log.close();
 
-    const lines = readFileSync(path.join(logs, "20260614-052548-123-utc.log"), "utf8").trim().split("\n")
+    const lines = readFileSync(path.join(logs, "20260614-052548-utc.log"), "utf8").trim().split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(lines[1]).toMatchObject({ jobId: "a", seq: 1, event: { event: "scan.start", inputs: 1 } });
   });

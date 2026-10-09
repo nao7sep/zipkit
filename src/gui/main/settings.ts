@@ -118,7 +118,8 @@ export async function saveSettings(settings: GuiSettings, logger: AppLog = nullL
   };
   const stored = changedSettings(DEFAULT_SETTINGS, effective);
   // Settings that are all built-in leave no file behind; identical bytes are not rewritten.
-  await writeManagedJson(settingsFile(), serializeSettings(stored), { createAbsent: Object.keys(stored).length > 0 });
+  // config.json holds the user's own settings, so each launch's last saved copy is backed up.
+  await writeManagedJson(settingsFile(), serializeSettings(stored), { createAbsent: Object.keys(stored).length > 0, record: true });
   current = effective;
   return effective;
 }

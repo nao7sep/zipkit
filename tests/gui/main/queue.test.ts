@@ -21,7 +21,7 @@ vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn() },
   shell: { trashItem: vi.fn() },
 }));
-vi.mock("nanoid", () => ({ nanoid: () => "test-id" }));
+vi.mock("nanoid", async (importOriginal) => ({ ...(await importOriginal<typeof import("nanoid")>()), nanoid: () => "test-id" }));
 vi.mock("../../../src/gui/main/persist.js", () => ({
   saveQueue: mocks.saveQueue,
   saveQueueWithin: mocks.saveQueueWithin,

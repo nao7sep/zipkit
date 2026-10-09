@@ -14,7 +14,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
-import { defaultLogDir, defaultSessionTimestamp } from "../../sdk/log/session.js";
+import { defaultLogDir, fileTimestamp } from "../../sdk/log/session.js";
 import { storageRoot } from "../../sdk/storage.js";
 import { JOB_EVENT_LIMIT, type JobAction, type JobEvent, type LogEvent } from "../shared/api.js";
 import type {
@@ -135,7 +135,9 @@ export function createAppLog(
   now: Date = new Date(),
 ): SessionAppLog {
   const session = now.toISOString();
-  const fallbackFile = path.join(fallbackDir, `${defaultSessionTimestamp(now)}.log`);
+  // Seconds are enough (timestamp conventions): one ZipKit instance runs at a time, the file is
+  // created exclusively, and SDK session logs in the same folder carry an id after their stamp.
+  const fallbackFile = path.join(fallbackDir, `${fileTimestamp(now)}.log`);
 
   let fallbackState: "closed" | "open" | "stderr" = "closed";
   let fallbackTail: Promise<void> = Promise.resolve();
@@ -152,7 +154,7 @@ export function createAppLog(
     if (fallbackState === "closed") {
       try {
         await mkdir(fallbackDir, { recursive: true });
-        // Exclusive create: a same-millisecond file another session already
+        // Exclusive create: a same-second file another session already
         // holds is never appended into (logging conventions, toolkit filename).
         await writeFile(fallbackFile, "", { flag: "wx" });
         fallbackState = "open";

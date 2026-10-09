@@ -37,7 +37,7 @@ it("a held fallback filesystem tail cannot hold log close, and its late physical
     release();
     vi.useRealTimers();
     await log.close();
-    const lines = (await readFile(path.join(controls.path, "20260614-052548-123-utc.log"), "utf8")).trim().split("\n").map((line) => JSON.parse(line).message);
+    const lines = (await readFile(path.join(controls.path, "20260614-052548-utc.log"), "utf8")).trim().split("\n").map((line) => JSON.parse(line).message);
     expect(lines).toEqual(["records database unavailable", "kept late"]);
   } finally {
     release();

@@ -18,7 +18,7 @@ vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: async (file: st
   controls.records.push({ file, bytes });
 } }));
 
-it("a save held at its rename waits for the actual outcome, never a caller timeout, and records its bytes once", async () => {
+it("a save held at its rename waits for the actual outcome, never a caller timeout, and records its bytes once when asked", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-late-backup-"));
   let release!: () => void;
   try {
@@ -29,7 +29,7 @@ it("a save held at its rename waits for the actual outcome, never a caller timeo
     const entered = new Promise<void>((resolve) => { controls.entered = resolve; });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let outcome: "pending" | "saved" | "failed" = "pending";
-    const save = writeManagedJson(file, text).then(() => { outcome = "saved"; }, () => { outcome = "failed"; });
+    const save = writeManagedJson(file, text, { record: true }).then(() => { outcome = "saved"; }, () => { outcome = "failed"; });
     await entered;
     // Well past the startup read bound: an in-session save does not report failure while its
     // write may still land.
@@ -42,7 +42,10 @@ it("a save held at its rename waits for the actual outcome, never a caller timeo
     expect(outcome).toBe("saved");
     expect(await readFile(file, "utf8")).toBe(text);
     expect(controls.records).toEqual([{ file, bytes: Buffer.from(text) }]);
-    await writeManagedJson(file, text);
+    await writeManagedJson(file, text, { record: true });
+    expect(controls.records).toHaveLength(1);
+    // A save that does not ask for a record leaves the history alone.
+    await writeManagedJson(path.join(root, "queue.json"), '{"jobs":[]}');
     expect(controls.records).toHaveLength(1);
   } finally {
     release?.();

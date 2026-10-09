@@ -5,20 +5,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { layoutWritesSettled, loadLayout, recordsListWidth, saveLayout, saveRecordsListWidth, serializeLayout } from "../../../src/gui/main/layout.js";
 
 const controls = vi.hoisted(() => ({
-  loadGate: null as { entered(): void; held: Promise<void> } | null,
   writeFailure: null as Error | null,
 }));
 vi.mock("../../../src/gui/main/managedJson.js", async (importActual) => {
   const actual = await importActual<typeof import("../../../src/gui/main/managedJson.js")>();
   return {
     ...actual,
-    loadManagedJson: async (...args: Parameters<typeof actual.loadManagedJson>) => {
-      const loaded = await actual.loadManagedJson(...args);
-      const gate = controls.loadGate;
-      controls.loadGate = null;
-      if (gate) { gate.entered(); await gate.held; }
-      return loaded;
-    },
     writeManagedJson: (...args: Parameters<typeof actual.writeManagedJson>) => {
       const failure = controls.writeFailure;
       controls.writeFailure = null;
@@ -31,7 +23,6 @@ const originalRoot = process.env.ZIPKIT_DATA_DIR;
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), "zipkit-layout-order-"));
   process.env.ZIPKIT_DATA_DIR = root;
-  controls.loadGate = null;
   controls.writeFailure = null;
 });
 afterEach(async () => {
@@ -41,18 +32,13 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-it("a held layout read settles before later window patches, which keep each other's fields", async () => {
+it("overlapping window patches keep each other's fields, in the order they were sent", async () => {
   await writeFile(path.join(root, "layout.json"), serializeLayout({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 }));
-  let release!: () => void;
-  let entered!: () => void;
-  const seen = new Promise<void>((resolve) => { entered = resolve; });
-  controls.loadGate = { entered, held: new Promise<void>((resolve) => { release = resolve; }) };
-  const loading = loadLayout();
-  await seen;
+  await loadLayout();
   const pane = saveLayout({ jobsWidth: 320, progressWidth: 380 });
   const records = saveRecordsListWidth(420);
-  release();
-  await Promise.all([loading, pane, records]);
+  await layoutWritesSettled();
+  await Promise.all([pane, records]);
   expect(JSON.parse(await readFile(path.join(root, "layout.json"), "utf8")).layout)
     .toEqual({ jobsWidth: 320, progressWidth: 380, recordsListWidth: 420 });
   expect(recordsListWidth()).toBe(420);

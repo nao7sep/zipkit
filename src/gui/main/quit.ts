@@ -122,9 +122,13 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
     if (!cancelled) {
       const layoutError = await failureWithin(steps.settleLayout, QUIT_BOUNDS_MS.layout, "the pane layout write");
       if (layoutError !== undefined) steps.onStepFailed("layout", layoutError);
-      // The backup history may log a failure, so the log closes last.
-      const backupsError = await failureWithin(steps.closeBackups, QUIT_BOUNDS_MS.backups, "the backup history");
-      if (backupsError !== undefined) steps.onStepFailed("backups", backupsError);
+      // The backup history may log a failure, so the log closes last. At the end of an OS session
+      // its pending writes are skipped (data-backup conventions); SQLite's journal keeps the store
+      // whole when the process ends with the thread still open.
+      if (!session.ending) {
+        const backupsError = await failureWithin(steps.closeBackups, QUIT_BOUNDS_MS.backups, "the backup history");
+        if (backupsError !== undefined) steps.onStepFailed("backups", backupsError);
+      }
       // A log that cannot close has nowhere to report it.
       await failureWithin(steps.closeLog, QUIT_BOUNDS_MS.log, "the log");
       steps.exit(0);

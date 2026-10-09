@@ -4,14 +4,17 @@
  * under the app's own data dir (`~/.zipkit/logs/`), named by a UTC start
  * timestamp and nothing else — no app name, no word "log", no level.
  *
- * zipkit is built to fan out (an SDK invoked many times in parallel), so the
- * filename takes the millisecond `-fff` exception — `yyyymmdd-hhmmss-fff-utc.log`
- * — to keep the logs of independent runs that start in the same second distinct.
- * The `.log` extension holds JSON Lines (the convention's shape), not `.jsonl`.
+ * zipkit is built to fan out (an SDK invoked many times in parallel), and
+ * independent instances share one log folder, so the name carries a random id
+ * after its seconds stamp — `yyyymmdd-hhmmss-utc-<id>.log` (timestamp
+ * conventions, seconds + ID) — and the file is created exclusively, so two runs
+ * never append into one file. The `.log` extension holds JSON Lines (the
+ * convention's shape), not `.jsonl`.
  */
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { customAlphabet } from "nanoid";
 import { storageRoot } from "../storage.js";
 import type { LogSink } from "./logger.js";
 
@@ -24,25 +27,18 @@ export function defaultLogDir(): string {
   return path.join(storageRoot(), "logs");
 }
 
-/**
- * `yyyymmdd-hhmmss-fff-utc` — a UTC session-start stamp with the millisecond
- * `-fff` part. Reads the OS clock (never an internal one). The body matches the
- * filename form in the timestamp convention; the `-fff` segment is its sanctioned
- * exception for tools designed to run concurrently.
- */
-export function defaultSessionTimestamp(now: Date = new Date()): string {
-  const p2 = (n: number): string => String(n).padStart(2, "0");
-  const p3 = (n: number): string => String(n).padStart(3, "0");
-  return (
-    `${now.getUTCFullYear()}` +
-    `${p2(now.getUTCMonth() + 1)}` +
-    `${p2(now.getUTCDate())}` +
-    `-${p2(now.getUTCHours())}` +
-    `${p2(now.getUTCMinutes())}` +
-    `${p2(now.getUTCSeconds())}` +
-    `-${p3(now.getUTCMilliseconds())}` +
-    `-utc`
-  );
+/** `yyyymmdd-hhmmss-utc`: a UTC filename stamp to the second, from the OS clock. */
+export function fileTimestamp(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "").replace("T", "-") + "-utc";
+}
+
+/** Lowercase letters and digits only, as filenames take them; 12 of them make
+ *  two runs that start in the same second practically never collide. */
+const sessionId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 12);
+
+/** `yyyymmdd-hhmmss-utc-<id>.log`: one SDK instance's session log name. */
+export function sessionLogName(now: Date = new Date(), id: string = sessionId()): string {
+  return `${fileTimestamp(now)}-${id}.log`;
 }
 
 /** An open per-session log: its path plus a synchronous JSON-Lines sink. There
@@ -57,9 +53,10 @@ export interface SessionLog {
 }
 
 /**
- * Open the session log at `filePath`, creating its directory. Best-effort and
- * non-fatal: if the directory cannot be created, or a later append fails (disk
- * full, permissions), the sink degrades to a silent no-op and the run continues —
+ * Open the session log at `filePath`, creating its directory and the file itself,
+ * exclusively. Best-effort and non-fatal: if the directory or the file cannot be
+ * created (a name another run already holds included), or a later append fails
+ * (disk full, permissions), the sink degrades to a silent no-op and the run continues —
  * the SDK never crashes because logging failed, and it never falls back to a
  * standard stream (sdk-toolkit-conventions §4: an SDK prints nothing). The live
  * progress/event seam is a separate sink, independent of this file, so it keeps
@@ -70,6 +67,7 @@ export function openSessionLog(filePath: string): SessionLog {
 
   try {
     mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, "", { flag: "wx" });
   } catch {
     degraded = true;
   }

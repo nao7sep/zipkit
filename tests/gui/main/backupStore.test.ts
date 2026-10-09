@@ -6,8 +6,9 @@
  *    non-UTF-8 byte, with a correct SHA-256, a correct byte_size, the FULL absolute path, and an
  *    ISO-8601-ms `written_at_utc` in the serialized form (`2026-07-06T04:05:12.345Z`) — asserted to be
  *    that shape and explicitly NOT the `yyyymmdd-hhmmss-fff-utc` filename stamp.
- *  - dedup: an unchanged re-save of the same path writes no new row; a changed save writes one; a revert
- *    to earlier content writes one (it differs from the immediately-preceding row).
+ *  - one row per path per session (one launch): the session's first save inserts it, later saves replace
+ *    its content, a save equal to the path's latest row writes nothing, and rows of earlier sessions are
+ *    never changed; a store from before sessions gains the column and keeps its rows.
  *  - best-effort: an insert failure (raised by a real SQLite trigger inside the backups thread) never
  *    rejects out of record, logs exactly one warn, leaves prior rows untouched, and is rolled back so
  *    the next record lands.
@@ -32,10 +33,14 @@ import { DatabaseSync } from "node:sqlite";
 const logCalls = vi.hoisted(() => ({
   warn: [] as { message: string; fields?: Record<string, unknown> }[],
   error: [] as { message: string; fields?: Record<string, unknown> }[],
+  session: "2026-10-09T01:00:00.000Z",
 }));
 
 vi.mock("../../../src/gui/main/runtime.js", () => ({
   log: {
+    get session() {
+      return logCalls.session;
+    },
     debug() {},
     info() {},
     warn: (message: string, fields?: Record<string, unknown>) => logCalls.warn.push({ message, fields }),
@@ -45,6 +50,7 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
 
 interface Row {
   id: number;
+  session_id: string | null;
   path: string;
   content: Uint8Array;
   content_sha256: string;
@@ -70,6 +76,7 @@ beforeEach(() => {
   process.env.ZIPKIT_DATA_DIR = root;
   logCalls.warn.length = 0;
   logCalls.error.length = 0;
+  logCalls.session = "2026-10-09T01:00:00.000Z";
 });
 
 afterEach(async () => {
@@ -113,51 +120,99 @@ describe("record: BLOB fidelity, hash, size, path, and timestamp shape", () => {
   });
 });
 
-describe("dedup by content hash, per path", () => {
-  it("skips an unchanged re-save (no new row) but records a genuinely changed save", async () => {
+describe("one row per path per session", () => {
+  const text = (row: Row): string => Buffer.from(row.content).toString("utf8");
+
+  /** End this launch's store and start the next launch's session. */
+  async function nextSession(session: string): Promise<void> {
+    const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
+    await closeBackupStore();
+    logCalls.session = session;
+  }
+
+  it("keeps the session's first save of a path and replaces its content with later saves", async () => {
     const { record } = await import("../../../src/gui/main/backupStore.js");
     const file = path.join(root, "config.json");
-    const v1 = Buffer.from("alpha", "utf8");
-    const v2 = Buffer.from("beta", "utf8");
 
-    await record(file, v1);
-    await record(file, v1); // identical — deduped, no new row
-    expect(readRows(root)).toHaveLength(1);
+    await record(file, Buffer.from("A", "utf8"));
+    const first = readRows(root);
+    await record(file, Buffer.from("B", "utf8"));
+    await record(file, Buffer.from("A again", "utf8"));
 
-    await record(file, v2); // changed — recorded
     const rows = readRows(root);
-    expect(rows).toHaveLength(2);
-    expect(Buffer.from(rows[1]!.content).toString("utf8")).toBe("beta");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).toBe(first[0]!.id);
+    expect(rows[0]!.session_id).toBe("2026-10-09T01:00:00.000Z");
+    expect(text(rows[0]!)).toBe("A again");
+    expect(rows[0]!.content_sha256).toBe(createHash("sha256").update("A again").digest("hex"));
+    expect(rows[0]!.byte_size).toBe(7);
   });
 
-  it("records a revert to earlier content as a new row (differs from the immediately-preceding row)", async () => {
+  it("adds a row for a new session and leaves the earlier session's row as it was", async () => {
     const { record } = await import("../../../src/gui/main/backupStore.js");
     const file = path.join(root, "config.json");
-    const a = Buffer.from("A", "utf8");
-    const b = Buffer.from("B", "utf8");
+    await record(file, Buffer.from("first launch", "utf8"));
+    await nextSession("2026-10-09T02:00:00.000Z");
 
-    await record(file, a); // row 1: A
-    await record(file, b); // row 2: B
-    await record(file, a); // row 3: A again — a revert, differs from the preceding row (B), so it IS recorded
+    await record(file, Buffer.from("second launch", "utf8"));
 
     const rows = readRows(root);
-    expect(rows).toHaveLength(3);
-    expect(rows.map((r) => Buffer.from(r.content).toString("utf8"))).toEqual(["A", "B", "A"]);
+    expect(rows.map((row) => [row.session_id, text(row)])).toEqual([
+      ["2026-10-09T01:00:00.000Z", "first launch"],
+      ["2026-10-09T02:00:00.000Z", "second launch"],
+    ]);
   });
 
-  it("dedups per path, so two different paths never collide", async () => {
+  it("writes nothing for a first save equal to the earlier session's copy, or for an unchanged save", async () => {
     const { record } = await import("../../../src/gui/main/backupStore.js");
-    const same = Buffer.from("shared", "utf8");
+    const file = path.join(root, "config.json");
+    await record(file, Buffer.from("same", "utf8"));
+    await record(file, Buffer.from("same", "utf8"));
+    await nextSession("2026-10-09T02:00:00.000Z");
+
+    await record(file, Buffer.from("same", "utf8"));
+
+    expect(readRows(root).map((row) => row.session_id)).toEqual(["2026-10-09T01:00:00.000Z"]);
+  });
+
+  it("keeps each path's row apart", async () => {
+    const { record } = await import("../../../src/gui/main/backupStore.js");
     const p1 = path.join(root, "config.json");
-    const p2 = path.join(root, "queue.json");
+    const p2 = path.join(root, "other.json");
 
-    await record(p1, same);
-    await record(p2, same); // same content, DIFFERENT path — recorded (dedup is per path)
-    await record(p1, same); // same content, same path as row 1 — deduped
+    await record(p1, Buffer.from("shared", "utf8"));
+    await record(p2, Buffer.from("shared", "utf8"));
+    await record(p1, Buffer.from("changed", "utf8"));
 
     const rows = readRows(root);
-    expect(rows).toHaveLength(2);
-    expect(rows.map((r) => r.path).sort()).toEqual([p1, p2].sort());
+    expect(rows.map((row) => [row.path, text(row)])).toEqual([[p1, "changed"], [p2, "shared"]]);
+  });
+
+  it("gives a store from before sessions the session column and keeps its rows as earlier history", async () => {
+    const db = new DatabaseSync(path.join(root, "backups.sqlite3"));
+    db.exec(`
+      CREATE TABLE backups (id INTEGER PRIMARY KEY, path TEXT NOT NULL, content BLOB NOT NULL,
+        content_sha256 TEXT NOT NULL, byte_size INTEGER NOT NULL, written_at_utc TEXT NOT NULL);
+      CREATE INDEX idx_backups_path_id ON backups (path, id);
+    `);
+    const file = path.join(root, "config.json");
+    const insert = db.prepare("INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc) VALUES (?, ?, ?, ?, ?)");
+    for (const old of ["old 1", "old 2"]) {
+      insert.run(file, Buffer.from(old), createHash("sha256").update(old).digest("hex"), old.length, "2026-10-01T00:00:00.000Z");
+    }
+    db.close();
+    const { record } = await import("../../../src/gui/main/backupStore.js");
+
+    await record(file, Buffer.from("new", "utf8"));
+    await record(file, Buffer.from("newer", "utf8"));
+
+    const rows = readRows(root);
+    expect(rows.map((row) => [row.session_id, text(row)])).toEqual([
+      [null, "old 1"],
+      [null, "old 2"],
+      ["2026-10-09T01:00:00.000Z", "newer"],
+    ]);
+    expect(logCalls.warn).toHaveLength(0);
   });
 });
 
@@ -187,14 +242,14 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
     expect(logCalls.warn[0]!.fields?.file).toBe(file);
     expect(logCalls.warn[0]!.fields?.error).toMatchObject({ message: expect.stringMatching(/simulated insert failure/) });
     expect(logCalls.error).toHaveLength(0);
+    // The session's row still holds the last save that was recorded.
+    expect(readRows(root).map((row) => Buffer.from(row.content).toString("utf8"))).toEqual(["good"]);
 
     // The failed transaction was rolled back, so the same live store can record
-    // the next save instead of remaining stuck inside an open transaction.
+    // the next save, which replaces the session's row, instead of remaining stuck
+    // inside an open transaction.
     await record(file, Buffer.from("recovered", "utf8"));
-    const rows = readRows(root);
-    expect(rows).toHaveLength(2);
-    expect(Buffer.from(rows[0]!.content).toString("utf8")).toBe("good");
-    expect(Buffer.from(rows[1]!.content).toString("utf8")).toBe("recovered");
+    expect(readRows(root).map((row) => Buffer.from(row.content).toString("utf8"))).toEqual(["recovered"]);
   });
 
   it("logs one warn and disables recording for the session when the store cannot be opened", async () => {
