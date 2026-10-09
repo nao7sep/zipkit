@@ -60,7 +60,7 @@
   "recovery.queuePartialTitle": "Alcune operazioni salvate non sono state ripristinate",
   "recovery.queuePartialMessage": "ZipKit non è riuscito a leggere alcune delle operazioni in sospeso salvate. Il file della coda, con tutte le operazioni che contiene, è stato conservato come {file} e ZipKit ha ripristinato le operazioni che è riuscito a leggere. I file di archivio sul disco non sono stati toccati.",
   "quit.title": "Un’operazione è ancora in corso",
-  "quit.message": "Un archivio è ancora in fase di scrittura, verifica o spostamento nel Cestino.",
+  "quit.message": "ZipKit sta ancora scrivendo o verificando un archivio, oppure spostando file nel Cestino.",
   "quit.detail": "Se esci ora, l’operazione verrà annullata. Un archivio ancora in fase di scrittura non verrà completato, gli originali non ancora spostati nel Cestino verranno conservati e i file già inviati al Cestino potrebbero comunque arrivarci.",
   "quit.cancelAndQuit": "Annulla l’operazione ed esci",
   "quit.keepWorking": "Continua a lavorare",

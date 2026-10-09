@@ -60,7 +60,7 @@
   "recovery.queuePartialTitle": "Certaines tâches enregistrées n’ont pas été restaurées",
   "recovery.queuePartialMessage": "ZipKit n’a pas pu lire certaines de ses tâches en attente enregistrées. Le fichier de la file, avec toutes ses tâches, a été conservé sous {file}, et ZipKit a restauré les tâches qu’il a pu lire. Vos fichiers d’archive sur le disque n’ont pas été touchés.",
   "quit.title": "Une tâche est encore en cours",
-  "quit.message": "Une archive est encore en cours d’écriture, de vérification ou de placement dans la corbeille.",
+  "quit.message": "ZipKit est encore en train d’écrire ou de vérifier une archive, ou de placer des fichiers dans la corbeille.",
   "quit.detail": "Quitter maintenant annule cette tâche. Une archive encore en cours d’écriture ne sera pas terminée, les originaux pas encore placés dans la corbeille seront conservés et les fichiers déjà envoyés à la corbeille peuvent encore y arriver.",
   "quit.cancelAndQuit": "Annuler la tâche et quitter",
   "quit.keepWorking": "Continuer",

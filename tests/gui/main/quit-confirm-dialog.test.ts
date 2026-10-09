@@ -40,7 +40,7 @@ describe("confirmQuitDuringWrite", () => {
     const options = shown.calls[0]!;
     expect(options.owner).toBe(owner);
     expect(options.signal).toBe(signal);
-    expect(options.labels).toEqual(["Cancel the Job and Quit", "Keep Working"]);
+    expect(options.labels).toEqual(["Cancel the job and quit", "Keep working"]);
     expect(options).toMatchObject({ defaultId: 1, cancelId: 1, title: "A job is still running" });
     expect(options.message).toContain("files already sent to Trash may still arrive there");
   });
@@ -58,6 +58,6 @@ describe("askQueueNotSaved", () => {
   it.each([[0, "retry"], [1, "quit"], [2, "cancel"], [7, "cancel"]] as const)("maps answer %i to %s", async (response, choice) => {
     shown.response = response;
     await expect(askQueueNotSaved(owner, new AbortController().signal)).resolves.toBe(choice);
-    expect(shown.calls[0]).toMatchObject({ owner, defaultId: 0, cancelId: 2, labels: ["Retry", "Quit Anyway", "Cancel"] });
+    expect(shown.calls[0]).toMatchObject({ owner, defaultId: 0, cancelId: 2, labels: ["Retry", "Quit anyway", "Cancel"] });
   });
 });

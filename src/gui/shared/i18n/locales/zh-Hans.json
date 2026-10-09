@@ -60,7 +60,7 @@
   "recovery.queuePartialTitle": "部分已保存的任务未能恢复",
   "recovery.queuePartialMessage": "ZipKit 无法读取部分已保存的待处理任务。包含全部任务的队列文件已保留为 {file}，ZipKit 已恢复能够读取的任务。磁盘上的归档文件未被改动。",
   "quit.title": "仍有任务在运行",
-  "quit.message": "仍有归档正在写入、校验或移到废纸篓。",
+  "quit.message": "仍有归档正在写入或校验，或有文件正在移到废纸篓。",
   "quit.detail": "现在退出将取消该任务。正在写入的归档不会完成，尚未送到废纸篓的原始项目会保留，已经送往废纸篓的文件之后仍可能进入废纸篓。",
   "quit.cancelAndQuit": "取消任务并退出",
   "quit.keepWorking": "继续工作",

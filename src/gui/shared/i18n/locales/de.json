@@ -60,7 +60,7 @@
   "recovery.queuePartialTitle": "Einige gespeicherte Aufträge wurden nicht wiederhergestellt",
   "recovery.queuePartialMessage": "ZipKit konnte einige seiner gespeicherten ausstehenden Aufträge nicht lesen. Die Warteschlangendatei wurde mit allen darin enthaltenen Aufträgen als {file} aufbewahrt, und ZipKit hat die lesbaren Aufträge wiederhergestellt. Ihre Archivdateien auf dem Datenträger sind unberührt.",
   "quit.title": "Ein Auftrag läuft noch",
-  "quit.message": "Ein Archiv wird noch geschrieben, geprüft oder in den Papierkorb gelegt.",
+  "quit.message": "Ein Archiv wird noch geschrieben oder geprüft, oder Dateien werden noch in den Papierkorb gelegt.",
   "quit.detail": "Wenn Sie jetzt beenden, wird dieser Auftrag abgebrochen. Ein Archiv, das noch geschrieben wird, wird nicht fertiggestellt. Originale, die noch nicht in den Papierkorb gelegt wurden, bleiben erhalten. Dateien, die bereits zum Papierkorb unterwegs sind, können dort noch ankommen.",
   "quit.cancelAndQuit": "Auftrag abbrechen und beenden",
   "quit.keepWorking": "Weiterarbeiten",

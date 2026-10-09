@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `queue.json` and `layout.json` no longer carry a `version` key; one left by 0.1.0 is ignored and dropped at the next save. A file ZipKit cannot read is never overwritten. Running an older ZipKit on files a newer one wrote is not supported.
 - The backup history in `backups.sqlite3` keeps one copy of the settings file per launch, the last one saved in that launch, instead of one per save, and no longer keeps copies of the job list. Copies already kept stay as earlier history.
 - An SDK session log is named `yyyymmdd-hhmmss-utc-<id>.log` (was `yyyymmdd-hhmmss-fff-utc.log`) and created exclusively, so instances started at the same moment never write into one file. ZipKit's own fallback log is named to the second.
-- The questions ZipKit asks when quitting use its own dialog, on the main window when one is open.
+- The questions ZipKit asks when quitting use its own dialog, on the main window when one is open, with sentence-case buttons like the rest of the app, and the busy-job question no longer says the archive is going to the Trash when it is the originals.
 - The Records window's combined level filter is called "Warnings and errors" (was "Needs attention"); it shows the same records.
 - Arrow keys move a pane divider 16 pixels at a time (was 10), and a keyboard resize is saved once, when the key is released.
 - A damaged `layout.json` puts the panes back at their default widths without a message, and a failed pane layout save is only logged.

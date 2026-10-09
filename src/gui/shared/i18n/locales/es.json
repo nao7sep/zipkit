@@ -60,7 +60,7 @@
   "recovery.queuePartialTitle": "No se restauraron algunos trabajos guardados",
   "recovery.queuePartialMessage": "ZipKit no pudo leer algunos de sus trabajos pendientes guardados. El archivo de la cola, con todos sus trabajos, se conservó como {file}, y ZipKit restauró los trabajos que pudo leer. Tus archivos comprimidos en el disco no se tocaron.",
   "quit.title": "Todavía hay un trabajo en curso",
-  "quit.message": "Todavía se está escribiendo, verificando o moviendo a la papelera un archivo comprimido.",
+  "quit.message": "ZipKit todavía está escribiendo o verificando un archivo comprimido, o moviendo archivos a la papelera.",
   "quit.detail": "Si sales ahora, se cancelará ese trabajo. Un archivo comprimido que aún se esté escribiendo no se terminará, se conservarán los originales que aún no se hayan enviado a la papelera y los archivos ya enviados a la papelera todavía podrían llegar a ella.",
   "quit.cancelAndQuit": "Cancelar el trabajo y salir",
   "quit.keepWorking": "Seguir trabajando",
