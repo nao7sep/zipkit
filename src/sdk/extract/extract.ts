@@ -83,6 +83,25 @@ function escapesDest(dest: string, candidate: string): boolean {
   return rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
 }
 
+/**
+ * Whether a link target climbs only before it descends: every `..` comes ahead of
+ * the first name. A `..` after a name climbs from wherever that name leads, and
+ * the name may itself be a link restored from the archive (`s` → `..`, then `t` →
+ * `s/../../x`), which the lexical check cannot see. With this rule each restored
+ * link reaches its target by climbing through its own real parent folders and
+ * then descending through names whose links obey the same rule, so no chain of
+ * them can leave `dest`.
+ */
+function climbsOnlyFirst(linkTarget: string): boolean {
+  let descended = false;
+  for (const part of linkTarget.split(/[\\/]+/)) {
+    if (part === "" || part === ".") continue;
+    if (part !== "..") descended = true;
+    else if (descended) return false;
+  }
+  return true;
+}
+
 /** The outcome of materializing one verified entry on disk. `unsafe` means a
  *  symlink in the entry's path — or an escaping link target — would let it land
  *  outside `dest`; the entry is then written nowhere. `unchanged` means an
@@ -814,8 +833,9 @@ export async function extractArchive(
   }
 }
 
-/** Restore a symlink. A link whose target resolves outside `dest`, or one whose
- *  parent chain crosses a symlink, is `unsafe` and never created — restoring it
+/** Restore a symlink. A link whose target resolves outside `dest`, climbs after
+ *  it descends (see {@link climbsOnlyFirst}), or whose parent chain crosses a
+ *  symlink, is `unsafe` and never created — restoring it
  *  would leave an escape hatch a later entry (or the user) could write through.
  *  `exists` means an existing target was preserved. An overwrite creates the
  *  link under a sibling temp name and renames it over the target, so a refused
@@ -829,7 +849,7 @@ async function commitSymlink(
   options: WriteOptions,
 ): Promise<CommitOutcome> {
   const resolved = path.resolve(path.dirname(target), linkTarget);
-  if (escapesDest(dest, resolved)) return "unsafe";
+  if (!climbsOnlyFirst(linkTarget) || escapesDest(dest, resolved)) return "unsafe";
   if (!(await ensureRealDirs(volume, dest, parentSegments))) return "unsafe";
   if (options.overwrite) {
     try {

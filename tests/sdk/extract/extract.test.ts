@@ -487,6 +487,25 @@ describe("path safety and exclusion", () => {
     await expect(stat(dest)).rejects.toThrow();
   });
 
+  it.runIf(fileSymlinksSupported)("refuses a link that climbs back out through another restored link", async () => {
+    // Each target passes alone: `x/s` points at dest itself, and `x/t`'s text
+    // resolves inside dest. On disk `x/t` follows `s` to dest, then climbs past it.
+    const archive = await writeArchive([
+      symlinkEntry("x/s", ".."),
+      symlinkEntry("x/t", "s/../../outside"),
+      symlinkEntry("x/u", "../x/s/inside"),
+    ]);
+    const dest = path.join(dir, "chain");
+
+    const report = await new ZipKit({ concurrency: 1 }).extract({ archive, dest });
+
+    expect(report.entries.find((e) => e.archivePath === "x/t")?.skipped).toBe("unsafe");
+    await expect(lstat(path.join(dest, "x", "t"))).rejects.toThrow();
+    expect(await readlink(path.join(dest, "x", "s"))).toBe("..");
+    // Climbing first and descending after stays allowed.
+    expect(await readlink(path.join(dest, "x", "u"))).toBe("../x/s/inside");
+  });
+
   it("refuses to write through a symlinked directory even when the link stays inside dest", async () => {
     // The link target is in-tree (no escape by itself), but writing an entry
     // *through* a symlinked directory is still refused — extraction never follows
