@@ -302,6 +302,17 @@ describe("stopFlushAndExit", () => {
 });
 
 describe("endSessionNow (the end of a Windows session)", () => {
+  it.each([false, true])("still saves the queue after a Settings failure (timeout: %s)", (timedOut) => {
+    const error = timedOut ? new StepTimeout("Settings worker did not answer") : new Error("settings disk full");
+    const s = sessionEndSteps({ saveSettingsNow: vi.fn(() => { throw error; }) });
+    endSessionNow(s);
+    expect(s.onStepFailed).toHaveBeenCalledWith("settings", error);
+    expect(s.saveQueueNow).toHaveBeenCalledOnce();
+    expect(s.onSaved).toHaveBeenCalledOnce();
+    expect(s.forceExit).toHaveBeenCalledTimes(timedOut ? 1 : 0);
+    expect(s.exit).toHaveBeenCalledTimes(timedOut ? 0 : 1);
+  });
+
   it("forces the exit when the save thread did not answer, and exits normally after a plain failure", () => {
     const timedOut = sessionEndSteps({ saveQueueNow: vi.fn(() => { throw new StepTimeout("no answer"); }) });
     endSessionNow(timedOut);

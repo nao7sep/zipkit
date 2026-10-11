@@ -77,3 +77,17 @@ it("Windows takeover publishes the same captured packet and preserves absent-def
   saveSettingsBeforeSessionEnd(321);
   expect(effects.sync).not.toHaveBeenCalled();
 });
+
+it("Windows takeover saves a failed submission rather than subsequent edits to the draft", async () => {
+  effects.write.mockRejectedValueOnce(new Error("disk full"));
+  const draft = { ...DEFAULT_SETTINGS, theme: "dark" as const, defaults: { ...DEFAULT_SETTINGS.defaults, comment: "submitted" } };
+  await expect(submitSettings(draft)).rejects.toThrow("disk full");
+  draft.defaults.comment = "not submitted";
+  saveSettingsBeforeSessionEnd(250);
+  const [, text, bound, , options] = effects.sync.mock.calls[0]!;
+  expect(JSON.parse(text)).toMatchObject({ theme: "dark", defaults: { comment: "submitted" } });
+  expect(bound).toBe(250);
+  expect(options).toEqual({ createAbsent: true });
+  expect(effects.apply).not.toHaveBeenCalled();
+  expect(effects.send).not.toHaveBeenCalled();
+});
