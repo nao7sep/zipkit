@@ -364,7 +364,7 @@
   "findingKind.outputExists": "Archivio di output esistente",
   "findingKind.crcFail": "Discrepanze CRC-32",
   "findingKind.shaMismatch": "Discrepanze SHA-256",
-  "findingKind.manifestMismatch": "Discrepanze di dimensione o CRC-32 con il manifesto",
+  "findingKind.manifestMismatch": "Discrepanze con il manifesto",
   "findingKind.unsafePath": "Percorsi fuori dalla destinazione",
   "findingKind.missing": "Voci mancanti dall’archivio",
   "findingKind.extra": "Voci non presenti nel manifesto",

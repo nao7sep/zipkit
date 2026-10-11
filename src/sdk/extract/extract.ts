@@ -34,14 +34,14 @@ import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobb
 import type { Volume, VolumeFile } from "../internal/volume.js";
 import { METADATA_DEFAULTS } from "../policy.js";
 import { finding } from "../registry.js";
-import { MANIFEST_FORMAT_VERSION } from "../write/metadata.js";
+import { MANIFEST_FORMAT_VERSION, MAX_MANIFEST_BYTES } from "../write/metadata.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
 import { findTargetCollision } from "./targetCollision.js";
+import { createLinkTargetGuard, type LinkTargetGuard } from "./linkTargets.js";
 import { extractionSegments } from "./windowsNames.js";
 import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipReader.js";
 
-const MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
 const MAX_SYMLINK_TARGET_BYTES = 64 * 1024;
 
 export interface ExtractDeps {
@@ -192,6 +192,9 @@ async function loadManifest(
     doc = JSON.parse((await readEntryBuffer(archive, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
   } catch (err) {
     if (err instanceof StallError || err instanceof AbortError) throw err;
+    if (err instanceof ReadError && err.code === "read.entry-too-large") {
+      throw new ReadError("read.manifest-too-large", `manifest ${name} exceeds the ${MAX_MANIFEST_BYTES}-byte limit`, { cause: err });
+    }
     throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
       cause: err,
     });
@@ -246,9 +249,12 @@ export async function readManifest(volume: Volume, archivePath: string, name: st
   }
 }
 
-/** Whether a manifest record's size or CRC-32 disagrees with the archive's central directory. */
+/** Whether a manifest record's type, size or CRC-32 disagrees with the archive's central directory. */
 function recordMismatches(record: ManifestRecord, entry: ReadEntry): boolean {
-  return record.size !== entry.uncompSize || record.crc32 !== entry.crc32 >>> 0;
+  // Format 1 records the source directory's stat size, while a ZIP directory
+  // stores no bytes. Preserve those existing archives while checking all types.
+  return record.type !== entry.type ||
+    (entry.type !== "dir" && record.size !== entry.uncompSize) || record.crc32 !== entry.crc32 >>> 0;
 }
 
 /** The verified outcome of streaming one entry through inflate. */
@@ -531,6 +537,12 @@ export async function extractArchive(
     // Folder entries written, whose times are restored once every entry is in
     // place: writing a file into a folder moves the folder's modified time.
     const writtenDirs: { entry: ReadEntry; target: string }[] = [];
+    // Ordinary entries settle before links. Link publication then has one owner:
+    // each hypothetical replacement preserves previously accepted link targets.
+    // Dry runs still verify all entries through the ordinary parallel pool.
+    const deferredLinks = write && writeOptions.symlinks === "restore";
+    const linkTargets = deferredLinks ? createLinkTargetGuard(volume, dest as string) : undefined;
+    const preparedLinks = new Map<ReadEntry, () => Promise<ExtractEntryResult>>();
     // `allSettled`, not `all`: every task runs to completion so none is abandoned
     // mid-stream — which would orphan its temp file and keep reading the archive
     // handle the `finally` is about to close. Each task's calls are bounded, and
@@ -541,13 +553,22 @@ export async function extractArchive(
         deps.limit(async () => {
           throwIfAborted(signal);
           if (abort.entry) return null;
-          return processEntry(entry);
+          return processEntry(entry, deferredLinks && entry.type === "symlink");
         }),
       ),
     );
     const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
     const failure = failures.find((f) => f instanceof StallError) ?? failures[0];
     if (failure !== undefined) throw failure;
+    if (deferredLinks) {
+      for (const [index, entry] of parsed.entries.entries()) {
+        if (abort.entry) break;
+        const publish = preparedLinks.get(entry);
+        if (!publish) continue;
+        throwIfAborted(signal);
+        settled[index] = { status: "fulfilled", value: await publish() };
+      }
+    }
     if (abort.entry) {
       throw new ReadError(
         "read.unsafe-path",
@@ -571,14 +592,14 @@ export async function extractArchive(
       return new ReadError("read.write-failed", `cannot write ${entry.archivePath}`, { cause: err });
     }
 
-    async function processEntry(entry: ReadEntry): Promise<ExtractEntryResult> {
+    async function processEntry(entry: ReadEntry, deferLink: boolean): Promise<ExtractEntryResult | null> {
       const isManifestEntry = entry.archivePath === manifestEntryPath;
       const checkSha = spec.checkMetadata === true && entry.type !== "dir" && !isManifestEntry;
-      const record = checkSha ? manifestMap.get(entry.archivePath) : undefined;
+      const record = spec.checkMetadata && !isManifestEntry ? manifestMap.get(entry.archivePath) : undefined;
       const storedSha = record?.sha256 ?? null;
       // The archive's own header is all the CRC check compares against, so a
       // replaced entry passes it; comparing the central directory's size and
-      // CRC-32 with the manifest catches it even without a recorded SHA-256.
+      // CRC-32 and entry type with the manifest catches it even without a recorded SHA-256.
       if (record && recordMismatches(record, entry)) manifestMismatches.add(entry.archivePath);
 
       // Decide up front whether this entry's bytes are written, so we only stage
@@ -637,79 +658,97 @@ export async function extractArchive(
         signal,
       );
 
-      let didWrite = false;
-      let outputPath: string | undefined;
-      if (!verified.crcOk) {
-        // A corrupt entry is never written. CRC failure outranks every reason
-        // except a dry run, where writing was never on the table.
-        if (skip !== "dry-run") skip = "crc-fail";
-        if (verified.tempPath) await volume.discard(verified.tempPath);
-      } else if (target !== null) {
-        let outcome: CommitOutcome;
+      if (deferLink && verified.crcOk && target !== null) {
+        // Settle implicit link parents before accepting any link graph. Creating
+        // a Unicode alias of a missing parent later can activate an earlier link.
+        let safe: boolean;
         try {
-          // The entry is verified but not yet published. Honor a cancellation
-          // that arrived since its last streamed chunk so no file lands after
-          // the abort instant — relevant under concurrency, where a sibling
-          // entry may still be streaming.
-          throwIfAborted(signal);
-          if (entry.type === "dir") {
-            outcome = await commitDir(volume, dest as string, segments);
-          } else if (entry.type === "symlink") {
-            outcome = await commitSymlink(
-              volume,
-              dest as string,
-              segments.slice(0, -1),
-              target,
-              verified.linkTarget ?? "",
-              writeOptions,
-            );
-          } else {
-            outcome = await commitFile(
-              volume,
-              dest as string,
-              segments.slice(0, -1),
-              entry,
-              verified.tempPath as string,
-              target,
-              writeOptions,
-              signal,
-            );
-          }
-        } catch (err) {
-          if (verified.tempPath) await volume.discard(verified.tempPath);
-          throw writeFailure(entry, err);
-        }
-        if (outcome === "written") {
-          didWrite = true;
-          outputPath = target;
-          if (entry.type === "dir") writtenDirs.push({ entry, target });
-        } else if (outcome === "exists" || outcome === "unchanged") {
-          skip = outcome;
-        } else {
-          // A symlink in the path, or a symlink whose target escapes dest, would
-          // land the entry outside the destination: treated exactly like a
-          // lexical path escape (an unsafe skip, honoring onUnsafe: abort).
-          skip = "unsafe";
-          if (onUnsafe === "abort") abort.entry ??= entry;
-        }
+          safe = safeLinkDestination(dest as string, target, verified.linkTarget ?? "") &&
+            await ensureRealDirs(volume, dest as string, segments.slice(0, -1));
+        } catch (error) { throw writeFailure(entry, error); }
+        if (safe) { preparedLinks.set(entry, finish); return null; }
+        target = null;
+        skip = "unsafe";
+        if (onUnsafe === "abort") abort.entry ??= entry;
       }
+      return finish();
 
-      const result: ExtractEntryResult = {
-        archivePath: entry.archivePath,
-        type: entry.type,
-        crc: verified.crcOk ? "ok" : "fail",
-        written: didWrite,
-      };
-      if (verified.sha !== undefined) result.sha = verified.sha;
-      if (skip !== undefined) result.skipped = skip;
-      if (outputPath !== undefined) result.outputPath = outputPath;
-      deps.logger.emit({
-        stage: "extract",
-        level: "debug",
-        event: "entry.verified",
-        path: entry.archivePath,
-      });
-      return result;
+      async function finish(): Promise<ExtractEntryResult> {
+        let didWrite = false;
+        let outputPath: string | undefined;
+        if (!verified.crcOk) {
+          // A corrupt entry is never written. CRC failure outranks every reason
+          // except a dry run, where writing was never on the table.
+          if (skip !== "dry-run") skip = "crc-fail";
+          if (verified.tempPath) await volume.discard(verified.tempPath);
+        } else if (target !== null) {
+          let outcome: CommitOutcome;
+          try {
+            // The entry is verified but not yet published. Honor a cancellation
+            // that arrived since its last streamed chunk so no file lands after
+            // the abort instant — relevant under concurrency, where a sibling
+            // entry may still be streaming.
+            throwIfAborted(signal);
+            if (entry.type === "dir") {
+              outcome = await commitDir(volume, dest as string, segments);
+            } else if (entry.type === "symlink") {
+              outcome = await commitSymlink(
+                volume,
+                dest as string,
+                segments.slice(0, -1),
+                target,
+                verified.linkTarget ?? "",
+                writeOptions,
+                linkTargets!,
+              );
+            } else {
+              outcome = await commitFile(
+                volume,
+                dest as string,
+                segments.slice(0, -1),
+                entry,
+                verified.tempPath as string,
+                target,
+                writeOptions,
+                signal,
+              );
+            }
+          } catch (err) {
+            if (verified.tempPath) await volume.discard(verified.tempPath);
+            throw writeFailure(entry, err);
+          }
+          if (outcome === "written") {
+            didWrite = true;
+            outputPath = target;
+            if (entry.type === "dir") writtenDirs.push({ entry, target });
+          } else if (outcome === "exists" || outcome === "unchanged") {
+            skip = outcome;
+          } else {
+            // A symlink in the path, or a symlink whose target escapes dest, would
+            // land the entry outside the destination: treated exactly like a
+            // lexical path escape (an unsafe skip, honoring onUnsafe: abort).
+            skip = "unsafe";
+            if (onUnsafe === "abort") abort.entry ??= entry;
+          }
+        }
+
+        const result: ExtractEntryResult = {
+          archivePath: entry.archivePath,
+          type: entry.type,
+          crc: verified.crcOk ? "ok" : "fail",
+          written: didWrite,
+        };
+        if (verified.sha !== undefined) result.sha = verified.sha;
+        if (skip !== undefined) result.skipped = skip;
+        if (outputPath !== undefined) result.outputPath = outputPath;
+        deps.logger.emit({
+          stage: "extract",
+          level: "debug",
+          event: "entry.verified",
+          path: entry.archivePath,
+        });
+        return result;
+      }
     }
 
     const entries: ExtractEntryResult[] = settled
@@ -748,7 +787,7 @@ export async function extractArchive(
           finding(
             "extract.manifest-mismatch",
             r.archivePath,
-            "size or CRC-32 in the archive does not match the manifest",
+            "type, size or CRC-32 in the archive does not match the manifest",
             { severity: "error" },
           ),
         );
@@ -850,34 +889,43 @@ async function commitSymlink(
   target: string,
   linkTarget: string,
   options: WriteOptions,
+  guard: LinkTargetGuard,
 ): Promise<CommitOutcome> {
-  const resolved = path.resolve(path.dirname(target), linkTarget);
-  if (!climbsOnlyFirst(linkTarget) || escapesDest(dest, resolved)) return "unsafe";
+  if (!safeLinkDestination(dest, target, linkTarget)) return "unsafe";
   if (!(await ensureRealDirs(volume, dest, parentSegments))) return "unsafe";
+  let unchanged = false;
+  try {
+    const existing = await volume.lstat(target);
+    if (!options.overwrite) return "exists";
+    unchanged = existing.isSymbolicLink() && (await volume.readlink(target)) === linkTarget;
+  } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+  const accepted = await guard.prepare(target, linkTarget, !unchanged);
+  if (!accepted) return "unsafe";
+  if (unchanged) { accepted(); return "unchanged"; }
   if (options.overwrite) {
-    try {
-      const existing = await volume.lstat(target);
-      if (existing.isSymbolicLink() && (await volume.readlink(target)) === linkTarget) return "unchanged";
-    } catch (err) {
-      if (err instanceof ZipKitError) throw err;
-    }
     const staged = stagingPath(path.dirname(target));
     try {
-      await volume.symlink(linkTarget, staged);
+      await volume.stageSymlink(linkTarget, staged);
       await volume.publishRename(staged, target);
     } catch (err) {
       await volume.discard(staged);
       throw err;
     }
+    accepted();
     return "written";
   }
   try {
-    await volume.symlink(linkTarget, target);
+    await volume.publishSymlink(linkTarget, target);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "EEXIST") return "exists";
     throw err;
   }
+  accepted();
   return "written"; // link times are not restored: no portable lutimes guarantee
+}
+
+function safeLinkDestination(dest: string, target: string, linkTarget: string): boolean {
+  return climbsOnlyFirst(linkTarget) && !escapesDest(dest, path.resolve(path.dirname(target), linkTarget));
 }
 
 /** A unique per-entry temp path in `dir`. */

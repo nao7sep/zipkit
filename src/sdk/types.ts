@@ -214,6 +214,11 @@ export interface ZipKitOptions {
 export interface ZipKitCallOptions {
   onProgress?: (event: LogEvent) => void;
   signal?: AbortSignal;
+  /** `write`/`create` deliver this after their logical outcome. The promise
+   * joins raw I/O and late cleanup that may outlive a cancelled or timed-out
+   * wait. Callers reserving output paths retain them until it settles. The
+   * observer cannot change the verb's outcome. Other verbs ignore this hook. */
+  onPhysicalSettlement?: (settlement: Promise<void>) => void;
 }
 
 // ---------------------------------------------------------------------------

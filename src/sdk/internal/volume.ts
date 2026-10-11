@@ -122,7 +122,18 @@ interface RunOptions<T> {
   /** Called synchronously when the owner stops waiting on the call. */
   onAbandon?: () => void;
   /** Receives the call's value if it arrives after the owner stopped waiting. */
-  onLateValue?: (value: T) => void;
+  onLateValue?: (value: T) => void | Promise<unknown>;
+}
+
+let pendingOperations = 0;
+/** Physical SDK calls and their late cleanup, including abandoned caller waits.
+ * Used only at final process exit; it never changes the SDK's wait budgets. */
+export function volumeWorkPending(): boolean { return pendingOperations > 0; }
+function trackPhysical<T>(work: Promise<T>): Promise<T> {
+  pendingOperations++;
+  const settled = () => { pendingOperations--; };
+  void work.then(settled, settled);
+  return work;
 }
 
 /**
@@ -130,6 +141,7 @@ interface RunOptions<T> {
  * run's budget and signal; see the module comment for the modes.
  */
 export class Volume {
+  readonly #physical = new Set<Promise<unknown>>();
   readonly #port: FileSystemPort;
   readonly #timeoutMs: number;
   readonly #signal: AbortSignal | undefined;
@@ -140,6 +152,16 @@ export class Volume {
     this.#port = port;
     this.#timeoutMs = timeoutMs;
     this.#signal = signal;
+  }
+  /** @internal Retain a raw pipeline, including cleanup beyond a bounded wait. */
+  trackPhysical<T>(work: Promise<T>): Promise<T> {
+    this.#physical.add(work);
+    void work.then(() => this.#physical.delete(work), () => this.#physical.delete(work));
+    return trackPhysical(work);
+  }
+  /** The run is physically settled only after its late continuations finish. */
+  async whenSettled(): Promise<void> {
+    while (this.#physical.size > 0) await Promise.allSettled([...this.#physical]);
   }
 
   stat(path: string): Promise<BigIntStats> {
@@ -166,8 +188,15 @@ export class Volume {
     return this.#run("work", "mkdir", path, () => this.#port.mkdir(path, recursive));
   }
 
-  symlink(target: string, path: string): Promise<void> {
-    return this.#run("work", "symlink", path, () => this.#port.symlink(target, path));
+  stageSymlink(target: string, path: string): Promise<void> {
+    return this.#run("work", "symlink", path, () => this.#port.symlink(target, path), {
+      onLateValue: () => this.#port.rm(path),
+    });
+  }
+
+  /** Atomic final-name creation. Once issued, cancellation cannot undo it. */
+  publishSymlink(target: string, path: string): Promise<void> {
+    return this.#run("commit", "publish", path, () => this.#port.symlink(target, path));
   }
 
   /** Remove a path as part of the work (not a cleanup of this run's own temp). */
@@ -253,22 +282,31 @@ export class Volume {
 
   async open(path: string, flags: string): Promise<VolumeFile> {
     const handle = await this.#run("work", "open", path, () => this.#port.open(path, flags), {
-      onLateValue: (late) => void late.close().catch(() => {}),
+      onLateValue: (late) => late.close(),
     });
     return new VolumeFile(this, handle, path);
+  }
+
+  /** Claim a user-visible output exclusively. A late successful open still
+   * owns its created file through physical close and identity-checked removal. */
+  async claimExclusive(path: string): Promise<VolumeFile> {
+    const claim = (handle: FileHandlePort) => new VolumeFile(this, handle, path, this.#port);
+    const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx"), {
+      onLateValue: (late) => claim(late).discardClaim(),
+    });
+    return claim(handle);
   }
 
   /**
    * Create this run's own temp file at a fresh, unique path, exclusively. An
    * abandoned create may still make the file when it lands, after the caller
    * has given up and cleaned up; the file is then closed and removed, so a
-   * cancelled or stalled run never leaves its temp behind.
+   * cancellation retains ownership through attempted late cleanup. A failed
+   * close or removal can leave the temp behind rather than guessing it is gone.
    */
   async createTemp(path: string): Promise<VolumeFile> {
     const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx", 0o600), {
-      onLateValue: (late) => void this.#run("cleanup", "close", path, () => late.close(), {
-        onLateValue: () => void this.discard(path),
-      }).catch(() => {}).then(() => this.discard(path)),
+      onLateValue: async (late) => { await late.close(); await this.#port.rm(path); },
     });
     return new VolumeFile(this, handle, path);
   }
@@ -290,6 +328,9 @@ export class Volume {
     } catch (err) {
       return Promise.reject(err);
     }
+    let abandoned = false;
+    // Keep one physical token across a late result and its cleanup continuation.
+    const physical = this.trackPhysical(pending.then((value) => abandoned ? options.onLateValue?.(value) : undefined, () => {}));
     return new Promise<T>((resolve, reject) => {
       let settled = false;
       const finish = (fn: () => void): void => {
@@ -302,11 +343,11 @@ export class Volume {
       const abandon = (err: Error): void =>
         finish(() => {
           options.onAbandon?.();
-          pending.then((value) => options.onLateValue?.(value), () => {});
+          abandoned = true;
           reject(err);
         });
       const timer = setTimeout(() => {
-        const stall = new StallError(operation, path, this.#timeoutMs, mode === "commit");
+        const stall = new StallError(operation, path, this.#timeoutMs, mode === "commit", physical.then(() => {}, () => {}));
         if (mode !== "cleanup") this.#stall ??= stall;
         abandon(stall);
       }, this.#timeoutMs);
@@ -327,15 +368,29 @@ export class VolumeFile {
   readonly #path: string;
   /** Set when a call on this handle was abandoned and may still be running. */
   #abandoned = false;
+  readonly #claimPort: FileSystemPort | undefined;
+  readonly #inFlight = new Set<Promise<unknown>>();
+  #retired = false;
+  #settledClaim: Promise<string> | undefined;
+  #discardedClaim: Promise<void> | undefined;
 
-  constructor(volume: Volume, handle: FileHandlePort, path: string) {
+  constructor(volume: Volume, handle: FileHandlePort, path: string, claimPort?: FileSystemPort) {
     this.#volume = volume;
     this.#handle = handle;
     this.#path = path;
+    this.#claimPort = claimPort;
   }
 
   #run<T>(mode: Mode, operation: string, start: () => Promise<T>): Promise<T> {
-    return this.#volume.runOnHandle(mode, operation, this.#path, start, () => {
+    if (mode === "work" && this.#retired) return Promise.reject(new Error(`publication claim retired: ${this.#path}`));
+    return this.#volume.runOnHandle(mode, operation, this.#path, () => {
+      const pending = start();
+      if (this.#claimPort) {
+        this.#inFlight.add(pending);
+        void pending.then(() => this.#inFlight.delete(pending), () => this.#inFlight.delete(pending));
+      }
+      return pending;
+    }, () => {
       this.#abandoned = true;
     });
   }
@@ -371,6 +426,7 @@ export class VolumeFile {
    *  {@link Volume.identity}: it decides whether a failed publication removes
    *  its own claim, so a cancel does not stop it. */
   async identity(): Promise<string> {
+    if (this.#settledClaim) return this.#run("cleanup", "fstat", () => this.#settledClaim!);
     const st = await this.#run("cleanup", "fstat", () => this.#handle.stat());
     return `${st.dev}:${st.ino}`;
   }
@@ -382,11 +438,56 @@ export class VolumeFile {
    * the same stall again.
    */
   async close(): Promise<void> {
+    if (this.#claimPort) {
+      await this.#volume.runOnHandle("cleanup", "close", this.#path, () => this.#settleClaim(), () => {});
+      return;
+    }
     if (this.#abandoned) {
-      void this.#handle.close().catch(() => {});
+      void this.#volume.trackPhysical(this.#handle.close()).catch(() => {});
       return;
     }
     await this.#run("cleanup", "close", () => this.#handle.close());
+  }
+
+  /** Stop accepting writes, join physically issued calls, then read identity
+   * before starting close (Node forbids fstat once close has begun). The one
+   * pipeline stays alive after the caller's bounded wait expires. */
+  #settleClaim(): Promise<string> {
+    if (!this.#settledClaim) {
+      this.#retired = true;
+      this.#settledClaim = this.#volume.trackPhysical((async () => {
+        await Promise.allSettled([...this.#inFlight]);
+        let identity: string;
+        try {
+          const st = await this.#handle.stat();
+          identity = `${st.dev}:${st.ino}`;
+        } finally {
+          await this.#handle.close();
+        }
+        return identity;
+      })());
+    }
+    return this.#settledClaim;
+  }
+
+  /** Remove only this exclusive claim, after physical settlement. A changing
+   * FAT identity is read from the settled handle, never an abandoned write's
+   * earlier state. Unknown identity/close outcomes retain the file. */
+  async discardClaim(): Promise<void> {
+    const port = this.#claimPort;
+    if (!port) throw new Error("not an exclusive publication claim");
+    this.#discardedClaim ??= this.#volume.trackPhysical((async () => {
+      const identity = await this.#settleClaim();
+      let current;
+      try {
+        current = await port.lstat(this.#path);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw err;
+      }
+      if (`${current.dev}:${current.ino}` === identity) await port.unlink(this.#path);
+    })());
+    await this.#volume.runOnHandle("cleanup", "discard", this.#path, () => this.#discardedClaim!, () => {});
   }
 
   /** Close after a failure, best-effort and silent. */

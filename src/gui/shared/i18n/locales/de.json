@@ -364,7 +364,7 @@
   "findingKind.outputExists": "Vorhandenes Ausgabearchiv",
   "findingKind.crcFail": "CRC-32-Abweichungen",
   "findingKind.shaMismatch": "SHA-256-Abweichungen",
-  "findingKind.manifestMismatch": "Größen- oder CRC-32-Abweichungen vom Manifest",
+  "findingKind.manifestMismatch": "Abweichungen vom Manifest",
   "findingKind.unsafePath": "Pfade außerhalb des Ziels",
   "findingKind.missing": "Im Archiv fehlende Einträge",
   "findingKind.extra": "Nicht im Manifest aufgeführte Einträge",

@@ -162,7 +162,7 @@ describe("readEntryData rejects unreadable entries", () => {
     }
   });
 
-  it("bounds entries read into memory", async () => {
+  it.each([3, 5])("bounds declared and actual inflated bytes read into memory: declared %i", async (declared) => {
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     const data = Buffer.from("12345");
@@ -175,7 +175,7 @@ describe("readEntryData rejects unreadable entries", () => {
       method: 0,
       crc32: 0,
       compSize: data.length,
-      uncompSize: data.length,
+      uncompSize: declared,
       localOffset: 0,
       gpFlag: 0,
       externalAttr: 0,
@@ -185,7 +185,7 @@ describe("readEntryData rejects unreadable entries", () => {
     };
     try {
       await expect(readEntryBuffer(fh, entry, 4)).rejects.toMatchObject({
-        code: "read.entry-too-large",
+        code: declared === 3 ? "read.size-mismatch" : "read.entry-too-large",
       });
     } finally {
       await fh.close();

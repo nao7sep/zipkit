@@ -364,7 +364,7 @@
   "findingKind.outputExists": "이미 있는 출력 아카이브",
   "findingKind.crcFail": "CRC-32 불일치",
   "findingKind.shaMismatch": "SHA-256 불일치",
-  "findingKind.manifestMismatch": "매니페스트와 크기 또는 CRC-32 불일치",
+  "findingKind.manifestMismatch": "매니페스트 불일치",
   "findingKind.unsafePath": "대상 밖을 가리키는 경로",
   "findingKind.missing": "아카이브에 없는 항목",
   "findingKind.extra": "매니페스트에 없는 항목",

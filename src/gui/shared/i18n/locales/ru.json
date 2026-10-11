@@ -364,7 +364,7 @@
   "findingKind.outputExists": "Существующий выходной архив",
   "findingKind.crcFail": "Несовпадения CRC-32",
   "findingKind.shaMismatch": "Несовпадения SHA-256",
-  "findingKind.manifestMismatch": "Несовпадения размера или CRC-32 с манифестом",
+  "findingKind.manifestMismatch": "Несовпадения с манифестом",
   "findingKind.unsafePath": "Пути за пределами папки назначения",
   "findingKind.missing": "Записи, отсутствующие в архиве",
   "findingKind.extra": "Записи, отсутствующие в манифесте",

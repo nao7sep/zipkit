@@ -13,7 +13,7 @@ function failure(code: string): NodeJS.ErrnoException {
 function memoryOperations(
   sourceBytes: Buffer,
   overrides: Partial<PublishOperations> = {},
-): { operations: PublishOperations; published: Buffer[]; readLengths: number[] } {
+): { operations: PublishOperations; destination: PublishDestination; published: Buffer[]; readLengths: number[] } {
   const published: Buffer[] = [];
   const readLengths: number[] = [];
   const source: PublishSource = {
@@ -25,6 +25,7 @@ function memoryOperations(
     }),
     close: vi.fn().mockResolvedValue(undefined),
   };
+  let operations: PublishOperations;
   const destination: PublishDestination = {
     write: vi.fn(async (buffer, offset, length) => {
       published.push(Buffer.from(buffer.subarray(offset, offset + length)));
@@ -33,11 +34,17 @@ function memoryOperations(
     sync: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     identity: vi.fn().mockResolvedValue("claim"),
+    discard: vi.fn(async () => {
+      const identity = await destination.identity();
+      await destination.close();
+      if (await operations.pathIdentity("out") === identity) await operations.unlink("out");
+    }),
   };
   return {
     published,
     readLengths,
-    operations: {
+    destination,
+    operations: operations = {
       link: vi.fn().mockResolvedValue(undefined),
       openRead: vi.fn().mockResolvedValue(source),
       openExclusive: vi.fn().mockResolvedValue(destination),
@@ -190,7 +197,7 @@ describe("portable no-overwrite publication", () => {
 
     await expect(
       publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
-    ).rejects.toMatchObject({ code: "EEXIST" });
+    ).rejects.toHaveProperty("name", "AbortError");
     expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
     expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
   });
@@ -204,7 +211,7 @@ describe("portable no-overwrite publication", () => {
         link: vi.fn().mockRejectedValue(failure("EPERM")),
         pathIdentity: vi.fn(async () => (written ? "written" : "empty")),
       });
-      const destination: PublishDestination = {
+      const destination = Object.assign(fixture.destination, {
         write: vi.fn(async (buffer, offset, length) => {
           if (written && writeFailure) throw writeFailure;
           written = true;
@@ -214,7 +221,7 @@ describe("portable no-overwrite publication", () => {
         sync: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         identity: vi.fn(async () => (written ? "written" : "empty")),
-      };
+      });
       vi.mocked(fixture.operations.openExclusive).mockResolvedValue(destination);
       return fixture;
     }

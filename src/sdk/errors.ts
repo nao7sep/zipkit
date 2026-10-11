@@ -76,7 +76,9 @@ export class StallError extends ZipKitError {
   readonly timeoutMs: number;
   readonly committing: boolean;
 
-  constructor(operation: string, path: string, timeoutMs: number, committing: boolean) {
+  /** Actual operation settlement for an owner retaining a conflicting claim. */
+  readonly settlement: Promise<void> | undefined;
+  constructor(operation: string, path: string, timeoutMs: number, committing: boolean, settlement?: Promise<void>) {
     super(
       "io.stalled",
       committing
@@ -87,6 +89,7 @@ export class StallError extends ZipKitError {
     this.path = path;
     this.timeoutMs = timeoutMs;
     this.committing = committing;
+    this.settlement = settlement;
   }
 }
 

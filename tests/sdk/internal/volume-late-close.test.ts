@@ -5,18 +5,16 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { nodeFileSystem, Volume } from "../../../src/sdk/internal/volume.js";
 
-it("a late temp open whose raw close stalls still attempts bounded discard and retries after actual close", async () => {
+it("a late temp open retains cleanup ownership until physical close settles", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-late-close-"));
   const file = path.join(root, "stage.tmp");
   let releaseOpen!: () => void;
   let releaseClose!: () => void;
   let opened!: () => void;
   let closing!: () => void;
-  let discarded!: () => void;
   let cleanupFinished!: () => void;
   const openSeen = new Promise<void>((resolve) => { opened = resolve; });
   const closeSeen = new Promise<void>((resolve) => { closing = resolve; });
-  const discardSeen = new Promise<void>((resolve) => { discarded = resolve; });
   const cleanupSeen = new Promise<void>((resolve) => { cleanupFinished = resolve; });
   const openHeld = new Promise<void>((resolve) => { releaseOpen = resolve; });
   const closeHeld = new Promise<void>((resolve) => { releaseClose = resolve; });
@@ -32,7 +30,7 @@ it("a late temp open whose raw close stalls still attempts bounded discard and r
     },
     rm: async (path) => {
       try { await nodeFileSystem.rm(path); } finally {
-        discards++; discarded();
+        discards++;
         if (physicallyClosed) cleanupFinished();
       }
     },
@@ -57,12 +55,12 @@ it("a late temp open whose raw close stalls still attempts bounded discard and r
     await closeSeen;
     expect(existsSync(file)).toBe(true);
     await vi.advanceTimersByTimeAsync(50);
-    await discardSeen;
-    expect(discards).toBe(1);
+    expect(discards).toBe(0);
+    expect(existsSync(file)).toBe(true);
     releaseClose();
     vi.useRealTimers();
     await settleCleanup();
-    expect(discards).toBe(2);
+    expect(discards).toBe(1);
     expect(existsSync(file)).toBe(false);
   } finally {
     releaseOpen(); releaseClose();

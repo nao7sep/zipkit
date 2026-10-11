@@ -14,6 +14,8 @@ export interface PublishDestination {
   sync(): Promise<void>;
   close(): Promise<void>;
   identity(): Promise<string>;
+  /** Own failed-claim cleanup through physical settlement, even after timeout. */
+  discard(): Promise<void>;
 }
 
 export interface PublishOperations {
@@ -26,7 +28,8 @@ export interface PublishOperations {
 
 /** The publication operations over the run's bounded {@link Volume}: the link
  *  is a commit call, the copy fallback is ordinary work, and the identity check
- *  and claim removal are cleanup, so a cancelled copy still removes its claim. */
+ *  and claim removal are cleanup. A failed copy keeps its claim owner through
+ *  actual settlement, even after the caller's cleanup wait expires. */
 export function volumePublishOperations(volume: Volume): PublishOperations {
   return {
     link: (tempPath, output) => volume.publishLink(tempPath, output),
@@ -40,7 +43,7 @@ export function volumePublishOperations(volume: Volume): PublishOperations {
       };
     },
     openExclusive: async (path) => {
-      const file = await volume.open(path, "wx");
+      const file = await volume.claimExclusive(path);
       return {
         write: async (buffer, offset, length) => {
           await file.writeAll(buffer.subarray(offset, offset + length), null);
@@ -49,6 +52,7 @@ export function volumePublishOperations(volume: Volume): PublishOperations {
         sync: () => file.sync(),
         close: () => file.close(),
         identity: () => file.identity(),
+        discard: () => file.discardClaim(),
       };
     },
     pathIdentity: (path) => volume.identity(path),
@@ -67,15 +71,9 @@ async function copyExclusive(
   signal?.throwIfAborted();
   const source = await operations.openRead(tempPath);
   let destination: PublishDestination | null = null;
-  // The claim's identity as last read from its own handle. FAT ids change once
-  // bytes are written, so it is re-read after the content is complete and before
-  // a failed claim is removed; the empty claim's id only marks that a claim exists.
-  let claimIdentity: string | null = null;
-  let committed = false;
   try {
     signal?.throwIfAborted();
     destination = await operations.openExclusive(output);
-    claimIdentity = await destination.identity();
     const buffer = Buffer.allocUnsafe(COPY_CHUNK_BYTES);
     let readPosition = 0;
     for (;;) {
@@ -95,27 +93,15 @@ async function copyExclusive(
     signal?.throwIfAborted();
     await destination.sync();
     signal?.throwIfAborted();
-    claimIdentity = await destination.identity();
     await destination.close();
-    destination = null;
+    const claimIdentity = await destination.identity();
     signal?.throwIfAborted();
     if (await operations.pathIdentity(output) !== claimIdentity) throw destinationChanged(output);
-    committed = true;
   } catch (err) {
-    if (destination) {
-      if (claimIdentity !== null) claimIdentity = await destination.identity().catch(() => claimIdentity);
-      await destination.close().catch(() => {});
-    }
-    let failure = err;
-    if (claimIdentity !== null && !committed) {
-      const currentIdentity = await operations.pathIdentity(output).catch(() => null);
-      if (currentIdentity === claimIdentity) {
-        await operations.unlink(output).catch(() => {});
-      } else if (currentIdentity !== null) {
-        failure = destinationChanged(output);
-      }
-    }
-    throw failure;
+    await destination?.discard().catch(() => {});
+    // Cleanup uncertainty does not turn cancellation/stall into an ordinary
+    // existing-output conflict (which extraction would treat as a safe skip).
+    throw err;
   } finally {
     await source.close().catch(() => {});
   }

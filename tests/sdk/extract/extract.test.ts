@@ -16,9 +16,9 @@ import { ZipKit } from "../../../src/sdk/index.js";
 import { extractArchive } from "../../../src/sdk/extract/extract.js";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/internal/volume.js";
 import { createLogger } from "../../../src/sdk/log/logger.js";
-import { MANIFEST_FORMAT_VERSION } from "../../../src/sdk/write/metadata.js";
+import { MANIFEST_FORMAT_VERSION, MAX_MANIFEST_BYTES } from "../../../src/sdk/write/metadata.js";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
-import { createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
+import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 const Y2020_MS = 1_577_836_800_000;
@@ -93,6 +93,93 @@ async function writeArchive(
 }
 
 describe("extract round-trip", () => {
+  it("reports an oversized manifest distinctly before reading its content", async () => {
+    const archive = await writeArchive([fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [] }))]);
+    const bytes = await readFile(archive);
+    const central = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    bytes.writeUInt32LE(MAX_MANIFEST_BYTES + 1, central + 24);
+    await writeFile(archive, bytes);
+    await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({ code: "read.manifest-too-large" });
+  });
+
+  it.each([
+    "2024-03-10T07:30:00.000Z", "2024-11-03T07:30:00.000Z",
+    "2024-01-10T08:30:00.000Z", "2024-07-10T07:30:00.000Z",
+  ])("restores a DOS-only archive in its selected zone: %s", async (instant) => {
+    const entry = { ...fileEntry("f.txt", "content"), mtimeNs: BigInt(Date.parse(instant)) * 1_000_000n };
+    const archive = await writeArchive([entry], { timeZone: "America/New_York" });
+    const bytes = await readFile(archive);
+    const central = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    let offset = central + 46 + bytes.readUInt16LE(central + 28);
+    const end = offset + bytes.readUInt16LE(central + 30);
+    while (offset + 4 <= end) {
+      const tag = bytes.readUInt16LE(offset), length = bytes.readUInt16LE(offset + 2);
+      if (tag === 0x000a || tag === 0x5455) bytes.writeUInt16LE(0xeeee, offset);
+      offset += 4 + length;
+    }
+    await writeFile(archive, bytes);
+    const dest = path.join(dir, "restored");
+    expect((await new ZipKit().extract({ archive, dest, timezone: "America/New_York" })).reportOk).toBe(true);
+    expect((await stat(path.join(dest, "f.txt"))).mtimeMs).toBe(Date.parse(instant));
+  });
+
+  it.runIf(fileSymlinksSupported)("allows internal target chains and dangling internal targets, including overwrite", async () => {
+    const dest = path.join(dir, "dest");
+    await mkdir(path.join(dest, "inside"), { recursive: true });
+    await createDirectoryLink("inside", path.join(dest, "pivot"));
+    await createFileLink("inside/missing.txt", path.join(dest, "dangling"));
+    await writeFile(path.join(dest, "link"), "old");
+    const archive = await writeArchive([symlinkEntry("link", "pivot/file.txt"), symlinkEntry("second", "dangling")]);
+    const report = await new ZipKit().extract({ archive, dest, overwrite: true });
+    expect(report.reportOk).toBe(true);
+    expect(await readlink(path.join(dest, "link"))).toBe("pivot/file.txt");
+    expect(await readlink(path.join(dest, "second"))).toBe("dangling");
+  });
+
+  it.runIf(fileSymlinksSupported).each([
+    { inside: true, danglingAlias: false }, { inside: false, danglingAlias: false },
+    { inside: true, danglingAlias: true }, { inside: false, danglingAlias: true },
+  ])("checks canonical containment of an absolute alias with a dangling tail: $inside/$danglingAlias", async ({ inside, danglingAlias }) => {
+    const dest = path.join(dir, "dest");
+    const outside = path.join(dir, "outside");
+    await mkdir(dest);
+    await mkdir(outside);
+    const alias = path.join(dir, "alias");
+    const aliasRoot = inside ? dest : outside;
+    await createDirectoryLink(danglingAlias ? path.join(aliasRoot, "missing-dir") : aliasRoot, alias);
+    await createFileLink(path.join(alias, "missing.txt"), path.join(dest, "pivot"));
+    const archive = await writeArchive([symlinkEntry("link", "pivot")]);
+    const report = await new ZipKit().extract({ archive, dest });
+    expect(report.reportOk).toBe(inside);
+    if (inside) expect(await readlink(path.join(dest, "link"))).toBe("pivot");
+    else expect(report.entries[0]?.skipped).toBe("unsafe");
+  });
+
+  it.each(["file", "symlink", "dir"] as const)("rejects a %s entry whose manifest records a different type", async (type) => {
+    const entry = type === "dir"
+      ? { ...fileEntry("folder", ""), type, mode: 0o40755 }
+      : { ...fileEntry("link", "target.txt"), type, mode: type === "symlink" ? 0o120777 : 0o644 };
+    const record = { ...manifestRecord(entry), type: type === "file" ? "symlink" : "file" };
+    const archive = await writeArchive([entry, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [record] }))]);
+    const report = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
+    expect(report.reportOk).toBe(false);
+    expect(report.summary.manifestMismatched).toBe(1);
+  });
+
+  it.runIf(fileSymlinksSupported)("refuses a restored link that escapes through an existing target-chain link", async () => {
+    const outside = path.join(dir, "outside");
+    const dest = path.join(dir, "dest");
+    await mkdir(outside);
+    await mkdir(dest);
+    await writeFile(path.join(outside, "file.txt"), "outside");
+    await createDirectoryLink(outside, path.join(dest, "pivot"));
+    const archive = await writeArchive([symlinkEntry("link", "pivot/file.txt")]);
+    const report = await new ZipKit().extract({ archive, dest });
+    expect(report.reportOk).toBe(false);
+    expect(report.entries[0]?.skipped).toBe("unsafe");
+    await expect(lstat(path.join(dest, "link"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("writes verified entries and restores the modification time", async () => {
     const archive = await writeArchive([fileEntry("docs/readme.txt", "hello world")]);
     const dest = path.join(dir, "out");
@@ -247,6 +334,19 @@ describe("dry-run validation", () => {
 });
 
 describe("heavy validation against a manifest", () => {
+  it("verifies SDK-created directory records with their original filesystem sizes", async () => {
+    const input = path.join(dir, "input");
+    await mkdir(path.join(input, "empty"), { recursive: true });
+    await mkdir(path.join(input, "occupied"));
+    await writeFile(path.join(input, "occupied", "file.txt"), "content");
+    const kit = new ZipKit();
+    const archive = path.join(dir, "created.zip");
+    await kit.create({ inputs: [input], output: archive, policy: { metadata: { name: "zipkit.json", hash: true } } });
+    const report = await kit.extract({ archive, dryRun: true, checkMetadata: true });
+    expect(report.reportOk).toBe(true);
+    expect(report.summary.manifestMismatched).toBe(0);
+    expect(report.entries.filter((entry) => entry.type === "dir").length).toBeGreaterThanOrEqual(2);
+  });
   it("verifies SHA and reports missing and extra entries from the embedded manifest", async () => {
     const aData = Buffer.from("alpha", "utf8");
     // The manifest is embedded in the archive: it claims a.txt (real sha) and a

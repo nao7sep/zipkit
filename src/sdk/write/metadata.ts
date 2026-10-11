@@ -36,6 +36,10 @@ const ABOUT =
 const REPOSITORY = "https://github.com/nao7sep/zipkit";
 /** The manifest's format version (store-recovery conventions); a reader refuses a newer one. */
 export const MANIFEST_FORMAT_VERSION = 1;
+/** Shared producer/reader bound on uncompressed UTF-8 bytes. This supports
+ * representative 65,535-entry projects while bounding untrusted manifest input;
+ * parsed objects, JSON text and the central directory consume additional memory. */
+export const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 
 /** The `mode:"plan"` member of {@link CreateData} — the planning view the
  *  metadata document is built from (entries, summary, findings). The metadata

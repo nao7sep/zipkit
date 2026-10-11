@@ -11,6 +11,7 @@ import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import pLimit from "p-limit";
 import { matcherFor } from "../../../src/sdk/filter/match.js";
 import { createLogger } from "../../../src/sdk/log/logger.js";
 import { resolvePolicy } from "../../../src/sdk/policy.js";
@@ -50,6 +51,48 @@ function names(result: { entries: { archivePath: string }[] }): string[] {
 }
 
 describe("scan over a real tree", () => {
+  it("cancels a followed descendant through a single-slot scan pool", async () => {
+    const proj = path.join(dir, "proj"), target = path.join(dir, "target");
+    await mkdir(proj); await mkdir(target);
+    const file = path.join(target, "file.txt");
+    await writeFile(file, "content");
+    await createDirectoryLink(target, path.join(proj, "link"));
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((r) => { entered = r; });
+    const held = new Promise<void>((r) => { release = r; });
+    const controller = new AbortController();
+    const canonicalFile = await nodeFileSystem.realpath(file);
+    let finished!: () => void;
+    const settled = new Promise<void>((r) => { finished = r; });
+    const volume = new Volume({ ...nodeFileSystem, lstat: async (name) => {
+      if (name !== canonicalFile) return nodeFileSystem.lstat(name);
+      entered(); await held;
+      try { return await nodeFileSystem.lstat(name); }
+      finally { finished(); }
+    } }, 30_000, controller.signal);
+    const policy = resolvePolicy(undefined, { symlinks: "follow", followExternal: true });
+    const work = scan({ inputs: [proj] }, policy, {
+      ...deps(policy), volume, signal: controller.signal, limit: pLimit(1),
+    });
+    const rejected = expect(work).rejects.toHaveProperty("name", "AbortError");
+    try { await started; controller.abort(); await rejected; }
+    finally { release(); await settled; }
+  });
+
+  it.each([1, 4])("follows directories with all %i scan slots occupied by links", async (concurrency) => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    for (let i = 0; i < concurrency; i++) {
+      const target = path.join(dir, `target-${i}`);
+      await mkdir(target);
+      await writeFile(path.join(target, "file.txt"), "content");
+      await createDirectoryLink(target, path.join(proj, `link-${i}`));
+    }
+    const policy = resolvePolicy(undefined, { symlinks: "follow", followExternal: true });
+    const result = await scan({ inputs: [proj] }, policy, { ...deps(policy), limit: pLimit(concurrency) });
+    expect(names(result)).toEqual(Array.from({ length: concurrency }, (_, i) => `link-${i}/file.txt`));
+  });
+
   it("surfaces files and directories with forward-slash archive paths", async () => {
     const proj = path.join(dir, "proj");
     await mkdir(path.join(proj, "sub"), { recursive: true });

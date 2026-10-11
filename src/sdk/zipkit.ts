@@ -156,25 +156,32 @@ export class ZipKit {
    *  `plan()` returned — not a clone or a re-serialized copy, which drops the
    *  out-of-band writer instructions and fails with `write.no-internals`. */
   async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData> {
-    return this.#run(options, (logger) =>
-      this.#runWrite(plan, {
-        logger,
-        chunkSize: this.#chunkSize,
-        signal: options.signal,
-        volume: this.volume(options.signal),
-      }),
-    );
+    const volume = this.volume(options.signal);
+    try {
+      return await this.#run(options, (logger) => this.#runWrite(plan, {
+        logger, chunkSize: this.#chunkSize, signal: options.signal, volume,
+      }));
+    } finally { this.#notifySettlement(options, volume); }
   }
 
   /** Plan and write in one call. One logger and one signal serve both inner
    *  steps, so the caller's single `onProgress` hook sees the whole run and one
    *  cancellation stops it at whichever phase it is in. */
   async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData> {
-    return this.#run(options, async (logger) => {
-      const volume = this.volume(options.signal);
-      const plan = await this.#plan(spec, logger, options.signal, volume);
-      return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume });
-    });
+    const volume = this.volume(options.signal);
+    try {
+      return await this.#run(options, async (logger) => {
+        const plan = await this.#plan(spec, logger, options.signal, volume);
+        return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume });
+      });
+    } finally { this.#notifySettlement(options, volume); }
+  }
+
+  #notifySettlement(options: ZipKitCallOptions, volume: Volume): void {
+    // Capture after logical cleanup: an earlier empty set could report idle
+    // before the first write, or omit continuations spawned by late calls.
+    try { options.onPhysicalSettlement?.(volume.whenSettled()); }
+    catch { /* Like a progress sink, the observer cannot break the verb. */ }
   }
 
   /**

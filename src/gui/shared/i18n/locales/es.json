@@ -364,7 +364,7 @@
   "findingKind.outputExists": "Archivo comprimido de salida existente",
   "findingKind.crcFail": "Discrepancias de CRC-32",
   "findingKind.shaMismatch": "Discrepancias de SHA-256",
-  "findingKind.manifestMismatch": "Discrepancias de tamaño o CRC-32 con el manifiesto",
+  "findingKind.manifestMismatch": "Discrepancias con el manifiesto",
   "findingKind.unsafePath": "Rutas fuera del destino",
   "findingKind.missing": "Entradas que faltan en el archivo comprimido",
   "findingKind.extra": "Entradas que no están en el manifiesto",

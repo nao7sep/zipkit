@@ -30,7 +30,7 @@ type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 /** The `mode:"write"` member of {@link CreateData}; the writer's success shape.
  *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
 type WriteData = Unlogged<Extract<CreateData, { mode: "write" }>>;
-import { buildMetadata } from "./metadata.js";
+import { buildMetadata, MAX_MANIFEST_BYTES } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
 import { EntryCompressor, ZipWriter } from "./zipWriter.js";
 import type { StreamResult, WriteEntryInput } from "./zipWriter.js";
@@ -272,8 +272,14 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     if (policy.metadata !== false) {
       // A ZIP is a container, so the manifest rides inside it rather than as a
       // loose file that could drift away from the archive. It is generated in
-      // memory (it is small) and streamed like any other entry, last.
-      const json = Buffer.from(JSON.stringify(metadata, null, 2), "utf8");
+      // memory and streamed like any other entry, last. Admit the exact UTF-8
+      // serialization before allocating its buffer or publishing. The planning
+      // estimate is conservative and cannot decide this supported-size gate.
+      const text = JSON.stringify(metadata, null, 2);
+      if (Buffer.byteLength(text, "utf8") > MAX_MANIFEST_BYTES) {
+        throw new WriteError("write.manifest-too-large", `manifest exceeds the ${MAX_MANIFEST_BYTES}-byte verification limit`);
+      }
+      const json = Buffer.from(text, "utf8");
       await streamBuffer(
         writer,
         {

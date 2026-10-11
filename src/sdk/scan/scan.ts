@@ -164,13 +164,19 @@ function rethrowClassified(err: unknown): void {
   if (err instanceof ZipKitError) throw err;
 }
 
+interface FollowedDirectory {
+  real: string;
+  paths: EntryPaths;
+  inputIndex: number;
+}
+
 async function handleSymlink(
   ctx: ScanContext,
   abs: string,
   paths: EntryPaths,
   inputIndex: number,
   link: BigIntStats,
-): Promise<void> {
+): Promise<FollowedDirectory | void> {
   let target = "";
   try {
     target = await ctx.volume.readlink(abs);
@@ -223,7 +229,7 @@ async function handleSymlink(
     // silent: the first visit already archived that content.
     if (ctx.followedDirs.has(real)) return;
     ctx.followedDirs.add(real);
-    await crawlDirectory(ctx, real, real, paths, inputIndex);
+    return { real, paths, inputIndex };
   } else if (resolved.isFile()) {
     ctx.entries.push(makeEntry(real, inputIndex, paths, "file", resolved));
   } else {
@@ -236,7 +242,7 @@ async function processPath(
   abs: string,
   paths: EntryPaths,
   inputIndex: number,
-): Promise<void> {
+): Promise<FollowedDirectory | void> {
   let st: BigIntStats;
   try {
     st = await ctx.volume.lstat(abs);
@@ -248,7 +254,7 @@ async function processPath(
   // archive can never contain itself.
   if (ctx.artifactIds.has(fileId(st))) return;
   if (st.isSymbolicLink()) {
-    await handleSymlink(ctx, abs, paths, inputIndex, st);
+    return handleSymlink(ctx, abs, paths, inputIndex, st);
   } else if (st.isDirectory()) {
     ctx.entries.push(makeEntry(abs, inputIndex, paths, "dir", st));
   } else if (st.isFile()) {
@@ -340,7 +346,12 @@ async function crawlDirectory(
     const archive = joinArchivePath(anchors.archive, fwdRel);
     if (archive === "") continue;
     const source = joinArchivePath(anchors.source, fwdRel);
-    tasks.push(ctx.limit(() => processPath(ctx, abs, { archive, source }, inputIndex)));
+    // Descendants acquire this same pool. Release the entry's slot before
+    // awaiting them, including when every slot discovers a followed directory.
+    tasks.push(ctx.limit(() => processPath(ctx, abs, { archive, source }, inputIndex))
+      .then(async (followed) => {
+        if (followed) await crawlDirectory(ctx, followed.real, followed.real, followed.paths, followed.inputIndex);
+      }));
   }
   await Promise.all(tasks);
 }

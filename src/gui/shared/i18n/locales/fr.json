@@ -364,7 +364,7 @@
   "findingKind.outputExists": "Archive de sortie existante",
   "findingKind.crcFail": "Écarts de CRC-32",
   "findingKind.shaMismatch": "Écarts de SHA-256",
-  "findingKind.manifestMismatch": "Écarts de taille ou de CRC-32 avec le manifeste",
+  "findingKind.manifestMismatch": "Écarts avec le manifeste",
   "findingKind.unsafePath": "Chemins hors de la destination",
   "findingKind.missing": "Entrées absentes de l’archive",
   "findingKind.extra": "Entrées absentes du manifeste",

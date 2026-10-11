@@ -364,7 +364,7 @@
   "findingKind.outputExists": "Existing output archive",
   "findingKind.crcFail": "CRC-32 mismatches",
   "findingKind.shaMismatch": "SHA-256 mismatches",
-  "findingKind.manifestMismatch": "Size or CRC-32 mismatches with the manifest",
+  "findingKind.manifestMismatch": "Mismatches with the manifest",
   "findingKind.unsafePath": "Paths outside the destination",
   "findingKind.missing": "Entries missing from the archive",
   "findingKind.extra": "Entries not in the manifest",

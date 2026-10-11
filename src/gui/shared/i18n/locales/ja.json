@@ -364,7 +364,7 @@
   "findingKind.outputExists": "既存の出力先アーカイブ",
   "findingKind.crcFail": "CRC-32 の不一致",
   "findingKind.shaMismatch": "SHA-256 の不一致",
-  "findingKind.manifestMismatch": "マニフェストとのサイズまたは CRC-32 の不一致",
+  "findingKind.manifestMismatch": "マニフェストとの不一致",
   "findingKind.unsafePath": "展開先の外を指すパス",
   "findingKind.missing": "アーカイブにないエントリ",
   "findingKind.extra": "マニフェストにないエントリ",
