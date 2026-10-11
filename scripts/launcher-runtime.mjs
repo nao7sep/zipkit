@@ -166,8 +166,10 @@ export async function releaseRuntime(token) {
   return true;
 }
 
-async function stopRuntime(identity) {
-  const initial = await listProcesses();
+// Inject only OS observations and commands so stop-path tests cannot target a
+// real dev session. The CLI always uses the native defaults.
+export async function stopRuntime(identity, { platform = process.platform, processes = listProcesses, run = execFileAsync } = {}) {
+  const initial = await processes();
   const excluded = ancestorsOf(initial, process.pid);
   const ownedRoots = initial.filter((item) => !excluded.has(item.pid) && ownsProcess(item, identity)).map((item) => item.pid);
   if (ownedRoots.length === 0) return;
@@ -175,10 +177,10 @@ async function stopRuntime(identity) {
   const initialTargets = descendantsOf(initial, ownedRoots);
   process.stdout.write(`Stopping the existing ${identity.label} runtime (pid ${ownedRoots.join(", ")}).\n`);
 
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     for (const pid of ownedRoots) {
       try {
-        await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T"], { timeout: 5000 });
+        await run("taskkill.exe", ["/PID", String(pid), "/T"], { timeout: 5000 });
       } catch {
         // A process may exit while another root tears down the same tree.
       }
@@ -191,20 +193,20 @@ async function stopRuntime(identity) {
 
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    const current = await listProcesses();
+    const current = await processes();
     if (!current.some((item) => initialTargets.has(item.pid))) return;
     await delay(100);
   }
 
-  const current = await listProcesses();
+  const current = await processes();
   const currentOwnedRoots = current
     .filter((item) => initialTargets.has(item.pid) && !excluded.has(item.pid) && ownsProcess(item, identity))
     .map((item) => item.pid);
   const forceTargets = descendantsOf(current, currentOwnedRoots);
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     for (const pid of currentOwnedRoots) {
       try {
-        await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { timeout: 5000 });
+        await run("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { timeout: 5000 });
       } catch {}
     }
   } else {
