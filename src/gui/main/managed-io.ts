@@ -1,5 +1,7 @@
 /** Bounded callers share each managed path's actual I/O order, including late cleanup. */
 const tails = new Map<string, Promise<unknown>>();
+/** Actual managed work, even after a bounded startup caller stopped waiting. */
+export function managedIOPending(): boolean { return tails.size > 0; }
 /** The bound on a startup read: a launch that cannot read its stores halts with a dialog and
  *  writes nothing. In-session saves pass no bound and wait for the actual outcome, because a
  *  caller timeout does not prove that a write failed (PLAYBOOK, Respect data and lifetime). */

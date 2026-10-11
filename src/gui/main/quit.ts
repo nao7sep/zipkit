@@ -14,8 +14,9 @@
  * OS gives an app when the session ends. A step past its bound is logged and
  * left behind, so quitting always ends in an exit; its outcome is unknown. Work
  * left behind may be stuck in a native call (a hung volume, a worker inside
- * SQLite), and Electron's ordinary exit waits for such work, so a quit that left
- * a step behind ends through `forceExit` instead.
+ * SQLite), and Electron's ordinary exit waits for such work. Final exit uses
+ * `forceExit` if a step was abandoned or native I/O is still physically pending,
+ * even when its cancelled caller already settled successfully.
  *
  * `app.quit()` is not a reliable continuation after macOS has already closed
  * the last window. `app.exit()` is safe here because the quit work has settled
@@ -83,6 +84,7 @@ export interface QuitSteps {
   /** End the process without the runtime's own cleanup, which can wait forever
    *  on work stuck in a native call. */
   forceExit(): void;
+  nativeWorkPending(): boolean;
 }
 
 export { StepTimeout };
@@ -165,7 +167,7 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
       }
       // A log that cannot close has nowhere to report it.
       await bounded(steps.closeLog, QUIT_BOUNDS_MS.log, "the log");
-      if (leftBehind) steps.forceExit();
+      if (leftBehind || steps.nativeWorkPending()) steps.forceExit();
       else steps.exit(0);
     }
   }
@@ -179,6 +181,7 @@ export async function finishStartupHalt(steps: {
   onFailed(error: unknown): void;
   exit(code: number): void;
   forceExit(): void;
+  nativeWorkPending(): boolean;
 }): Promise<void> {
   try {
     await steps.present();
@@ -188,7 +191,7 @@ export async function finishStartupHalt(steps: {
     const backups = await failureWithin(steps.closeBackups, QUIT_BOUNDS_MS.backups, "startup backup cleanup");
     if (backups !== undefined) steps.onFailed(backups);
     const log = await failureWithin(steps.closeLog, QUIT_BOUNDS_MS.log, "startup log cleanup");
-    if (backups instanceof StepTimeout || log instanceof StepTimeout) steps.forceExit();
+    if (backups instanceof StepTimeout || log instanceof StepTimeout || steps.nativeWorkPending()) steps.forceExit();
     else steps.exit(1);
   }
 }
@@ -202,6 +205,7 @@ export interface SessionEndSteps {
   onStepFailed(step: QuitStep, error: unknown): void;
   exit(code: number): void;
   forceExit(): void;
+  nativeWorkPending(): boolean;
 }
 
 /**
@@ -232,7 +236,7 @@ export function endSessionNow(steps: SessionEndSteps): void {
       }
     }
   } finally {
-    if (leftBehind) steps.forceExit();
+    if (leftBehind || steps.nativeWorkPending()) steps.forceExit();
     else steps.exit(0);
   }
 }

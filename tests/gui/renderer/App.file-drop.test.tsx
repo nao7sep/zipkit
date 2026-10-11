@@ -9,6 +9,7 @@ import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost"
 import type { Job } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
+import { planInputAdmission } from "../../../src/gui/shared/input-admission";
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -38,7 +39,8 @@ describe("App file-drop receivers", () => {
   const addJob = vi.fn(async () => "job-from-drop");
   const chooseInputs = vi.fn<() => Promise<string[]>>();
   const getQueue = vi.fn<() => Promise<Job[]>>();
-  const updateJob = vi.fn(async () => {});
+  const updateJob = vi.fn(async (_id?: string, _patch?: { inputs?: string[] }) => {});
+  const addJobInputs = vi.fn(async (_id: string, paths: string[]) => ({ accepted: paths, duplicates: 0 }));
 
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
@@ -46,6 +48,7 @@ describe("App file-drop receivers", () => {
     chooseInputs.mockReset().mockResolvedValue([]);
     getQueue.mockReset().mockResolvedValue([]);
     updateJob.mockReset().mockResolvedValue(undefined);
+    addJobInputs.mockReset().mockImplementation(async (_id, paths) => ({ accepted: paths, duplicates: 0 }));
     Object.defineProperty(window, "zipkit", {
       configurable: true,
       value: {
@@ -62,6 +65,7 @@ describe("App file-drop receivers", () => {
         chooseInputs,
         addJob,
         updateJob,
+        addJobInputs,
         reportError: vi.fn(),
       },
     });
@@ -139,10 +143,31 @@ describe("App file-drop receivers", () => {
     const dropped = new File([], "ZIPKIT-DRAG-ME");
     await act(async () => inputs.dispatchEvent(fileEvent("drop", [dropped])));
 
-    expect(updateJob).toHaveBeenCalledWith("job-1", {
-      inputs: ["/tmp/existing.txt", "/tmp/ZIPKIT-DRAG-ME"],
-    });
+    expect(addJobInputs).toHaveBeenCalledWith("job-1", ["/tmp/ZIPKIT-DRAG-ME"]);
     expect(addJob).not.toHaveBeenCalled();
+  });
+
+  it("keeps both overlapping deliveries while queue notifications are held", async () => {
+    let inputs = ["/tmp/existing.txt"];
+    getQueue.mockResolvedValue([{
+      id: "job-1", inputs, entries: [{ path: inputs[0]!, kind: "file" }],
+      options: DEFAULT_OPTIONS, intent: "save", state: "ready",
+    }]);
+    updateJob.mockImplementation(async (_id?: string, patch?: { inputs?: string[] }) => {
+      if (patch?.inputs) inputs = patch.inputs;
+    });
+    window.zipkit.pathForFile = (file) => `/tmp/${file.name}`;
+    window.zipkit.addJobInputs = async (_id, paths) => {
+      const admitted = planInputAdmission(inputs, paths);
+      inputs = [...inputs, ...admitted.accepted];
+      return admitted;
+    };
+    await act(async () => root?.render(<DialogHost><App /></DialogHost>));
+    await act(async () => container.querySelector<HTMLElement>('[data-job-id="job-1"]')!.click());
+    const receiver = container.querySelector<HTMLElement>('[data-drop-receiver="inputs"]')!;
+    await act(async () => receiver.dispatchEvent(fileEvent("drop", [new File([], "A.txt")])));
+    await act(async () => receiver.dispatchEvent(fileEvent("drop", [new File([], "B.txt")])));
+    expect(inputs).toEqual(["/tmp/existing.txt", "/tmp/A.txt", "/tmp/B.txt"]);
   });
 
   it("keeps an unresolved Jobs result through an unrelated successful drop", async () => {

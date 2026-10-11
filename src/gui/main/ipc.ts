@@ -26,6 +26,8 @@ import { languageEnvironment, mainTranslator } from "./i18n.js";
 import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
+import { appAdmission } from "./command-admission.js";
+import { appArchiveEffects, fileResources, type EffectClaim } from "./archive-effects.js";
 
 export function registerIpc(): void {
   ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {
@@ -45,6 +47,7 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:setLayout", async (_event, layout: PaneLayout): Promise<void> => {
     try {
+      if (!appAdmission.accepting()) throw new Error("The app is shutting down");
       await saveLayout(layout);
     } catch (err) {
       log.error("failed to persist layout", { error: errorInfo(err) });
@@ -82,7 +85,13 @@ export function registerIpc(): void {
     "zipkit:verify",
     async (_event, jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> => {
       log.info("verify requested", { jobId, archive, checkMetadata });
+      let claim: EffectClaim | undefined;
       try {
+        if (!appAdmission.accepting()) throw new Error("The app is shutting down");
+        const resources = await fileResources([archive], zip.volume());
+        if (!appAdmission.accepting()) throw new Error("The app is shutting down");
+        claim = appArchiveEffects.claim(resources.map((item) => ({ ...item, mode: "read" as const }))) ?? undefined;
+        if (!claim) throw new Error("Another archive action still owns these files");
         const data = await zip.extract(
           { archive, dryRun: true, checkMetadata },
           { onProgress: startProgressRun(jobId, "verify") },
@@ -92,7 +101,7 @@ export function registerIpc(): void {
       } catch (err) {
         log.error("verify failed", { jobId, archive, error: errorInfo(err) });
         return { ok: false, error: toGuiError(err) };
-      }
+      } finally { claim?.release(); }
     },
   );
 
@@ -142,6 +151,7 @@ export function registerIpc(): void {
       throw new Error("Invalid records list width: it must be a finite number.");
     }
     try {
+      if (!appAdmission.accepting()) throw new Error("The app is shutting down");
       return await saveRecordsListWidth(width);
     } catch (err) {
       log.error("failed to persist layout", { error: errorInfo(err) });

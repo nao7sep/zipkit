@@ -165,7 +165,7 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
     const result = await mocks.deps!.trash(["/a", "/b"], controller.signal);
 
     expect(trashItem).not.toHaveBeenCalled();
-    expect(result).toEqual({
+    expect({ moved: result.moved, failed: result.failed, unconfirmed: result.unconfirmed }).toEqual({
       moved: [],
       failed: [
         { path: "/a", message: "cancelled before Trash" },
@@ -185,7 +185,7 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
       await vi.advanceTimersByTimeAsync(10_000);
       const result = await pending;
 
-      expect(result).toEqual({ moved: [], failed: [], unconfirmed: ["/stuck"] });
+      expect({ moved: result.moved, failed: result.failed, unconfirmed: result.unconfirmed }).toEqual({ moved: [], failed: [], unconfirmed: ["/stuck"] });
     } finally {
       vi.useRealTimers();
     }
@@ -218,7 +218,7 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
     const result = await pending;
 
     expect(trashItem).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({
+    expect({ moved: result.moved, failed: result.failed, unconfirmed: result.unconfirmed }).toEqual({
       moved: [],
       failed: [{ path: "/b", message: "cancelled before Trash" }],
       unconfirmed: ["/a"],
@@ -230,7 +230,7 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
 
     const result = await mocks.deps!.trash(["/a"], new AbortController().signal);
 
-    expect(result).toEqual({ moved: [], failed: [{ path: "/a", message: "permission denied" }], unconfirmed: [] });
+    expect({ moved: result.moved, failed: result.failed, unconfirmed: result.unconfirmed }).toEqual({ moved: [], failed: [{ path: "/a", message: "permission denied" }], unconfirmed: [] });
   });
 
   it("moves every path that resolves before the signal aborts", async () => {
@@ -239,6 +239,6 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
     const result = await mocks.deps!.trash(["/a", "/b"], new AbortController().signal);
 
     expect(trashItem).toHaveBeenCalledTimes(2);
-    expect(result).toEqual({ moved: ["/a", "/b"], failed: [], unconfirmed: [] });
+    expect({ moved: result.moved, failed: result.failed, unconfirmed: result.unconfirmed }).toEqual({ moved: ["/a", "/b"], failed: [], unconfirmed: [] });
   });
 });

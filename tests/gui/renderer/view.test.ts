@@ -401,6 +401,24 @@ const planOf = (entries: Entry[], globals: PlanData["findings"] = []): PlanData 
   ({ entries, findings: [...entries.flatMap((e) => e.findings), ...globals] }) as unknown as PlanData;
 
 describe("planReport", () => {
+  it("uses each link's owning entry without scanning the complete entry list", () => {
+    const entries = Array.from({ length: 1000 }, (_, i) => entry({
+      archivePath: `link-${i}`, type: "file", excluded: i % 2 === 0,
+      findings: [{ rule: "entry.symlink", severity: "warning", path: `link-${i}`, message: "link" }],
+    }));
+    const plan = planOf(entries);
+    let inspections = 0;
+    const find = entries.find.bind(entries);
+    entries.find = ((predicate: (value: Entry, index: number, array: Entry[]) => unknown, thisArg?: unknown) => find((value, index, array) => {
+      inspections++;
+      return predicate.call(thisArg, value, index, array);
+    })) as typeof entries.find;
+    const groups = planReport(plan, en);
+    expect(groups[0]?.rows).toHaveLength(1000);
+    expect(inspections).toBe(0);
+    expect(groups[0]?.rows[0]?.changes).not.toEqual(groups[0]?.rows[1]?.changes);
+  });
+
   it("gives each file one row with every change, grouped by kind, most severe first", () => {
     const plan = planOf([
       entry({
@@ -651,7 +669,7 @@ describe("progressRuns", () => {
     expect(findingKind("entry.symlink", "warning", en)).toBe("Symbolic links");
     expect(findingKind("entry.unsupported", "info", en)).toBe("Special files left out");
     expect(findingKind("extract.crc-fail", "error", en)).toBe("CRC-32 mismatches");
-    expect(findingKind("extract.manifest-mismatch", "error", en)).toBe("Size or CRC-32 mismatches with the manifest");
+    expect(findingKind("extract.manifest-mismatch", "error", en)).toBe("Mismatches with the manifest");
     expect(findingKind("future.rule", "info", en)).toBe("future.rule");
   });
   it("gives every rule the SDK registers, and every verify rule, a label in one form", () => {

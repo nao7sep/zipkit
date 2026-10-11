@@ -14,6 +14,7 @@
  * job in the list.
  */
 
+import type { InputAdmission } from "./input-admission.js";
 import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity, SourceComparison } from "../../sdk/types.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
@@ -135,16 +136,18 @@ export interface ZipKitGuiApi {
   /** Enqueue a job (planned in the background); returns its id. Non-blocking — it
    *  never waits on a running write. */
   addJob(inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string>;
-  /** Change a queued job's options, intent, and/or inputs (re-plans + re-classifies
-   *  on an options/inputs change). */
+  /** Change an editable job's options or intent; plan-affecting options re-plan. */
   updateJob(
     id: string,
-    patch: { options?: GuiOptions; intent?: JobIntent; inputs?: string[] },
+    patch: { options?: GuiOptions; intent?: JobIntent },
   ): Promise<void>;
+  /** Apply inputs against the current job, independent of renderer projections. */
+  addJobInputs(id: string, paths: string[]): Promise<InputAdmission>;
+  removeJobInput(id: string, path: string): Promise<void>;
   /** Remove a queued job (no effect while it is running). */
   removeJob(id: string): Promise<void>;
   /** Create one job's archive now (or retry a failed one); the engine serializes. */
-  runJob(id: string): Promise<void>;
+  runJob(id: string, scope: { intent: JobIntent; inputs: string[] }): Promise<void>;
   /** Trash a finished `save` job's archive and return it to an editable state. */
   removeArchive(id: string): Promise<void>;
   /** Move a finished `save` job's originals to Trash on explicit request. */

@@ -5,7 +5,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
-import type { Job, ZipKitGuiApi } from "../../../src/gui/shared/api";
+import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-engine.js";
+import { createArchiveEffects } from "../../../src/gui/main/archive-effects.js";
+import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
+import { nullLog } from "../../../src/gui/main/log.js";
+import type { Job, JobIntent, PlanData, ZipKitGuiApi } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 
@@ -39,6 +43,8 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     setLayout: vi.fn(async () => {}),
     addJob: vi.fn(async () => "new"),
     updateJob: vi.fn(async () => {}),
+    addJobInputs: vi.fn(async (_id, paths) => ({ accepted: paths, duplicates: 0 })),
+    removeJobInput: vi.fn(async () => {}),
     removeJob: vi.fn(async () => {}),
     runJob: vi.fn(async () => {}),
     removeArchive: vi.fn(async () => {}),
@@ -346,5 +352,127 @@ describe("the Help menu item", () => {
     // The footer's Close, not the title bar's close control.
     fireEvent.click(within(dialog).getByText("Close", { selector: "button" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Help" })).toBeNull());
+  });
+});
+
+describe("mounted run consent across queue projection changes", () => {
+  const original = "/sources/original.txt";
+  const added = "/sources/later.txt";
+
+  function ownedQueue(intent: JobIntent) {
+    let publish: ((jobs: Job[]) => void) | undefined;
+    let withholdProjection = false;
+    const deps: EngineDeps = {
+      admission: new CommandAdmission(),
+      effects: createArchiveEffects(),
+      resources: vi.fn(async (paths: string[]) => paths.map((location) => ({ location, identity: location }))),
+      plan: vi.fn(async (): Promise<PlanData> => ({
+        mode: "plan",
+        output: "/out/consent.zip",
+        log: "",
+        writable: true,
+        summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false },
+        findings: [],
+        entries: [],
+      })),
+      write: vi.fn(async () => 123),
+      verify: vi.fn(async () => true),
+      recheck: vi.fn(async () => ({ matches: true, added: [], missing: [], changed: [], unlisted: [] })),
+      classify: vi.fn(async (paths: string[]) => paths.map((path) => ({ path, kind: "file" as const }))),
+      trash: vi.fn(async (paths) => ({ moved: paths, failed: [], unconfirmed: [] })),
+      outputInsideInputs: vi.fn(async () => false),
+      emit: vi.fn((jobs) => { if (!withholdProjection) publish?.(jobs); }),
+      progress: vi.fn(() => vi.fn()),
+      newId: vi.fn(() => "consent-job"),
+      log: nullLog,
+    };
+    const engine = createQueueEngine(deps);
+    const bridge = api({
+      getQueue: vi.fn(async () => engine.snapshot()),
+      getPlan: vi.fn(async (id) => engine.getPlan(id)),
+      onQueue: vi.fn((callback) => {
+        publish = callback;
+        return () => { if (publish === callback) publish = undefined; };
+      }),
+      updateJob: vi.fn(async (id, patch) => {
+        // Main has accepted the intent before its pushed projection reaches the window.
+        if (patch.intent !== undefined) withholdProjection = true;
+        engine.update(id, patch);
+      }),
+      addJobInputs: vi.fn(async (id, paths) => engine.addInputs(id, paths)),
+      runJob: vi.fn(async (id, scope) => engine.run(id, scope)),
+    });
+    const id = engine.add([original], DEFAULT_OPTIONS, intent);
+    return { engine, deps, bridge, id };
+  }
+
+  it.each([
+    { trigger: "Create button", context: "run job" },
+    { trigger: "Cmd+Enter", context: "run selected job" },
+  ])("rejects the old save scope from $trigger after main accepts a destructive intent", async ({ trigger, context }) => {
+    const { engine, deps, bridge, id } = ownedQueue("save");
+    let mounted: ReturnType<typeof renderApp> | undefined;
+    try {
+      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      mounted = renderApp(bridge);
+      fireEvent.click(await screen.findByRole("option"));
+      const action = await screen.findByRole("combobox", { name: "Action" });
+      fireEvent.change(action, { target: { value: "archive-and-trash" } });
+      await waitFor(() => expect(bridge.updateJob).toHaveBeenCalledWith(id, { intent: "archive-and-trash" }));
+      expect(engine.snapshot()[0]?.intent).toBe("archive-and-trash");
+      expect((action as HTMLSelectElement).value).toBe("save");
+
+      if (trigger === "Create button") fireEvent.click(screen.getByRole("button", { name: "Create archive" }));
+      else fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+
+      const alert = await screen.findByRole("alert");
+      expect(bridge.runJob).toHaveBeenCalledExactlyOnceWith(id, { intent: "save", inputs: [original] });
+      expect(alert.textContent).toContain("Archive creation could not start. The job is unchanged; try again.");
+      expect(alert.textContent).not.toContain("The job changed since this action was confirmed");
+      expect(bridge.reportError).toHaveBeenCalledWith(context, expect.objectContaining({ message: "The job changed since this action was confirmed" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(deps.write).not.toHaveBeenCalled();
+      expect(deps.trash).not.toHaveBeenCalled();
+    } finally {
+      mounted?.unmount();
+      await engine.shutdown();
+    }
+  });
+
+  it("rejects the captured destructive scope when an in-flight input picker adds a source during confirmation", async () => {
+    const { engine, deps, bridge, id } = ownedQueue("archive-and-trash");
+    let releasePicker!: (paths: string[]) => void;
+    vi.mocked(bridge.chooseInputs).mockReturnValueOnce(new Promise<string[]>((resolve) => { releasePicker = resolve; }));
+    let mounted: ReturnType<typeof renderApp> | undefined;
+    try {
+      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      mounted = renderApp(bridge);
+      fireEvent.click(await screen.findByRole("option"));
+      fireEvent.click(within(screen.getByText("Inputs").parentElement!).getByRole("button", { name: "Add" }));
+      expect(bridge.chooseInputs).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole("button", { name: "Create archive" }));
+      const dialog = await screen.findByRole("dialog", { name: "Create archive and move originals to Trash?" });
+      expect(dialog.textContent).toContain("the 1 original item will be moved");
+      expect(bridge.runJob).not.toHaveBeenCalled();
+
+      await act(async () => releasePicker([added]));
+      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(bridge.addJobInputs).toHaveBeenCalledExactlyOnceWith(id, [added]);
+      expect(engine.snapshot()[0]?.inputs).toEqual([original, added]);
+      expect(dialog.textContent).toContain("the 1 original item will be moved");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create and move to Trash" }));
+
+      const alert = await screen.findByRole("alert");
+      expect(bridge.runJob).toHaveBeenCalledExactlyOnceWith(id, { intent: "archive-and-trash", inputs: [original] });
+      expect(alert.textContent).toContain("Archive creation could not start. The job is unchanged; try again.");
+      expect(alert.textContent).not.toContain("The job changed since this action was confirmed");
+      expect(bridge.reportError).toHaveBeenCalledWith("run job", expect.objectContaining({ message: "The job changed since this action was confirmed" }));
+      expect(deps.write).not.toHaveBeenCalled();
+      expect(deps.trash).not.toHaveBeenCalled();
+    } finally {
+      releasePicker([]);
+      mounted?.unmount();
+      await engine.shutdown();
+    }
   });
 });

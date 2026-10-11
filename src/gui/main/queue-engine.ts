@@ -17,6 +17,7 @@
  * each job its own Progress, headed by action.
  */
 
+import { planInputAdmission, type InputAdmission } from "../shared/input-admission.js";
 import {
   isEditable,
   manifestRequiredButMissing,
@@ -27,20 +28,26 @@ import {
   type SavedJob,
 } from "../shared/queue.js";
 import type { JobAction, LogEvent, PlanData, SourceComparison } from "../shared/api.js";
-import { planAffectingChanged, type GuiOptions } from "../shared/spec.js";
+import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
 import { describeOriginalsTrash, trashConfirmed, type TrashResult } from "./trash-outcome.js";
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
+import type { CommandAdmission } from "./command-admission.js";
+import { createArchiveEffects, type EffectClaim, type FileResource } from "./archive-effects.js";
 
 export type { TrashResult } from "./trash-outcome.js";
 
 export interface EngineDeps {
+  admission: CommandAdmission;
+  effects: ReturnType<typeof createArchiveEffects>;
+  resources(paths: string[], signal: AbortSignal): Promise<FileResource[]>;
   /** Dry-run plan for the given inputs/options; progress events go to `onProgress`. */
   plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count (or null if unknown). */
-  write(plan: PlanData, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<number | null>;
+  write(plan: PlanData, signal: AbortSignal, onProgress: (e: LogEvent) => void,
+    onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number | null>;
   /** Verify a written archive (CRC + metadata); resolves to the SDK's reportOk. */
   verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<boolean>;
   /** Re-scan the inputs under the job's options and compare them with the
@@ -74,14 +81,17 @@ export interface EngineDeps {
   log: AppLog;
 }
 
+export interface RunScope { intent: JobIntent; inputs: string[] }
 export interface QueueEngine {
   snapshot(): Job[];
   add(inputs: string[], options: GuiOptions, intent: JobIntent): string;
-  update(id: string, patch: { options?: GuiOptions; intent?: JobIntent; inputs?: string[] }): void;
+  update(id: string, patch: { options?: GuiOptions; intent?: JobIntent }): void;
+  addInputs(id: string, paths: string[]): InputAdmission;
+  removeInput(id: string, path: string): void;
   remove(id: string): void;
   cancel(id: string): void;
   /** Request that a specific job's archive be created (or a failed one retried). */
-  run(id: string): void;
+  run(id: string, scope: RunScope): void;
   /** Trash a finished `save` job's archive and return it to an editable state. */
   removeArchive(id: string): void;
   /** Move a finished `save` job's originals to Trash on explicit, deliberate request. */
@@ -96,6 +106,7 @@ export interface QueueEngine {
    *  wait for the writer's own `abort()` to remove its temp file. Unbounded here;
    *  the quit sequence bounds its wait on this. */
   shutdown(): Promise<void>;
+  resume(): void;
 }
 
 interface Rec {
@@ -105,6 +116,9 @@ interface Rec {
   aborter: AbortController | null;
   /** The archive path from the most recent write that actually committed. */
   publishedOutput: string | null;
+  publication: FileResource | null;
+  /** A Create accepted for the current plan; only its completion consumes it. */
+  runAfterPlan: boolean;
 }
 
 /** The SDK error code for a thrown value, if it is a ZipKitError (carries both a
@@ -227,6 +241,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   const order: string[] = [];
   /** Ids explicitly requested to run, in request order. */
   const pending: string[] = [];
+  const stoppedPlanners = new Set<string>();
   let draining = false;
 
   function snapshot(): Job[] {
@@ -241,6 +256,25 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   /** The commands on finished jobs that are still moving originals to Trash,
    *  so quit can wait for them as it waits for a run. */
   const actions = new Set<Promise<void>>();
+  async function claimFiles(read: string[], change: string[], signal: AbortSignal): Promise<EffectClaim> {
+    const [reads, changes] = await Promise.all([deps.resources(read, signal), deps.resources(change, signal)]);
+    signal.throwIfAborted();
+    if (!deps.admission.accepting()) throw new Error("The app is shutting down");
+    const claim = deps.effects.claim([
+      ...reads.map((item) => ({ ...item, mode: "read" as const })),
+      ...changes.map((item) => ({ ...item, mode: "change" as const })),
+    ]);
+    if (!claim) throw new Error("Another archive action still owns these files");
+    return claim;
+  }
+  async function publicationCurrent(rec: Rec, output: string, signal: AbortSignal): Promise<boolean> {
+    const current = (await deps.resources([output], signal))[0];
+    return rec.publication?.identity !== null && rec.publication !== null &&
+      current?.identity === rec.publication.identity;
+  }
+  function retainTrash(claim: EffectClaim, result: TrashResult): void {
+    if (result.unconfirmed.length > 0) claim.release(result.settlement ?? null);
+  }
 
   /** Every check before the originals go to Trash, in order: the archive is
    *  not inside them, it verifies against its manifest, and a fresh scan of
@@ -254,6 +288,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     moved: string[] = [],
   ): Promise<TrashRefusal | null> {
     const id = rec.job.id;
+    if (!(await publicationCurrent(rec, output, signal))) return { reason: "verify-failed" };
     try {
       if (await deps.outputInsideInputs(output, inputs, signal)) {
         deps.log.error("trash blocked: archive inside source", { jobId: id, output });
@@ -305,6 +340,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
    *  label, the input list, and the originals-still-present check stay accurate.
    *  Best-effort: a classify failure leaves the prior entries rather than crashing. */
   async function classifyInputs(id: string): Promise<void> {
+    if (!deps.admission.accepting()) return;
     const rec = recs.get(id);
     if (!rec) return;
     const inputs = rec.job.inputs;
@@ -312,7 +348,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const entries = await deps.classify(inputs);
       const cur = recs.get(id);
       // Drop a stale result if the inputs changed while we were classifying.
-      if (!cur || cur.job.inputs !== inputs) return;
+      if (!deps.admission.accepting() || !cur || cur.job.inputs !== inputs) return;
       set(cur, { entries });
       emit();
     } catch (err) {
@@ -321,6 +357,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   }
 
   async function planJob(id: string): Promise<void> {
+    if (!deps.admission.accepting()) return;
     const rec = recs.get(id);
     if (!rec) return;
     // Supersede any in-flight plan for this job (rapid input/option edits can stack
@@ -381,7 +418,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec: Rec,
     signal: AbortSignal,
     onProgress: (e: LogEvent) => void,
-  ): Promise<{ output: string; bytes: number | null } | null> {
+  ): Promise<{ output: string; bytes: number | null; claim: EffectClaim } | null> {
     const id = rec.job.id;
     // Re-plan fresh: the world may have changed since this job was enqueued.
     const reviewed = rec.plan;
@@ -419,18 +456,31 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     }
 
     let bytes: number | null;
+    let settlement: Promise<void> | undefined;
+    let claim: EffectClaim;
+    try { claim = await claimFiles(rec.job.intent === "save" ? rec.job.inputs : [],
+      rec.job.intent === "save" ? [plan.output] : [plan.output, ...rec.job.inputs], signal); }
+    catch (error) {
+      set(rec, { state: "failed", message: message("job.writeFailed") });
+      deps.log.error("job files could not be reserved", { jobId: id, error: errorInfo(error) });
+      return null;
+    }
     rec.publishedOutput = null;
+    rec.publication = null;
     set(rec, { archiveWritten: false });
     try {
-      bytes = await deps.write(plan, signal, onProgress);
+      bytes = await deps.write(plan, signal, onProgress, (physical) => { settlement = physical; });
     } catch (err) {
+      claim.release(settlement ?? (stalledWhileCommitting(err) ? (err as { settlement?: Promise<void> }).settlement ?? null : undefined));
       set(rec, { state: "failed", message: writeFailureMessage(err, plan.output) });
       deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
       return null;
     }
     rec.publishedOutput = plan.output;
     set(rec, { archiveWritten: true });
-    return { output: plan.output, bytes };
+    try { rec.publication = (await deps.resources([plan.output], signal))[0] ?? null; }
+    catch (error) { deps.log.warn("archive publication identity unavailable", { jobId: id, error: errorInfo(error) }); }
+    return { output: plan.output, bytes, claim };
   }
 
   async function runJob(id: string): Promise<void> {
@@ -449,11 +499,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       jobId: id,
       intent: rec.job.intent,
     });
+    let claim: EffectClaim | undefined;
     try {
       let output: string;
       let inputs = rec.job.inputs;
       if (resumeFrom) {
         output = resumeFrom;
+        claim = await claimFiles([output], rec.job.inputs, signal);
         let entries: InputEntry[];
         try {
           entries = await deps.classify(rec.job.inputs);
@@ -467,6 +519,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       } else {
         const written = await writeStage(rec, signal, onProgress);
         if (!written) return;
+        claim = written.claim;
         output = written.output;
         if (rec.job.intent === "save") {
           set(rec, { state: "done", message: message("job.saved", { count: written.bytes ?? 0 }) });
@@ -489,6 +542,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       let trashResult: TrashResult;
       try {
         trashResult = await deps.trash(inputs, signal);
+        retainTrash(claim!, trashResult);
       } catch (err) {
         set(rec, { state: "failed", message: message("job.trashFailed") });
         deps.log.error("job Trash failed after verify", { jobId: id, error: errorInfo(err) });
@@ -505,7 +559,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
       set(rec, { state: "done", message: message("job.archivedAndTrashed", { count: inputs.length }) });
       deps.log.info("job archived and trashed", { jobId: id, output, trashed: inputs.length });
+    } catch (error) {
+      set(rec, { state: "failed", message: failureMessage(error, "job.trashFailed") });
+      deps.log.error("job archive action failed", { jobId: id, error: errorInfo(error) });
     } finally {
+      claim?.release();
       rec.aborter = null;
       emit();
     }
@@ -582,20 +640,28 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
    *  be dropped by `run`'s state guard and silently do nothing. */
   function maybeRunPending(id: string): void {
     const rec = recs.get(id);
-    if (!rec || !pending.includes(id)) return;
+    if (!rec?.runAfterPlan) return;
+    rec.runAfterPlan = false;
     if (rec.job.state === "ready" || rec.job.state === "failed") {
+      pending.push(id);
       startOrQueue(rec);
-    } else {
-      const p = pending.indexOf(id);
-      if (p >= 0) pending.splice(p, 1);
     }
+  }
+
+  function changeInputs(rec: Rec, inputs: string[]): void {
+    rec.runAfterPlan = false;
+    set(rec, { inputs });
+    deps.log.info("job inputs changed", { jobId: rec.job.id, inputs: inputs.length });
+    void classifyInputs(rec.job.id);
+    void planJob(rec.job.id);
   }
 
   return {
     snapshot,
     add(inputs, options, intent) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const id = deps.newId();
-      recs.set(id, { job: { id, inputs, options, intent, state: "planning" }, plan: null, aborter: null, publishedOutput: null });
+      recs.set(id, { job: { id, inputs, options, intent, state: "planning" }, plan: null, aborter: null, publishedOutput: null, publication: null, runAfterPlan: false });
       order.push(id);
       deps.log.info("job added", { jobId: id, inputs: inputs.length, intent });
       emit();
@@ -604,6 +670,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return id;
     },
     update(id, patch) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
       // No edits to a job the shared rule locks: `running` (in flight), `queued`
       // (committed to run — editing it must go through cancel first, which un-queues
@@ -613,16 +680,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // debounce can still arrive after the job finishes; accepting it would drop
       // the published output the Trash command needs and re-plan the result away.
       if (!rec || !isEditable(rec.job)) return;
+      // A Create accepted while planning describes the settings at that click.
+      // Later edits must not turn a save request into an unconfirmed Trash run.
+      if ((patch.intent !== undefined && patch.intent !== rec.job.intent) ||
+          (patch.options !== undefined && !optionsEqual(patch.options, rec.job.options))) rec.runAfterPlan = false;
       let replan = false;
       if (patch.intent !== undefined) {
         set(rec, { intent: patch.intent });
         deps.log.info("job intent set", { jobId: id, intent: patch.intent });
-      }
-      if (patch.inputs !== undefined) {
-        set(rec, { inputs: patch.inputs });
-        deps.log.info("job inputs changed", { jobId: id, inputs: patch.inputs.length });
-        void classifyInputs(id);
-        replan = true;
       }
       if (patch.options !== undefined) {
         // Only a change to a plan-affecting option warrants a fresh dry run;
@@ -635,15 +700,26 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // A re-plan emits on its own; a store-only change (intent / write-only
       // option) still must emit so the renderer sees the new state.
       if (replan) {
-        // The plan this job may have been enqueued under is now stale, so drop it
-        // from the run queue: an edited job is never auto-run under an old plan;
-        // the user re-requests the run once the fresh plan lands.
-        const p = pending.indexOf(id);
-        if (p >= 0) pending.splice(p, 1);
         void planJob(id);
       } else emit();
     },
+    addInputs(id, paths) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
+      const rec = recs.get(id);
+      if (!rec || !isEditable(rec.job)) return { accepted: [], duplicates: 0 };
+      const admission = planInputAdmission(rec.job.inputs, paths);
+      if (admission.accepted.length > 0) changeInputs(rec, [...rec.job.inputs, ...admission.accepted]);
+      return admission;
+    },
+    removeInput(id, path) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
+      const rec = recs.get(id);
+      if (!rec || !isEditable(rec.job) || rec.job.inputs.length <= 1 || !rec.job.inputs.includes(path)) return;
+      const inputs = rec.job.inputs.filter((input) => input !== path);
+      if (inputs.length > 0) changeInputs(rec, inputs);
+    },
     remove(id) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
       if (!rec || rec.job.state === "running" || rec.job.trashing) return;
       recs.delete(id);
@@ -657,6 +733,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     cancel(id) {
       const rec = recs.get(id);
       if (!rec) return;
+      rec.runAfterPlan = false;
       // A `queued` job is only waiting its turn — it has no in-flight work to
       // abort. Drop it from the run queue and re-plan, so it returns to an
       // editable, freshly-evaluated state (the world may have changed while it
@@ -672,8 +749,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.info("job cancel requested", { jobId: id, state: rec.job.state });
       rec.aborter.abort();
     },
-    run(id) {
+    run(id, scope) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
+      if (rec && (!scope || scope.intent !== rec.job.intent ||
+          scope.inputs.length !== rec.job.inputs.length || scope.inputs.some((input, i) => input !== rec.job.inputs[i]))) {
+        throw new Error("The job changed since this action was confirmed");
+      }
       if (!rec) return;
       const s = rec.job.state;
       // Accept a request for a runnable job (ready / retryable / reviewed after a
@@ -684,13 +766,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // A failed job whose archive is being moved to Trash waits for that to end.
       if (rec.job.trashing) return;
       if (refusesRun(rec)) return;
-      if (!pending.includes(id)) pending.push(id);
+      if (s === "planning") rec.runAfterPlan = true;
+      else if (!pending.includes(id)) pending.push(id);
       deps.log.info("job run requested", { jobId: id, state: s });
       // A planning job waits for its plan; only a runnable one starts (or queues
       // behind a running job, so the wait is visible rather than a silent `ready`).
       if (s !== "planning") startOrQueue(rec);
     },
     removeArchive(id) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
       if (!rec || !rec.publishedOutput) return;
       // Removable only when trashing the .zip cannot lose data: a done `save` job
@@ -711,10 +795,18 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.info("remove archive requested", { jobId: id, output });
       const work = (async () => {
         let removed = false;
+        let claim: EffectClaim | undefined;
         try {
+          claim = await claimFiles([], [output], aborter.signal);
+          if (!(await publicationCurrent(rec, output, aborter.signal))) {
+            set(rec, { actionResult: { severity: "error", message: message("action.archiveTrashFailed") } });
+            deps.log.warn("archive removal refused: publication was replaced", { jobId: id, output });
+            return;
+          }
           // Cancel, and quit, stop the wait, not the OS call: an archive the
           // wait was cut short on is reported as possibly reaching Trash.
           const result = await deps.trash([output], aborter.signal);
+          retainTrash(claim, result);
           if (result.unconfirmed.length > 0) {
             set(rec, {
               actionResult: {
@@ -742,13 +834,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             },
           });
           deps.log.error("remove archive failed", { jobId: id, error: errorInfo(err) });
-        }
-        if (rec.aborter === aborter) rec.aborter = null;
-        set(rec, { trashing: false });
-        if (!removed) {
+        } finally {
+          claim?.release();
+          if (rec.aborter === aborter) rec.aborter = null;
+          set(rec, { trashing: false });
           emit();
-          return;
         }
+        if (!removed) return;
         deps.log.info("archive removed", { jobId: id, output });
         // Back to an editable, re-planned job so options can be adjusted and the
         // archive created again.
@@ -761,6 +853,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           archiveWritten: false,
         });
         rec.publishedOutput = null;
+        rec.publication = null;
         emit();
         void planJob(id);
       })();
@@ -768,6 +861,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       void work.finally(() => actions.delete(work));
     },
     trashOriginals(id) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
       // One in flight per job: the claim is taken here, before the first await.
       if (!rec || rec.job.state !== "done" || rec.job.intent !== "save" || rec.job.trashing) return;
@@ -790,10 +884,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.info("trash originals requested", { jobId: id, count: inputs.length });
       const work = (async () => {
         let result: NonNullable<Job["actionResult"]>;
+        let claim: EffectClaim | undefined;
         try {
           if (!output) {
             result = { severity: "error", message: message("action.noArchive") };
           } else {
+            claim = await claimFiles([output], inputs, aborter.signal);
             const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id, "trash"));
             if (aborter.signal.aborted) {
               result = { severity: "warning", message: message("action.originalsTrashCancelled") };
@@ -802,6 +898,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
               result = { severity: "error", message: refusalMessage(refusal, "action.archiveInsideOriginal") };
             } else {
               const trashResult = await deps.trash(inputs, aborter.signal);
+              retainTrash(claim, trashResult);
               if (trashConfirmed(trashResult)) {
                 result = { severity: "info", message: message("action.originalsTrashed", { count: inputs.length }) };
                 deps.log.info("originals trashed", { jobId: id, count: inputs.length });
@@ -814,7 +911,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         } catch (err) {
           result = { severity: "error", message: message("action.originalsTrashFailed") };
           deps.log.error("trash originals failed", { jobId: id, error: errorInfo(err) });
-        }
+        } finally { claim?.release(); }
         if (rec.aborter === aborter) rec.aborter = null;
         set(rec, { trashing: false, actionResult: result });
         emit();
@@ -829,7 +926,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     },
     restore(saved) {
       for (const s of saved) {
-        recs.set(s.id, { job: { ...s, state: "planning" }, plan: null, aborter: null, publishedOutput: null });
+        recs.set(s.id, { job: { ...s, state: "planning" }, plan: null, aborter: null, publishedOutput: null, publication: null, runAfterPlan: false });
         order.push(s.id);
       }
       if (saved.length > 0) emit();
@@ -843,13 +940,25 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return false;
     },
     async shutdown() {
+      deps.admission.close();
       // Stop draining any job still only `queued`: quit takes whatever the
       // running job leaves behind and goes no further.
       pending.length = 0;
       for (const rec of recs.values()) {
-        if (rec.job.state === "running" || rec.job.trashing) rec.aborter?.abort();
+        rec.runAfterPlan = false;
+        if (rec.job.state === "planning") stoppedPlanners.add(rec.job.id);
+        if (rec.job.state === "queued") set(rec, { state: "ready" });
+        rec.aborter?.abort();
       }
+      emit();
       await Promise.allSettled([...(currentRun ? [currentRun] : []), ...actions]);
+    },
+    resume() {
+      if (deps.admission.accepting()) return;
+      deps.admission.reopen();
+      for (const id of stoppedPlanners) void planJob(id);
+      stoppedPlanners.clear();
+      emit();
     },
   };
 }

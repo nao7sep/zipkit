@@ -50,7 +50,7 @@ import {
   resolveDroppedFiles,
   summarizeDroppedFiles,
 } from "./externalDropBoundary";
-import { planInputAdmission } from "./inputAdmission";
+import { planInputAdmission } from "../../shared/input-admission";
 import { hasMod, isEditableTarget, shadowsMacTextBinding } from "./shortcuts";
 import { useI18n, type Translator } from "./i18n/I18nContext";
 import { message, sentences } from "../../shared/i18n/translate";
@@ -420,7 +420,7 @@ export function App() {
     const ask = runConfirmation(selected, t);
     if (ask && !(await confirm(ask))) return;
     try {
-      await window.zipkit.runJob(selected.id);
+      await window.zipkit.runJob(selected.id, { intent: selected.intent, inputs: [...selected.inputs] });
       setJobResults((current) => { const next = { ...current }; delete next[selected.id]; return next; });
     } catch (error) {
       window.zipkit.reportError("run selected job", reportableError(error));
@@ -823,27 +823,19 @@ function JobView({
   // Input CRUD: add appends paths (from the picker or a drop), skipping ones
   // already in the job; remove drops one. Both re-plan + re-classify in the engine.
   async function addPaths(paths: string[]): Promise<ReceiverCommit> {
-    const admission = planInputAdmission(job.inputs, paths);
-    if (admission.accepted.length === 0) {
-      return {
-        changed: false,
-        accepted: 0,
-        result: admission.duplicates > 0
-          ? {
-              message: message("result.alreadyInJob", { count: admission.duplicates }),
-              severity: "information",
-            }
-          : null,
-      };
-    }
+    let admission;
     try {
-      await window.zipkit.updateJob(job.id, { inputs: [...job.inputs, ...admission.accepted] });
+      admission = await window.zipkit.addJobInputs(job.id, paths);
     } catch (error) {
       window.zipkit.reportError("add inputs to job", reportableError(error));
+      return { changed: false, accepted: 0, result: { message: message("result.addInputsFailed"), severity: "error" } };
+    }
+    if (admission.accepted.length === 0) {
       return {
-        changed: false,
-        accepted: 0,
-        result: { message: message("result.addInputsFailed"), severity: "error" },
+        changed: false, accepted: 0,
+        result: admission.duplicates > 0
+          ? { message: message("result.alreadyInJob", { count: admission.duplicates }), severity: "information" }
+          : null,
       };
     }
     return {
@@ -896,9 +888,8 @@ function JobView({
     };
   }
   function removeInput(path: string) {
-    if (job.inputs.length <= 1) return; // a job must archive something
     const attempt = beginOperation();
-    void window.zipkit.updateJob(job.id, { inputs: job.inputs.filter((p) => p !== path) })
+    void window.zipkit.removeJobInput(job.id, path)
       .then(() => finishOperation(attempt))
       .catch((error) => failOperation(attempt, "remove input from job", "result.removeInputFailed", error));
   }
@@ -913,7 +904,7 @@ function JobView({
         const ask = runConfirmation(job, t);
         if (ask && !(await confirm(ask))) break;
         const attempt = beginOperation();
-        try { await window.zipkit.runJob(job.id); finishOperation(attempt); }
+        try { await window.zipkit.runJob(job.id, { intent: job.intent, inputs: [...job.inputs] }); finishOperation(attempt); }
         catch (error) { failOperation(attempt, "run job", "result.runFailed", error); }
         break;
       }

@@ -27,6 +27,7 @@ function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
     onStepFailed: vi.fn(),
     exit: vi.fn(),
     forceExit: vi.fn(),
+    nativeWorkPending: () => false,
     ...overrides,
   };
 }
@@ -354,6 +355,7 @@ describe("endSessionNow (the end of a Windows session)", () => {
       onStepFailed: vi.fn(),
       exit: vi.fn(),
       forceExit: vi.fn(),
+    nativeWorkPending: () => false,
       ...overrides,
     };
   }

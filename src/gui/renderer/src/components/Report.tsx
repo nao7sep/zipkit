@@ -37,12 +37,12 @@ export function Report({
   verify: VerifyResult | null;
 }) {
   const t = useI18n();
-  const summary = reportSummary(job, plan, t);
+  const groups = plan ? planReport(plan, t) : [];
+  const summary = reportSummary(job, plan, t, groups);
   // GUI advisories about the inputs (e.g. re-zipping a .zip) lead the log — they
   // are relevant before any plan exists, so they keep the report from reading
   // "No report yet" when there's genuinely something to say.
   const advisories = jobAdvisories(job, t);
-  const groups = plan ? planReport(plan, t) : [];
 
   const noReport = !plan && !summary && advisories.length === 0;
 

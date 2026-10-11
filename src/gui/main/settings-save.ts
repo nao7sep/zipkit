@@ -10,9 +10,11 @@ import { applyLanguagePreference, mainTranslator } from "./i18n.js";
 import { getMainWindow, log } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import { showAppMessageDialog } from "./startup-dialog.js";
+import { appAdmission } from "./command-admission.js";
 
 let submitted: GuiSettings | undefined;
 let running: Promise<GuiSettings> | undefined;
+let runningPacket: GuiSettings | undefined;
 
 export function settingsSavePending(): boolean { return running !== undefined; }
 
@@ -24,8 +26,11 @@ export function discardSettingsSubmission(): void {
 }
 
 export function submitSettings(draft: GuiSettings): Promise<GuiSettings> {
-  if (running) return running;
-  submitted = checkedSettings(draft, log);
+  if (!appAdmission.accepting()) return Promise.reject(new Error("The app is shutting down"));
+  const packet = checkedSettings(draft, log);
+  if (running) return Object.keys(changedSettings(runningPacket!, packet)).length === 0
+    ? running : Promise.reject(new Error("Another Settings save is still pending"));
+  submitted = packet;
   return publish();
 }
 
@@ -36,6 +41,7 @@ export async function settleSettingsSave(): Promise<void> {
 
 function publish(): Promise<GuiSettings> {
   const packet = submitted!;
+  runningPacket = packet;
   const work = (async () => {
     let saved: GuiSettings;
     try { saved = await saveSettings(packet, log); }
@@ -63,7 +69,7 @@ function publish(): Promise<GuiSettings> {
     }
     return saved;
   })();
-  running = work.finally(() => { running = undefined; });
+  running = work.finally(() => { running = undefined; runningPacket = undefined; });
   return running;
 }
 

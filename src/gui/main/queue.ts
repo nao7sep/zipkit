@@ -18,6 +18,8 @@ import { resolveOutputPath } from "./output.js";
 import { classifyPaths } from "./inputs.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
 import { outputInsideInputs } from "./safety.js";
+import { appAdmission } from "./command-admission.js";
+import { appArchiveEffects, fileResources } from "./archive-effects.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingJobs: SavedJob[] | undefined;
@@ -32,8 +34,10 @@ const TRASH_TIMEOUT_MS = 10_000;
  *  offers no way to do that — so a path the job stops waiting on resolves as
  *  `unconfirmed`: its move may still complete afterward, and it must never be
  *  reported as kept. Rejects only when the OS call itself fails. */
-function trashPath(path: string, signal: AbortSignal): Promise<"moved" | "unconfirmed"> {
+function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved" | "unconfirmed"; settlement: Promise<void> }> {
   return new Promise((resolve, reject) => {
+    const physical = shell.trashItem(path);
+    const settlement = physical.then(() => {}, () => {});
     let settled = false;
     const finish = (fn: () => void): void => {
       if (settled) return;
@@ -42,17 +46,20 @@ function trashPath(path: string, signal: AbortSignal): Promise<"moved" | "unconf
       signal.removeEventListener("abort", onAbort);
       fn();
     };
-    const timer = setTimeout(() => finish(() => resolve("unconfirmed")), TRASH_TIMEOUT_MS);
-    const onAbort = (): void => finish(() => resolve("unconfirmed"));
+    const timer = setTimeout(() => finish(() => resolve({ outcome: "unconfirmed", settlement })), TRASH_TIMEOUT_MS);
+    const onAbort = (): void => finish(() => resolve({ outcome: "unconfirmed", settlement }));
     signal.addEventListener("abort", onAbort);
-    shell.trashItem(path).then(
-      () => finish(() => resolve("moved")),
+    physical.then(
+      () => finish(() => resolve({ outcome: "moved", settlement })),
       (err: unknown) => finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
     );
   });
 }
 
 const engine = createQueueEngine({
+  admission: appAdmission,
+  effects: appArchiveEffects,
+  resources: (paths, signal) => fileResources(paths, zip.volume(signal)),
   // Compose the output path from the GUI's directory + file name at the boundary
   // (absolute, or empty so the SDK infers beside the input — never resolved
   // against the unpredictable working directory). The engine supplies a
@@ -63,7 +70,8 @@ const engine = createQueueEngine({
     if (output) spec.output = output;
     return zip.plan(spec, { signal, onProgress });
   },
-  write: async (plan, signal, onProgress) => (await zip.write(plan, { signal, onProgress })).bytes,
+  write: async (plan, signal, onProgress, onPhysicalSettlement) =>
+    (await zip.write(plan, { signal, onProgress, onPhysicalSettlement })).bytes,
   verify: async (output, signal, onProgress) =>
     (
       await zip.extract(
@@ -81,18 +89,22 @@ const engine = createQueueEngine({
   classify: (paths) => classifyPaths(paths, zip.volume()),
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };
+    const settlements: Promise<void>[] = [];
     for (const p of paths) {
       if (signal.aborted) {
         result.failed.push({ path: p, message: "cancelled before Trash" });
         continue;
       }
       try {
-        if ((await trashPath(p, signal)) === "moved") result.moved.push(p);
+        const moved = await trashPath(p, signal);
+        settlements.push(moved.settlement);
+        if (moved.outcome === "moved") result.moved.push(p);
         else result.unconfirmed.push(p);
       } catch (err) {
         result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }
+    result.settlement = Promise.all(settlements).then(() => {});
     return result;
   },
   outputInsideInputs: (output, inputs, signal) => outputInsideInputs(output, inputs, zip.volume(signal)),
@@ -182,6 +194,7 @@ export function hasRunningJob(): boolean {
 export async function cancelRunningJobAndWait(): Promise<void> {
   await engine.shutdown();
 }
+export function resumeQueueAfterCancelledQuit(): void { engine.resume(); }
 
 export function registerQueueIpc(): void {
   ipcMain.handle("zipkit:getQueue", async (): Promise<Job[]> => engine.snapshot());
@@ -197,13 +210,16 @@ export function registerQueueIpc(): void {
     async (
       _e,
       id: string,
-      patch: { options?: GuiOptions; intent?: JobIntent; inputs?: string[] },
+      patch: { options?: GuiOptions; intent?: JobIntent },
     ): Promise<void> => engine.update(id, patch),
   );
 
+  ipcMain.handle("zipkit:addJobInputs", async (_e, id: string, paths: string[]) => engine.addInputs(id, paths));
+  ipcMain.handle("zipkit:removeJobInput", async (_e, id: string, path: string): Promise<void> => engine.removeInput(id, path));
+
   ipcMain.handle("zipkit:removeJob", async (_e, id: string): Promise<void> => engine.remove(id));
 
-  ipcMain.handle("zipkit:runJob", async (_e, id: string): Promise<void> => engine.run(id));
+  ipcMain.handle("zipkit:runJob", async (_e, id: string, scope: { intent: JobIntent; inputs: string[] }): Promise<void> => engine.run(id, scope));
 
   ipcMain.handle("zipkit:removeArchive", async (_e, id: string): Promise<void> =>
     engine.removeArchive(id),

@@ -12,6 +12,8 @@ export interface TrashResult {
   moved: string[];
   failed: Array<{ path: string; message: string }>;
   unconfirmed: string[];
+  /** Physical OS completion, kept by the effects owner after bounded waits. */
+  settlement?: Promise<void>;
 }
 
 /** True when every path's move was confirmed. */

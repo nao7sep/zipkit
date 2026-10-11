@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { planInputAdmission } from "../../../src/gui/renderer/src/inputAdmission";
+import { planInputAdmission } from "../../../src/gui/shared/input-admission";
 
 describe("input admission", () => {
   it("keeps first-seen order and reports existing and repeated literal paths", () => {

@@ -9,7 +9,7 @@ it("presentation rejection and stalled cleanup still end the process within the 
   const exit = vi.fn();
   const forceExit = vi.fn();
   const never = () => new Promise<void>(() => {});
-  const work = finishStartupHalt({ present: async () => { throw error; }, closeBackups: never, closeLog: never, onFailed, exit, forceExit });
+  const work = finishStartupHalt({ present: async () => { throw error; }, closeBackups: never, closeLog: never, onFailed, exit, forceExit, nativeWorkPending: () => false });
   await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.backups + QUIT_BOUNDS_MS.log);
   await work;
   expect(onFailed).toHaveBeenCalledWith(error);
@@ -20,7 +20,7 @@ it("presentation rejection and stalled cleanup still end the process within the 
 it("a halt whose cleanup settles exits with failure through the ordinary exit", async () => {
   const exit = vi.fn();
   const forceExit = vi.fn();
-  await finishStartupHalt({ present: async () => {}, closeBackups: async () => {}, closeLog: async () => {}, onFailed: vi.fn(), exit, forceExit });
+  await finishStartupHalt({ present: async () => {}, closeBackups: async () => {}, closeLog: async () => {}, onFailed: vi.fn(), exit, forceExit, nativeWorkPending: () => false });
   expect(exit).toHaveBeenCalledWith(1);
   expect(forceExit).not.toHaveBeenCalled();
 });

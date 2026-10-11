@@ -244,7 +244,10 @@ const ERROR_GUIDANCE: Record<string, MessageKey> = {
 /** The report's headline sentence: context-aware, factual, and never the vague
  *  "Windows-safe" claim. Speaks to the job's actual state — failed, done, blocked,
  *  or ready (with what the archive will carry / what was auto-handled). */
-export function reportSummary(job: Job, plan: PlanData | null, t: Translator): ReportLine | null {
+export function reportSummary(
+  job: Job, plan: PlanData | null, t: Translator,
+  groups: readonly ReportGroup[] = plan ? planReport(plan, t) : [],
+): ReportLine | null {
   if (job.state === "failed") {
     return { level: "error", text: job.message ? t.text(job.message) : t.t("report.createFailed") };
   }
@@ -271,7 +274,7 @@ export function reportSummary(job: Job, plan: PlanData | null, t: Translator): R
   const notes: string[] = [];
   // Counted as the Report's Renamed rows, so a renamed folder counts once, as
   // it is listed, not once per file inside it.
-  const renamed = planReport(plan, t).find((g) => g.kind === "renamed")?.rows.length ?? 0;
+  const renamed = groups.find((g) => g.kind === "renamed")?.rows.length ?? 0;
   if (renamed > 0) notes.push(t.t("report.renamedNote", { count: renamed }));
   if (s.excluded > 0) notes.push(t.t("report.excludedNote", { count: s.excluded }));
   if (s.warnings > 0) notes.push(t.t("report.warningsNote", { count: s.warnings }));
@@ -332,20 +335,19 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
  *  for a rule the GUI does not know (shown as the SDK wrote it). A symlink
  *  finding reads from the plan whether the link was kept or dropped: the SDK
  *  excludes the entry it ignores. */
-export function findingKey(f: Finding, plan: PlanData): MessageKey | null {
+export function findingKey(f: Finding, excluded = false): MessageKey | null {
   const name = NAME_FINDINGS[f.rule];
   if (name) return f.fix?.kind === "rename" ? name.fixed : name.found;
   if (f.rule === "entry.symlink") {
-    const entry = plan.entries.find((e) => e.archivePath === f.path);
-    return entry?.excluded ? "finding.symlinkIgnored" : "finding.symlinkPreserved";
+    return excluded ? "finding.symlinkIgnored" : "finding.symlinkPreserved";
   }
   return RULE_FINDINGS[f.rule] ?? null;
 }
 
 /** A finding as a human sentence; one the GUI does not know reads as the SDK
  *  wrote it. */
-function findingText(f: Finding, plan: PlanData, t: Translator): string {
-  const key = findingKey(f, plan);
+function findingText(f: Finding, t: Translator, excluded = false): string {
+  const key = findingKey(f, excluded);
   return key ? t.t(key) : humanSentence(f.message);
 }
 
@@ -450,7 +452,7 @@ export function planReport(plan: PlanData, t: Translator): ReportGroup[] {
   for (const entry of plan.entries) {
     const findings = entry.findings;
     for (const f of findings) onEntries.add(findingId(f));
-    const changes = [...new Set(findings.map((f) => findingText(f, plan, t)))];
+    const changes = [...new Set(findings.map((f) => findingText(f, t, entry.excluded)))];
     if (entry.excluded && !findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
       changes.push(excludedText(entry.excludeReason, t));
     }
@@ -461,7 +463,7 @@ export function planReport(plan: PlanData, t: Translator): ReportGroup[] {
   }
   for (const f of plan.findings) {
     if (onEntries.has(findingId(f))) continue;
-    rows[severityGroup([f]) ?? "notes"].push({ path: f.path, changes: [findingText(f, plan, t)] });
+    rows[severityGroup([f]) ?? "notes"].push({ path: f.path, changes: [findingText(f, t)] });
   }
   return REPORT_GROUPS.filter((kind) => rows[kind].length > 0).map((kind) => ({ kind, rows: rows[kind] }));
 }
