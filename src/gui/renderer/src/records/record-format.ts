@@ -96,15 +96,21 @@ function newestFirst(a: RecordSummary, b: RecordSummary): number {
   return b.id - a.id;
 }
 
-/** The newest page read again, joined with the rows already shown: a row in
- *  both takes the page's copy, and the rows shown beyond the page stay, so the
- *  pages already read are kept and a page read out of order loses nothing. */
+/** Keep overlapping pages and older responses. A wholly newer disjoint page
+ *  starts a new contiguous range: keeping the old tail would skip the gap when
+ *  loading more. Selection and detail are owned separately by the window. */
 export function mergeNewestPage(
   shown: readonly RecordSummary[],
   shownMore: boolean,
   page: RecordsPage,
 ): { records: RecordSummary[]; more: boolean } {
   const byKey = new Map(shown.map((record) => [recordKey(record), record]));
+  const oldestNew = page.records.at(-1);
+  const newestShown = shown[0];
+  if (oldestNew && newestShown && newestFirst(oldestNew, newestShown) < 0 &&
+      !page.records.some((record) => byKey.has(recordKey(record)))) {
+    return { records: page.records, more: page.more };
+  }
   for (const record of page.records) byKey.set(recordKey(record), record);
   const records = [...byKey.values()].sort(newestFirst);
   const last = page.records.at(-1);

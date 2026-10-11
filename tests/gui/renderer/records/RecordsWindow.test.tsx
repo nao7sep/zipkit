@@ -413,6 +413,30 @@ describe("RecordsWindow", () => {
     expect(readRecordDetail).toHaveBeenCalledOnce();
   });
 
+  it("keeps selected detail and discards an older continuation after a disjoint refresh", async () => {
+    readRecordsPage.mockResolvedValueOnce({ records: [event, line], more: true });
+    await mount();
+    await act(async () => options()[1]!.click());
+    const oldPage = deferred<RecordsPage>();
+    readRecordsPage.mockReturnValueOnce(oldPage.promise);
+    await scrollTo(700);
+    expect(lastQuery().after).toEqual(cursorOf(line));
+    await scrollTo(0);
+    vi.useFakeTimers();
+    readRecordsPage.mockResolvedValueOnce({ records: [newer], more: true });
+    await signal();
+    await act(async () => vi.advanceTimersByTime(1000));
+    expect(titles()).toEqual(["job added"]);
+    expect(document.body.textContent).toContain("/out/a.zip");
+    expect(readRecordDetail).toHaveBeenCalledOnce();
+    await act(async () => oldPage.resolve({ records: [{ ...line, id: 1, title: "stale tail" }], more: false }));
+    expect(titles()).toEqual(["job added"]);
+    readRecordsPage.mockResolvedValueOnce({ records: [event, line], more: false });
+    await scrollTo(700);
+    expect(lastQuery().after).toEqual(cursorOf(newer));
+    expect(titles()).toEqual(["job added", "fault", "verify failed"]);
+  });
+
   it("stops reading on new-record signals after a failed read, so a logged failure cannot start the next read", async () => {
     await mount();
     vi.useFakeTimers();

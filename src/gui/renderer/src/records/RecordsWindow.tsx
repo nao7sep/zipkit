@@ -218,8 +218,8 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
   }, [filters]);
 
   // The newest page read again for new records. It joins the rows already
-  // shown rather than replacing them, so the list never falls back to the
-  // loading note and the pages already read stay. It reads only refs, so one
+  // shown when the ranges overlap; a burst can reset the range to keep its
+  // continuation contiguous. Selection remains independent. It reads refs, so one
   // copy serves the live subscription below.
   const readNewest = useCallback((): void => {
     const generation = listGeneration.current;
@@ -292,15 +292,22 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
     if (list.status !== "ready" || !list.more || fetchingMore.current) return;
     fetchingMore.current = true;
     const generation = listGeneration.current;
+    const after = cursorAfter(list.records);
+    const sameContinuation = (records: RecordSummary[]): boolean => {
+      const current = cursorAfter(records);
+      return current?.time === after?.time && current?.kind === after?.kind && current?.id === after?.id;
+    };
     setList((current) => (current.status === "ready" ? { ...current, loadingMore: true, moreFailed: false } : current));
-    window.zipkit.readRecordsPage({ ...filters, after: cursorAfter(list.records) }).then(
+    window.zipkit.readRecordsPage({ ...filters, after }).then(
       (page) => {
         if (generation !== listGeneration.current) return;
         fetchingMore.current = false;
         liveSuspended.current = false;
         setList((current) =>
           current.status === "ready"
-            ? { ...current, records: [...current.records, ...page.records], more: page.more, loadingMore: false }
+            ? sameContinuation(current.records)
+              ? { ...current, records: [...current.records, ...page.records], more: page.more, loadingMore: false }
+              : { ...current, loadingMore: false }
             : current,
         );
       },
@@ -309,7 +316,8 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
         fetchingMore.current = false;
         liveSuspended.current = true;
         report("read more records", error);
-        setList((current) => (current.status === "ready" ? { ...current, loadingMore: false, moreFailed: true } : current));
+        setList((current) => (current.status === "ready"
+          ? { ...current, loadingMore: false, moreFailed: sameContinuation(current.records) } : current));
       },
     );
   };

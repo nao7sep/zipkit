@@ -111,8 +111,8 @@ function errorData(err: unknown): Record<string, unknown> {
 
 // The Records window's reads. Each kind is read from its own table in the
 // window's order (time, then kind, then id, newest first) and only as far as
-// one page, through its time index, so a page costs the same however many
-// records a long history holds; the two are then merged.
+// one page through its time index; filters and older cursors can still scan
+// history. The two bounded result sets are then merged.
 
 interface RecordTable {
   kind: RecordKind;
