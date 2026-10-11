@@ -12,10 +12,12 @@ directories:
   output: release
   buildResources: build
 
-# Ship only the built app bundle (electron-vite's out/). Prod dependencies and
-# package.json are included automatically; source and tests are not.
+# Ship only the three app outputs; other out/ folders may hold measurement builds.
+# Prod dependencies and package.json are included automatically; source and tests are not.
 files:
-  - out/**
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
   - "!**/*.map"
   - "!**/*.d.ts"
   - "!**/*.d.mts"
