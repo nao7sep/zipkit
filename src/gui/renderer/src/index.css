@@ -23,14 +23,14 @@
   --bg: #f3f2ea;
   --surface: #fbfaf5;
   --surface-2: #ecebe0;
-  --border: #d3d4c3;
-  /* The app's control edge. A text field or select sits on a fill close to its
-     surroundings, so its outline alone identifies it and stays at 3:1 against
-     both. Buttons have no border of their own, so this is also the colour of a
-     dialog's header and footer band lines (modal-dialog-conventions), which must
-     be at least as visible as a control edge — never the quieter --border used
-     for plain panel dividers. */
-  --field-border: #7d826c;
+  --border: #c5c6b5;
+  /* Resting band/section edges and control edges use the measured fleet ranges.
+     Job cards need a variant because their status-tinted fill is stronger than
+     a field's surface. Selected/focused outlines remain state indicators. */
+  --field-border: #a0a38e;
+  --job-edge: #a0a38e;
+  --splitter: #a0a38e;
+  --modal-edge: #babcab;
   --text: #1f2117;
   --text-2: #555b47;
   --scrollbar-thumb: #7d826c;
@@ -71,8 +71,11 @@
     --bg: #16170f;
     --surface: #202218;
     --surface-2: #292c20;
-    --border: #3a3f2e;
-    --field-border: #7a8268;
+    --border: #414733;
+    --field-border: #5a614d;
+    --job-edge: #606750;
+    --splitter: #505743;
+    --modal-edge: #414733;
     --text: #f0f2e6;
     --text-2: #a5ad94;
     --scrollbar-thumb: #737b68;

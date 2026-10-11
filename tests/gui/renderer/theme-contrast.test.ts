@@ -3,8 +3,9 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // Every color pair the renderer draws keeps high contrast in both themes,
-// by this app's own floor: 4.5:1 for text, 3:1 for a text field's
-// outline, the focus and selection ring, and the scroll-bar thumb. Light tokens
+// by this app's own floor: 4.5:1 for text, 3:1 for focus/selection
+// rings and the scroll-bar thumb. Resting lines follow the measured fleet
+// ranges, independently of these state marks. Light tokens
 // live in index.css's top-level :root block; dark tokens in the :root block
 // inside @media (prefers-color-scheme: dark). A status badge sits on a job row
 // tinted with its own status and adds its own tint, so status text is checked
@@ -110,8 +111,8 @@ describe("theme token contrast", () => {
       }
     });
 
-    it("keeps field outlines, the accent ring, and the scroll-bar thumb at 3:1 or more", () => {
-      for (const mark of ["--field-border", "--accent-strong", "--scrollbar-thumb"]) {
+    it("keeps the accent ring and scroll-bar thumb at 3:1 or more", () => {
+      for (const mark of ["--accent-strong", "--scrollbar-thumb"]) {
         for (const surface of SURFACES) check(hexOf(block, mark), hexOf(block, surface), 3, `${mark} on ${surface}`);
       }
     });

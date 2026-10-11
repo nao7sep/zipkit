@@ -43,15 +43,15 @@ describe("ModalShell", () => {
     expect(document.activeElement).toBe(screen.getByText("First"));
   });
 
-  it("draws its header and footer lines in the control-edge colour", () => {
+  it("draws its header and footer lines in the band-edge colour", () => {
     renderShell();
     const dialog = screen.getByRole("dialog");
     const lines = [...dialog.querySelectorAll<HTMLElement>("*")].flatMap((el) =>
       [el.style.borderTop, el.style.borderBottom].filter((border) => border !== ""),
     );
-    expect(lines).toEqual(expect.arrayContaining(["1px solid var(--field-border)"]));
+    expect(lines).toEqual(expect.arrayContaining(["1px solid var(--border)"]));
     expect(lines.length).toBeGreaterThanOrEqual(2);
-    expect(lines.every((border) => border === "1px solid var(--field-border)")).toBe(true);
+    expect(lines.every((border) => border === "1px solid var(--border)")).toBe(true);
   });
 
   it("Escape routes to onClose", () => {

@@ -331,7 +331,7 @@ const S: Record<string, CSSProperties> = {
     gap: "0.5rem",
     alignItems: "flex-start",
     padding: "0.5rem 0.6rem",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--job-edge)",
     borderRadius: 6,
     cursor: "pointer",
   },

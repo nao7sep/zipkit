@@ -140,5 +140,5 @@ const S: Record<string, CSSProperties> = {
     justifyContent: "center",
     alignSelf: "stretch",
   },
-  grip: { width: 2, height: "2.5rem", maxHeight: "50%", borderRadius: 2, background: "var(--border)" },
+  grip: { width: 2, height: "2.5rem", maxHeight: "50%", borderRadius: 2, background: "var(--splitter)" },
 };

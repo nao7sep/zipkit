@@ -129,7 +129,7 @@ const ST: Record<string, CSSProperties> = {
     flexDirection: "column",
     background: "var(--surface)",
     color: "var(--text)",
-    border: "1px solid var(--border)",
+    border: "1px solid var(--modal-edge)",
     borderRadius: 8,
     minWidth: "20rem",
     maxWidth: "34rem",
@@ -147,7 +147,7 @@ const ST: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: "0.75rem",
     padding: "0.7rem 1.25rem",
-    borderBottom: "1px solid var(--field-border)",
+    borderBottom: "1px solid var(--border)",
   },
   titleBarBare: {
     flexShrink: 0,
@@ -188,6 +188,6 @@ const ST: Record<string, CSSProperties> = {
     justifyContent: "flex-end",
     gap: "0.75rem",
     padding: "0.85rem 1.25rem",
-    borderTop: "1px solid var(--field-border)",
+    borderTop: "1px solid var(--border)",
   },
 };
