@@ -9,11 +9,11 @@
 import { workerData } from "node:worker_threads";
 import { writeManagedText, type ManagedWriteReply, type ManagedWriteWorkerData } from "./managed-write.ts";
 
-const { file, text, signal, port } = workerData as ManagedWriteWorkerData;
+const { file, text, signal, port, options } = workerData as ManagedWriteWorkerData;
 
 let reply: ManagedWriteReply;
 try {
-  await writeManagedText(file, Buffer.from(text, "utf8"));
+  await writeManagedText(file, Buffer.from(text, "utf8"), undefined, options);
   reply = { ok: true };
 } catch (error) {
   reply = { ok: false, message: error instanceof Error ? error.message : String(error) };

@@ -21,7 +21,7 @@ afterEach(cleanup);
 
 Object.defineProperty(window, "zipkit", {
   configurable: true,
-  value: { reportError: vi.fn() },
+  value: { reportError: vi.fn(), discardSettingsSubmission: vi.fn(async () => {}) },
 });
 
 /** Settings that differ from the built-ins on every axis: edited option defaults,
@@ -90,13 +90,13 @@ describe("SettingsDialog UI font", () => {
 });
 
 describe("SettingsDialog reset", () => {
-  it("a reset that changes nothing leaves Save disabled and closes without asking", () => {
+  it("a reset that changes nothing leaves Save disabled and closes without asking", async () => {
     const onClose = vi.fn();
     render(<SettingsDialog settings={{ ...CUSTOM, defaults: DEFAULT_OPTIONS }} onSave={vi.fn()} onClose={onClose} />);
     fireEvent.click(reset());
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText("Cancel"));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it("edits after reset save the whole new copy", () => {
@@ -178,6 +178,19 @@ describe("SettingsDialog reset", () => {
     fireEvent.change(fontInput(), { target: { value: "  Menlo,\n monospace " } });
     fireEvent.blur(fontInput());
     expect(fontInput().value).toBe("Menlo, monospace");
+  });
+
+  it("a successful quit retry clears the old error while preserving newer draft edits", async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error("full"));
+    const view = render(<SettingsDialog settings={CUSTOM} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.change(fontInput(), { target: { value: "Menlo" } });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    fireEvent.change(fontInput(), { target: { value: "Georgia" } });
+    view.rerender(<SettingsDialog settings={{ ...CUSTOM, uiFontFamily: "Menlo" }} onSave={onSave} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(fontInput().value).toBe("Georgia");
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("keeps the dialog open and reports a failed durable save", async () => {

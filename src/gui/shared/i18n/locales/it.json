@@ -65,6 +65,7 @@
   "quit.detail": "Se esci ora, l’operazione verrà annullata. Un archivio ancora in fase di scrittura non verrà completato, gli originali non ancora spostati nel Cestino verranno conservati e i file già inviati al Cestino potrebbero comunque arrivarci.",
   "quit.cancelAndQuit": "Annulla l’operazione ed esci",
   "quit.keepWorking": "Continua a lavorare",
+  "quit.settingsNotSaved": "Le impostazioni non sono ancora state salvate correttamente. Riprova, esci comunque o annulla per lasciare ZipKit aperto. Uscendo ora potresti perdere queste modifiche.",
   "quit.queueNotSavedTitle": "La coda non è stata salvata",
   "quit.queueNotSavedMessage": "ZipKit non è riuscito a salvare la coda, quindi non si è chiuso.",
   "quit.queueNotSavedDetail": "Se esci comunque, le operazioni aggiunte o modificate dall’ultimo salvataggio della coda non ci saranno alla prossima apertura di ZipKit. Riprova a salvare oppure annulla per lasciare ZipKit aperto.",

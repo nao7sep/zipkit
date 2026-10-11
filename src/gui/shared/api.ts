@@ -120,6 +120,10 @@ export interface ZipKitGuiApi {
 
   /** The persisted GUI settings — new-job defaults plus the UI font (built-in defaults if none saved). */
   getSettings(): Promise<GuiSettings>;
+  /** Committed preferences, including a save retried by the quit owner. */
+  onSettingsChanged(callback: (settings: GuiSettings) => void): () => void;
+  /** Retire a failed submission after explicit discard; rejects while saving. */
+  discardSettingsSubmission(): Promise<void>;
   /** Persist the dialog's settings and return the effective settings; rejects on failure. */
   setSettings(settings: GuiSettings): Promise<GuiSettings>;
 

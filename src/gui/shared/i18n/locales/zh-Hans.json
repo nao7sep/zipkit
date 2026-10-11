@@ -65,6 +65,7 @@
   "quit.detail": "现在退出将取消该任务。正在写入的归档不会完成，尚未送到废纸篓的原始项目会保留，已经送往废纸篓的文件之后仍可能进入废纸篓。",
   "quit.cancelAndQuit": "取消任务并退出",
   "quit.keepWorking": "继续工作",
+  "quit.settingsNotSaved": "设置尚未成功保存。请重试保存、仍然退出，或取消以保持 ZipKit 打开。现在退出可能会丢失这些更改。",
   "quit.queueNotSavedTitle": "队列未能保存",
   "quit.queueNotSavedMessage": "ZipKit 未能保存队列，因此没有退出。",
   "quit.queueNotSavedDetail": "如果仍然退出，自上次保存队列以来添加或更改的任务在下次打开 ZipKit 时将不会出现。你可以重试保存，或取消以保持 ZipKit 打开。",

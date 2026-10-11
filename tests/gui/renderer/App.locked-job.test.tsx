@@ -64,6 +64,7 @@ describe("a job that finishes mid-edit", () => {
         },
         onQueueSaved: () => () => {},
         getQueue: async () => [readyJob, otherJob],
+        onSettingsChanged: vi.fn(() => () => {}),
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,
         getPlan: async () => null,

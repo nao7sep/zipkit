@@ -49,3 +49,17 @@ export async function askQueueNotSaved(owner: BrowserWindow | null, signal: Abor
   });
   return choices[response] ?? "cancel";
 }
+
+/** A bounded wait can leave publication uncertain; do not claim it failed. */
+export async function askSettingsNotSaved(owner: BrowserWindow | null, signal: AbortSignal): Promise<QueueNotSavedChoice> {
+  const { t } = mainTranslator();
+  const choices: QueueNotSavedChoice[] = ["retry", "quit", "cancel"];
+  const response = await showAppQuestionDialog({
+    owner: owner ?? undefined,
+    title: t("settings.title"),
+    message: t("quit.settingsNotSaved"),
+    labels: [t("common.retry"), t("quit.quitAnyway"), t("common.cancel")],
+    defaultId: 0, cancelId: 2, signal,
+  });
+  return choices[response] ?? "cancel";
+}

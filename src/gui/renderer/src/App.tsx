@@ -289,12 +289,17 @@ export function App() {
 
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
-  async function saveSettings(draft: GuiSettings): Promise<void> {
-    const next = await window.zipkit.setSettings(draft);
+  useEffect(() => window.zipkit.onSettingsChanged(applySavedSettings), []);
+
+  function applySavedSettings(next: GuiSettings): void {
     setDefaults(next.defaults);
     setUiFontFamily(next.uiFontFamily);
     setTheme(next.theme);
     setLanguage(next.language);
+  }
+
+  async function saveSettings(draft: GuiSettings): Promise<void> {
+    applySavedSettings(await window.zipkit.setSettings(draft));
   }
 
   async function createJob(inputs: string[]): Promise<ReceiverCommit> {

@@ -52,6 +52,7 @@ describe("App file-drop receivers", () => {
         onQueue: () => () => {},
         onQueueSaved: () => () => {},
         getQueue,
+        onSettingsChanged: vi.fn(() => () => {}),
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,
         getPlan: async () => null,

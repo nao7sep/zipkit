@@ -1,10 +1,10 @@
 /**
  * Quitting, per the unsaved-edits-conventions (Quitting). Every quit reaches
- * the same sequence: stop the running job, save the queue, let the last pane
+ * the same sequence: stop the running job, finish submitted Settings, save the queue, let the last pane
  * layout write land, let the backup history and the log write what they hold,
  * then terminate Electron.
  *
- * The queue is the user's own work. When it cannot be saved on a quit the user
+ * The queue and submitted Settings are the user's work. When either cannot be saved on a quit the user
  * started, the quit stops and asks: Retry, Quit Anyway, or Cancel, which keeps
  * the app open. Everything else is logged and the quit goes on. When the OS is
  * ending the session nothing asks: a question already open is answered for it,
@@ -27,13 +27,14 @@ import { StepTimeout } from "./step-timeout.js";
 /** How long quit waits for each step before moving on without it. */
 export const QUIT_BOUNDS_MS = {
   stopJob: 1_500,
+  settings: 500,
   flush: 1_000,
   layout: 500,
   backups: 500,
   log: 500,
 } as const;
 
-/** How long the end of a Windows session waits for the queue save. */
+/** Total time the end of a Windows session waits for required saves. */
 export const SESSION_END_SAVE_MS = 2_000;
 
 /** How long powerMonitor's `shutdown` marks the session as ending when no quit
@@ -45,7 +46,7 @@ export const SESSION_END_SAVE_MS = 2_000;
 export const SESSION_END_MARK_MS = 60_000;
 
 /** The steps whose failure quit logs and goes on from. */
-export type QuitStep = "job" | "queue" | "layout" | "backups" | "question";
+export type QuitStep = "job" | "settings" | "queue" | "layout" | "backups" | "question";
 
 /** What the user chose about a queue that could not be saved. */
 export type QueueNotSavedChoice = "retry" | "quit" | "cancel";
@@ -61,6 +62,8 @@ export interface QuitSession {
 export interface QuitSteps {
   /** Cancel the running job and resolve once it has stopped. */
   stopJob(): Promise<void>;
+  settleSettings(): Promise<void>;
+  askSettingsNotSaved(signal: AbortSignal): Promise<QueueNotSavedChoice>;
   /** Persist the queue. */
   flush(): Promise<void>;
   onFlushed(): void;
@@ -117,29 +120,36 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
   try {
     const jobError = await bounded(steps.stopJob, QUIT_BOUNDS_MS.stopJob, "the cancelled job");
     if (jobError !== undefined) steps.onStepFailed("job", jobError);
-    for (;;) {
-      const flushError = await bounded(steps.flush, QUIT_BOUNDS_MS.flush, "the queue save");
-      if (flushError === undefined) {
-        steps.onFlushed();
-        break;
-      }
-      steps.onStepFailed("queue", flushError);
-      if (session.ending) break;
-      let choice: QueueNotSavedChoice;
-      try {
-        choice = await steps.askQueueNotSaved(session.signal);
-      } catch (error) {
-        steps.onStepFailed("question", error);
+    for (const save of [
+      { work: steps.settleSettings, bound: QUIT_BOUNDS_MS.settings, step: "settings" as const,
+        ask: steps.askSettingsNotSaved, done: () => {} },
+      { work: steps.flush, bound: QUIT_BOUNDS_MS.flush, step: "queue" as const,
+        ask: steps.askQueueNotSaved, done: steps.onFlushed },
+    ]) {
+      for (;;) {
+        const flushError = await bounded(save.work, save.bound, `the ${save.step} save`);
+        if (flushError === undefined) {
+          save.done();
+          break;
+        }
+        steps.onStepFailed(save.step, flushError);
         if (session.ending) break;
-        cancelled = true;
-        steps.onCancelled();
-        return;
-      }
-      if (session.ending || choice === "quit") break;
-      if (choice === "cancel") {
-        cancelled = true;
-        steps.onCancelled();
-        return;
+        let choice: QueueNotSavedChoice;
+        try {
+          choice = await save.ask(session.signal);
+        } catch (error) {
+          steps.onStepFailed("question", error);
+          if (session.ending) break;
+          cancelled = true;
+          steps.onCancelled();
+          return;
+        }
+        if (session.ending || choice === "quit") break;
+        if (choice === "cancel") {
+          cancelled = true;
+          steps.onCancelled();
+          return;
+        }
       }
     }
   } finally {
@@ -184,6 +194,7 @@ export async function finishStartupHalt(steps: {
 }
 
 export interface SessionEndSteps {
+  saveSettingsNow(boundMs: number): void;
   /** Save the queue before returning, within the bound; throws when it could not, a
    *  {@link StepTimeout} when its thread did not answer in time. */
   saveQueueNow(boundMs: number): void;
@@ -196,7 +207,7 @@ export interface SessionEndSteps {
 /**
  * The end of a Windows session (logoff, restart, shutdown). Electron emits no
  * `before-quit` then, and the OS ends the process as soon as the main window's
- * `session-end` handler returns, so this saves the queue synchronously within
+ * `session-end` handler returns, so this saves submitted Settings and the queue within
  * its bound, logs a failure, and exits before returning. It never asks. The save
  * writes the engine's current jobs, never older than a debounced save already
  * under way; that save can finish only the one call it has started while this
@@ -205,13 +216,21 @@ export interface SessionEndSteps {
  */
 export function endSessionNow(steps: SessionEndSteps): void {
   let leftBehind = false;
+  const deadline = Date.now() + SESSION_END_SAVE_MS;
   try {
-    steps.saveQueueNow(SESSION_END_SAVE_MS);
-    steps.onSaved();
-  } catch (error) {
-    // A save thread that did not answer may be stuck in the disk, and would hold the exit.
-    leftBehind = error instanceof StepTimeout;
-    steps.onStepFailed("queue", error);
+    for (const [step, save] of [
+      ["settings", steps.saveSettingsNow], ["queue", steps.saveQueueNow],
+    ] as const) {
+      try {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new StepTimeout("session save deadline elapsed");
+        save(remaining);
+        if (step === "queue") steps.onSaved();
+      } catch (error) {
+        leftBehind ||= error instanceof StepTimeout;
+        steps.onStepFailed(step, error);
+      }
+    }
   } finally {
     if (leftBehind) steps.forceExit();
     else steps.exit(0);

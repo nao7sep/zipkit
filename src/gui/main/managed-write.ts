@@ -83,6 +83,7 @@ export async function writeManagedText(file: string, bytes: Buffer, signal?: Abo
 export interface ManagedWriteWorkerData {
   file: string;
   text: string;
+  options?: ManagedWriteOptions;
   /** Set to 1 and notified once the reply is posted. */
   signal: Int32Array;
   /** Where the one reply goes. */
@@ -105,13 +106,13 @@ function workerUrl(): URL {
  * handler does, and an asynchronous write could not finish before then. A write that has not
  * answered is abandoned; its outcome is unknown. Throws when the write failed or did not answer.
  */
-export function writeManagedTextWithin(file: string, text: string, boundMs: number, url: URL = workerUrl()): void {
+export function writeManagedTextWithin(file: string, text: string, boundMs: number, url: URL = workerUrl(), options: ManagedWriteOptions = {}): void {
   const signal = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
   const { port1, port2 } = new MessageChannel();
   let worker: Worker;
   try {
     worker = new Worker(url, {
-      workerData: { file, text, signal, port: port2 } satisfies ManagedWriteWorkerData,
+      workerData: { file, text, signal, port: port2, options } satisfies ManagedWriteWorkerData,
       transferList: [port2],
     });
   } catch (error) {

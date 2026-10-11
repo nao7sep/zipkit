@@ -18,6 +18,7 @@ import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
 import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd } from "./queue.js";
+import { discardSettingsSubmission, settingsSavePending, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
 import { loadSettings, settingsFile } from "./settings.js";
 import { applyLanguagePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
@@ -27,7 +28,7 @@ import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { layoutWritesSettled, loadLayout } from "./layout.js";
 import { loadQueue } from "./persist.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
-import { askQueueNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
+import { askQueueNotSaved, askSettingsNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
 import { createQuitControl, endSessionNow, finishStartupHalt, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
@@ -62,7 +63,12 @@ function createWindow(): BrowserWindow {
   // the quit's own exit closes it. A window whose document failed to load just
   // closes.
   win.on("close", (event) => {
-    if (process.platform === "darwin" || !flushQueueOnClose) return;
+    if (!flushQueueOnClose) return;
+    if (process.platform === "darwin") {
+      if (settingsSavePending()) event.preventDefault();
+      else discardSettingsSubmission();
+      return;
+    }
     event.preventDefault();
     app.quit();
   });
@@ -71,6 +77,7 @@ function createWindow(): BrowserWindow {
   win.on("session-end", () => {
     log.info("session ending", { runningJob: hasRunningJob() });
     endSessionNow({
+      saveSettingsNow: saveSettingsBeforeSessionEnd,
       saveQueueNow: saveQueueBeforeSessionEnd,
       onSaved: () => log.info("app quitting"),
       onStepFailed: logQuitStepFailure,
@@ -235,6 +242,9 @@ function logQuitStepFailure(step: QuitStep, error: unknown): void {
     case "job":
       log.warn("the cancelled job did not stop in time; quitting without it", info);
       return;
+    case "settings":
+      log.error("settings save did not finish before quit", info);
+      return;
     case "queue":
       log.error("failed to flush the queue before quit", info);
       sendQueueSaved(false);
@@ -259,10 +269,12 @@ const quit = createQuitControl({
     stopFlushAndExit(
       {
         stopJob: cancelRunningJobAndWait,
+        settleSettings: settleSettingsSave,
+        askSettingsNotSaved: (signal) => askSettingsNotSaved(getMainWindow(), signal),
         flush: flushQueue,
         onFlushed: () => log.info("app quitting"),
         askQueueNotSaved: (signal) => askQueueNotSaved(getMainWindow(), signal),
-        onCancelled: () => log.info("quit cancelled with the queue not saved"),
+        onCancelled: () => log.info("quit cancelled with work not saved"),
         settleLayout: layoutWritesSettled,
         closeBackups: () => closeBackupStore(),
         closeLog: () => log.close(),

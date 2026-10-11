@@ -65,6 +65,7 @@
   "quit.detail": "Quitting now cancels that job. An archive still being written will not be completed, originals not yet sent to Trash are kept, and files already sent to Trash may still arrive there.",
   "quit.cancelAndQuit": "Cancel the job and quit",
   "quit.keepWorking": "Keep working",
+  "quit.settingsNotSaved": "Saving your settings has not finished successfully. Retry the save, quit anyway, or cancel to keep ZipKit open. Quitting now may lose these changes.",
   "quit.queueNotSavedTitle": "The queue wasn’t saved",
   "quit.queueNotSavedMessage": "ZipKit couldn’t save the queue, so it didn’t quit.",
   "quit.queueNotSavedDetail": "If you quit anyway, jobs added or changed since the queue was last saved won’t be there the next time ZipKit opens. Retry to save it again, or cancel to keep ZipKit open.",

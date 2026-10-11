@@ -33,6 +33,12 @@ const api = {
     ipcRenderer.on(LANGUAGE_CHANGED_CHANNEL, handler);
     return () => ipcRenderer.removeListener(LANGUAGE_CHANGED_CHANNEL, handler);
   },
+  onSettingsChanged: (callback: (settings: GuiSettings) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, settings: GuiSettings) => callback(settings);
+    ipcRenderer.on("zipkit:settingsChanged", listener);
+    return () => { ipcRenderer.removeListener("zipkit:settingsChanged", listener); };
+  },
+  discardSettingsSubmission: (): Promise<void> => ipcRenderer.invoke("zipkit:discardSettingsSubmission"),
   getSettings: (): Promise<GuiSettings> => ipcRenderer.invoke("zipkit:getSettings"),
   setSettings: (settings: GuiSettings): Promise<GuiSettings> =>
     ipcRenderer.invoke("zipkit:setSettings", settings),

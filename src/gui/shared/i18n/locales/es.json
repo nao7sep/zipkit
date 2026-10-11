@@ -65,6 +65,7 @@
   "quit.detail": "Si sales ahora, se cancelará ese trabajo. Un archivo comprimido que aún se esté escribiendo no se terminará, se conservarán los originales que aún no se hayan enviado a la papelera y los archivos ya enviados a la papelera todavía podrían llegar a ella.",
   "quit.cancelAndQuit": "Cancelar el trabajo y salir",
   "quit.keepWorking": "Seguir trabajando",
+  "quit.settingsNotSaved": "La configuración aún no se guardó correctamente. Reintenta guardarla, sal de todos modos o cancela para mantener ZipKit abierto. Si sales ahora, podrías perder estos cambios.",
   "quit.queueNotSavedTitle": "No se guardó la cola",
   "quit.queueNotSavedMessage": "ZipKit no pudo guardar la cola, así que no se cerró.",
   "quit.queueNotSavedDetail": "Si sales de todos modos, los trabajos agregados o cambiados desde que se guardó la cola por última vez no aparecerán la próxima vez que se abra ZipKit. Reintenta para volver a guardarla o cancela para mantener ZipKit abierto.",

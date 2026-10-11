@@ -15,6 +15,8 @@ import {
 function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
   return {
     stopJob: vi.fn(async () => {}),
+    settleSettings: vi.fn(async () => {}),
+    askSettingsNotSaved: vi.fn(async () => "quit" as const),
     flush: vi.fn(async () => {}),
     onFlushed: vi.fn(),
     askQueueNotSaved: vi.fn(async () => "quit" as const),
@@ -67,6 +69,7 @@ describe("stopFlushAndExit", () => {
     let finishJob!: () => void;
     const s = steps({
       stopJob: () => new Promise<void>((resolve) => { finishJob = () => { order.push("job"); resolve(); }; }),
+      settleSettings: async () => { order.push("settings"); },
       flush: async () => { order.push("flush"); },
       settleLayout: async () => { order.push("layout"); },
       closeBackups: async () => { order.push("backups"); },
@@ -80,10 +83,51 @@ describe("stopFlushAndExit", () => {
 
     finishJob();
     await quitting;
-    expect(order).toEqual(["job", "flush", "layout", "backups", "log", "exit 0"]);
+    expect(order).toEqual(["job", "settings", "flush", "layout", "backups", "log", "exit 0"]);
     expect(s.onFlushed).toHaveBeenCalledOnce();
     expect(s.onStepFailed).not.toHaveBeenCalled();
     expect(s.askQueueNotSaved).not.toHaveBeenCalled();
+  });
+
+  it("waits for submitted Settings and cancels safely after the bounded wait", async () => {
+    let finish!: () => void;
+    const save = new Promise<void>((resolve) => { finish = resolve; });
+    const s = steps({ settleSettings: () => save, askSettingsNotSaved: vi.fn(async () => "cancel" as const) });
+    const quit = stopFlushAndExit(s, userQuit());
+    await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.settings);
+    await quit;
+    expect(s.askSettingsNotSaved).toHaveBeenCalledOnce();
+    expect(s.flush).not.toHaveBeenCalled();
+    expect(s.closeBackups).not.toHaveBeenCalled();
+    expect(s.exit).not.toHaveBeenCalled();
+    finish();
+    await stopFlushAndExit(s, userQuit());
+    expect(s.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("retries Settings before saving the queue", async () => {
+    const save = vi.fn<() => Promise<void>>().mockRejectedValueOnce(new Error("full")).mockResolvedValue(undefined);
+    const s = steps({ settleSettings: save, askSettingsNotSaved: vi.fn(async () => "retry" as const) });
+    await stopFlushAndExit(s, userQuit());
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(s.flush).toHaveBeenCalledOnce();
+    expect(s.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("OS takeover dismisses a Settings question and proceeds without another question", async () => {
+    const session = userQuit();
+    const s = steps({ settleSettings: async () => { throw new Error("full"); },
+      askSettingsNotSaved: vi.fn(async (signal) => {
+        session.end();
+        expect(signal.aborted).toBe(true);
+        return "cancel" as const;
+      }),
+      flush: async () => { throw new Error("full"); },
+    });
+    await stopFlushAndExit(s, session);
+    expect(s.askQueueNotSaved).not.toHaveBeenCalled();
+    expect(s.onCancelled).not.toHaveBeenCalled();
+    expect(s.exit).toHaveBeenCalledWith(0);
   });
 
   it("keeps the app open when the queue was not saved and the user cancels", async () => {
@@ -270,8 +314,30 @@ describe("endSessionNow (the end of a Windows session)", () => {
     expect(failed.forceExit).not.toHaveBeenCalled();
   });
 
+  it("shares the Windows budget between settings and queue", () => {
+    vi.useFakeTimers();
+    try {
+      const s = sessionEndSteps({ saveSettingsNow: vi.fn(() => { vi.advanceTimersByTime(650); }) });
+      endSessionNow(s);
+      expect(s.saveSettingsNow).toHaveBeenCalledWith(SESSION_END_SAVE_MS);
+      expect(s.saveQueueNow).toHaveBeenCalledWith(SESSION_END_SAVE_MS - 650);
+      const exhausted = sessionEndSteps({ saveSettingsNow: () => { vi.advanceTimersByTime(SESSION_END_SAVE_MS); } });
+      endSessionNow(exhausted);
+      expect(exhausted.saveQueueNow).not.toHaveBeenCalled();
+      expect(exhausted.forceExit).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("still exits when session-end diagnostics throw", () => {
+    const s = sessionEndSteps({ saveSettingsNow: () => { throw new Error("full"); },
+      onStepFailed: () => { throw new Error("log unavailable"); } });
+    expect(() => endSessionNow(s)).toThrow("log unavailable");
+    expect(s.exit).toHaveBeenCalledWith(0);
+  });
+
   function sessionEndSteps(overrides: Partial<SessionEndSteps> = {}): SessionEndSteps {
     return {
+      saveSettingsNow: vi.fn(),
       saveQueueNow: vi.fn(),
       onSaved: vi.fn(),
       onStepFailed: vi.fn(),

@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({
   app: { getName: vi.fn(() => "ZipKit"), getVersion: vi.fn(() => "0.1.0") },
-  BrowserWindow: { fromWebContents: vi.fn(() => null) },
+  BrowserWindow: { getAllWindows: () => [], fromWebContents: vi.fn(() => null) },
   dialog: { showOpenDialog: vi.fn() },
   ipcMain: {
     on: vi.fn(),
@@ -43,6 +43,7 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
   zip: {},
 }));
 vi.mock("../../../src/gui/main/settings.js", () => ({
+  checkedSettings: (settings: unknown) => settings,
   currentSettings: mocks.currentSettings,
   saveSettings: mocks.saveSettings,
 }));

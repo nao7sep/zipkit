@@ -109,13 +109,18 @@ export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJso
 /** The one owner of what config.json holds (config-sets conventions, Reading and
  * healing): the dialog's settings, checked by the reader's validator and compared
  * cleaned (text-cleanup conventions). Returns the effective settings. */
-export async function saveSettings(settings: GuiSettings, logger: AppLog = nullLog): Promise<GuiSettings> {
+export function checkedSettings(settings: GuiSettings, logger: AppLog = nullLog): GuiSettings {
   const checked = effectiveSettings(settings, logger);
   const effective: GuiSettings = {
     ...checked,
     uiFontFamily: singleLine(checked.uiFontFamily),
     defaults: { ...checked.defaults, comment: multiline(checked.defaults.comment) },
   };
+  return effective;
+}
+
+export async function saveSettings(settings: GuiSettings, logger: AppLog = nullLog): Promise<GuiSettings> {
+  const effective = checkedSettings(settings, logger);
   const stored = changedSettings(DEFAULT_SETTINGS, effective);
   // Settings that are all built-in leave no file behind; identical bytes are not rewritten.
   // config.json holds the user's own settings, so each launch's last saved copy is backed up.

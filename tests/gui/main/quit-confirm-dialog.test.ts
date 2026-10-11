@@ -21,7 +21,7 @@ vi.mock("../../../src/gui/main/i18n.js", async () => {
 });
 
 import type { BrowserWindow } from "electron";
-import { askQueueNotSaved, confirmQuitDuringWrite } from "../../../src/gui/main/quit-confirm-dialog.js";
+import { askQueueNotSaved, askSettingsNotSaved, confirmQuitDuringWrite } from "../../../src/gui/main/quit-confirm-dialog.js";
 
 const owner = { id: 1 } as unknown as BrowserWindow;
 
@@ -60,4 +60,13 @@ describe("askQueueNotSaved", () => {
     await expect(askQueueNotSaved(owner, new AbortController().signal)).resolves.toBe(choice);
     expect(shown.calls[0]).toMatchObject({ owner, defaultId: 0, cancelId: 2, labels: ["Retry", "Quit anyway", "Cancel"] });
   });
+});
+
+it("Settings recovery describes unfinished publication and preserves the safe close outcome", async () => {
+  shown.response = 2;
+  const signal = new AbortController().signal;
+  await expect(askSettingsNotSaved(owner, signal)).resolves.toBe("cancel");
+  expect(shown.calls[0]).toMatchObject({ owner, signal, defaultId: 0, cancelId: 2,
+    labels: ["Retry", "Quit anyway", "Cancel"], title: "Settings" });
+  expect(shown.calls[0]!.message).toContain("may lose these changes");
 });

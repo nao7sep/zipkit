@@ -19,6 +19,18 @@ describe("writeManagedTextWithin", () => {
     }
   });
 
+  it("the actual session-end worker preserves the settings no-file default", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "zipkit-session-defaults-"));
+    try {
+      const file = path.join(root, "config.json");
+      writeManagedTextWithin(file, "{}", 2_000, undefined, { createAbsent: false });
+      expect(readdirSync(root)).toEqual([]);
+      writeFileSync(file, '{"theme":"dark"}');
+      writeManagedTextWithin(file, "{}", 2_000, undefined, { createAbsent: false });
+      expect(readFileSync(file, "utf8")).toBe("{}");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("gives up on a write that does not answer within its bound, and returns", () => {
     // The wait is the OS's own (Atomics.wait), which a fake clock cannot drive; the bound is kept short.
     const silent = new URL("./workers/silent.mjs", import.meta.url);

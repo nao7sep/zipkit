@@ -65,6 +65,7 @@
   "quit.detail": "Wenn Sie jetzt beenden, wird dieser Auftrag abgebrochen. Ein Archiv, das noch geschrieben wird, wird nicht fertiggestellt. Originale, die noch nicht in den Papierkorb gelegt wurden, bleiben erhalten. Dateien, die bereits zum Papierkorb unterwegs sind, können dort noch ankommen.",
   "quit.cancelAndQuit": "Auftrag abbrechen und beenden",
   "quit.keepWorking": "Weiterarbeiten",
+  "quit.settingsNotSaved": "Ihre Einstellungen wurden noch nicht erfolgreich gespeichert. Versuchen Sie es erneut, beenden Sie trotzdem oder brechen Sie ab, um ZipKit geöffnet zu lassen. Wenn Sie jetzt beenden, können diese Änderungen verloren gehen.",
   "quit.queueNotSavedTitle": "Die Warteschlange wurde nicht gespeichert",
   "quit.queueNotSavedMessage": "ZipKit konnte die Warteschlange nicht speichern und wurde deshalb nicht beendet.",
   "quit.queueNotSavedDetail": "Wenn Sie trotzdem beenden, fehlen seit dem letzten Speichern der Warteschlange hinzugefügte oder geänderte Aufträge beim nächsten Start von ZipKit. Versuchen Sie es erneut, oder brechen Sie ab, um ZipKit geöffnet zu lassen.",

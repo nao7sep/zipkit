@@ -4,7 +4,7 @@
  * plan/write/verify/trash live in queue.ts.
  */
 
-import { BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { dialog, ipcMain, shell } from "electron";
 import type { AppInfo, JobEvent, VerifyResult } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
@@ -20,13 +20,12 @@ import type { RecordsRead, RecordsReadResults } from "./records-worker.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log, startProgressRun, toGuiError, zip } from "./runtime.js";
-import { currentSettings, saveSettings } from "./settings.js";
-import { applyThemePreference } from "./theme.js";
-import { applyLanguagePreference, languageEnvironment, mainTranslator } from "./i18n.js";
+import { currentSettings } from "./settings.js";
+import { submitSettings, discardSettingsSubmission } from "./settings-save.js";
+import { languageEnvironment, mainTranslator } from "./i18n.js";
 import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
-import { showAppMessageDialog } from "./startup-dialog.js";
 
 export function registerIpc(): void {
   ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {
@@ -37,33 +36,8 @@ export function registerIpc(): void {
   // reloaded mid-session never rereads the file.
   ipcMain.handle("zipkit:getSettings", (): GuiSettings => currentSettings());
 
-  ipcMain.handle("zipkit:setSettings", async (event, draft: GuiSettings): Promise<GuiSettings> => {
-    let settings: GuiSettings;
-    try {
-      settings = await saveSettings(draft, log);
-    } catch (err) {
-      log.error("failed to persist settings", { error: errorInfo(err) });
-      throw err;
-    }
-    // Settings apply on Save, the theme and the language included (app-chrome
-    // conventions, Theme; localization conventions).
-    const failures: unknown[] = [];
-    try { applyThemePreference(settings.theme); } catch (error) { failures.push(error); }
-    try {
-      await applyLanguagePreference(settings.language, (error) => failures.push(error));
-    } catch (error) { failures.push(error); }
-    if (failures.length > 0) {
-      log.warn("settings saved but interface application was incomplete", { errors: failures.map(errorInfo) });
-      const { t } = mainTranslator();
-      void showAppMessageDialog({
-        owner: BrowserWindow.fromWebContents(event.sender) ?? undefined,
-        title: t("settings.title"),
-        message: t("settings.savedApplyFailed"),
-        button: "ok",
-      }).catch((error) => log.error("saved settings warning could not be shown", { error: errorInfo(error) }));
-    }
-    return settings;
-  });
+  ipcMain.handle("zipkit:setSettings", (_event, draft: GuiSettings) => submitSettings(draft));
+  ipcMain.handle("zipkit:discardSettingsSubmission", () => discardSettingsSubmission());
 
   ipcMain.handle("zipkit:getLanguageEnvironment", async () => languageEnvironment());
 

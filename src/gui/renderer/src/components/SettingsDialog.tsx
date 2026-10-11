@@ -12,11 +12,11 @@
  *
  * While a save runs, the fields and every close path are disabled until it
  * actually settles, which normally takes milliseconds: the dialog then closes on
- * success or stays open with the error. An edit, a discard or a reopened dialog
- * can therefore never meet a late result.
+ * success or stays open with the error. A later quit-time retry updates committed
+ * preferences and clears that error without replacing this editor's newer draft.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
@@ -61,6 +61,11 @@ export function SettingsDialog({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
+  // A quit Retry can commit while this editor remains open. Clear the obsolete
+  // failure message without replacing any newer, unsubmitted draft edits.
+  useEffect(() => { setSaveError(false); },
+    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language]);
+
   const dirty = Object.keys(changedSettings(settings, draft)).length > 0;
   const canSave = dirty && isValid(draft.defaults);
 
@@ -90,7 +95,7 @@ export function SettingsDialog({
   async function requestClose() {
     if (saving) return;
     if (!dirty) {
-      onClose();
+      await discardAndClose();
       return;
     }
     const discard = await confirm({
@@ -100,7 +105,17 @@ export function SettingsDialog({
       cancelLabel: t("common.keepEditing"),
       danger: true,
     });
-    if (discard) onClose();
+    if (discard) await discardAndClose();
+  }
+
+  async function discardAndClose() {
+    try {
+      await window.zipkit.discardSettingsSubmission();
+      onClose();
+    } catch (err) {
+      window.zipkit.reportError("discard settings submission", reportableError(err));
+      setSaveError(true);
+    }
   }
 
   return (
