@@ -21,6 +21,10 @@ export default defineConfig({
     // reaches the screen (localization-conventions, Gates).
     // Every jsdom file sets React and Testing Library up before its first test.
     setupFiles: ["./tests/setup.ts", "./tests/setup/rendered-keys.ts", "./tests/setup/jsdom-warmup.ts"],
+    // Electron's npm package downloads its ~100 MB binary the first time
+    // anything resolves it while the binary is missing (a fresh `npm ci`). No
+    // unit test runs Electron, so a placeholder path keeps the suite offline.
+    env: { ELECTRON_OVERRIDE_DIST_PATH: "/nonexistent/zipkit-unit-tests" },
     coverage: {
       // V8's native coverage — already the installed provider, no instrumentation
       // step. `include` lists every source file (not just the ones a test happens

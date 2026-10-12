@@ -145,6 +145,17 @@ describe("catalogues", () => {
     }
   });
 
+  // A control that swaps its command for running status must read differently
+  // in each state, or a press looks ignored (localization-conventions, Ellipsis).
+  // Settings' Save button is ZipKit's only such control; the job command bar
+  // swaps commands for Cancel, not for status text.
+  const COMMAND_STATUS_PAIRS = [["common.save", "settings.saving"]] as const;
+  it.each(LANGUAGES)("%s keeps each command distinct from the status that replaces it", (language) => {
+    for (const [command, status] of COMMAND_STATUS_PAIRS) {
+      expect(catalogues[language][command], `${command} / ${status}`).not.toBe(catalogues[language][status]);
+    }
+  });
+
   // Parsing turns a `\u00a0` escape into the same character as a literal one,
   // so this reads the files themselves: every hidden, no-break or soft-hyphen
   // character must be written as an escape (localization-conventions,

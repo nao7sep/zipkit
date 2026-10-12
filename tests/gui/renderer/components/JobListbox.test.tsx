@@ -95,6 +95,19 @@ describe("JobListbox", () => {
     expect(a!.getAttribute("aria-selected")).toBe("true");
   });
 
+  it("keeps the keyboard target on the same job through live updates and reordering", () => {
+    const onRemove = vi.fn();
+    const props = { onSelect: noop, onRemove, onCancel: noop, pullFocusId: null, onFocusPulled: noop };
+    const { rerender } = render(<JobListbox jobs={[job("a"), job("b"), job("c")]} selectedId="b" {...props} />);
+    const b = rows()[1]!;
+    b.focus();
+    rerender(<JobListbox jobs={[job("new"), job("c", "done"), job("b", "failed"), job("a")]} selectedId="b" {...props} />);
+    expect(document.activeElement).toBe(b);
+    expect(b.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(b, { key: "Delete" });
+    expect(onRemove).toHaveBeenCalledWith("b");
+  });
+
   it("Delete on the active row recovers to the neighbor (selection + focus) and removes it", () => {
     const onSelect = vi.fn();
     const onRemove = vi.fn();
