@@ -194,6 +194,8 @@ export function hasRunningJob(): boolean {
 export async function cancelRunningJobAndWait(): Promise<void> {
   await engine.shutdown();
 }
+/** Close new effects and cancel active work before waiting for issued edits. */
+export function beginQueueQuit(): void { engine.beginQuit(); }
 export function resumeQueueAfterCancelledQuit(): void { engine.resume(); }
 
 export function registerQueueIpc(): void {

@@ -1,6 +1,6 @@
 /**
  * Quitting, per the unsaved-edits-conventions (Quitting). Every quit reaches
- * the same sequence: stop the running job, finish submitted Settings, save the queue, let the last pane
+ * the same sequence: capture issued job edits, stop the running job, finish submitted Settings, save the queue, let the last pane
  * layout write land, let the backup history and the log write what they hold,
  * then terminate Electron.
  *
@@ -10,8 +10,8 @@
  * ending the session nothing asks: a question already open is answered for it,
  * and a failed save is logged.
  *
- * Every step is bounded, and the bounds together stay under the five seconds an
- * OS gives an app when the session ends. A step past its bound is logged and
+ * Every step is bounded. OS-driven quit skips optional backup closure and its
+ * bounds stay under five seconds; Windows session end uses one two-second save budget. A step past its bound is logged and
  * left behind, so quitting always ends in an exit; its outcome is unknown. Work
  * left behind may be stuck in a native call (a hung volume, a worker inside
  * SQLite), and Electron's ordinary exit waits for such work. Final exit uses
@@ -27,6 +27,7 @@ import { StepTimeout } from "./step-timeout.js";
 
 /** How long quit waits for each step before moving on without it. */
 export const QUIT_BOUNDS_MS = {
+  capture: 500,
   stopJob: 1_500,
   settings: 500,
   flush: 1_000,
@@ -61,6 +62,7 @@ export interface QuitSession {
 }
 
 export interface QuitSteps {
+  captureEdits(): Promise<void>;
   /** Cancel the running job and resolve once it has stopped. */
   stopJob(): Promise<void>;
   settleSettings(): Promise<void>;
@@ -120,6 +122,21 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
     return error;
   };
   try {
+    for (;;) {
+      const captureError = await bounded(steps.captureEdits, QUIT_BOUNDS_MS.capture, "pending job edits");
+      if (captureError === undefined) break;
+      steps.onStepFailed("queue", captureError);
+      if (session.ending) break;
+      let choice: QueueNotSavedChoice;
+      try { choice = await steps.askQueueNotSaved(session.signal); }
+      catch (error) {
+        steps.onStepFailed("question", error);
+        if (session.ending) break;
+        cancelled = true; steps.onCancelled(); return;
+      }
+      if (session.ending || choice === "quit") break;
+      if (choice === "cancel") { cancelled = true; steps.onCancelled(); return; }
+    }
     const jobError = await bounded(steps.stopJob, QUIT_BOUNDS_MS.stopJob, "the cancelled job");
     if (jobError !== undefined) steps.onStepFailed("job", jobError);
     for (const save of [

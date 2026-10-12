@@ -24,15 +24,16 @@ export interface PublishOperations {
   openExclusive(path: string): Promise<PublishDestination>;
   pathIdentity(path: string): Promise<string | null>;
   unlink(tempPath: string): Promise<void>;
+  syncPublished(output: string): Promise<void>;
 }
 
 /** The publication operations over the run's bounded {@link Volume}: the link
  *  is a commit call, the copy fallback is ordinary work, and the identity check
  *  and claim removal are cleanup. A failed copy keeps its claim owner through
  *  actual settlement, even after the caller's cleanup wait expires. */
-export function volumePublishOperations(volume: Volume): PublishOperations {
+export function volumePublishOperations(volume: Volume, durable = false): PublishOperations {
   return {
-    link: (tempPath, output) => volume.publishLink(tempPath, output),
+    link: (tempPath, output) => volume.publishLink(tempPath, output, durable),
     openRead: async (path) => {
       const file = await volume.open(path, "r");
       return {
@@ -57,6 +58,7 @@ export function volumePublishOperations(volume: Volume): PublishOperations {
     },
     pathIdentity: (path) => volume.identity(path),
     unlink: (path) => volume.unlink(path),
+    syncPublished: async (path) => { if (durable) await volume.syncPublished(path); },
   };
 }
 
@@ -134,6 +136,9 @@ export async function publishNoOverwrite(
     const code = (err as NodeJS.ErrnoException).code;
     if (!code || !LINK_UNSUPPORTED.has(code)) throw err;
     await copyExclusive(tempPath, output, signal, operations);
+    // The complete copy is now public. A flush failure must leave it intact,
+    // and cannot fall back to copying or run the partial-claim cleanup again.
+    await operations.syncPublished(output);
   }
 
   try {

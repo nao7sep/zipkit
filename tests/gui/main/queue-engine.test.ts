@@ -90,6 +90,73 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
 }
 
 describe("queue engine", () => {
+  it("quit refuses new effects while draining already-issued edits, and resumes planning on Cancel", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    try {
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      engine.beginQuit();
+      expect(() => run(engine, id)).toThrow("shutting down");
+      expect(() => engine.add(["/other"], DEFAULT_OPTIONS, "save")).toThrow("shutting down");
+      expect(() => engine.removeArchive(id)).toThrow("shutting down");
+      expect(() => engine.trashOriginals(id)).toThrow("shutting down");
+      engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "last-name" } });
+      expect(engine.snapshot()[0]?.options.fileName).toBe("last-name");
+      expect(calls.write).toBe(0);
+      engine.resume();
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(engine.snapshot()[0]?.options.fileName).toBe("last-name");
+      expect(calls.write).toBe(0);
+    } finally { await engine.shutdown(); }
+  });
+  it("captures option edits before the planning delay, survives cancelled quit, and ignores a stale plan", async () => {
+    let finish!: () => void;
+    let first = true;
+    const { deps, calls } = makeDeps({ plan: async (_inputs, options) => {
+      if (first) { first = false; await new Promise<void>((resolve) => { finish = resolve; }); }
+      return planData(true, `/${options.fileName || "stale"}.zip`);
+    } });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    try {
+      await until(() => expect(finish).toBeTypeOf("function"));
+      engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "latest", comment: "last keystroke" } });
+      run(engine, id);
+      finish();
+      await tick();
+      expect(engine.snapshot()[0]?.state).toBe("planning");
+      expect(engine.snapshot()[0]?.output).toBeUndefined();
+      expect(calls.write).toBe(0);
+      await engine.shutdown();
+      expect(engine.snapshot()[0]?.options).toMatchObject({ fileName: "latest", comment: "last keystroke" });
+      engine.resume();
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(engine.snapshot()[0]?.output).toBe("/latest.zip");
+      expect(calls.write).toBe(0); // Cancel-quit does not restore old Create consent.
+      run(engine, id);
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    } finally { finish?.(); await engine.shutdown(); }
+  });
+
+  it("retires a deferred plan on Cancel or removal", async () => {
+    const { deps, calls } = makeDeps();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, "save");
+    try {
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "cancelled" } });
+      engine.cancel(id);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(engine.snapshot()[0]?.state).toBe("needs-attention");
+      expect(calls.plan).toBe(1);
+      engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "removed" } });
+      engine.remove(id);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(calls.plan).toBe(1);
+      expect(engine.snapshot()).toEqual([]);
+    } finally { await engine.shutdown(); }
+  });
   it("rejects a run whose projected consent differs from the authoritative intent or inputs", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);

@@ -1,12 +1,7 @@
 // @vitest-environment jsdom
 
-/**
- * When a job's option edits reach the engine. A finished change (a box, a choice)
- * is sent at once; typing waits 250 ms after the last keystroke. That wait outlives
- * the edit: a job that finishes inside it no longer accepts the change, so the pane
- * must not keep showing a value the job never took, and selecting another job must
- * send what is still waiting rather than drop it.
- */
+/** Normal job edits immediately reach the queue owner. Locking a job restores
+ * the accepted options, and switching panes does not produce a delayed edit. */
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -119,29 +114,29 @@ describe("a job that finishes mid-edit", () => {
     expect(updateJob).toHaveBeenCalledWith("job-1", { options: { ...CUSTOM_OPTIONS, junk: false } });
   });
 
-  it("drops the pending typed change and shows the options the job kept", async () => {
+  it("sends a typed edit immediately and shows accepted options when the job locks", async () => {
     await renderApp();
     await openJob("job-1");
 
     await act(async () => typeInto(comment(), "late words"));
     expect(comment().value).toBe("late words");
 
-    // The job runs and finishes inside the typing delay.
+    // Main reports the accepted options of the finished job.
     await act(async () => pushQueue([{ ...readyJob, state: "done", output: "/tmp/thing.zip" }, otherJob]));
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(updateJob).not.toHaveBeenCalled();
+    expect(updateJob).toHaveBeenCalledExactlyOnceWith("job-1", { options: { ...CUSTOM_OPTIONS, comment: "late words" } });
     expect(comment().value).toBe(CUSTOM_OPTIONS.comment);
   });
 
-  it("sends typing still waiting when another job is selected", async () => {
+  it("sends typing before another job is selected without a second unmount save", async () => {
     await renderApp();
     await openJob("job-1");
 
     await act(async () => typeInto(comment(), "for the client"));
-    expect(updateJob).not.toHaveBeenCalled();
+    expect(updateJob).toHaveBeenCalledOnce();
     await openJob("job-2");
 
     expect(updateJob).toHaveBeenCalledTimes(1);

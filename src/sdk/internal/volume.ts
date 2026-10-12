@@ -37,7 +37,9 @@
 
 import type { BigIntStats } from "node:fs";
 import * as fsp from "node:fs/promises";
-import { StallError, toAbortError } from "../errors.js";
+import path from "node:path";
+import { StallError, WriteError, toAbortError } from "../errors.js";
+import { syncDirectory } from "./sync-directory.js";
 
 /** A directory entry as the walker needs it. */
 export interface DirEntry {
@@ -73,6 +75,7 @@ export interface FileSystemPort {
   /** Set access and modification times, given as Unix epoch nanoseconds. */
   utimes(path: string, atimeNs: bigint, mtimeNs: bigint): Promise<void>;
   chmod(path: string, mode: number): Promise<void>;
+  syncDirectory(path: string): Promise<void>;
 }
 
 /** Only explicit filesystem capability failures permit omitting ordinary modes. */
@@ -114,11 +117,14 @@ export const nodeFileSystem: FileSystemPort = {
   rm: (path) => fsp.rm(path, { force: true }),
   utimes: (path, atimeNs, mtimeNs) => fsp.utimes(path, epochSeconds(atimeNs), epochSeconds(mtimeNs)),
   chmod: (path, mode) => fsp.chmod(path, mode),
+  syncDirectory,
 };
 
 type Mode = "work" | "commit" | "cleanup";
 
 interface RunOptions<T> {
+  /** Finish a completed exclusive publication even if cancellation just arrived. */
+  alreadyPublished?: boolean;
   /** Called synchronously when the owner stops waiting on the call. */
   onAbandon?: () => void;
   /** Receives the call's value if it arrives after the owner stopped waiting. */
@@ -244,13 +250,32 @@ export class Volume {
   }
 
   /** Publish a finished temp file by renaming it over `to`. */
-  publishRename(from: string, to: string): Promise<void> {
-    return this.#run("commit", "publish", to, () => this.#port.rename(from, to));
+  publishRename(from: string, to: string, durable = false): Promise<void> {
+    return this.#run("commit", "publish", to, async () => {
+      await this.#port.rename(from, to);
+      if (durable) await this.#syncPublication(to);
+    });
   }
 
   /** Publish a finished temp file by hard-linking it at `to`. */
-  publishLink(existing: string, to: string): Promise<void> {
-    return this.#run("commit", "publish", to, () => this.#port.link(existing, to));
+  publishLink(existing: string, to: string, durable = false): Promise<void> {
+    return this.#run("commit", "publish", to, async () => {
+      await this.#port.link(existing, to);
+      if (durable) await this.#syncPublication(to);
+    });
+  }
+
+  /** Complete the metadata flush of an already published exclusive copy.
+   * Failure retains the complete output; it never owns partial-copy cleanup. */
+  syncPublished(output: string): Promise<void> {
+    return this.#run("commit", "sync publication", output, () => this.#syncPublication(output), { alreadyPublished: true });
+  }
+
+  async #syncPublication(output: string): Promise<void> {
+    try { await this.#port.syncDirectory(path.dirname(output)); }
+    catch (cause) {
+      throw new WriteError("write.durability", `Archive published but its save could not be confirmed: ${output}`, { cause, path: output });
+    }
   }
 
   /** The identity (`dev:ino`) of a path, or null when it is absent. A cleanup
@@ -318,7 +343,7 @@ export class Volume {
 
   #run<T>(mode: Mode, operation: string, path: string, start: () => Promise<T>, options: RunOptions<T> = {}): Promise<T> {
     const signal = this.#signal;
-    if (mode !== "cleanup") {
+    if (mode !== "cleanup" && !options.alreadyPublished) {
       if (this.#stall) return Promise.reject(this.#stall);
       if (signal?.aborted) return Promise.reject(toAbortError(signal.reason));
     }

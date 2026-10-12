@@ -680,32 +680,15 @@ function JobView({
   // job is actually customized. Unchecking enables editing; re-checking restores
   // the defaults (see toggleUseDefaults).
   const [useDefaults, setUseDefaults] = useState(() => optionsEqual(job.options, defaults));
-  // Typing waits 250 ms after the last keystroke before it is sent, so a job is not
-  // re-planned per keystroke; `pending` holds what is still waiting.
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const pending = useRef<GuiOptions | null>(null);
   const operationAttempt = useRef(0);
-  const persistOptionsRef = useRef<(next: GuiOptions) => Promise<void>>(async () => {});
-  // Selecting another job unmounts this view: a change still waiting is sent then,
-  // not dropped. Quitting can still lose the last 250 ms of typing, which ZipKit
-  // accepts rather than add a quit step that could itself fail and stop the quit
-  // (an approved exception to the unsaved-edits conventions).
-  useEffect(() => () => {
-    clearTimeout(timer.current);
-    if (pending.current) void persistOptionsRef.current(pending.current);
-  }, []);
+  useEffect(() => () => { operationAttempt.current++; }, []);
 
   // The one rule the engine also enforces: what this pane disables is exactly what
   // the engine refuses.
   const editable = isEditable(job);
-  // A job that stops being editable takes its options back. The 250 ms typing delay
-  // outlives the edit, so a change typed just before the job runs would land on a job
-  // that no longer accepts it: drop the pending change and show what the job holds,
-  // rather than leaving a field displaying a value the job never took.
+  // A job that stops being editable shows the options the queue accepted.
   useEffect(() => {
     if (editable) return;
-    clearTimeout(timer.current);
-    pending.current = null;
     setOpts(job.options);
     setUseDefaults(optionsEqual(job.options, defaults));
   }, [editable, job.options, defaults]);
@@ -776,7 +759,6 @@ function JobView({
       );
     }
   }
-  persistOptionsRef.current = persistOptions;
 
   // Clear a stale verify result whenever the job leaves "done" (re-planned, or its
   // archive removed) — a "Verified" line must never linger past the archive it
@@ -785,22 +767,10 @@ function JobView({
     if (job.state !== "done") setVerify(null);
   }, [job.state]);
 
-  // A keystroke: sent once typing pauses.
-  function typeOptions(next: GuiOptions) {
-    setOpts(next);
-    pending.current = next;
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      pending.current = null;
-      void persistOptions(next);
-    }, 250);
-  }
-  // A finished change (a box, a choice, a field left): sent now, replacing any
-  // typing still waiting.
+  // Normal edits reach the save/quit owner immediately. Only expensive planning
+  // is debounced in main, where a final queue save can already capture the edit.
   function commitOptions(next: GuiOptions) {
     setOpts(next);
-    pending.current = null;
-    clearTimeout(timer.current);
     void persistOptions(next);
   }
   // Unchecking enables editing (options unchanged until the user edits); re-checking
@@ -1000,7 +970,7 @@ function JobView({
             <span>{t.t("params.useDefaults")}</span>
           </label>
         </div>
-        <OptionsPanel options={opts} onChange={commitOptions} onType={typeOptions} disabled={useDefaults || !editable} />
+        <OptionsPanel options={opts} onChange={commitOptions} disabled={useDefaults || !editable} />
 
         {/* Operation: the per-archive name and intent, then the output path as the
             final checkpoint right above Create, then the lifecycle buttons. */}
@@ -1015,8 +985,7 @@ function JobView({
               value={opts.fileName}
               placeholder={archiveName(job.output) || t.t("op.automatic")}
               disabled={!editable}
-              onChange={(e) => setOpts({ ...opts, fileName: e.target.value })}
-              onBlur={(e) => commitOptions({ ...opts, fileName: e.target.value })}
+              onChange={(e) => commitOptions({ ...opts, fileName: e.target.value })}
             />
           </label>
           <label style={S.stack}>

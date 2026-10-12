@@ -14,6 +14,7 @@ import {
 
 function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
   return {
+    captureEdits: vi.fn(async () => {}),
     stopJob: vi.fn(async () => {}),
     settleSettings: vi.fn(async () => {}),
     askSettingsNotSaved: vi.fn(async () => "quit" as const),
@@ -65,6 +66,29 @@ describe("stopFlushAndExit", () => {
     vi.useRealTimers();
   });
 
+  it("capture failure uses queue Retry and Cancel before shutdown closes admission", async () => {
+    const capture = vi.fn<() => Promise<void>>().mockRejectedValueOnce(new Error("capture failed")).mockResolvedValue(undefined);
+    const s = steps({ captureEdits: capture, askQueueNotSaved: vi.fn(async () => "retry" as const) });
+    await stopFlushAndExit(s, userQuit());
+    expect(capture).toHaveBeenCalledTimes(2);
+    expect(s.stopJob).toHaveBeenCalledOnce();
+    expect(s.askQueueNotSaved).toHaveBeenCalledOnce();
+    const cancelled = steps({ captureEdits: async () => { throw new Error("capture failed"); }, askQueueNotSaved: async () => "cancel" });
+    await stopFlushAndExit(cancelled, userQuit());
+    expect(cancelled.stopJob).not.toHaveBeenCalled();
+    expect(cancelled.onCancelled).toHaveBeenCalledOnce();
+    expect(cancelled.exit).not.toHaveBeenCalled();
+  });
+
+  it("OS capture has a finite bound and asks nothing", async () => {
+    const s = steps({ captureEdits: never });
+    const quit = stopFlushAndExit(s, endingSession());
+    await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.capture);
+    await quit;
+    expect(s.askQueueNotSaved).not.toHaveBeenCalled();
+    expect(s.forceExit).toHaveBeenCalledOnce();
+  });
+
   it("stops the job, saves the queue, settles the layout, closes the backups and the log, then exits", async () => {
     const order: string[] = [];
     let finishJob!: () => void;
@@ -79,7 +103,7 @@ describe("stopFlushAndExit", () => {
     });
 
     const quitting = stopFlushAndExit(s, userQuit());
-    await Promise.resolve();
+    await vi.waitFor(() => expect(finishJob).toBeTypeOf("function"));
     expect(order).toEqual([]);
 
     finishJob();
@@ -297,7 +321,7 @@ describe("stopFlushAndExit", () => {
   });
 
   it("keeps the whole quit under the five seconds an ending session allows", () => {
-    expect(totalBound).toBeLessThan(5_000);
+    expect(totalBound - QUIT_BOUNDS_MS.backups).toBeLessThan(5_000);
     expect(SESSION_END_SAVE_MS).toBeLessThan(5_000);
   });
 });

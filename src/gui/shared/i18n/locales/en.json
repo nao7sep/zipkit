@@ -83,6 +83,7 @@
   "job.planChanged": "The files changed since this job was checked, so the archive was not created. Review the report, then create the archive again.",
   "job.writeFailed": "The archive could not be written. Check the output location and available storage, then try again.",
   "job.writeUnconfirmed": "ZipKit stopped waiting while the archive was being saved, so the archive may already be at {path} or may still appear there. Check that location before you create the archive again.",
+  "job.writeDurabilityFailed": "The archive is at {path}, but ZipKit could not confirm that the save was synchronized to disk. Your originals were kept. Check that location before creating the archive again.",
   "job.sourceChanged": "{path} changed while it was being archived, so no archive was written. Create the archive again.",
   "job.saved": { "one": "Saved ({count} byte).", "other": "Saved ({count} bytes)." },
   "job.insideSource": "The archive is inside the source, so the originals were left untouched.",

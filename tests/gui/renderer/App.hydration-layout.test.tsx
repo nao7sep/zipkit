@@ -406,6 +406,30 @@ describe("mounted run consent across queue projection changes", () => {
     return { engine, deps, bridge, id };
   }
 
+  it("captures comment, filename and output-folder keystrokes before an immediate quit or window close", async () => {
+    const { engine, deps, bridge, id } = ownedQueue("save");
+    let mounted: ReturnType<typeof renderApp> | undefined;
+    try {
+      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      mounted = renderApp(bridge);
+      fireEvent.click(await screen.findByRole("option"));
+      fireEvent.click(await screen.findByRole("checkbox", { name: "Use default parameters" }));
+      fireEvent.change(mounted.container.querySelector("textarea")!, { target: { value: "last keystroke" } });
+      fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "last-name" } });
+      fireEvent.change(screen.getByRole("textbox", { name: /Output directory/ }), { target: { value: "/last-folder" } });
+      // No blur, navigation, renderer timer or planning wait is required.
+      const held = engine.snapshot()[0]!;
+      expect(held.options).toMatchObject({ comment: "last keystroke", fileName: "last-name", outputDir: "/last-folder" });
+      expect(bridge.updateJob).toHaveBeenCalledTimes(3);
+      await engine.shutdown();
+      mounted.unmount(); mounted = undefined;
+      expect(engine.snapshot()[0]?.options).toEqual(held.options);
+      expect(deps.plan).toHaveBeenCalledOnce(); // Quit retires deferred scanning only.
+      expect(bridge.updateJob).toHaveBeenCalledTimes(3);
+      expect(engine.snapshot()[0]?.id).toBe(id);
+    } finally { mounted?.unmount(); await engine.shutdown(); }
+  });
+
   it.each([
     { trigger: "Create button", context: "run job" },
     { trigger: "Cmd+Enter", context: "run selected job" },

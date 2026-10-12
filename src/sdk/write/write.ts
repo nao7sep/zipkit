@@ -321,9 +321,9 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     };
   } catch (err) {
     await writer.abort();
-    // A stall is reported even when a cancel followed it: it is the real cause,
-    // and a stalled publication may still make the archive appear.
-    if (err instanceof StallError) throw err;
+    // A publication stall or flush failure keeps its truthful output status,
+    // even when cancellation arrived during that publication.
+    if (err instanceof StallError || (err instanceof WriteError && err.code === "write.durability")) throw err;
     if (signal?.aborted) throw toAbortError(signal.reason);
     if (err instanceof WriteError) throw err;
     throw new WriteError("write.failed", `failed to write ${plan.output}`, { cause: err });

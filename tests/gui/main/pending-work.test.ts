@@ -13,7 +13,7 @@ it("forces the final exit after an SDK caller was cancelled but its raw call is 
   controller.abort();
   await expect(caller).rejects.toMatchObject({ errorType: "abort" });
   const noop = async () => {};
-  const steps: QuitSteps = { stopJob: noop, settleSettings: noop, flush: noop, settleLayout: noop,
+  const steps: QuitSteps = { captureEdits: noop, stopJob: noop, settleSettings: noop, flush: noop, settleLayout: noop,
     closeBackups: noop, closeLog: noop, onFlushed: () => {}, onCancelled: () => {}, onStepFailed: vi.fn(),
     askSettingsNotSaved: async () => "quit", askQueueNotSaved: async () => "quit",
     nativeWorkPending, exit: vi.fn(), forceExit: vi.fn() };

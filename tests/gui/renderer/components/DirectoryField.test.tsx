@@ -6,6 +6,21 @@ import { DirectoryField } from "../../../../src/gui/renderer/src/components/Dire
 afterEach(cleanup);
 
 describe("DirectoryField picker failure", () => {
+  it("sends typing immediately and uses the latest parent owner when a picker settles late", async () => {
+    let finish!: (value: string) => void;
+    Object.defineProperty(window, "zipkit", { configurable: true, value: {
+      chooseOutputDir: () => new Promise<string>((resolve) => { finish = resolve; }), reportError: vi.fn(),
+    } });
+    const first = vi.fn(), latest = vi.fn();
+    const view = render(<DirectoryField label="Output" value="/first" onChange={first} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "/typed" } });
+    expect(first).toHaveBeenCalledExactlyOnceWith("/typed");
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    view.rerender(<DirectoryField label="Output" value="/typed" onChange={latest} />);
+    finish("/chosen");
+    await waitFor(() => expect(latest).toHaveBeenCalledExactlyOnceWith("/chosen"));
+    expect(first).toHaveBeenCalledOnce();
+  });
   it("retains the path, authors the result, and logs hostile diagnostics", async () => {
     const reportError = vi.fn();
     Object.defineProperty(window, "zipkit", { configurable: true, value: {

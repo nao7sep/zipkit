@@ -2,12 +2,11 @@
  * A labelled output-directory field: a text input plus a native "Choose" picker.
  * Used for the per-job output directory and the default output directory in
  * Settings. The value is an absolute directory (or empty to write beside the
- * input). It commits on blur (and on pick), not on every keystroke, so typing a
- * path does not trigger a dry run per character — the parent re-plans once, when
- * the field is left. Stacked (label above the row) so it sits cleanly in a column.
+ * input). Edits immediately reach the parent: Settings owns its modal draft,
+ * and main owns job saves and debounces planning. Stacked so it fits a column.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { reportableError } from "../externalDropBoundary";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
@@ -28,25 +27,11 @@ export function DirectoryField({
   placeholder?: string;
 }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(value);
   const [pickerError, setPickerError] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
   const pickerPending = useRef(false);
-  // Resync the draft only when the value changes from outside (picker, restore
-  // defaults) — not echoing back our own committed edits.
-  const committed = useRef(value);
-  useEffect(() => {
-    if (value !== committed.current) {
-      committed.current = value;
-      setDraft(value);
-    }
-  }, [value]);
-
-  function commit(next: string) {
-    committed.current = next;
-    setDraft(next);
-    onChange(next);
-  }
+  const change = useRef(onChange);
+  change.current = onChange;
 
   async function chooseDirectory() {
     if (pickerPending.current) return;
@@ -55,7 +40,9 @@ export function DirectoryField({
     setPickerError(false);
     try {
       const dir = await window.zipkit.chooseOutputDir();
-      if (dir) commit(dir);
+      // A picker can settle after other options were edited. Use the current
+      // parent callback rather than the options snapshot at the initial click.
+      if (dir) change.current(dir);
     } catch (error) {
       window.zipkit.reportError("choose output directory", reportableError(error));
       setPickerError(true);
@@ -71,11 +58,10 @@ export function DirectoryField({
       <span style={S.row}>
         <input
           type="text"
-          value={draft}
+          value={value}
           placeholder={placeholder}
           disabled={disabled}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => commit(draft)}
+          onChange={(e) => onChange(e.target.value)}
           style={S.input}
         />
         <button

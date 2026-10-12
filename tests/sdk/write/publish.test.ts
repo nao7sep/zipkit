@@ -50,12 +50,25 @@ function memoryOperations(
       openExclusive: vi.fn().mockResolvedValue(destination),
       pathIdentity: vi.fn().mockResolvedValue("claim"),
       unlink: vi.fn().mockResolvedValue(undefined),
+      syncPublished: vi.fn().mockResolvedValue(undefined),
       ...overrides,
     },
   };
 }
 
 describe("portable no-overwrite publication", () => {
+  it("keeps a completed fallback output when its publication flush fails", async () => {
+    const error = new Error("directory flush failed");
+    const fixture = memoryOperations(Buffer.from("complete"), {
+      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
+      syncPublished: vi.fn().mockRejectedValue(error),
+    });
+    await expect(publishNoOverwrite("temp", "out", undefined, fixture.operations)).rejects.toBe(error);
+    expect(Buffer.concat(fixture.published).toString()).toBe("complete");
+    expect(fixture.destination.sync).toHaveBeenCalledOnce();
+    expect(fixture.destination.discard).not.toHaveBeenCalled();
+    expect(fixture.operations.unlink).not.toHaveBeenCalled();
+  });
   it("falls back to a bounded exclusive copy when the filesystem rejects hard links", async () => {
     const bytes = Buffer.alloc(600_000, 0x5a);
     const fixture = memoryOperations(bytes, { link: vi.fn().mockRejectedValue(failure("EPERM")) });

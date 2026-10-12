@@ -125,7 +125,10 @@ export async function writeManagedJson(
   await managedIO(file, async (signal) => {
     // Field patches derive from the last physical commit, including a late one.
     const bytes = Buffer.from(typeof text === "function" ? text() : text, "utf8");
-    if (await writeManagedText(file, bytes, signal, options) && options.record === true) void record(file, bytes);
+    const written = await writeManagedText(file, bytes, signal, options);
+    // A durable Retry may finish a prior publication without changing bytes.
+    // History deduplicates the exact successfully saved submitted version.
+    if (options.record === true && written !== null && (written || options.durable)) void record(file, bytes);
     options.onWritten?.();
   });
 }

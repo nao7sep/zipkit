@@ -106,6 +106,7 @@ export interface QueueEngine {
    *  wait for the writer's own `abort()` to remove its temp file. Unbounded here;
    *  the quit sequence bounds its wait on this. */
   shutdown(): Promise<void>;
+  beginQuit(): void;
   resume(): void;
 }
 
@@ -114,6 +115,7 @@ interface Rec {
   /** The held live plan (carries the writer's out-of-band instructions). */
   plan: PlanData | null;
   aborter: AbortController | null;
+  planTimer?: ReturnType<typeof setTimeout>;
   /** The archive path from the most recent write that actually committed. */
   publishedOutput: string | null;
   publication: FileResource | null;
@@ -162,6 +164,7 @@ function stalledWhileCommitting(err: unknown): boolean {
 function writeFailureMessage(err: unknown, output: string): Message {
   const changed = changedSourcePath(err);
   if (changed !== undefined) return message("job.sourceChanged", { path: changed });
+  if (errCode(err) === "write.durability") return message("job.writeDurabilityFailed", { path: output });
   if (stalledWhileCommitting(err)) {
     return failureMessage(err, "job.writeUnconfirmed", { path: output });
   }
@@ -360,6 +363,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (!deps.admission.accepting()) return;
     const rec = recs.get(id);
     if (!rec) return;
+    clearTimeout(rec.planTimer);
+    rec.planTimer = undefined;
     // Supersede any in-flight plan for this job (rapid input/option edits can stack
     // re-plans), then mark THIS run as the current one. A run that is no longer
     // current discards its result, so a slow stale plan can never overwrite the
@@ -605,6 +610,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     draining = true;
     try {
       for (;;) {
+        if (!deps.admission.accepting()) break;
         const id = pending.shift();
         if (id === undefined) break;
         const rec = recs.get(id);
@@ -656,6 +662,21 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     void planJob(rec.job.id);
   }
 
+  function stopQueue(drainEdits: boolean): void {
+    if (drainEdits) deps.admission.beginClosing(); else deps.admission.close();
+    pending.length = 0;
+    for (const rec of recs.values()) {
+      rec.runAfterPlan = false;
+      if (rec.job.state === "planning") stoppedPlanners.add(rec.job.id);
+      clearTimeout(rec.planTimer);
+      rec.planTimer = undefined;
+      if (rec.job.state === "queued") set(rec, { state: "ready" });
+      rec.aborter?.abort();
+      if (rec.job.state === "planning") rec.aborter = null;
+    }
+    emit();
+  }
+
   return {
     snapshot,
     add(inputs, options, intent) {
@@ -670,14 +691,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return id;
     },
     update(id, patch) {
-      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
+      if (!deps.admission.acceptingEdits()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
       // No edits to a job the shared rule locks: `running` (in flight), `queued`
       // (committed to run — editing it must go through cancel first, which un-queues
       // and re-plans, or a store-only edit such as an intent flip would leave it
       // queued and auto-run later under the new intent), or `done` (its options are
-      // the record of the archive on disk). A late click or the pane's option
-      // debounce can still arrive after the job finishes; accepting it would drop
+      // the record of the archive on disk). A late click or IPC edit can still
+      // arrive after the job finishes; accepting it would drop
       // the published output the Trash command needs and re-plan the result away.
       if (!rec || !isEditable(rec.job)) return;
       // A Create accepted while planning describes the settings at that click.
@@ -700,7 +721,16 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // A re-plan emits on its own; a store-only change (intent / write-only
       // option) still must emit so the renderer sees the new state.
       if (replan) {
-        void planJob(id);
+        // Accept options now; quit captures them without waiting for a scan.
+        // Retire the old controller immediately, before the replacement starts:
+        // an abort-ignoring old plan must not publish during this delay.
+        clearTimeout(rec.planTimer);
+        rec.aborter?.abort();
+        rec.aborter = null;
+        rec.plan = null;
+        set(rec, { state: "planning", writable: false, message: undefined, actionResult: undefined, errorCode: undefined });
+        rec.planTimer = setTimeout(() => { void planJob(id); }, 250);
+        emit();
       } else emit();
     },
     addInputs(id, paths) {
@@ -722,6 +752,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
       if (!rec || rec.job.state === "running" || rec.job.trashing) return;
+      clearTimeout(rec.planTimer);
+      rec.aborter?.abort();
       recs.delete(id);
       const i = order.indexOf(id);
       if (i >= 0) order.splice(i, 1);
@@ -734,6 +766,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const rec = recs.get(id);
       if (!rec) return;
       rec.runAfterPlan = false;
+      if (rec.planTimer !== undefined) {
+        clearTimeout(rec.planTimer);
+        rec.planTimer = undefined;
+        set(rec, { state: "needs-attention", writable: false });
+        emit();
+        return;
+      }
       // A `queued` job is only waiting its turn — it has no in-flight work to
       // abort. Drop it from the run queue and re-plan, so it returns to an
       // editable, freshly-evaluated state (the world may have changed while it
@@ -940,25 +979,18 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return false;
     },
     async shutdown() {
-      deps.admission.close();
-      // Stop draining any job still only `queued`: quit takes whatever the
-      // running job leaves behind and goes no further.
-      pending.length = 0;
-      for (const rec of recs.values()) {
-        rec.runAfterPlan = false;
-        if (rec.job.state === "planning") stoppedPlanners.add(rec.job.id);
-        if (rec.job.state === "queued") set(rec, { state: "ready" });
-        rec.aborter?.abort();
-      }
-      emit();
+      stopQueue(false);
       await Promise.allSettled([...(currentRun ? [currentRun] : []), ...actions]);
     },
+    beginQuit() { stopQueue(true); },
     resume() {
       if (deps.admission.accepting()) return;
       deps.admission.reopen();
+      for (const rec of recs.values()) if (rec.job.state === "planning") stoppedPlanners.add(rec.job.id);
       for (const id of stoppedPlanners) void planJob(id);
       stoppedPlanners.clear();
       emit();
+      void drain();
     },
   };
 }

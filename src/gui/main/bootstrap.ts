@@ -17,7 +17,7 @@ import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
-import { cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
+import { beginQueueQuit, cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
 import { discardSettingsSubmission, settingsSavePending, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
 import { loadSettings, settingsFile } from "./settings.js";
 import { applyLanguagePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
@@ -32,6 +32,7 @@ import { askQueueNotSaved, askSettingsNotSaved, confirmQuitDuringWrite } from ".
 import { configureWindowActivity } from "./windowActivity.js";
 import { createQuitControl, endSessionNow, finishStartupHalt, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
+import { captureJobEdits, resumeJobEdits } from "./job-edit-capture.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { forceExitProcess } from "./force-exit.js";
 import { nativeWorkPending } from "./pending-work.js";
@@ -59,6 +60,8 @@ function createWindow(): BrowserWindow {
   configureWindowActivity(app, win);
 
   let flushQueueOnClose = true;
+  let capturedClose = false;
+  let capturingClose = false;
   // Off macOS closing the main window quits, so the close becomes the quit:
   // the window stays open when the user keeps working or cancels the quit, and
   // the quit's own exit closes it. A window whose document failed to load just
@@ -66,8 +69,20 @@ function createWindow(): BrowserWindow {
   win.on("close", (event) => {
     if (!flushQueueOnClose) return;
     if (process.platform === "darwin") {
-      if (settingsSavePending()) event.preventDefault();
-      else discardSettingsSubmission();
+      if (capturedClose) return;
+      event.preventDefault();
+      if (settingsSavePending() || capturingClose) return;
+      capturingClose = true;
+      void captureJobEdits(win).then(() => {
+        if (win.isDestroyed()) return;
+        discardSettingsSubmission();
+        capturedClose = true;
+        win.close();
+      }).catch((error) => {
+        log.error("failed to capture job edits before window close", { error: errorInfo(error) });
+        resumeJobEdits(win);
+        if (!win.isDestroyed()) win.webContents.send("zipkit:queueSaved", false);
+      }).finally(() => { capturingClose = false; });
       return;
     }
     event.preventDefault();
@@ -267,13 +282,16 @@ function logQuitStepFailure(step: QuitStep, error: unknown): void {
 const quit = createQuitControl({
   onFailed: (error) => {
     resumeQueueAfterCancelledQuit();
+    resumeJobEdits(getMainWindow());
     log.error("quit request failed; the app remains open", { error: errorInfo(error) });
   },
   hasRunningJob,
   confirmQuit: (signal) => confirmQuitDuringWrite(getMainWindow(), signal),
-  shutdown: (session) =>
-    stopFlushAndExit(
+  shutdown: (session) => {
+    beginQueueQuit();
+    return stopFlushAndExit(
       {
+        captureEdits: () => captureJobEdits(getMainWindow()),
         stopJob: cancelRunningJobAndWait,
         settleSettings: settleSettingsSave,
         askSettingsNotSaved: (signal) => askSettingsNotSaved(getMainWindow(), signal),
@@ -282,6 +300,7 @@ const quit = createQuitControl({
         askQueueNotSaved: (signal) => askQueueNotSaved(getMainWindow(), signal),
         onCancelled: () => {
           resumeQueueAfterCancelledQuit();
+          resumeJobEdits(getMainWindow());
           log.info("quit cancelled with work not saved");
         },
         settleLayout: layoutWritesSettled,
@@ -293,7 +312,8 @@ const quit = createQuitControl({
         nativeWorkPending,
       },
       session,
-    ),
+    );
+  },
 });
 
 app.on("before-quit", quit.beforeQuit);

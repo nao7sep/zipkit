@@ -22,6 +22,8 @@ Install Node.js **22.12+**, run `npm install`, then choose one path:
 
 The app uses no keys, services, or network; archive work stays local.
 
+Ordinary quit captures the latest job edits before saving the queue. Settings and completed ZIP archives request a file flush before publication and a directory flush where the runtime and filesystem support it. Windows supports the file flush through Node but not the directory flush. These requests improve durability without guaranteeing survival of every hardware failure or power loss. Queue and layout saves remain atomic, without the extra flushes. If an archive's publication flush fails, ZipKit reports the failure and keeps the originals.
+
 ## Use the SDK
 
 Drive the SDK with a `plan → inspect → write` flow:
