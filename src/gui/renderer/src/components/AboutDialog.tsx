@@ -65,7 +65,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
       footer={<button onClick={onClose}>{t("common.close")}</button>}
     >
       <p className="about-name">{info?.name ?? APP_NAME}</p>
-      {loadFailed ? <><p role="alert">{t("about.loadFailed")}</p><button onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</button></> : <p className="about-version">{info ? t("about.version", { version: info.version }) : t("about.loading")}</p>}
+      {loadFailed ? <><p role="alert">{t("about.loadFailed")}</p><button onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</button></> : <p className="about-version">{info ? t("about.version", { version: info.version }) : null}</p>}
       <p id="about-description">{t("about.description")}</p>
       <div style={S.links}>
         <button disabled={!info} onClick={() => void openLink("repository", REPO)}>{t("about.repository")}</button>

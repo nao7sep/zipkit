@@ -12,11 +12,15 @@
  * so it is "at the bottom" by definition and must never be read as scrolled-up;
  * and a zero-height (not-yet-laid-out) measurement is ignored rather than trusted.
  * The threshold is a pixel distance, not a line count, so it is font-independent.
+ *
+ * The pane holds only a job's newest `JOB_EVENT_LIMIT` events. When it is full,
+ * a note heads the log where the older events would be, rather than a marker
+ * a line could itself end with; Records keeps the complete history.
  */
 
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
-import type { JobEvent } from "../../../shared/api";
+import { JOB_EVENT_LIMIT, type JobEvent } from "../../../shared/api";
 import { logLevelColor, logLevelLabel, progressHeading, progressLineText, progressRuns } from "../view";
 import { useI18n } from "../i18n/I18nContext";
 
@@ -56,6 +60,9 @@ export function ProgressLog({ events }: { events: JobEvent[] }) {
       style={S.log}
       onScroll={onScroll}
     >
+      {events.length >= JOB_EVENT_LIMIT && (
+        <p style={S.partial}>{t.t("progress.partial", { count: JOB_EVENT_LIMIT })}</p>
+      )}
       {runs.map((run) => (
         <section key={run.key} style={S.run}>
           <div style={S.time}>{progressHeading(run, t)}</div>
@@ -93,4 +100,5 @@ const S: Record<string, CSSProperties> = {
   line: { whiteSpace: "pre-wrap", wordBreak: "break-word" },
   level: { fontWeight: 700, marginInlineEnd: "0.6em" },
   empty: { margin: 0, color: "var(--text-2)", fontSize: "0.85rem" },
+  partial: { margin: "0 0 0.6rem", color: "var(--text-2)", fontFamily: "var(--font-ui)" },
 };

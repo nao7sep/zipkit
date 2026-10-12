@@ -134,9 +134,9 @@ describe("outputPreview", () => {
       name: "mine",
     });
   });
-  it("says 'resolving…' for the name only while planning, never claims planning when blocked", () => {
+  it("leaves the name empty only while planning, never claims planning when blocked", () => {
     const planning = job({ state: "planning", inputs: ["/a/b/c"] });
-    expect(outputPreview(planning, DEFAULT_OPTIONS, en).name).toBe("Resolving…");
+    expect(outputPreview(planning, DEFAULT_OPTIONS, en).name).toBe("");
     const blocked = job({ state: "needs-attention", inputs: ["/a/x", "/b/y"] });
     expect(outputPreview(blocked, DEFAULT_OPTIONS, en).name).toBe("(set a file name)");
   });
@@ -229,11 +229,11 @@ describe("intentLabel", () => {
 describe("stateLabel", () => {
   it("proper-cases every state (exhaustive, none left raw)", () => {
     expect(ALL_STATES.map((state) => en.t(stateLabel(state)))).toEqual([
-      "Planning",
+      "Planning…",
       "Needs attention",
       "Ready",
       "Queued",
-      "Running",
+      "Running…",
       "Done",
       "Failed",
     ]);

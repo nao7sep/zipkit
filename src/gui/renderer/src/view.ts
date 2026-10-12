@@ -787,16 +787,17 @@ export function containingDir(p: string | undefined): string {
  * and its file name, as two separate concerns. The AUTHORITATIVE composition is
  * the main process's `resolveOutputPath` (it owns `~` expansion and absolute-path
  * validation); this is a DISPLAY preview only. It prefers the SDK-resolved
- * `job.output`, falls back to what the user typed, says "resolving…" only while a
- * plan is actually running, and otherwise names the default the user still needs
- * to see — so it never claims "planning" for a blocked/failed job. One place, so
+ * `job.output`, falls back to what the user typed, leaves the name empty while a
+ * plan is actually running (the state badge says so; a stand-in value would not),
+ * and otherwise names the default the user still needs to see — so it never
+ * claims "planning" for a blocked/failed job. One place, so
  * the renderer has a single (tested) derivation instead of an inline ladder.
  */
 export function outputPreview(job: Job, opts: GuiOptions, t: Translator): { dir: string; name: string } {
   const name =
     archiveName(job.output) ||
     opts.fileName.trim() ||
-    t.t(job.state === "planning" ? "dest.resolving" : "dest.setFileName");
+    (job.state === "planning" ? "" : t.t("dest.setFileName"));
   const dir =
     containingDir(job.output) ||
     opts.outputDir.trim() ||

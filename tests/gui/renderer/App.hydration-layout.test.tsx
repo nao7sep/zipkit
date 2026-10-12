@@ -472,7 +472,7 @@ describe("mounted run consent across queue projection changes", () => {
       await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
-      fireEvent.click(within(screen.getByText("Inputs").parentElement!).getByRole("button", { name: "Add" }));
+      fireEvent.click(within(screen.getByText("Inputs").parentElement!).getByRole("button", { name: "Add…" }));
       expect(bridge.chooseInputs).toHaveBeenCalledOnce();
       fireEvent.click(screen.getByRole("button", { name: "Create archive" }));
       const dialog = await screen.findByRole("dialog", { name: "Create archive and move originals to Trash?" });

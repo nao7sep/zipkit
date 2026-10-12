@@ -55,8 +55,10 @@ const S: Record<string, CSSProperties> = {
     padding: "0.4rem 0.85rem",
     borderBottom: "1px solid var(--border)",
   },
-  // Truncates so a long job-inventory title never pushes the state pill off the
-  // header; the full text is available via the hover tooltip.
+  // Truncates (one CSS-drawn marker) so a long job title never pushes the state
+  // pill off the fixed-height header. This is the deliberate exception: the
+  // complete name stays shown in the selected job's row and Inputs list, which
+  // keyboard and touch reach directly; the tooltip only supplements them.
   title: {
     margin: 0,
     minWidth: 0,

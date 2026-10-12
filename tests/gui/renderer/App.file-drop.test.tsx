@@ -248,7 +248,7 @@ describe("App file-drop receivers", () => {
       );
     });
     const add = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent === "Add")!;
+      .find((button) => button.textContent === "Add…")!;
 
     await act(async () => {
       add.click();

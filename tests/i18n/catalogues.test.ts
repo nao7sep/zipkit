@@ -131,6 +131,20 @@ describe("catalogues", () => {
     expect(allowed.filter((key) => !copied.includes(key)), "listed but translated").toEqual([]);
   });
 
+  // An ellipsis carries meaning, so a translation has one exactly when English
+  // does; it is always the single U+2026 character, and only a no-break space
+  // (German) may precede it (localization-conventions, Ellipsis).
+  it.each(LANGUAGES)("%s uses the ellipsis character exactly where English does", (language) => {
+    for (const [key, englishEntry] of Object.entries(english)) {
+      const expected = forms(englishEntry).some((text) => text.includes("\u2026"));
+      for (const text of forms(catalogues[language][key] ?? "")) {
+        expect(text, key).not.toContain("...");
+        expect(text, key).not.toMatch(/ \u2026/);
+        expect(text.includes("\u2026"), `${key}: ${text}`).toBe(expected);
+      }
+    }
+  });
+
   // Parsing turns a `\u00a0` escape into the same character as a literal one,
   // so this reads the files themselves: every hidden, no-break or soft-hyphen
   // character must be written as an escape (localization-conventions,

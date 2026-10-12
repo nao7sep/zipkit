@@ -431,9 +431,6 @@ input[type="checkbox"] {
   cursor: pointer;
   user-select: none;
   outline: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .menu-item:hover {
   background: var(--utility-hover);
@@ -592,6 +589,9 @@ code {
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+/* A deliberate truncation exception: log text can run to stack traces or JSON,
+ * so a row shows two lines with one drawn marker, and selecting the row (by
+ * keyboard, pointer or touch) shows the complete text in the detail pane. */
 .records-row__text {
   font-size: 0.8rem;
   color: var(--text-2);

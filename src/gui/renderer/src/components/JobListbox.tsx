@@ -339,11 +339,11 @@ const S: Record<string, CSSProperties> = {
   // Selection reads as an accent ring on top of the state tint, so both the
   // status (background) and the selection are visible at once.
   jobRowSel: { borderColor: "var(--accent-strong)", boxShadow: "0 0 0 1px var(--accent-strong)" },
+  // The whole name wraps, as the inputs list's paths do: a side list is not
+  // constrained enough to justify truncating it.
   name: {
     fontWeight: 600,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflowWrap: "anywhere",
   },
   meta: {
     display: "flex",
@@ -353,8 +353,8 @@ const S: Record<string, CSSProperties> = {
     marginTop: "0.15rem",
   },
   dim: { color: "var(--text-2)", fontSize: "0.8rem" },
-  // name is a single line (nowrap + ellipsis), so it IS the row's first text
-  // line, always flush on the row's top edge (the row stays flex-start, and
+  // name's first line IS the row's first text line, always flush on the
+  // row's top edge (the row stays flex-start, and
   // name gets no special treatment). `position: relative` nudges the button
   // there too, without resizing anything: a plain `margin-top` would instead
   // shrink the amount of height this (otherwise tallest) item contributes to

@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { ProgressLog } from "../../../../src/gui/renderer/src/components/ProgressLog";
-import type { JobEvent, LogEvent } from "../../../../src/gui/shared/api";
+import { JOB_EVENT_LIMIT, type JobEvent, type LogEvent } from "../../../../src/gui/shared/api";
 
 afterEach(cleanup);
 
@@ -45,6 +45,18 @@ describe("ProgressLog", () => {
     expect(region.getAttribute("aria-live")).toBe("off");
     expect(region.getAttribute("tabindex")).toBe("0");
     expect(screen.queryByRole("log")).toBeNull();
+  });
+
+  it("notes a full pane above its events instead of marking any line, and stays quiet below the limit", () => {
+    const events = Array.from({ length: JOB_EVENT_LIMIT }, (_, i) => recorded(i + 1, { event: "scan.dir", path: `d${i}…` }));
+    const { rerender } = render(<ProgressLog events={events.slice(1)} />);
+    expect(screen.queryByText(/Open “Records”/)).toBeNull();
+
+    rerender(<ProgressLog events={events} />);
+    const region = screen.getByRole("region", { name: "Progress log" });
+    expect(region.firstElementChild?.textContent).toBe("Showing the newest 2,000 events. Open “Records” for the full history.");
+    // A line that itself ends in "…" stays exactly as recorded.
+    expect(region.textContent).toContain(`d${JOB_EVENT_LIMIT - 1}…`);
   });
 
   it("says there is nothing to show before the first run", () => {
