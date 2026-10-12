@@ -182,12 +182,9 @@ const ST: Record<string, CSSProperties> = {
     color: "var(--text)",
   },
   scroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "1.25rem" },
-  // Footer buttons keep one-line labels (index.css), so a long translation
-  // widens the surface up to its cap and only then moves a button to a new row.
   footer: {
     flexShrink: 0,
     display: "flex",
-    flexWrap: "wrap",
     justifyContent: "flex-end",
     gap: "0.75rem",
     padding: "0.85rem 1.25rem",
