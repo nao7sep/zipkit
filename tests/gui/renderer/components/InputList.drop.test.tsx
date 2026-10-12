@@ -203,7 +203,7 @@ describe("InputList external-drop receiver", () => {
       onResult,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(onResult).toHaveBeenCalledWith({
       operationKey: "inputs:job-1:picker",

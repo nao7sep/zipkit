@@ -1,9 +1,9 @@
 {
-  "common.add": "追加…",
+  "common.add": "追加",
   "common.cancel": "キャンセル",
   "common.keepEditing": "編集を続ける",
   "common.close": "閉じる",
-  "common.choose": "選択…",
+  "common.choose": "選択",
   "common.remove": "削除",
   "common.retry": "再試行",
   "common.save": "保存",

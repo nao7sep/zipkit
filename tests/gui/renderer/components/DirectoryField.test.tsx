@@ -15,7 +15,7 @@ describe("DirectoryField picker failure", () => {
     const view = render(<DirectoryField label="Output" value="/first" onChange={first} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "/typed" } });
     expect(first).toHaveBeenCalledExactlyOnceWith("/typed");
-    fireEvent.click(screen.getByRole("button", { name: "Choose…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     view.rerender(<DirectoryField label="Output" value="/typed" onChange={latest} />);
     finish("/chosen");
     await waitFor(() => expect(latest).toHaveBeenCalledExactlyOnceWith("/chosen"));
@@ -30,7 +30,7 @@ describe("DirectoryField picker failure", () => {
     const onChange = vi.fn();
     render(<DirectoryField label="Output" value="/kept/path" onChange={onChange} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Choose…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("current path is unchanged");
     expect(alert.textContent).not.toContain("ZIPKIT_PICKER_SENTINEL");
@@ -48,7 +48,7 @@ describe("DirectoryField picker failure", () => {
     } });
     render(<DirectoryField label="Output" value="/kept/path" onChange={vi.fn()} />);
 
-    const choose = screen.getByRole("button", { name: "Choose…" });
+    const choose = screen.getByRole("button", { name: "Choose" });
     fireEvent.click(choose);
     fireEvent.click(choose);
 
