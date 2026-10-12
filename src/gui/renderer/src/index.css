@@ -435,8 +435,35 @@ input[type="checkbox"] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.menu-item[data-highlighted] {
+.menu-item:hover {
   background: var(--utility-hover);
+}
+.menu-item:focus-visible {
+  background: var(--utility-hover);
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+[data-window-inactive] .menu-item:focus-visible {
+  outline-color: var(--border);
+}
+
+/* Keep status tint and the persistent selected border while showing hover.
+ * An inset keyboard ring remains visible within the scrolling job list. */
+.job-row {
+  --job-tint: transparent;
+  background: var(--job-tint);
+}
+.job-row:hover {
+  /* The secondary surface keeps both badge and row text legible while the
+   * status tint remains part of the fill. */
+  background: color-mix(in srgb, var(--job-tint), var(--surface-2) 50%);
+}
+.job-row:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -4px;
+}
+[data-window-inactive] .job-row:focus-visible {
+  outline-color: var(--border);
 }
 
 code {
@@ -540,6 +567,9 @@ code {
 .records-row--selected {
   background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
   border-color: var(--accent-strong);
+}
+.records-row--selected:hover {
+  background: color-mix(in srgb, var(--accent-strong) 18%, transparent);
 }
 .records-row:focus-visible {
   outline: 2px solid var(--accent-strong);

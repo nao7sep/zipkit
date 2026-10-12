@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stateColor, stateTint } from "../../../src/gui/renderer/src/view";
+import type { Job } from "../../../src/gui/shared/api";
 
 // Every color pair the renderer draws keeps high contrast in both themes,
 // by this app's own floor: 4.5:1 for text, 3:1 for focus/selection
@@ -114,6 +116,35 @@ describe("theme token contrast", () => {
     it("keeps the accent ring and scroll-bar thumb at 3:1 or more", () => {
       for (const mark of ["--accent-strong", "--scrollbar-thumb"]) {
         for (const surface of SURFACES) check(hexOf(block, mark), hexOf(block, surface), 3, `${mark} on ${surface}`);
+      }
+    });
+
+    it("keeps hovered and selected list text, badges and keyboard marks legible together", () => {
+      const base = hexOf(block, "--surface");
+      const ink = hexOf(block, "--text");
+      const secondary = hexOf(block, "--text-2");
+      const focus = hexOf(block, "--accent-strong");
+      const hover = css.match(/\.job-row:hover\s*\{[^}]*var\((--[\w-]+)\)\s+(\d+)%/);
+      expect(hover).toBeTruthy();
+      check(focus, hexOf(block, "--utility-hover"), 3, "menu hovered focus mark");
+      const states: Job["state"][] = ["planning", "needs-attention", "ready", "queued", "running", "done", "failed"];
+      for (const state of states) {
+        const color = hexOf(block, stateColor(state).slice(4, -1));
+        const amount = Number(stateTint(state).match(/(\d+)%/)?.[1] ?? 0) / 100;
+        const background = mix(hexOf(block, hover![1]!), mix(color, base, amount), Number(hover![2]) / 100);
+        check(ink, background, 4.5, `job ${state} hovered body text`);
+        check(secondary, background, 4.5, `job ${state} hovered secondary text`);
+        check(focus, background, 3, `job ${state} hovered focus mark`);
+        check(color, mix(color, background, amount), 4.5, `job ${state} hovered badge`);
+      }
+      for (const selector of [".records-row--selected", ".records-row--selected:hover"]) {
+        const start = css.indexOf(`${selector} {`);
+        const amount = css.slice(start, css.indexOf("}", start)).match(/var\(--accent-strong\)\s+(\d+)%/)?.[1];
+        expect(amount).toBeDefined();
+        const background = mix(focus, base, Number(amount) / 100);
+        check(ink, background, 4.5, `${selector} body text`);
+        check(secondary, background, 4.5, `${selector} secondary text`);
+        check(focus, background, 3, `${selector} focus mark`);
       }
     });
   });

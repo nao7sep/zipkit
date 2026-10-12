@@ -5,6 +5,39 @@ import { describe, expect, it } from "vitest";
 const css = readFileSync(resolve("src/gui/renderer/src/index.css"), "utf8");
 const compact = css.replace(/\s+/g, "");
 
+const rule = (selector: string): string => {
+  const start = compact.indexOf(`${selector}{`);
+  expect(start, `Missing state rule: ${selector}`).toBeGreaterThanOrEqual(0);
+  return compact.slice(start + selector.length + 1, compact.indexOf("}", start));
+};
+
+// These pin the CSS roles when states coincide; they do not prove rendered
+// contrast or the browser's native pointer/keyboard :focus-visible heuristics.
+describe("independent composite visual states", () => {
+  it.each([".menu-item", ".job-row", ".records-row"])("keeps %s keyboard focus separate from hover and selection", (role) => {
+    expect(rule(`${role}:focus-visible`)).toMatch(/outline:[^;]*solidvar\(--accent-strong\)/);
+    expect(rule(`${role}:focus-visible`)).toMatch(/outline-offset:-\d+px/);
+    expect(rule(`[data-window-inactive]${role}:focus-visible`)).toContain("outline-color:var(--border)");
+    for (const hover of role === ".records-row" ? [".records-row:not(.records-row--selected):hover", ".records-row--selected:hover"] : [`${role}:hover`]) {
+      const hoverRule = rule(hover);
+      expect(hoverRule).toContain("background:");
+      expect(hoverRule).not.toMatch(/outline|border|box-shadow/);
+    }
+  });
+
+  it("steps selected Records hover without replacing its selection border", () => {
+    expect(rule(".records-row--selected")).toContain("border-color:var(--accent-strong)");
+    const background = (selector: string) => rule(selector).match(/background:([^;]+)/)?.[1];
+    expect(background(".records-row--selected:hover")).not.toBe(background(".records-row--selected"));
+    expect(rule(".records-row--selected:hover")).toContain("var(--accent-strong)");
+  });
+
+  it("retains job status color through hover and leaves pointer-open menu targets visually quiet", () => {
+    expect(rule(".job-row:hover")).toContain("var(--job-tint)");
+    expect(compact).not.toContain(".menu-item[data-highlighted]");
+  });
+});
+
 describe("renderer scrollbar contract", () => {
   it("keeps a 16px gutter around a 10px inset thumb", () => {
     expect(compact).toMatch(/\*::-webkit-scrollbar\{[^}]*width:16px;[^}]*height:16px/);

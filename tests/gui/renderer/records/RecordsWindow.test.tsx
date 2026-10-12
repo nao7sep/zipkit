@@ -227,6 +227,30 @@ describe("RecordsWindow", () => {
     expect(document.activeElement).toBe(options()[0]);
   });
 
+  it("retains the selected detail and keyboard target through hover, then selects the clicked record", async () => {
+    await mount();
+    await act(async () => options()[0]!.focus());
+    await press("ArrowDown");
+    const [earlier, selected] = options();
+    const reads = readRecordDetail.mock.calls.length;
+    await act(async () => {
+      for (const hovered of [earlier!, selected!]) {
+        hovered.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }));
+        hovered.dispatchEvent(new PointerEvent("pointerleave", { bubbles: true, pointerType: "mouse" }));
+      }
+    });
+    expect(document.activeElement).toBe(selected);
+    expect(selected!.getAttribute("aria-selected")).toBe("true");
+    expect(selected!.classList.contains("records-row--selected")).toBe(true);
+    expect(document.querySelector(".records-detail__title")?.textContent).toBe("verify failed");
+    expect(readRecordDetail).toHaveBeenCalledTimes(reads);
+    await press("ArrowUp");
+    expect(document.activeElement).toBe(earlier);
+    await act(async () => selected!.click());
+    expect(selected!.getAttribute("aria-selected")).toBe("true");
+    expect(readRecordDetail).toHaveBeenLastCalledWith("log", 9);
+  });
+
   it("reads again with each filter, and searches once typing pauses", async () => {
     await mount();
     const selects = Array.from(document.querySelectorAll("select"));

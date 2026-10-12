@@ -7,6 +7,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { JobListbox } from "../../../../src/gui/renderer/src/components/JobListbox";
 import type { Job } from "../../../../src/gui/shared/api";
@@ -59,6 +60,39 @@ describe("JobListbox", () => {
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
     expect(onSelect).toHaveBeenCalledWith("b");
     expect(document.activeElement).toBe(rows()[1]);
+  });
+
+  it("keeps selection and keyboard actions on their target through hover, and selects the clicked job", () => {
+    const onRemove = vi.fn();
+    function List() {
+      const [selectedId, onSelect] = useState<string | null>("a");
+      return <JobListbox jobs={[job("a"), job("b", "failed"), job("c", "done")]}
+        selectedId={selectedId} onSelect={onSelect} onRemove={onRemove}
+        onCancel={noop} pullFocusId={null} onFocusPulled={noop} />;
+    }
+    render(<List />);
+    const [a, b, c] = rows();
+    a!.focus();
+    fireEvent.keyDown(a!, { key: "ArrowDown" });
+    const tint = b!.style.getPropertyValue("--job-tint");
+    const selectedBorder = b!.style.borderColor;
+    expect(tint).not.toBe("");
+    expect(selectedBorder).not.toBe("");
+    for (const hovered of [a!, b!]) {
+      fireEvent.pointerMove(hovered, { pointerType: "mouse" });
+      fireEvent.pointerLeave(hovered, { pointerType: "mouse" });
+      expect(document.activeElement).toBe(b);
+      expect(b!.getAttribute("aria-selected")).toBe("true");
+      expect(b!.style.getPropertyValue("--job-tint")).toBe(tint);
+      expect(b!.style.borderColor).toBe(selectedBorder);
+    }
+    fireEvent.keyDown(b!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(c);
+    fireEvent.keyDown(c!, { key: "Delete" });
+    expect(onRemove).toHaveBeenCalledWith("c");
+    fireEvent.click(a!);
+    expect(document.activeElement).toBe(a);
+    expect(a!.getAttribute("aria-selected")).toBe("true");
   });
 
   it("Delete on the active row recovers to the neighbor (selection + focus) and removes it", () => {

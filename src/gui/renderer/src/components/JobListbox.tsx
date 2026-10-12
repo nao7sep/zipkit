@@ -230,15 +230,16 @@ export function JobListbox({
             <li
               key={job.id}
               data-job-id={job.id}
+              className="job-row"
               role="option"
               aria-selected={selected}
               tabIndex={tabbable ? 0 : -1}
               onClick={() => activate(i)}
               style={{
                 ...S.jobRow,
-                background: stateTint(job.state),
+                "--job-tint": stateTint(job.state),
                 ...(selected ? S.jobRowSel : null),
-              }}
+              } as CSSProperties}
             >
               {/* Filename gets the full top line; status sits under it so a long
                   name is never squeezed by a leading badge. */}
