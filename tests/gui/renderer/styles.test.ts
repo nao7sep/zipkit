@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(resolve("src/gui/renderer/src/index.css"), "utf8");
@@ -80,5 +80,31 @@ describe("options grid", () => {
   it("fits as many columns as the pane holds, each at least one section wide or the whole pane", () => {
     expect(compact).toMatch(/\.options-grid\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,\d+(\.\d+)?rem\),1fr\)\)/);
     expect(compact).not.toContain("@container");
+  });
+});
+
+// Truncation is a reviewed exception with one drawn marker (text-cleanup and
+// responsive-interface conventions): a new text-overflow site must be added here
+// deliberately, and nothing may clip one-line text without a marker. Visually
+// hidden screen-reader text (clip/clipPath) is not truncation.
+describe("truncation sites", () => {
+  const rules = [...compact.replace(/\/\*.*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector!, body: body! }));
+  const sources = (dir: string): string[] => readdirSync(resolve(dir), { recursive: true, encoding: "utf8" })
+    .filter((name) => name.endsWith(".tsx")).map((name) => resolve(dir, name));
+  const styleBlocks = sources("src/gui/renderer/src").flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(/(\w+): \{([^{}]*)\}/g)].map(([, name, body]) => ({ at: `${basename(file)} ${name}`, body: body! })));
+
+  it("draws markers only at the reviewed sites", () => {
+    expect(rules.filter((rule) => rule.body.includes("text-overflow:")).map((rule) => rule.selector)).toEqual(["select"]);
+    expect(styleBlocks.filter((block) => block.body.includes("textOverflow")).map((block) => block.at)).toEqual(["Pane.tsx title"]);
+  });
+
+  it("never clips one-line text without a marker", () => {
+    const silentCss = rules.filter(({ body }) =>
+      body.includes("white-space:nowrap") && /overflow(-x)?:(hidden|clip)/.test(body) && !body.includes("text-overflow:ellipsis"));
+    expect(silentCss.map((rule) => rule.selector)).toEqual([]);
+    const silentInline = styleBlocks.filter(({ body }) =>
+      /whiteSpace: "nowrap"/.test(body) && /overflow(X)?: "(hidden|clip)"/.test(body) && !/textOverflow: "ellipsis"|clip(Path)?:/.test(body));
+    expect(silentInline.map((block) => block.at)).toEqual([]);
   });
 });

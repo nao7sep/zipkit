@@ -219,6 +219,10 @@ button {
   font-weight: 600;
   cursor: pointer;
 }
+[data-modal-footer] button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 button:hover:not(:disabled) {
   background: var(--utility-hover);
 }
@@ -382,6 +386,10 @@ select {
   background-size: 6px 6px;
   background-repeat: no-repeat;
   cursor: pointer;
+  /* A select sized by its longest option would push a narrow pane wider; it
+     shrinks instead, marks a cut-short choice, and opening it shows them all. */
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 input:focus-visible,
 select:focus-visible,

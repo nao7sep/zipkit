@@ -23,9 +23,11 @@ export interface PaneLayout {
 }
 
 /** Min/max for each user-resizable side column, so a drag (or a stale file)
- *  can't make a column unusably thin or starve the flexible middle column. */
+ *  can't make a column unusably thin or starve the flexible middle column. The
+ *  jobs minimum holds the pane's title beside its Add… button in every language
+ *  (German is widest; `scripts/label-fit.mjs` measures it). */
 export const LAYOUT_BOUNDS = {
-  jobsWidth: { min: 200, max: 480 },
+  jobsWidth: { min: 224, max: 480 },
   progressWidth: { min: 240, max: 600 },
 } as const;
 
