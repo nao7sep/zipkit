@@ -54,8 +54,7 @@ const S: Record<string, CSSProperties> = {
   // for it) is all the X needs to land there instead of on its own center.
   // Constant regardless of how many lines the message wraps to, since both it
   // and the message start from the same flush-top point. Same convention as
-  // InputList's remove X (useDismissAlignOffset) and .receiver-result's
-  // dismiss (index.css).
+  // the job row's actions and .receiver-result's dismiss (index.css).
   dismiss: {
     flexShrink: 0,
     margin: "0 -0.35rem 0 0",

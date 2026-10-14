@@ -3,8 +3,8 @@
  * inputs are not frozen at creation: the user can add a directory/file they forgot
  * (button or by dropping onto this list) or drop one they no longer want, without
  * rebuilding the job. Rows are ordered directories-first then files (alphabetical
- * within each group) and show the path, one line keeping its final segment until
- * the user reveals it whole, plus what it is on disk (directory /
+ * within each group) and show the path, one line keeping its final segment (the
+ * whole path in its tooltip), plus what it is on disk (directory /
  * file / missing), so a vanished input is visible. The last input cannot be
  * removed — a job must archive something. Hovering a row highlights it, so on a
  * wide window it stays clear which input the far-right remove icon will remove.
@@ -15,7 +15,7 @@
  * denial boundary only prevents navigation outside owned receivers.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
 import {
@@ -25,7 +25,6 @@ import {
   type ReceiverOutcome,
   type ReceiverResult,
 } from "../externalDropBoundary";
-import { useDismissAlignOffset } from "../dismissAlign";
 import { COLOR, orderedEntries } from "../view";
 import { CloseIcon } from "./Icon";
 import { PathText } from "./PathText";
@@ -47,27 +46,8 @@ function kindColor(kind: PathKind): string {
   return "var(--text-2)";
 }
 
-/** One row: path text plus its remove X. A row of its own (rather than an
- * inline `.map`) so the X's first-line alignment (useDismissAlignOffset) can
- * measure THIS row's own path text — a revealed path can wrap to a
- * different number of lines.
- *
- * This is a `position: relative` runtime measurement, not pure CSS, and that
- * is deliberate: the row keeps its original `alignItems: "center"`, so a
- * one-line path is already correctly centered on the button for free, while
- * a wrapped path needs the X pulled up by a fixed amount once its own
- * rendered height passes the button's. A single static CSS value (e.g.
- * `align-self: flex-start` + a constant `margin-block`) cannot serve both:
- * the flex-start reference that makes the wrapped case's shift independent
- * of line count also decouples the button from the row's own height, so it
- * no longer benefits from the centering that already made the one-line case
- * correct — verified empirically (scratchpad/redesign/xalign/zipkit):
- * `align-self: flex-start; margin-block: calc((line-height - control-h)/2)`
- * fixes the wrapped case (offset ~0.2px, matching HEAD's row height and path
- * position exactly) but regresses the one-line case to ~5.6px off (from
- * ~0.2px before). Measuring the path's actual rendered height at runtime is
- * what lets a single formula, `(line height - rendered height) / 2`, cover
- * both cases (it evaluates to 0 exactly when the path is one line). */
+/** One row: what the input is on disk, its one-line path, and its remove X,
+ * centred on the row. */
 function InputRow({
   path,
   kind,
@@ -81,25 +61,14 @@ function InputRow({
   onRemove: (path: string) => void;
   t: Translator["t"];
 }) {
-  const pathRef = useRef<HTMLButtonElement>(null);
-  const [whole, setWhole] = useState(false);
-  const dismissOffset = useDismissAlignOffset(pathRef);
-
   return (
     <li className="input-row" style={S.row}>
       {kind && <span style={{ ...S.kind, color: kindColor(kind) }}>{t(KIND_LABEL[kind])}</span>}
-      <button
-        type="button"
-        ref={pathRef}
-        className="path-toggle"
-        aria-expanded={whole}
-        onClick={() => setWhole((shown) => !shown)}
-      >
-        {whole ? <span className="path-toggle__whole">{path}</span> : <PathText path={path} />}
-      </button>
+      <span style={S.path} title={path}>
+        <PathText path={path} />
+      </span>
       <button
         className="icon"
-        style={{ position: "relative", top: dismissOffset }}
         onClick={() => onRemove(path)}
         disabled={!canRemove}
         title={t(canRemove ? "inputs.removeFromJob" : "inputs.needsOne")}
@@ -288,12 +257,7 @@ const S: Record<string, CSSProperties> = {
   title: { fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
   // Enough room that neighboring rows' hover highlights never touch.
   list: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.25rem" },
-  // Unchanged from plain centering: the row's height and the path's own
-  // position come entirely from this (kind/path get no special treatment),
-  // so wrapped copy sizes and sits exactly as it would with no X at all. The
-  // X's own first-line alignment is a `position: relative` nudge on the
-  // button itself (InputRow, above, via useDismissAlignOffset) — a paint-only
-  // offset, so it never feeds back into this centering or the row's height.
+  // The path is one line, so plain centering aligns the kind, the path and the X.
   row: {
     display: "flex",
     alignItems: "center",
@@ -305,4 +269,5 @@ const S: Record<string, CSSProperties> = {
   // At least the column the English kinds need, and wider when a translation
   // is, so a kind never wraps or clips.
   kind: { fontSize: "0.7rem", fontWeight: 700, flexShrink: 0, minWidth: "4.2rem", whiteSpace: "nowrap" },
+  path: { flex: 1, minWidth: 0, fontSize: "0.85rem" },
 };

@@ -313,36 +313,12 @@ button.danger-confirm:active:not(:disabled) {
    * make room for it) is all the dismiss X needs to land there instead of on
    * its own center. Constant regardless of how many lines the message wraps
    * to, since both it and the message start from the same flush-top point.
-   * Same convention as InputList's remove X (useDismissAlignOffset) and
-   * ShellNotice's dismiss. */
+   * Same convention as the job row's actions and ShellNotice's dismiss. */
   position: relative;
   top: calc((0.8rem * 1.5 - var(--control-h)) / 2);
 }
 
 /* Bare icon/affordance buttons (hamburger, row actions): no filled chrome. */
-/* An input's path in its list row: one line keeping its final segment until
- * activated by pointer, touch or keyboard, then the whole path, wrapped. */
-button.path-toggle {
-  flex: 1;
-  min-width: 0;
-  display: block;
-  padding: 0 2px;
-  text-align: left;
-  font-size: 0.85rem;
-  font-weight: inherit;
-  color: inherit;
-  background: transparent;
-  border-radius: 4px;
-}
-button.path-toggle:hover:not(:disabled) {
-  background: var(--utility);
-}
-button.path-toggle:active:not(:disabled) {
-  background: var(--utility-hover);
-}
-.path-toggle__whole {
-  overflow-wrap: anywhere;
-}
 button.icon {
   background: transparent;
   padding: 6px;
