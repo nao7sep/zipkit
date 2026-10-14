@@ -8,8 +8,8 @@ export type Translator = BaseTranslator & {
   rich: (key: MessageKey, values: Record<string, ReactNode>) => ReactNode;
 };
 
-export function rendererTranslator(language: Language, locale?: string): Translator {
-  const base = createTranslator(language, locale);
+export function rendererTranslator(language: Language, locale?: string, timeZone?: string): Translator {
+  const base = createTranslator(language, locale, timeZone);
   return {
     ...base,
     rich: (key, values) =>
@@ -21,7 +21,7 @@ export function rendererTranslator(language: Language, locale?: string): Transla
   };
 }
 
-const ENGLISH_ENVIRONMENT: LanguageEnvironment = { language: "en", locale: "en" };
+const ENGLISH_ENVIRONMENT: LanguageEnvironment = { language: "en", locale: "en", timeZone: null };
 
 // English until a provider says otherwise, so a component rendered on its own
 // (in a test, say) still has text.
@@ -30,13 +30,16 @@ const I18nContext = createContext<Translator>(rendererTranslator("en"));
 export function I18nProvider({
   language,
   locale,
+  timeZone = null,
   children,
 }: {
   language: Language;
   locale: string;
+  /** The display zone; null follows the computer's zone. */
+  timeZone?: string | null;
   children: ReactNode;
 }) {
-  const translator = useMemo(() => rendererTranslator(language, locale), [language, locale]);
+  const translator = useMemo(() => rendererTranslator(language, locale, timeZone ?? undefined), [language, locale, timeZone]);
 
   // <html lang> picks the right glyphs for Chinese, Japanese and Korean text and
   // tells the last-resort error boundary, which sits outside this provider,
@@ -65,7 +68,7 @@ export function MainProcessLanguage({ children }: { children: ReactNode }) {
     const show = (next: LanguageEnvironment): void => {
       const request = ++requested;
       void loadCatalogue(next.language)
-        .then(() => next, () => ENGLISH_ENVIRONMENT)
+        .then(() => next, () => ({ ...ENGLISH_ENVIRONMENT, timeZone: next.timeZone }))
         .then((shown) => {
           if (!cancelled && request === requested) setEnvironment(shown);
         });
@@ -90,7 +93,7 @@ export function MainProcessLanguage({ children }: { children: ReactNode }) {
 
   if (!environment) return null;
   return (
-    <I18nProvider language={environment.language} locale={environment.locale}>
+    <I18nProvider language={environment.language} locale={environment.locale} timeZone={environment.timeZone}>
       {children}
     </I18nProvider>
   );

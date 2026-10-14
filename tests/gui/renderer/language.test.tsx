@@ -42,11 +42,11 @@ describe("the interface language main settles on", () => {
     // No English flashes before the language is known.
     expect(container.textContent).toBe("");
 
-    await act(async () => answer({ language: "en", locale: "en" }));
+    await act(async () => answer({ language: "en", locale: "en", timeZone: null }));
     expect(screen.getByRole("button", { name: "Menu" })).toBeTruthy();
     expect(document.documentElement.lang).toBe("en");
 
-    await act(async () => announce({ language: "ja", locale: "ja" }));
+    await act(async () => announce({ language: "ja", locale: "ja", timeZone: null }));
     expect(await screen.findByRole("button", { name: ja["header.menu"] })).toBeTruthy();
     expect(document.documentElement.lang).toBe("ja");
   });
@@ -69,7 +69,7 @@ describe("the interface language main settles on", () => {
         <AppHeader onOpenSettings={() => {}} onOpenRecords={() => {}} onOpenShortcuts={() => {}} onOpenHelp={() => {}} onOpenAbout={() => {}} />
       </MainProcessLanguage>,
     );
-    await act(async () => answer({ language: "ko", locale: "ko" }));
+    await act(async () => answer({ language: "ko", locale: "ko", timeZone: null }));
     expect(await screen.findByRole("button", { name: ko["header.menu"] })).toBeTruthy();
     observer.disconnect();
     // The English label never reached the screen on the way.

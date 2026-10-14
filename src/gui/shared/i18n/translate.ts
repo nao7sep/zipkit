@@ -38,6 +38,8 @@ export type Translator = {
   // placeholder names at odd ones, for a surface that fills them with markup.
   parts: (key: MessageKey) => string[];
   number: (value: number) => string;
+  /** The display zone the time formats use; undefined follows the computer's zone. */
+  timeZone: string | undefined;
   // An instant, as a date and time.
   dateTime: (date: Date) => string;
   // An instant to the second, for a log line.
@@ -47,11 +49,11 @@ export type Translator = {
 };
 
 // The language's catalogue must already be loaded (loadCatalogue).
-export function createTranslator(language: Language, locale: string = language): Translator {
+export function createTranslator(language: Language, locale: string = language, timeZone?: string): Translator {
   const catalogue: Catalogue = loadedCatalogue(language);
   const numberFormat = new Intl.NumberFormat(locale);
-  const dateTimeFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
-  const logTimeFormat = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "medium" });
+  const dateTimeFormat = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone });
+  const logTimeFormat = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "medium", timeZone });
   const listFormat = new Intl.ListFormat(language, { style: "narrow", type: "conjunction" });
   const pluralRules = new Intl.PluralRules(language);
 
@@ -94,6 +96,7 @@ export function createTranslator(language: Language, locale: string = language):
     text: (message) => t(message.key, message.values),
     parts: (key) => template(key, undefined).split(PLACEHOLDER),
     number: (value) => numberFormat.format(value),
+    timeZone,
     dateTime: (date) => dateTimeFormat.format(date),
     logTime: (date) => logTimeFormat.format(date),
     list: (items) => listFormat.format(items),

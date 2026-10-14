@@ -5,6 +5,7 @@ const electron = vi.hoisted(() => ({
   calls: [] as string[],
   preferred: ["ja-JP", "en-US"],
   isPackaged: true,
+  windows: [] as Array<{ isDestroyed: () => boolean; webContents: { send: ReturnType<typeof vi.fn> } }>,
 }));
 
 vi.mock("electron", () => ({
@@ -28,7 +29,7 @@ vi.mock("electron", () => ({
       electron.defaults.delete(key);
     },
   },
-  BrowserWindow: { getAllWindows: () => [] },
+  BrowserWindow: { getAllWindows: () => electron.windows },
 }));
 
 const { readSavedPreference } = await import("../../../src/gui/main/i18n.js");
@@ -108,5 +109,25 @@ describe("applyLanguagePreference", () => {
     await Promise.all([first, second]);
 
     expect(i18n.mainTranslator().language).toBe("de");
+  });
+});
+
+describe("applyTimeZonePreference", () => {
+  it("hands the windows the saved display zone with the language, and System as the computer's", async () => {
+    vi.resetModules();
+    const i18n = await import("../../../src/gui/main/i18n.js");
+    await i18n.settleLanguage("en", vi.fn());
+    const send = vi.fn();
+    electron.windows.splice(0, electron.windows.length, { isDestroyed: () => false, webContents: { send } });
+    try {
+      expect(i18n.languageEnvironment().timeZone).toBeNull();
+      i18n.applyTimeZonePreference("Asia/Tokyo");
+      expect(send).toHaveBeenCalledExactlyOnceWith("zipkit:languageChanged", { language: "en", locale: "en", timeZone: "Asia/Tokyo" });
+      i18n.applyTimeZonePreference("Asia/Tokyo");
+      expect(send).toHaveBeenCalledOnce();
+      i18n.applyTimeZonePreference("system");
+      expect(i18n.languageEnvironment().timeZone).toBeNull();
+      expect(send).toHaveBeenCalledTimes(2);
+    } finally { electron.windows.splice(0); }
   });
 });

@@ -402,9 +402,9 @@
 
   "settings.title": "設定",
   "settings.language": "言語",
-  "settings.languageSystem": "システム",
+  "settings.system": "システム（{value}）",
+  "settings.timeZone": "タイムゾーン",
   "settings.theme": "テーマ",
-  "settings.themeSystem": "システム",
   "settings.themeLight": "ライト",
   "settings.themeDark": "ダーク",
   "settings.themeHint": "「システム」は OS の外観に合わせます。",

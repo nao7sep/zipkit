@@ -5,6 +5,14 @@ import { createTranslator, message, sentences } from "../../src/gui/shared/i18n/
 await Promise.all((["de", "ru", "ja"] as const).map(loadCatalogue));
 
 describe("createTranslator", () => {
+  it("formats times in the display zone it is given, and in the computer's without one", () => {
+    const instant = new Date(Date.UTC(2026, 0, 1, 15, 30, 0));
+    expect(createTranslator("en", "en-US", "Asia/Tokyo").logTime(instant)).toContain("12:30:00");
+    expect(createTranslator("en", "en-US", "UTC").logTime(instant)).toContain("3:30:00");
+    expect(createTranslator("en", "en-US", "Asia/Tokyo").dateTime(instant)).toContain("Jan 2, 2026");
+    expect(createTranslator("en", "en-US").timeZone).toBeUndefined();
+  });
+
   it("fills placeholders and formats numbers for the locale", () => {
     expect(createTranslator("en").t("about.version", { version: "1.2.0" })).toBe("Version 1.2.0");
     expect(createTranslator("en", "en-US").t("job.saved", { count: 12345 })).toBe("Saved (12,345 bytes).");

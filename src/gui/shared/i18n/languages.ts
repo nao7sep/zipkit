@@ -89,4 +89,6 @@ export function formattingLocale(language: Language, systemLocale: string | null
 export interface LanguageEnvironment {
   language: Language;
   locale: string;
+  /** The display zone times are shown in; null follows the computer's zone. */
+  timeZone: string | null;
 }

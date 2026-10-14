@@ -402,9 +402,9 @@
 
   "settings.title": "Einstellungen",
   "settings.language": "Sprache",
-  "settings.languageSystem": "System",
+  "settings.system": "System ({value})",
+  "settings.timeZone": "Zeitzone",
   "settings.theme": "Erscheinungsbild",
-  "settings.themeSystem": "System",
   "settings.themeLight": "Hell",
   "settings.themeDark": "Dunkel",
   "settings.themeHint": "System folgt dem Erscheinungsbild des Betriebssystems.",

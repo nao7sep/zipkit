@@ -90,3 +90,17 @@ describe("optionsEqual", () => {
     expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, junk: false })).toBe(false);
   });
 });
+
+describe("display zones", () => {
+  it("offers the platform's zones with UTC, and accepts older names for them but not fixed offsets", async () => {
+    const { displayZones, isDisplayZone } = await import("../../../src/gui/shared/spec");
+    expect(displayZones()).toContain("UTC");
+    expect(displayZones()).toContain("Asia/Tokyo");
+    expect([...displayZones()].sort()).toEqual(displayZones());
+    expect(isDisplayZone("Asia/Tokyo")).toBe(true);
+    expect(isDisplayZone("US/Eastern")).toBe(true);
+    expect(isDisplayZone("+09:00")).toBe(false);
+    expect(isDisplayZone("Mars/Olympus")).toBe(false);
+    expect(isDisplayZone(9)).toBe(false);
+  });
+});

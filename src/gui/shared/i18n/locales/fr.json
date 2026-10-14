@@ -402,9 +402,9 @@
 
   "settings.title": "Réglages",
   "settings.language": "Langue",
-  "settings.languageSystem": "Système",
+  "settings.system": "Système ({value})",
+  "settings.timeZone": "Fuseau horaire",
   "settings.theme": "Thème",
-  "settings.themeSystem": "Système",
   "settings.themeLight": "Clair",
   "settings.themeDark": "Sombre",
   "settings.themeHint": "Système suit l’apparence du système d’exploitation.",

@@ -25,12 +25,20 @@ const CUSTOM = {
   uiFontFamily: "Iosevka, monospace",
   theme: "dark" as const,
   language: "pt-BR" as const,
+  timeZone: "America/Sao_Paulo",
 };
 
 describe("settings sets", () => {
   it("round-trips whole settings with no format marker", () => {
     expect(settings.parseSettings(JSON.parse(settings.serializeSettings(CUSTOM)))).toEqual(CUSTOM);
     expect(JSON.parse(settings.serializeSettings(CUSTOM))).toEqual(CUSTOM);
+  });
+
+  it("keeps a saved display zone and reverts only an unknown one, logging it", () => {
+    expect(settings.parseSettings({ timeZone: "Asia/Tokyo" }).timeZone).toBe("Asia/Tokyo");
+    const logger = warningLog();
+    expect(settings.parseSettings({ timeZone: "+09:00", theme: "dark" }, logger)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), { key: "timeZone" });
   });
 
   it("reads one set with every absent set using its built-in", () => {
@@ -138,7 +146,7 @@ describe("settings file location and persistence", () => {
   it("a reset removes defaults and keeps other stored sets", async () => {
     await settings.saveSettings(CUSTOM);
     expect(await settings.saveSettings({ ...CUSTOM, defaults: DEFAULT_OPTIONS })).toEqual({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
-    expect(readStored()).toEqual(stored({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language }));
+    expect(readStored()).toEqual(stored({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language, timeZone: CUSTOM.timeZone }));
   });
 
   it("removes a stored copy identical to the built-in and keeps the file with no sets", async () => {

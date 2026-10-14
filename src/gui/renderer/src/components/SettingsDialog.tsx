@@ -21,18 +21,19 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
-import { changedSettings, DEFAULT_OPTIONS, type GuiOptions, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import { changedSettings, DEFAULT_OPTIONS, displayZones, type GuiOptions, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import type { SystemChoices } from "../../../shared/api";
 import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
 import { useI18n } from "../i18n/I18nContext";
 import type { MessageKey } from "../../../shared/i18n/catalogues";
 import { LANGUAGE_NAMES, LANGUAGES, normalizeLanguagePreference } from "../../../shared/i18n/languages";
 
-const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: MessageKey }> = [
-  { value: "system", label: "settings.themeSystem" },
-  { value: "light", label: "settings.themeLight" },
-  { value: "dark", label: "settings.themeDark" },
-];
+const THEME_LABELS: Readonly<Record<Exclude<ThemePreference, "system">, MessageKey>> = {
+  light: "settings.themeLight",
+  dark: "settings.themeDark",
+};
+const THEMES: readonly ThemePreference[] = ["system", "light", "dark"];
 
 /** The built-in UI font stack, read from the stylesheet that owns it, shown as the
  *  empty field's placeholder (config-sets conventions, In the interface). */
@@ -45,12 +46,17 @@ function isValid(o: GuiOptions): boolean {
   return Number.isInteger(o.level) && o.level >= 1 && o.level <= 9;
 }
 
+/** Every System entry names what it resolves to now, such as "System (Dark)"
+ *  (app-chrome conventions, Theme; timestamp conventions, Time zones); the opener
+ *  asks main for `system` before showing the dialog. */
 export function SettingsDialog({
   settings,
+  system,
   onSave,
   onClose,
 }: {
   settings: GuiSettings;
+  system: SystemChoices;
   onSave: (settings: GuiSettings) => Promise<void>;
   onClose: () => void;
 }) {
@@ -64,7 +70,7 @@ export function SettingsDialog({
   // A quit Retry can commit while this editor remains open. Clear the obsolete
   // failure message without replacing any newer, unsubmitted draft edits.
   useEffect(() => { setSaveError(false); },
-    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language]);
+    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone]);
 
   const dirty = Object.keys(changedSettings(settings, draft)).length > 0;
   const canSave = dirty && isValid(draft.defaults);
@@ -149,11 +155,31 @@ export function SettingsDialog({
           onChange={(e) => setDraft({ ...draft, language: normalizeLanguagePreference(e.target.value) })}
           style={S.languageSelect}
         >
-          <option value="system">{t("settings.languageSystem")}</option>
+          <option value="system">{t("settings.system", { value: LANGUAGE_NAMES[system.language] })}</option>
           {LANGUAGES.map((language) => (
             <option key={language} value={language} lang={language}>
               {LANGUAGE_NAMES[language]}
             </option>
+          ))}
+        </select>
+      </label>
+      {/* The zone every time in the app is shown in. Chosen from the platform's
+          zones, never typed; System follows the computer's zone each launch. */}
+      <label style={S.fontField}>
+        <span style={S.fontLabel}>{t("settings.timeZone")}</span>
+        <select
+          value={draft.timeZone}
+          disabled={saving}
+          onChange={(e) => setDraft({ ...draft, timeZone: e.target.value })}
+          style={S.languageSelect}
+        >
+          <option value="system">{t("settings.system", { value: system.timeZone })}</option>
+          {/* A saved zone the platform lists under another name still shows as chosen. */}
+          {draft.timeZone !== "system" && !displayZones().includes(draft.timeZone) && (
+            <option value={draft.timeZone}>{draft.timeZone}</option>
+          )}
+          {displayZones().map((zone) => (
+            <option key={zone} value={zone}>{zone}</option>
           ))}
         </select>
       </label>
@@ -163,7 +189,7 @@ export function SettingsDialog({
       <fieldset style={S.themeField}>
         <legend style={S.themeLegend}>{t("settings.theme")}</legend>
         <div style={S.themeOptions}>
-          {THEME_OPTIONS.map(({ value, label }) => (
+          {THEMES.map((value) => (
             <label key={value} style={S.themeOption}>
               <input
                 type="radio"
@@ -173,7 +199,9 @@ export function SettingsDialog({
                 disabled={saving}
                 onChange={() => setDraft({ ...draft, theme: value })}
               />
-              {t(label)}
+              {value === "system"
+                ? t("settings.system", { value: t(THEME_LABELS[system.appearance]) })
+                : t(THEME_LABELS[value])}
             </label>
           ))}
         </div>

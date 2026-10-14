@@ -152,8 +152,9 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
         minute: "2-digit",
         second: "2-digit",
         fractionalSecondDigits: 3,
+        timeZone: t.timeZone,
       }),
-    [t.locale],
+    [t.locale, t.timeZone],
   );
 
   useEffect(() => {

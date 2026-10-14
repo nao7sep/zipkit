@@ -9,6 +9,7 @@ import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { changedSettings, DEFAULT_OPTIONS, DEFAULT_SETTINGS, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
+import { isDisplayZone } from "../shared/spec.js";
 import { multiline, singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
@@ -76,6 +77,9 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
         break;
       case "language":
         if (value === "system" || isLanguage(value)) { settings.language = value; continue; }
+        break;
+      case "timeZone":
+        if (value === "system" || isDisplayZone(value)) { settings.timeZone = value as string; continue; }
         break;
     }
     logger.warn("invalid settings set; using the built-in", { key });

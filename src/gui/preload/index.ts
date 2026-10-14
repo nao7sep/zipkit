@@ -10,7 +10,7 @@ import { createJobEditSubmissions } from "./job-edits.js";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "../shared/records.js";
-import { LANGUAGE_CHANGED_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
+import { LANGUAGE_CHANGED_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type SystemChoices, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
 const jobEdits = createJobEditSubmissions((id, patch) => ipcRenderer.invoke("zipkit:updateJob", id, patch));
 // Preload has a browser document but keeps Node types out of renderer compilation.
@@ -50,6 +50,7 @@ const api = {
     return () => ipcRenderer.removeListener(WINDOW_ACTIVITY_CHANNEL, handler);
   },
   getLanguageEnvironment: (): Promise<LanguageEnvironment> => ipcRenderer.invoke("zipkit:getLanguageEnvironment"),
+  getSystemChoices: (): Promise<SystemChoices> => ipcRenderer.invoke("zipkit:getSystemChoices"),
   onLanguageChanged: (callback: (environment: LanguageEnvironment) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, environment: LanguageEnvironment): void => callback(environment);
     ipcRenderer.on(LANGUAGE_CHANGED_CHANNEL, handler);

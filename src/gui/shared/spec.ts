@@ -56,6 +56,23 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
   return THEME_PREFERENCES.includes(value as ThemePreference) ? (value as ThemePreference) : "system";
 }
 
+let zoneList: readonly string[] | undefined;
+/** The zones Settings offers after System: every zone the platform lists, with
+ *  UTC, which the platform's list leaves out. */
+export function displayZones(): readonly string[] {
+  return (zoneList ??= [...Intl.supportedValuesOf("timeZone"), "UTC"].sort());
+}
+
+/** A saved display zone is one {@link displayZones} offers, or an older name for
+ *  one of them; a fixed offset such as "+09:00", which newer runtimes accept, is not. */
+export function isDisplayZone(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  let canonical: string;
+  try { canonical = new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions().timeZone; }
+  catch { return false; }
+  return displayZones().includes(value) || displayZones().includes(canonical);
+}
+
 /** The persisted GUI settings: the new-job option defaults plus app-level appearance. */
 export interface GuiSettings {
   /** Defaults applied to every new job. */
@@ -68,10 +85,14 @@ export interface GuiSettings {
   theme: ThemePreference;
   /** The interface language: System follows the computer's language. */
   language: LanguagePreference;
+  /** The display zone (timestamp-conventions, Time zones): "system" follows the
+   *  computer's zone on every launch; otherwise an IANA zone name. ZipKit reads
+   *  no times that carry no zone, so it has no interpretation zone. */
+  timeZone: string;
 }
 
 /** The config file's set keys. */
-export const SETTINGS_KEYS = ["language", "theme", "uiFontFamily", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
+export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
 
 /** The sets the draft changed from the saved settings. */
 export function changedSettings(before: GuiSettings, draft: GuiSettings): Partial<GuiSettings> {
@@ -84,6 +105,7 @@ export const DEFAULT_SETTINGS: GuiSettings = {
   uiFontFamily: "",
   theme: "system",
   language: "system",
+  timeZone: "system",
 };
 
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields

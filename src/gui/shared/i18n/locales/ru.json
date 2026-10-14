@@ -402,9 +402,9 @@
 
   "settings.title": "Настройки",
   "settings.language": "Язык",
-  "settings.languageSystem": "Как в системе",
+  "settings.system": "Как в системе ({value})",
+  "settings.timeZone": "Часовой пояс",
   "settings.theme": "Тема",
-  "settings.themeSystem": "Как в системе",
   "settings.themeLight": "Светлая",
   "settings.themeDark": "Тёмная",
   "settings.themeHint": "«Как в системе» следует оформлению ОС.",

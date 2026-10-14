@@ -74,7 +74,7 @@ vi.mock("../../../src/gui/main/settings.js", () => ({
   settingsFile: () => "/unused/config.json",
 }));
 vi.mock("../../../src/gui/main/i18n.js", () => ({
-  applyLanguagePreference: async () => {}, mainTranslator: () => ({ t: (key: string) => key }),
+  applyLanguagePreference: async () => {}, applyTimeZonePreference: vi.fn(), mainTranslator: () => ({ t: (key: string) => key }),
   onLanguageChanged: vi.fn(), readConfigText: async () => null, readSavedPreference: () => undefined,
   settleLanguage: async () => {},
 }));

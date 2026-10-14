@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Job, JobEvent, JobIntent, PlanData, VerifyResult } from "../../shared/api";
+import type { Job, JobEvent, JobIntent, PlanData, SystemChoices, VerifyResult } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable } from "../../shared/queue";
@@ -113,6 +113,9 @@ export function App() {
   // The saved language choice, likewise kept only to seed the Settings draft:
   // the main process resolves it and tells the window which language to speak.
   const [language, setLanguage] = useState<LanguagePreference>("system");
+  // The saved display zone, likewise: main tells the window which zone to show.
+  const [timeZone, setTimeZone] = useState("system");
+  const [systemChoices, setSystemChoices] = useState<SystemChoices | null>(null);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
   // when Add creates a job (focus/selection policy: Add pulls focus to its result).
@@ -183,6 +186,7 @@ export function App() {
       setUiFontFamily(settings.uiFontFamily);
       setTheme(settings.theme);
       setLanguage(settings.language);
+      setTimeZone(settings.timeZone);
       // Persisted pane widths are the intent. Live-width clamping below affects
       // display only and never rewrites what the user dragged.
       setIntent(clampLayout(layout));
@@ -266,7 +270,7 @@ export function App() {
       }
       if (e.key === ",") {
         e.preventDefault();
-        setDialog("settings");
+        openSettings();
       } else if (e.key === "/" || e.key === "?") {
         e.preventDefault();
         setDialog("shortcuts");
@@ -291,11 +295,20 @@ export function App() {
   // form), then persisted so they survive across launches.
   useEffect(() => window.zipkit.onSettingsChanged(applySavedSettings), []);
 
+  // Settings opens once main has said what each System choice resolves to now.
+  function openSettings(): void {
+    void window.zipkit.getSystemChoices().then((choices) => {
+      setSystemChoices(choices);
+      setDialog("settings");
+    }, (error) => window.zipkit.reportError("read system choices", reportableError(error)));
+  }
+
   function applySavedSettings(next: GuiSettings): void {
     setDefaults(next.defaults);
     setUiFontFamily(next.uiFontFamily);
     setTheme(next.theme);
     setLanguage(next.language);
+    setTimeZone(next.timeZone);
   }
 
   async function saveSettings(draft: GuiSettings): Promise<void> {
@@ -527,7 +540,7 @@ export function App() {
   return (
     <div style={S.shell}>
       <AppHeader
-        onOpenSettings={() => setDialog("settings")}
+        onOpenSettings={openSettings}
         onOpenRecords={() => {
           window.zipkit.openRecordsWindow().then(
             () => setRecordsOpenFailed(false),
@@ -632,9 +645,10 @@ export function App() {
         </div>
       </div>
 
-      {dialog === "settings" && (
+      {dialog === "settings" && systemChoices && (
         <SettingsDialog
-          settings={{ defaults, uiFontFamily, theme, language }}
+          settings={{ defaults, uiFontFamily, theme, language, timeZone }}
+          system={systemChoices}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
         />

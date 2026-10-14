@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SettingsDialog } from "../../../../src/gui/renderer/src/components/SettingsDialog";
 import { DEFAULT_OPTIONS, type GuiSettings } from "../../../../src/gui/shared/spec";
+import type { SystemChoices } from "../../../../src/gui/shared/api";
 
 afterEach(cleanup);
 
@@ -32,11 +33,15 @@ const CUSTOM: GuiSettings = {
   uiFontFamily: "Iosevka, monospace",
   theme: "dark",
   language: "fr",
+  timeZone: "Europe/Paris",
 };
+
+/** What each System choice resolves to on the test's imaginary computer. */
+const SYSTEM: SystemChoices = { appearance: "light", language: "de", timeZone: "Asia/Tokyo" };
 
 function renderDialog(settings: GuiSettings = CUSTOM) {
   const onSave = vi.fn();
-  render(<SettingsDialog settings={settings} onSave={onSave} onClose={vi.fn()} />);
+  render(<SettingsDialog system={SYSTEM} settings={settings} onSave={onSave} onClose={vi.fn()} />);
   return onSave;
 }
 
@@ -49,7 +54,7 @@ describe("SettingsDialog theme", () => {
     const onSave = renderDialog();
     const group = screen.getByRole("group", { name: "Theme" });
     const radios = Array.from(group.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
-    expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual(["System", "Light", "Dark"]);
+    expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual(["System (Light)", "Light", "Dark"]);
     expect(new Set(radios.map((radio) => radio.name)).size).toBe(1);
     expect(radios.find((radio) => radio.checked)?.value).toBe("dark");
 
@@ -92,7 +97,7 @@ describe("SettingsDialog UI font", () => {
 describe("SettingsDialog reset", () => {
   it("a reset that changes nothing leaves Save disabled and closes without asking", async () => {
     const onClose = vi.fn();
-    render(<SettingsDialog settings={{ ...CUSTOM, defaults: DEFAULT_OPTIONS }} onSave={vi.fn()} onClose={onClose} />);
+    render(<SettingsDialog system={SYSTEM} settings={{ ...CUSTOM, defaults: DEFAULT_OPTIONS }} onSave={vi.fn()} onClose={onClose} />);
     fireEvent.click(reset());
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText("Cancel"));
@@ -182,12 +187,12 @@ describe("SettingsDialog reset", () => {
 
   it("a successful quit retry clears the old error while preserving newer draft edits", async () => {
     const onSave = vi.fn().mockRejectedValue(new Error("full"));
-    const view = render(<SettingsDialog settings={CUSTOM} onSave={onSave} onClose={vi.fn()} />);
+    const view = render(<SettingsDialog system={SYSTEM} settings={CUSTOM} onSave={onSave} onClose={vi.fn()} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     fireEvent.change(fontInput(), { target: { value: "Georgia" } });
-    view.rerender(<SettingsDialog settings={{ ...CUSTOM, uiFontFamily: "Menlo" }} onSave={onSave} onClose={vi.fn()} />);
+    view.rerender(<SettingsDialog system={SYSTEM} settings={{ ...CUSTOM, uiFontFamily: "Menlo" }} onSave={onSave} onClose={vi.fn()} />);
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(fontInput().value).toBe("Georgia");
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(false);
@@ -196,7 +201,7 @@ describe("SettingsDialog reset", () => {
   it("keeps the dialog open and reports a failed durable save", async () => {
     const onClose = vi.fn();
     const onSave = vi.fn().mockRejectedValue(new Error("TypeError EACCES /private/tmp/HOSTILE-SENTINEL IPC wrapper"));
-    render(<SettingsDialog settings={CUSTOM} onSave={onSave} onClose={onClose} />);
+    render(<SettingsDialog system={SYSTEM} settings={CUSTOM} onSave={onSave} onClose={onClose} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Settings were not saved"));
@@ -215,7 +220,7 @@ describe("SettingsDialog while a save runs", () => {
   it("freezes every field and close path until the save settles, then closes once", async () => {
     const save = deferred();
     const onClose = vi.fn();
-    render(<SettingsDialog settings={CUSTOM} onSave={() => save.promise} onClose={onClose} />);
+    render(<SettingsDialog system={SYSTEM} settings={CUSTOM} onSave={() => save.promise} onClose={onClose} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
 
@@ -237,7 +242,7 @@ describe("SettingsDialog while a save runs", () => {
   it("unfreezes and stays open with the error when the save actually fails", async () => {
     const save = deferred();
     const onClose = vi.fn();
-    render(<SettingsDialog settings={CUSTOM} onSave={() => save.promise} onClose={onClose} />);
+    render(<SettingsDialog system={SYSTEM} settings={CUSTOM} onSave={() => save.promise} onClose={onClose} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => expect(fontInput().disabled).toBe(true));
@@ -248,5 +253,24 @@ describe("SettingsDialog while a save runs", () => {
     expect(fontInput().disabled).toBe(false);
     expect(fontInput().value).toBe("Menlo");
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("SettingsDialog System entries", () => {
+  it("name what language, theme and time zone System resolves to now", () => {
+    renderDialog();
+    expect(screen.getByRole("option", { name: "System (Deutsch)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "System (Asia/Tokyo)" })).toBeTruthy();
+    expect(screen.getByLabelText("System (Light)")).toBeTruthy();
+  });
+
+  it("chooses a time zone from the list and saves it", () => {
+    const onSave = renderDialog();
+    const zone = screen.getByLabelText("Time zone") as HTMLSelectElement;
+    expect(zone.value).toBe("Europe/Paris");
+    expect(Array.from(zone.options).map((option) => option.value)).toContain("UTC");
+    fireEvent.change(zone, { target: { value: "system" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, timeZone: "system" });
   });
 });

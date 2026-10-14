@@ -5,7 +5,7 @@
  */
 
 import { dialog, ipcMain, shell } from "electron";
-import type { AppInfo, JobEvent, VerifyResult } from "../shared/api.js";
+import type { AppInfo, JobEvent, SystemChoices, VerifyResult } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import {
@@ -22,7 +22,9 @@ import { errorInfo } from "./log.js";
 import { getMainWindow, log, startProgressRun, toGuiError, zip } from "./runtime.js";
 import { currentSettings } from "./settings.js";
 import { submitSettings, discardSettingsSubmission } from "./settings-save.js";
-import { languageEnvironment, mainTranslator } from "./i18n.js";
+import { languageEnvironment, mainTranslator, systemLanguageNow } from "./i18n.js";
+import { systemAppearance } from "./theme.js";
+import { machineTimeZone } from "../../sdk/internal/timeZone.js";
 import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
@@ -42,6 +44,11 @@ export function registerIpc(): void {
   ipcMain.handle("zipkit:discardSettingsSubmission", () => discardSettingsSubmission());
 
   ipcMain.handle("zipkit:getLanguageEnvironment", async () => languageEnvironment());
+  ipcMain.handle("zipkit:getSystemChoices", (): SystemChoices => ({
+    appearance: systemAppearance(),
+    language: systemLanguageNow(),
+    timeZone: machineTimeZone(),
+  }));
 
   ipcMain.handle("zipkit:getLayout", (): PaneLayout => paneLayout());
 

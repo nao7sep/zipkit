@@ -18,7 +18,7 @@ vi.mock("electron", () => ({
   nativeTheme: electron.nativeTheme,
 }));
 
-import { applyThemePreference, followOsThemeChanges, windowBackground } from "../../../src/gui/main/theme.js";
+import { applyThemePreference, followOsThemeChanges, resolveSystemAppearance, windowBackground } from "../../../src/gui/main/theme.js";
 
 beforeEach(() => {
   electron.windows.splice(0);
@@ -45,5 +45,24 @@ describe("theme", () => {
     electron.nativeTheme.shouldUseDarkColors = false;
     electron.listeners.updated?.();
     expect(window.setBackgroundColor).toHaveBeenLastCalledWith(windowBackground(false));
+  });
+});
+
+describe("what System resolves to now", () => {
+  const probe = { following: false, dark: true, platform: "darwin" as NodeJS.Platform, macInterfaceStyle: () => "", systemUiDark: false };
+
+  it("reads Electron's own answer while the app follows the OS", () => {
+    expect(resolveSystemAppearance({ ...probe, following: true, dark: true })).toBe("dark");
+    expect(resolveSystemAppearance({ ...probe, following: true, dark: false, macInterfaceStyle: () => "Dark" })).toBe("light");
+  });
+
+  it("asks macOS directly under a forced theme, whatever the forced theme paints", () => {
+    expect(resolveSystemAppearance({ ...probe, macInterfaceStyle: () => "Dark", dark: false })).toBe("dark");
+    expect(resolveSystemAppearance({ ...probe, macInterfaceStyle: () => "", dark: true })).toBe("light");
+  });
+
+  it("uses Windows' system theme under a forced theme", () => {
+    expect(resolveSystemAppearance({ ...probe, platform: "win32", systemUiDark: true, dark: false })).toBe("dark");
+    expect(resolveSystemAppearance({ ...probe, platform: "win32", systemUiDark: false, dark: true })).toBe("light");
   });
 });

@@ -19,7 +19,7 @@ import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity,
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
 import type { PaneLayout } from "./layout.js";
-import type { LanguageEnvironment } from "./i18n/languages.js";
+import type { Language, LanguageEnvironment } from "./i18n/languages.js";
 import type { Message } from "./i18n/translate.js";
 import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "./records.js";
 
@@ -85,6 +85,14 @@ export interface GuiReportedError {
 
 export type VerifyResult = { ok: true; data: ExtractData } | { ok: false; error: GuiError };
 
+/** What each System choice in Settings resolves to now (app-chrome and
+ *  timestamp conventions): the OS appearance, the computer's language and its zone. */
+export interface SystemChoices {
+  appearance: "light" | "dark";
+  language: Language;
+  timeZone: string;
+}
+
 /** App identity for the About dialog (the renderer can't read package.json). */
 export interface AppInfo {
   name: string;
@@ -118,6 +126,8 @@ export interface ZipKitGuiApi {
   getLanguageEnvironment(): Promise<LanguageEnvironment>;
   /** Follow a saved language change; returns an unsubscribe function. */
   onLanguageChanged(callback: (environment: LanguageEnvironment) => void): () => void;
+  /** What each System choice resolves to now, for the Settings labels. */
+  getSystemChoices(): Promise<SystemChoices>;
 
   /** The persisted GUI settings — new-job defaults plus the UI font (built-in defaults if none saved). */
   getSettings(): Promise<GuiSettings>;

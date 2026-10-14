@@ -33,6 +33,9 @@ interface LanguageState {
 }
 
 let state: LanguageState | null = null;
+// The saved display zone (timestamp-conventions, Time zones); null is System.
+// Main formats no times itself, so it travels to the windows with the language.
+let displayZone: string | null = null;
 const listeners = new Set<(translator: Translator) => void>();
 
 /**
@@ -139,7 +142,28 @@ export function mainTranslator(): Translator {
 
 export function languageEnvironment(): LanguageEnvironment {
   const translator = mainTranslator();
-  return { language: translator.language, locale: translator.locale };
+  return { language: translator.language, locale: translator.locale, timeZone: displayZone };
+}
+
+/** The language System resolves to this session, for the Settings picker's label. */
+export function systemLanguageNow(): Language {
+  if (!state) throw new Error("The interface language is not settled yet");
+  return state.systemLanguage;
+}
+
+function announceEnvironment(): void {
+  const environment = languageEnvironment();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(LANGUAGE_CHANGED_CHANNEL, environment);
+  }
+}
+
+/** Applies a saved display zone; the windows reformat their times at once. */
+export function applyTimeZonePreference(value: string): void {
+  const next = value === "system" ? null : value;
+  if (next === displayZone) return;
+  displayZone = next;
+  if (state) announceEnvironment();
 }
 
 /** Native surfaces that hold words register here and redraw on a change. */
@@ -174,8 +198,5 @@ export async function applyLanguagePreference(value: unknown, onError: (error: u
       onError(error);
     }
   }
-  const environment = languageEnvironment();
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(LANGUAGE_CHANGED_CHANNEL, environment);
-  }
+  announceEnvironment();
 }

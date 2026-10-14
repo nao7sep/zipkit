@@ -20,7 +20,7 @@ import { registerIpc } from "./ipc.js";
 import { beginQueueQuit, cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
 import { discardSettingsSubmission, settingsSavePending, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
 import { loadSettings, settingsFile } from "./settings.js";
-import { applyLanguagePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
+import { applyLanguagePreference, applyTimeZonePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
 import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log, sendQueueSaved } from "./runtime.js";
@@ -213,6 +213,7 @@ app.whenReady().then(async () => {
   // A quarantined or hand-edited file may settle on another language than the
   // raw read above; the store's value wins before the window opens.
   await applyLanguagePreference(settingsLoad.value.language, logLanguageError);
+  applyTimeZonePreference(settingsLoad.value.timeZone);
   await loadLayout(log);
   const queueLoad = await loadQueue(log);
 

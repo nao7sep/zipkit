@@ -6,7 +6,7 @@ import { changedSettings, DEFAULT_SETTINGS, type GuiSettings } from "../shared/s
 import { checkedSettings, saveSettings, serializeSettings, settingsFile } from "./settings.js";
 import { writeManagedTextWithin } from "./managed-write.js";
 import { applyThemePreference } from "./theme.js";
-import { applyLanguagePreference, mainTranslator } from "./i18n.js";
+import { applyLanguagePreference, applyTimeZonePreference, mainTranslator } from "./i18n.js";
 import { getMainWindow, log } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import { showAppMessageDialog } from "./startup-dialog.js";
@@ -56,6 +56,7 @@ function publish(): Promise<GuiSettings> {
     try { applyThemePreference(saved.theme); } catch (error) { failures.push(error); }
     try { await applyLanguagePreference(saved.language, (error) => failures.push(error)); }
     catch (error) { failures.push(error); }
+    try { applyTimeZonePreference(saved.timeZone); } catch (error) { failures.push(error); }
     for (const win of BrowserWindow.getAllWindows()) {
       try { win.webContents.send("zipkit:settingsChanged", saved); }
       catch (error) { failures.push(error); }
