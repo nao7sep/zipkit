@@ -471,8 +471,8 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
                       <span className={LEVEL_PILLS[record.level]}>{t.t(LEVEL_LABELS[record.level])}</span>
                       {record.kind === "job-event" ? <span className="records-pill">{t.t(KIND_LABELS[record.kind])}</span> : null}
                     </div>
-                    <div className="records-row__title">{record.title}</div>
-                    {record.text ? <div className="records-row__text">{record.text}</div> : null}
+                    <div className="records-row__title text-line">{record.title}</div>
+                    {record.text ? <div className="records-row__text text-line">{record.text}</div> : null}
                   </div>
                 );
               })

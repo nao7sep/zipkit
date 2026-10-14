@@ -244,10 +244,10 @@ export function JobListbox({
               {/* Filename gets the full top line; status sits under it so a long
                   name is never squeezed by a leading badge. */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={S.name}>{label(job, t)}</div>
+                <div className="text-line" style={S.name}>{label(job, t)}</div>
                 <div style={S.meta}>
                   <StateBadge state={job.state} />
-                  {metaText(job, t) && <span style={S.dim}>{metaText(job, t)}</span>}
+                  {metaText(job, t) && <span className="text-line" style={S.dim}>{metaText(job, t)}</span>}
                 </div>
               </div>
               {isCancelable(job) && (
@@ -339,17 +339,15 @@ const S: Record<string, CSSProperties> = {
   // Selection reads as an accent ring on top of the state tint, so both the
   // status (background) and the selection are visible at once.
   jobRowSel: { borderColor: "var(--accent-strong)", boxShadow: "0 0 0 1px var(--accent-strong)" },
-  // The whole name wraps, as the inputs list's paths do: a side list is not
-  // constrained enough to justify truncating it.
-  name: {
-    fontWeight: 600,
-    overflowWrap: "anywhere",
-  },
+  // A row identifies its job on two fixed lines (interface-styling-conventions,
+  // Labels): the name and a summary of its status, each one line. Selecting the
+  // job shows its inputs and its full message in the Archive pane.
+  name: { fontWeight: 600 },
   meta: {
     display: "flex",
     gap: "0.4rem",
     alignItems: "baseline",
-    flexWrap: "wrap",
+    minWidth: 0,
     marginTop: "0.15rem",
   },
   dim: { color: "var(--text-2)", fontSize: "0.8rem" },

@@ -47,15 +47,14 @@ export function Report({
   const noReport = !plan && !summary && advisories.length === 0;
 
   const verifyData = verify?.ok ? verify.data : null;
-  const verifyLines: ReportLine[] = verifyData
+  // Paths the verification found missing or unexpected are listed one per row,
+  // like the plan's groups, rather than joined into one sentence that grows
+  // with the archive (interface-styling-conventions, Labels).
+  const verifyGroups: PathGroupData[] = verifyData
     ? [
-        ...(verifyData.missing.length > 0
-          ? [{ level: "error" as const, text: t.t("report.missing", { paths: t.list(verifyData.missing) }) }]
-          : []),
-        ...(verifyData.extra.length > 0
-          ? [{ level: "warning" as const, text: t.t("report.extra", { paths: t.list(verifyData.extra) }) }]
-          : []),
-      ]
+        { title: t.t("report.missing", { count: verifyData.missing.length }), level: "error" as const, paths: verifyData.missing },
+        { title: t.t("report.extra", { count: verifyData.extra.length }), level: "warning" as const, paths: verifyData.extra },
+      ].filter((group) => group.paths.length > 0)
     : [];
 
   const verificationResult = verify
@@ -161,13 +160,9 @@ export function Report({
       {groups.map((group) => (
         <Group key={group.kind} group={group} />
       ))}
-      {verifyLines.length > 0 && (
-        <ul style={S.log}>
-          {verifyLines.map((line, i) => (
-            <LogRow key={i} line={line} />
-          ))}
-        </ul>
-      )}
+      {verifyGroups.map((group) => (
+        <PathGroup key={group.title} group={group} />
+      ))}
       <span aria-live="assertive" aria-atomic="true" style={S.srOnly}>
         {assertiveAnnouncement}
       </span>
@@ -199,6 +194,27 @@ function Group({ group }: { group: ReportGroup }) {
             {row.changes.map((change, j) => (
               <span key={j} style={S.change}>{change}</span>
             ))}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+interface PathGroupData {
+  title: string;
+  level: ReportLine["level"];
+  paths: string[];
+}
+
+function PathGroup({ group }: { group: PathGroupData }) {
+  return (
+    <section style={S.group}>
+      <h3 style={S.groupTitle}>{group.title}</h3>
+      <ul style={S.log}>
+        {group.paths.map((path) => (
+          <li key={path} style={{ ...S.fileRow, borderColor: severityColor(group.level) }}>
+            <span style={S.path}>{path}</span>
           </li>
         ))}
       </ul>

@@ -3,7 +3,8 @@
  * inputs are not frozen at creation: the user can add a directory/file they forgot
  * (button or by dropping onto this list) or drop one they no longer want, without
  * rebuilding the job. Rows are ordered directories-first then files (alphabetical
- * within each group) and show the full path plus what it is on disk (directory /
+ * within each group) and show the path, one line keeping its final segment until
+ * the user reveals it whole, plus what it is on disk (directory /
  * file / missing), so a vanished input is visible. The last input cannot be
  * removed — a job must archive something. Hovering a row highlights it, so on a
  * wide window it stays clear which input the far-right remove icon will remove.
@@ -27,6 +28,7 @@ import {
 import { useDismissAlignOffset } from "../dismissAlign";
 import { COLOR, orderedEntries } from "../view";
 import { CloseIcon } from "./Icon";
+import { PathText } from "./PathText";
 import { ReceiverResultNotice } from "./ReceiverResultNotice";
 import { useI18n, type Translator } from "../i18n/I18nContext";
 import type { MessageKey } from "../../../shared/i18n/catalogues";
@@ -47,7 +49,7 @@ function kindColor(kind: PathKind): string {
 
 /** One row: path text plus its remove X. A row of its own (rather than an
  * inline `.map`) so the X's first-line alignment (useDismissAlignOffset) can
- * measure THIS row's own path text — every row's path can wrap to a
+ * measure THIS row's own path text — a revealed path can wrap to a
  * different number of lines.
  *
  * This is a `position: relative` runtime measurement, not pure CSS, and that
@@ -79,15 +81,22 @@ function InputRow({
   onRemove: (path: string) => void;
   t: Translator["t"];
 }) {
-  const pathRef = useRef<HTMLSpanElement>(null);
+  const pathRef = useRef<HTMLButtonElement>(null);
+  const [whole, setWhole] = useState(false);
   const dismissOffset = useDismissAlignOffset(pathRef);
 
   return (
     <li className="input-row" style={S.row}>
       {kind && <span style={{ ...S.kind, color: kindColor(kind) }}>{t(KIND_LABEL[kind])}</span>}
-      <span ref={pathRef} style={S.path} title={path}>
-        {path}
-      </span>
+      <button
+        type="button"
+        ref={pathRef}
+        className="path-toggle"
+        aria-expanded={whole}
+        onClick={() => setWhole((shown) => !shown)}
+      >
+        {whole ? <span className="path-toggle__whole">{path}</span> : <PathText path={path} />}
+      </button>
       <button
         className="icon"
         style={{ position: "relative", top: dismissOffset }}
@@ -296,7 +305,4 @@ const S: Record<string, CSSProperties> = {
   // At least the column the English kinds need, and wider when a translation
   // is, so a kind never wraps or clips.
   kind: { fontSize: "0.7rem", fontWeight: 700, flexShrink: 0, minWidth: "4.2rem", whiteSpace: "nowrap" },
-  // Full path, wrapping rather than truncating — in a management list, seeing the
-  // whole path matters more than a tidy single line.
-  path: { flex: 1, minWidth: 0, wordBreak: "break-all", fontSize: "0.85rem" },
 };

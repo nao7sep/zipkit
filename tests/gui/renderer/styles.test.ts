@@ -83,7 +83,7 @@ describe("options grid", () => {
   });
 });
 
-// Truncation is a reviewed exception with one drawn marker (text-cleanup and
+// Truncation draws one marker (interface-styling, text-cleanup and
 // responsive-interface conventions): a new text-overflow site must be added here
 // deliberately, and nothing may clip one-line text without a marker. Visually
 // hidden screen-reader text (clip/clipPath) is not truncation.
@@ -95,7 +95,10 @@ describe("truncation sites", () => {
     [...readFileSync(file, "utf8").matchAll(/(\w+): \{([^{}]*)\}/g)].map(([, name, body]) => ({ at: `${basename(file)} ${name}`, body: body! })));
 
   it("draws markers only at the reviewed sites", () => {
-    expect(rules.filter((rule) => rule.body.includes("text-overflow:")).map((rule) => rule.selector)).toEqual(["select"]);
+    // Identifying text shortens through the shared one-line and path classes;
+    // a menu command and a closed select carry their own marker.
+    expect(rules.filter((rule) => rule.body.includes("text-overflow:")).map((rule) => rule.selector))
+      .toEqual(["select", ".text-line", ".path-line__head,.path-line__tail", ".menu-item"]);
     expect(styleBlocks.filter((block) => block.body.includes("textOverflow")).map((block) => block.at)).toEqual(["Pane.tsx title"]);
   });
 
@@ -106,5 +109,17 @@ describe("truncation sites", () => {
     const silentInline = styleBlocks.filter(({ body }) =>
       /whiteSpace: "nowrap"/.test(body) && /overflow(X)?: "(hidden|clip)"/.test(body) && !/textOverflow: "ellipsis"|clip(Path)?:/.test(body));
     expect(silentInline.map((block) => block.at)).toEqual([]);
+  });
+});
+
+// The shared path line keeps the final segment: its head gives up width first.
+describe("path line", () => {
+  it("shrinks the head far ahead of the final segment", () => {
+    // The last rule for each part is its own; the first is the one they share.
+    const shrink = (selector: string) => {
+      const start = compact.lastIndexOf(`}${selector}{`) + selector.length + 2;
+      return Number(compact.slice(start, compact.indexOf("}", start)).match(/flex:0(\d+)auto/)?.[1]);
+    };
+    expect(shrink(".path-line__head")).toBeGreaterThan(100 * shrink(".path-line__tail"));
   });
 });

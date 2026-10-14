@@ -173,6 +173,14 @@ describe("RecordsWindow", () => {
     expect(document.querySelector('[role="listbox"]')!.getAttribute("tabindex")).toBe("-1");
   });
 
+  it("keeps each row's title and text summary to one line, with the whole text in the selected detail", async () => {
+    await mount();
+    const row = options()[0]!;
+    expect(row.querySelector(".records-row__title")!.classList.contains("text-line")).toBe(true);
+    expect(row.querySelector(".records-row__text")!.classList.contains("text-line")).toBe(true);
+    expect(row.querySelector(".records-row__text")!.textContent).toBe("read: /in/a.txt: gone");
+  });
+
   it("shows everything a selected progress event holds", async () => {
     await mount();
     await act(async () => options()[0]!.click());

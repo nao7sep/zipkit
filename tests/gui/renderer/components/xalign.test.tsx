@@ -80,9 +80,9 @@ describe("per-item X alignment: first line, not the wrapped block's middle", () 
     // Plain centering, exactly as HEAD: the row's height and the path's own
     // position come from this alone, unaffected by the X.
     expect(row.style.alignItems).toBe("center");
-    const path = row.querySelector("span[title]") as HTMLElement;
+    const path = row.querySelector("button.path-toggle") as HTMLElement;
     expect(path.style.paddingTop).toBe("");
-    const kind = row.querySelector("span:not([title])") as HTMLElement;
+    const kind = row.querySelector(":scope > span") as HTMLElement;
     expect(kind.style.paddingTop).toBe("");
     // Only the button carries a (measured, not static) position nudge.
     const removeButton = row.querySelector("button.icon") as HTMLElement;

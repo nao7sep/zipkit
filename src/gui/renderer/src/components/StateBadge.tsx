@@ -22,6 +22,7 @@ export function StateBadge({ state }: { state: Job["state"] }) {
     fontWeight: 600,
     fontSize: "0.75rem",
     whiteSpace: "nowrap",
+    flexShrink: 0,
   };
   return <span style={style}>{t(stateLabel(state))}</span>;
 }

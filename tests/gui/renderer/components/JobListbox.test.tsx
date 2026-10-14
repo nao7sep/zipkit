@@ -44,6 +44,15 @@ const renderListbox = (props: Partial<Props> & Pick<Props, "jobs" | "selectedId"
   );
 
 describe("JobListbox", () => {
+  it("identifies a job on two one-line rows: its name and a summary of its status", () => {
+    const failed: Job = { ...job("a", "failed"), inputs: ["/a/very-long-folder-name-that-would-not-fit-the-jobs-pane"],
+      message: message("error.readFailed") };
+    renderListbox({ jobs: [failed], selectedId: "a" });
+    const name = screen.getByText("very-long-folder-name-that-would-not-fit-the-jobs-pane");
+    expect(name.className).toBe("text-line");
+    expect(screen.getByText(/could not be read/).className).toBe("text-line");
+  });
+
   it("is one tab stop: only the selected option is tabbable", () => {
     renderListbox({ jobs: [job("a"), job("b"), job("c")], selectedId: "b" });
     const [a, b, c] = rows();

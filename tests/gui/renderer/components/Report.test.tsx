@@ -159,3 +159,27 @@ describe("Report renamed rows", () => {
     expect(screen.getByText("Name normalized from NFD to NFC")).toBeTruthy();
   });
 });
+
+describe("Report verification paths", () => {
+  it("lists each missing and unexpected path on its own row under a counted heading", () => {
+    const missing = ["a/one.txt", "a/two.txt", "a/three.txt", "a/four.txt"];
+    render(
+      <Report
+        job={job({ state: "done" })}
+        plan={plan()}
+        verify={{
+          ok: true,
+          data: {
+            reportOk: false,
+            missing,
+            extra: ["stray.bin"],
+            summary: { total: 4, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 },
+          } as never,
+        }}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Missing from the archive (4)" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Unexpected extra entries (1)" })).toBeTruthy();
+    for (const path of [...missing, "stray.bin"]) expect(screen.getByText(path).tagName).toBe("SPAN");
+  });
+});

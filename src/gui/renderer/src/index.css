@@ -320,6 +320,29 @@ button.danger-confirm:active:not(:disabled) {
 }
 
 /* Bare icon/affordance buttons (hamburger, row actions): no filled chrome. */
+/* An input's path in its list row: one line keeping its final segment until
+ * activated by pointer, touch or keyboard, then the whole path, wrapped. */
+button.path-toggle {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 0 2px;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: inherit;
+  color: inherit;
+  background: transparent;
+  border-radius: 4px;
+}
+button.path-toggle:hover:not(:disabled) {
+  background: var(--utility);
+}
+button.path-toggle:active:not(:disabled) {
+  background: var(--utility-hover);
+}
+.path-toggle__whole {
+  overflow-wrap: anywhere;
+}
 button.icon {
   background: transparent;
   padding: 6px;
@@ -415,12 +438,43 @@ input[type="checkbox"] {
   width: auto;
 }
 
+/* Identifying text (interface-styling-conventions, Labels): one line, keeping
+ * its beginning, with one marker; the complete value is shown where the item is
+ * selected or revealed. */
+.text-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A path keeps its final segment: the head gives up its width first and loses
+ * the path's middle, then a final segment longer than the line loses its end. */
+.path-line {
+  display: flex;
+  min-width: 0;
+}
+.path-line__head,
+.path-line__tail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path-line__head {
+  flex: 0 1000 auto;
+}
+.path-line__tail {
+  flex: 0 1 auto;
+}
+
 /* Radix dropdown menu (hamburger). */
 /* Menu/popover layer sits above the app but BELOW the modal layer (backdrop 1000,
  * surface 1001), per the modal-dialog layering order — no accidental shared z. */
+/* As wide as its longest command up to a cap every command fits within in every
+ * language (composite-control-conventions); a command never wraps. */
 .menu-content {
   min-width: 12rem;
-  max-width: calc(100vw - 16px);
+  max-width: min(20rem, calc(100vw - 16px));
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -429,6 +483,9 @@ input[type="checkbox"] {
   z-index: 900;
 }
 .menu-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 7px 10px;
   border-radius: 5px;
   font-size: 13px;
@@ -587,23 +644,17 @@ code {
   font-size: 0.75rem;
   color: var(--text-2);
 }
+/* A row shows its title and a one-line summary of its text (both .text-line);
+ * selecting the row by keyboard, pointer or touch shows both in full in the
+ * detail pane. */
 .records-row__title {
   font-family: var(--font-mono);
   font-size: 0.8rem;
   font-weight: 600;
-  overflow-wrap: anywhere;
 }
-/* A deliberate truncation exception: log text can run to stack traces or JSON,
- * so a row shows two lines with one drawn marker, and selecting the row (by
- * keyboard, pointer or touch) shows the complete text in the detail pane. */
 .records-row__text {
   font-size: 0.8rem;
   color: var(--text-2);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow-wrap: anywhere;
 }
 .records-note {
   margin: 0;
