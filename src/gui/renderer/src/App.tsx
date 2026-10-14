@@ -260,7 +260,7 @@ export function App() {
       if (document.querySelector('[role="dialog"]')) return;
       if (
         isEditableTarget(e.target) &&
-        shadowsMacTextBinding(e, /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent))
+        shadowsMacTextBinding(e, window.zipkit.platform === "darwin")
       ) {
         return;
       }

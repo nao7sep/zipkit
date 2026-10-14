@@ -34,6 +34,23 @@ it("retains an unknown effect through settlement despite a second finally releas
   expect(owner.claim([use("/missing/archive.zip", "change", null)])).not.toBeNull();
 });
 
+it.each([
+  ["a short name", "/missing/PROGRA~1/a.zip", "/missing/Program Files/a.zip"],
+  ["a trailing dot", "/missing/report.zip.", "/missing/report.zip"],
+])("refuses missing outputs that %s may alias only on Windows", (_label, first, second) => {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+  const claimBoth = (platform: NodeJS.Platform) => {
+    Object.defineProperty(process, "platform", { ...descriptor, value: platform });
+    try {
+      const owner = createArchiveEffects();
+      owner.claim([{ ...use(first, "change", null), existingPrefix: "/" }]);
+      return owner.claim([{ ...use(second, "change", null), existingPrefix: "/" }]);
+    } finally { Object.defineProperty(process, "platform", descriptor); }
+  };
+  expect(claimBoth("win32")).toBeNull();
+  expect(claimBoth("darwin")).not.toBeNull();
+});
+
 it.each([["σ.zip", "ς.zip"], ["ß.zip", "ss.zip"], ["café.zip", "café.zip".normalize("NFD")]])(
   "retains a missing %s reservation across physical publication through %s", async (name, alias) => {
     const root = await mkdtemp(path.join(tmpdir(), "zipkit-missing-alias-"));

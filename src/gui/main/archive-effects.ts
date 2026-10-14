@@ -3,6 +3,7 @@
  * external effect retains its claim through physical settlement. */
 import path from "node:path";
 import type { Volume } from "../../sdk/internal/volume.js";
+import { aliasUnprovable, foldedName } from "../../sdk/internal/name-equivalence.js";
 
 export interface FileResource {
   location: string;
@@ -17,22 +18,18 @@ function contains(a: string, b: string): boolean {
   const relative = path.relative(a, b);
   return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
 }
-function uncertain(name: string): boolean {
-  return /[^\x00-\x7f]/.test(name) || (process.platform === "win32" && (/~\d/.test(name) || /[. ]$/.test(name)));
-}
 function possibleNamespaceOverlap(a: FileUse, b: FileUse): boolean {
   const segments = (file: string) => file.split(path.sep).filter(Boolean);
   const left = segments(a.location), right = segments(b.location);
   const leftKnown = segments(a.existingPrefix ?? path.parse(a.location).root).length;
   const rightKnown = segments(b.existingPrefix ?? path.parse(b.location).root).length;
-  const folded = (name: string) => (process.platform === "win32" ? name.replace(/[. ]+$/, "") : name).normalize("NFC").toLowerCase();
   for (let i = 0; i < Math.min(left.length, right.length); i++) {
     const x = left[i]!, y = right[i]!;
     if (x === y) continue;
     // Distinct canonical existing directories disprove an alias. An unresolved
     // name cannot: Unicode and short-name equivalence are filesystem-owned.
     if (i < leftKnown && i < rightKnown) return false;
-    if (folded(x) !== folded(y) && !uncertain(x) && !uncertain(y)) return false;
+    if (foldedName(x) !== foldedName(y) && !aliasUnprovable(x) && !aliasUnprovable(y)) return false;
   }
   return true;
 }

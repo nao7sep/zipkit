@@ -6,7 +6,7 @@ import { writeManagedText } from "../../../src/gui/main/managed-write.js";
 import { writeManagedJson } from "../../../src/gui/main/managedJson.js";
 
 const faults = vi.hoisted(() => ({
-  root: "", events: [] as string[], file: null as Error | null, directory: null as Error | null,
+  root: "", events: [] as string[], flags: [] as unknown[], file: null as Error | null, directory: null as Error | null,
   hold: null as Promise<void> | null, record: vi.fn(),
 }));
 vi.mock("../../../src/gui/main/backupStore.js", () => ({ record: faults.record }));
@@ -16,6 +16,7 @@ vi.mock("node:fs/promises", async (original) => {
     rename: async (...args: Parameters<typeof fs.rename>) => { faults.events.push("rename"); await fs.rename(...args); },
     open: async (...args: Parameters<typeof fs.open>) => {
       const handle = await fs.open(...args);
+      faults.flags.push(args[1]);
       const directory = args[0] === faults.root;
       const sync = handle.sync.bind(handle), close = handle.close.bind(handle);
       handle.sync = async () => {
@@ -37,7 +38,7 @@ vi.mock("node:fs/promises", async (original) => {
 let root: string;
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), "zipkit-durable-settings-"));
-  faults.root = root; faults.events = []; faults.file = null; faults.directory = null; faults.hold = null;
+  faults.root = root; faults.events = []; faults.flags = []; faults.file = null; faults.directory = null; faults.hold = null;
   faults.record.mockReset().mockResolvedValue(undefined);
 });
 afterEach(async () => { faults.hold = null; await rm(root, { recursive: true, force: true }); });
@@ -71,6 +72,18 @@ it.skipIf(process.platform === "win32")("Retry completes a failed directory flus
   expect(await save()).toBe(false);
   expect(faults.events).toEqual(["file sync", "file close", "directory sync", "directory close"]);
   expect((await stat(file)).mtimeMs).toBe(modified);
+});
+
+it("on Windows an identical durable Retry flushes through a writable handle and skips the directory flush", async () => {
+  const file = path.join(root, "config.json");
+  await writeFile(file, '{"theme":"dark"}');
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+  // FlushFileBuffers needs write access on Windows; Node exposes no directory flush there.
+  Object.defineProperty(process, "platform", { ...descriptor, value: "win32" });
+  try { expect(await save()).toBe(false); }
+  finally { Object.defineProperty(process, "platform", descriptor); }
+  expect(faults.flags).toEqual(["r+"]);
+  expect(faults.events).toEqual(["file sync", "file close"]);
 });
 
 it("a pending flush retains the primary write until its actual settlement", async () => {

@@ -4,21 +4,13 @@
 import path from "node:path";
 import type { BigIntStats } from "node:fs";
 import type { Volume } from "../internal/volume.js";
+import { aliasUnprovable, foldedName } from "../internal/name-equivalence.js";
 
 const key = (file: string): string => file.normalize("NFC").toLowerCase();
 const identity = (st: BigIntStats): string => `inode:${st.dev}:${st.ino}`;
 const pathname = (file: string): string => `path:${key(file)}`;
 const unresolved = (parent: string): string => `unresolved:${parent}`;
 const ambiguous = (parent: string): string => `ambiguous:${parent}`;
-const components = (value: string): string[] => process.platform === "win32" ? value.split(/[\\/]/) : value.split(path.sep);
-// Existing aliases use filesystem identity. For absent names no identity exists:
-// Unicode equivalence and Windows short names cannot be inferred from JS casing.
-function uncertain(name: string): boolean {
-  return /[^\x00-\x7f]/.test(name) || (process.platform === "win32" && (/~\d/.test(name) || /[. ]$/.test(name)));
-}
-function missingNameKey(name: string): string {
-  return key(process.platform === "win32" ? name.replace(/[. ]+$/, "") : name);
-}
 function outside(root: string, file: string): boolean {
   const relative = path.relative(root, file);
   return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
@@ -60,6 +52,11 @@ function rememberIdentity(names: Names, name: string, id: string): void {
   names.unindexed.delete(name);
 }
 
+/** A link value's names in traversal order: Windows resolves either slash, POSIX only `/`. */
+export function linkValueComponents(value: string, platform: NodeJS.Platform = process.platform): string[] {
+  return platform === "win32" ? value.split(/[\\/]/) : value.split("/");
+}
+
 export function createLinkTargetGuard(volume: Volume, dest: string) {
   const dependents = new Map<string, Set<Link>>();
   const names = new Map<string, Promise<Names>>();
@@ -86,7 +83,7 @@ export function createLinkTargetGuard(volume: Volume, dest: string) {
     // Unfamiliar aliases require physical lookup; never let a Unicode fold guess
     // which directory entry replacement owns. Multiple hard links are ambiguous.
     const group = index.folded.get(key(name));
-    const ascii = !uncertain(name) && group && [...group].every((entry) => !uncertain(entry));
+    const ascii = !aliasUnprovable(name) && group && [...group].every((entry) => !aliasUnprovable(entry));
     const candidates = ascii ? group : index.unindexed;
     for (const entry of candidates) {
       try {
@@ -129,7 +126,7 @@ export function createLinkTargetGuard(volume: Volume, dest: string) {
         // A later alias of an unresolved prefix can activate its suffix. Plain
         // final dangling targets inherit a later restored link's containment.
         dependencies.add(unresolved(current));
-        if (uncertain(segment)) dependencies.add(ambiguous(current));
+        if (aliasUnprovable(segment)) dependencies.add(ambiguous(current));
       }
       let proposed = proposal?.target === next;
       if (proposal && !proposed && path.dirname(proposal.target) === current) {
@@ -138,8 +135,8 @@ export function createLinkTargetGuard(volume: Volume, dest: string) {
           proposed = !index.exact.has(segment) || proposal.oldNames.has(segment);
         } else if (!st && !proposal.oldIdentity && foldMissing) {
           const name = path.basename(proposal.target);
-          proposed = missingNameKey(name) === missingNameKey(segment) ||
-            (unknownAliases && remaining.length > 0 && (uncertain(name) || uncertain(segment)));
+          proposed = foldedName(name) === foldedName(segment) ||
+            (unknownAliases && remaining.length > 0 && (aliasUnprovable(name) || aliasUnprovable(segment)));
         }
       }
       if (!proposed && (!st || !st.isSymbolicLink())) {
@@ -151,8 +148,8 @@ export function createLinkTargetGuard(volume: Volume, dest: string) {
       if (path.isAbsolute(value)) {
         const base = path.parse(value).root;
         current = base;
-        remaining = [...components(value.slice(base.length)), ...remaining];
-      } else remaining = [...components(value), ...remaining];
+        remaining = [...linkValueComponents(value.slice(base.length)), ...remaining];
+      } else remaining = [...linkValueComponents(value), ...remaining];
     }
     return outside(root, current) ? null : dependencies;
   }
@@ -174,7 +171,7 @@ export function createLinkTargetGuard(volume: Volume, dest: string) {
       if (changing) {
         const changed = [pathname(location)];
         if (st) changed.push(identity(st));
-        else changed.push(uncertain(path.basename(location)) ? unresolved(parent) : ambiguous(parent));
+        else changed.push(aliasUnprovable(path.basename(location)) ? unresolved(parent) : ambiguous(parent));
         for (const dependency of changed) for (const reader of dependents.get(dependency) ?? []) affected.add(reader);
       }
       const checked = new Map<Link, Set<string>>();

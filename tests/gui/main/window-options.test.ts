@@ -12,12 +12,10 @@ import {
 describe("mainWindowOptions", () => {
   const options = mainWindowOptions("/tmp/preload.mjs", false);
 
-  it("uses Electron-owned bounds persistence for the stable main window", () => {
+  it("uses Electron-owned bounds persistence for the stable main window, with display mode on Windows only", () => {
     expect(options.name).toBe("main");
-    expect(options.windowStatePersistence).toEqual({
-      bounds: true,
-      displayMode: process.platform === "win32",
-    });
+    expect(mainWindowOptions("/tmp/preload.mjs", false, "win32").windowStatePersistence).toEqual({ bounds: true, displayMode: true });
+    expect(mainWindowOptions("/tmp/preload.mjs", false, "darwin").windowStatePersistence).toEqual({ bounds: true, displayMode: false });
   });
 
   it("preserves the designed opening and derived minimum sizes", () => {
@@ -55,10 +53,8 @@ describe("recordsWindowOptions", () => {
   it("persists its own placement under a stable identity apart from the main window's", () => {
     expect(options.name).toBe("records");
     expect(options.name).not.toBe(mainWindowOptions("/tmp/preload.mjs", false).name);
-    expect(options.windowStatePersistence).toEqual({
-      bounds: true,
-      displayMode: process.platform === "win32",
-    });
+    expect(recordsWindowOptions("/tmp/preload.mjs", true, "Records", "win32").windowStatePersistence).toEqual({ bounds: true, displayMode: true });
+    expect(recordsWindowOptions("/tmp/preload.mjs", true, "Records", "darwin").windowStatePersistence).toEqual({ bounds: true, displayMode: false });
   });
 
   it("opens at its designed size above the minimum derived from its panes, hidden until loaded", () => {

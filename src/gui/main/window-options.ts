@@ -8,18 +8,21 @@ export function mainWindowBackground(dark: boolean): string {
   return dark ? "#16170f" : "#f3f2ea";
 }
 
+/** Bounds everywhere; the maximized, fullscreen and kiosk display mode only on
+ *  Windows, where restoring it is the native expectation (window-conventions). */
+function windowStatePersistence(platform: NodeJS.Platform): { bounds: boolean; displayMode: boolean } {
+  return { bounds: true, displayMode: platform === "win32" };
+}
+
 /**
  * Build the durable main window's options without constructing a native window.
  * Electron owns bounds persistence for the stable window identity; the designed
  * opening size remains the fallback when no usable saved bounds exist.
  */
-export function mainWindowOptions(preload: string, dark: boolean): BrowserWindowConstructorOptions {
+export function mainWindowOptions(preload: string, dark: boolean, platform: NodeJS.Platform = process.platform): BrowserWindowConstructorOptions {
   return {
     name: "main",
-    windowStatePersistence: {
-      bounds: true,
-      displayMode: process.platform === "win32",
-    },
+    windowStatePersistence: windowStatePersistence(platform),
     // Opening size: comfortable for the default layout — the dense center Archive
     // pane (inputs + the options grid + operation + report all stack here) gets
     // ~550px wide and the body ~710px tall, so the common case opens roomy without
@@ -55,13 +58,10 @@ export function mainWindowOptions(preload: string, dark: boolean): BrowserWindow
  * (window-conventions, Placement). Like the main window it starts hidden and is
  * shown once its page has loaded.
  */
-export function recordsWindowOptions(preload: string, dark: boolean, title: string): BrowserWindowConstructorOptions {
+export function recordsWindowOptions(preload: string, dark: boolean, title: string, platform: NodeJS.Platform = process.platform): BrowserWindowConstructorOptions {
   return {
     name: "records",
-    windowStatePersistence: {
-      bounds: true,
-      displayMode: process.platform === "win32",
-    },
+    windowStatePersistence: windowStatePersistence(platform),
     title,
     width: 1240,
     height: 820,
