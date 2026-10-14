@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildAppMessageDialogDocument, showAppQuestionDialog } from "../../../src/gui/main/startup-dialog.js";
+import { buildAppMessageDialogDocument, presentDialogWindow, showAppQuestionDialog } from "../../../src/gui/main/startup-dialog.js";
 
 const windows = vi.hoisted(() => ([] as Array<{
   events: EventEmitter;
@@ -9,8 +9,9 @@ const windows = vi.hoisted(() => ([] as Array<{
   showed: boolean;
   html: string;
 }>));
-const controls = vi.hoisted(() => ({ load: null as Promise<void> | null, failure: null as Error | null }));
+const controls = vi.hoisted(() => ({ load: null as Promise<void> | null, failure: null as Error | null, order: [] as string[] }));
 vi.mock("electron", () => ({
+  app: { focus: (options: unknown) => { controls.order.push(`app.focus ${JSON.stringify(options)}`); } },
   BrowserWindow: class {
     state = { events: new EventEmitter(), contents: new EventEmitter(), destroyed: false, showed: false, html: "" };
     constructor() { windows.push(this.state); }
@@ -26,12 +27,13 @@ vi.mock("electron", () => ({
     getSize() { return [520, 280]; }
     getContentSize() { return [520, 250]; }
     setSize() {}
-    show() { this.state.showed = true; }
+    show() { this.state.showed = true; controls.order.push("show"); }
+    focus() { controls.order.push("focus"); }
   },
 }));
 vi.mock("../../../src/gui/main/i18n.js", () => ({ mainTranslator: () => ({ language: "en", t: (key: string) => key }), settledTranslator: vi.fn() }));
 vi.mock("../../../src/gui/main/theme.js", () => ({ windowBackground: () => "#fff" }));
-beforeEach(() => { windows.length = 0; controls.load = null; controls.failure = null; });
+beforeEach(() => { windows.length = 0; controls.load = null; controls.failure = null; controls.order = []; });
 const options = (signal: AbortSignal) => ({ title: "Queue not saved", message: "Keep work", labels: ["Retry", "Quit anyway", "Cancel"], defaultId: 0, cancelId: 2, signal });
 
 describe("standalone quit question lifetime", () => {
@@ -102,5 +104,24 @@ describe("standalone quit question lifetime", () => {
     expect(html).toContain("Quit &lt;anyway&gt;");
     expect(html).toContain('autofocus onclick="location.href=\'zipkit-dialog-choice://1\'"');
     expect(html.match(/autofocus/g)).toHaveLength(1);
+  });
+});
+
+describe("dialog activation", () => {
+  it("shows a question focused, on top of whatever app was in front", async () => {
+    const result = showAppQuestionDialog(options(new AbortController().signal));
+    await vi.waitFor(() => expect(windows[0]!.showed).toBe(true));
+    expect(controls.order.slice(-2)).toEqual(["show", "focus"]);
+    windows[0]!.contents.emit("will-navigate", { preventDefault() {} }, "zipkit-dialog-choice://0");
+    await result;
+  });
+
+  it("makes the app active before showing on macOS, and leaves activation to the window elsewhere", () => {
+    const win = { show: () => controls.order.push("show"), focus: () => controls.order.push("focus") };
+    presentDialogWindow(win as never, "darwin");
+    expect(controls.order).toEqual(['app.focus {"steal":true}', "show", "focus"]);
+    controls.order = [];
+    presentDialogWindow(win as never, "win32");
+    expect(controls.order).toEqual(["show", "focus"]);
   });
 });

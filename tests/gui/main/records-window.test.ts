@@ -99,6 +99,8 @@ describe("the Records window", () => {
     loaded();
     await opening;
     expect(window!.shown).toBe(1);
+    // It takes focus above the main window it was opened from (window-conventions).
+    expect(window!.focused).toBe(1);
   });
 
   it("brings the open window forward instead of opening another, even while it is still loading", async () => {

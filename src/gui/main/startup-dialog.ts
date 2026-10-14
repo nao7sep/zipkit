@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { MessageValues } from "../shared/i18n/translate.js";
 import { mainTranslator, settledTranslator } from "./i18n.js";
@@ -103,6 +103,17 @@ async function dialogRead<T>(work: Promise<T>, closed: Promise<number>): Promise
   }
 }
 
+/** Every app dialog answers something the user did (a launch, a Save, a quit,
+ *  even a Dock Quit that leaves another app in front), so it takes focus above
+ *  the window it came from (window-conventions, Background visibility and
+ *  activation). macOS shows a window of an inactive app behind the active one
+ *  unless the app is made active first. */
+export function presentDialogWindow(win: Pick<BrowserWindow, "show" | "focus">, platform: NodeJS.Platform = process.platform): void {
+  if (platform === "darwin") app.focus({ steal: true });
+  win.show();
+  win.focus();
+}
+
 async function showAppDialog(options: AppMessageDialogOptions & Partial<AppQuestionDialogOptions>): Promise<number> {
   const { owner, title, message, button, signal, labels, defaultId = 0, cancelId = 0 } = options;
   if (signal?.aborted) return cancelId;
@@ -174,7 +185,7 @@ async function showAppDialog(options: AppMessageDialogOptions & Partial<AppQuest
       console.error("failed to size app message dialog", error);
     }
     if (answer !== undefined) return answer;
-    win.show();
+    presentDialogWindow(win);
     return await closed;
   } finally {
     signal?.removeEventListener("abort", abort);
