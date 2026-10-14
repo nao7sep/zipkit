@@ -391,7 +391,10 @@ describe("endSessionNow (the end of a Windows session)", () => {
       exit: vi.fn(() => { order.push("exit"); }),
     });
 
-    endSessionNow(s);
+    // The bound is read off the clock; a frozen clock keeps a busy host from
+    // spending a millisecond of it between the deadline and the save.
+    vi.useFakeTimers();
+    try { endSessionNow(s); } finally { vi.useRealTimers(); }
 
     expect(s.saveQueueNow).toHaveBeenCalledWith(SESSION_END_SAVE_MS);
     expect(s.onSaved).toHaveBeenCalledOnce();
