@@ -13,8 +13,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { SettingsDialog } from "../../../../src/gui/renderer/src/components/SettingsDialog";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { languageNameIn, SettingsDialog } from "../../../../src/gui/renderer/src/components/SettingsDialog";
+import { loadCatalogue } from "../../../../src/gui/shared/i18n/catalogues";
+import { createTranslator } from "../../../../src/gui/shared/i18n/translate";
 import { DEFAULT_OPTIONS, type GuiSettings } from "../../../../src/gui/shared/spec";
 import type { SystemChoices } from "../../../../src/gui/shared/api";
 
@@ -124,11 +126,11 @@ describe("SettingsDialog reset", () => {
     const symlinks = screen.getByLabelText("Symlinks") as HTMLSelectElement;
     const emptyDirs = screen.getByLabelText("Empty directories") as HTMLSelectElement;
 
-    expect((screen.getByRole("option", { name: "Ignore" }) as HTMLOptionElement).value).toBe("ignore");
-    expect((screen.getByRole("option", { name: "Preserve" }) as HTMLOptionElement).value).toBe("preserve");
-    expect((screen.getByRole("option", { name: "Follow" }) as HTMLOptionElement).value).toBe("follow");
-    expect((screen.getByRole("option", { name: "Keep" }) as HTMLOptionElement).value).toBe("keep");
-    expect((screen.getByRole("option", { name: "Prune" }) as HTMLOptionElement).value).toBe("prune");
+    expect((within(symlinks).getByRole("option", { name: "Ignore" }) as HTMLOptionElement).value).toBe("ignore");
+    expect((within(symlinks).getByRole("option", { name: "Preserve" }) as HTMLOptionElement).value).toBe("preserve");
+    expect((within(symlinks).getByRole("option", { name: "Follow" }) as HTMLOptionElement).value).toBe("follow");
+    expect((within(emptyDirs).getByRole("option", { name: "Keep" }) as HTMLOptionElement).value).toBe("keep");
+    expect((within(emptyDirs).getByRole("option", { name: "Prune" }) as HTMLOptionElement).value).toBe("prune");
 
     fireEvent.change(symlinks, { target: { value: "follow" } });
     fireEvent.change(emptyDirs, { target: { value: "prune" } });
@@ -257,10 +259,12 @@ describe("SettingsDialog while a save runs", () => {
 });
 
 describe("SettingsDialog System entries", () => {
-  it("name what language, theme and time zone System resolves to now", () => {
+  it("name what language, theme and time zone System resolves to now, in the interface language", () => {
     renderDialog();
-    expect(screen.getByRole("option", { name: "System (Deutsch)" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "System (Asia/Tokyo)" })).toBeTruthy();
+    // The time zone list is long; reading each select's first option directly
+    // keeps the check from scanning hundreds of zones.
+    expect((screen.getByLabelText("Language") as HTMLSelectElement).options[0]!.textContent).toBe("System (German)");
+    expect((screen.getByLabelText("Time zone") as HTMLSelectElement).options[0]!.textContent).toBe("System (Asia/Tokyo)");
     expect(screen.getByLabelText("System (Light)")).toBeTruthy();
   });
 
@@ -272,5 +276,16 @@ describe("SettingsDialog System entries", () => {
     fireEvent.change(zone, { target: { value: "system" } });
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, timeZone: "system" });
+  });
+});
+
+describe("System entries in another interface language", () => {
+  it("speak it in both the word and the value", async () => {
+    await loadCatalogue("ja");
+    const ja = createTranslator("ja");
+    expect(ja.t("settings.system", { value: languageNameIn("de", "ja") })).toBe("システム（ドイツ語）");
+    expect(ja.t("settings.system", { value: ja.t("settings.themeDark") })).toBe("システム（ダーク）");
+    expect(languageNameIn("pt-BR", "en")).toBe("Portuguese");
+    expect(languageNameIn("zh-Hans", "en")).toBe("Chinese");
   });
 });

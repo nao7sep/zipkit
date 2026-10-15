@@ -27,13 +27,22 @@ import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
 import { useI18n } from "../i18n/I18nContext";
 import type { MessageKey } from "../../../shared/i18n/catalogues";
-import { LANGUAGE_NAMES, LANGUAGES, normalizeLanguagePreference } from "../../../shared/i18n/languages";
+import { LANGUAGE_NAMES, LANGUAGES, normalizeLanguagePreference, type Language } from "../../../shared/i18n/languages";
 
 const THEME_LABELS: Readonly<Record<Exclude<ThemePreference, "system">, MessageKey>> = {
   light: "settings.themeLight",
   dark: "settings.themeDark",
 };
 const THEMES: readonly ThemePreference[] = ["system", "light", "dark"];
+
+/** A language's name in the interface language, for the System entry, whose word
+ *  and value both speak it (localization-conventions, Translation). The picker's
+ *  own entries name each language in itself instead. Each shipped variety is its
+ *  language's only one, so it is named plainly, as the picker does. */
+export function languageNameIn(language: Language, interfaceLanguage: Language): string {
+  const plain = language.split("-")[0]!;
+  return new Intl.DisplayNames([interfaceLanguage], { type: "language" }).of(plain) ?? LANGUAGE_NAMES[language];
+}
 
 /** The built-in UI font stack, read from the stylesheet that owns it, shown as the
  *  empty field's placeholder (config-sets conventions, In the interface). */
@@ -60,7 +69,7 @@ export function SettingsDialog({
   onSave: (settings: GuiSettings) => Promise<void>;
   onClose: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
   const [fontStack] = useState(builtInFontStack);
@@ -155,7 +164,7 @@ export function SettingsDialog({
           onChange={(e) => setDraft({ ...draft, language: normalizeLanguagePreference(e.target.value) })}
           style={S.languageSelect}
         >
-          <option value="system">{t("settings.system", { value: LANGUAGE_NAMES[system.language] })}</option>
+          <option value="system">{t("settings.system", { value: languageNameIn(system.language, language) })}</option>
           {LANGUAGES.map((language) => (
             <option key={language} value={language} lang={language}>
               {LANGUAGE_NAMES[language]}
