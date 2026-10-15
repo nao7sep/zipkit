@@ -82,6 +82,9 @@ export function SettingsDialog({
     [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone]);
 
   const dirty = Object.keys(changedSettings(settings, draft)).length > 0;
+  // Quit asks before discarding unsaved edits, so main follows whether there are any.
+  useEffect(() => { window.zipkit.reportSettingsDraft(dirty); }, [dirty]);
+  useEffect(() => () => window.zipkit.reportSettingsDraft(false), []);
   const canSave = dirty && isValid(draft.defaults);
 
   async function save() {

@@ -114,8 +114,16 @@ export function presentDialogWindow(win: Pick<BrowserWindow, "show" | "focus">, 
   win.focus();
 }
 
+/** A question or error attaches only to a window the user can see; on a hidden,
+ *  minimized or still-loading window it stands alone instead, so it never brings
+ *  that window back (window-conventions, Background visibility and activation). */
+export function visibleOwner(owner: Pick<BrowserWindow, "isDestroyed" | "isVisible" | "isMinimized"> | undefined): boolean {
+  return owner !== undefined && !owner.isDestroyed() && owner.isVisible() && !owner.isMinimized();
+}
+
 async function showAppDialog(options: AppMessageDialogOptions & Partial<AppQuestionDialogOptions>): Promise<number> {
-  const { owner, title, message, button, signal, labels, defaultId = 0, cancelId = 0 } = options;
+  const { title, message, button, signal, labels, defaultId = 0, cancelId = 0 } = options;
+  const owner = visibleOwner(options.owner) ? options.owner : undefined;
   if (signal?.aborted) return cancelId;
   const translator = mainTranslator();
   const win = new BrowserWindow({

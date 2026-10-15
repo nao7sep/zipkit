@@ -19,6 +19,8 @@ it("quit joins an issued edit before closing admission or saving the final snaps
   const edit = submissions.submit("job", { intent: "save" });
   const noop = async () => {};
   const steps: QuitSteps = {
+    settingsDraftOpen: () => false,
+    askDiscardSettingsDraft: async () => true,
     captureEdits: () => submissions.capture(),
     stopJob: vi.fn(async () => { accepting = false; }),
     flush: vi.fn(async () => { expect(comment).toBe("last keystroke"); }),

@@ -18,7 +18,7 @@ import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
 import { beginQueueQuit, cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
-import { discardSettingsSubmission, settingsSavePending, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
+import { settingsDraftOpen, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
 import { loadSettings, settingsFile } from "./settings.js";
 import { applyLanguagePreference, applyTimeZonePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
@@ -28,7 +28,7 @@ import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { layoutWritesSettled, loadLayout } from "./layout.js";
 import { loadQueue } from "./persist.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
-import { askQueueNotSaved, askSettingsNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
+import { askDiscardSettingsDraft, askQueueNotSaved, askSettingsNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
 import { createQuitControl, endSessionNow, finishStartupHalt, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
@@ -60,31 +60,12 @@ function createWindow(): BrowserWindow {
   configureWindowActivity(app, win);
 
   let flushQueueOnClose = true;
-  let capturedClose = false;
-  let capturingClose = false;
-  // Off macOS closing the main window quits, so the close becomes the quit:
-  // the window stays open when the user keeps working or cancels the quit, and
-  // the quit's own exit closes it. A window whose document failed to load just
-  // closes.
+  // Closing the main window ends the app on every platform (window-conventions),
+  // so the close becomes the quit: the window stays open when the user keeps
+  // working or cancels the quit, and the quit's own exit closes it with every
+  // other window. A window whose document failed to load just closes.
   win.on("close", (event) => {
     if (!flushQueueOnClose) return;
-    if (process.platform === "darwin") {
-      if (capturedClose) return;
-      event.preventDefault();
-      if (settingsSavePending() || capturingClose) return;
-      capturingClose = true;
-      void captureJobEdits(win).then(() => {
-        if (win.isDestroyed()) return;
-        discardSettingsSubmission();
-        capturedClose = true;
-        win.close();
-      }).catch((error) => {
-        log.error("failed to capture job edits before window close", { error: errorInfo(error) });
-        resumeJobEdits(win);
-        if (!win.isDestroyed()) win.webContents.send("zipkit:queueSaved", false);
-      }).finally(() => { capturingClose = false; });
-      return;
-    }
     event.preventDefault();
     app.quit();
   });
@@ -109,9 +90,8 @@ function createWindow(): BrowserWindow {
         log.error("failed to flush the queue after window close", { error: errorInfo(err) }),
       );
     }
-    // The main window, apart from the Records window beside it: closing it
-    // quits on Windows and Linux, and on macOS the Dock reopens it.
-    if (process.platform !== "darwin") app.quit();
+    // The main window, apart from the Records window beside it: closing it quits.
+    app.quit();
   });
   log.info("main window created");
 
@@ -248,9 +228,8 @@ app.on("second-instance", () => {
 });
 
 app.on("window-all-closed", () => {
-  const quitting = process.platform !== "darwin";
-  log.info("all windows closed", { quitting });
-  if (quitting) app.quit();
+  log.info("all windows closed", { quitting: true });
+  app.quit();
 });
 
 // What each quit step's failure is logged as. The queue is the user's own
@@ -292,6 +271,8 @@ const quit = createQuitControl({
     beginQueueQuit();
     return stopFlushAndExit(
       {
+        settingsDraftOpen,
+        askDiscardSettingsDraft: (signal) => askDiscardSettingsDraft(getMainWindow(), signal),
         captureEdits: () => captureJobEdits(getMainWindow()),
         stopJob: cancelRunningJobAndWait,
         settleSettings: settleSettingsSave,

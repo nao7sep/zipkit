@@ -62,6 +62,7 @@ const api = {
     return () => { ipcRenderer.removeListener("zipkit:settingsChanged", listener); };
   },
   discardSettingsSubmission: (): Promise<void> => ipcRenderer.invoke("zipkit:discardSettingsSubmission"),
+  reportSettingsDraft: (dirty: boolean): void => ipcRenderer.send("zipkit:settingsDraft", dirty),
   getSettings: (): Promise<GuiSettings> => ipcRenderer.invoke("zipkit:getSettings"),
   setSettings: (settings: GuiSettings): Promise<GuiSettings> =>
     ipcRenderer.invoke("zipkit:setSettings", settings),

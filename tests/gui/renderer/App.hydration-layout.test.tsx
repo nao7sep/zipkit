@@ -39,6 +39,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     onLanguageChanged: vi.fn(() => () => {}),
     getSystemChoices: vi.fn(async () => ({ appearance: "light" as const, language: "en" as const, timeZone: "UTC" })),
     discardSettingsSubmission: vi.fn(async () => {}),
+    reportSettingsDraft: vi.fn(),
     setSettings: vi.fn(async () => DEFAULT_SETTINGS),
     getLayout: vi.fn(async () => DEFAULT_LAYOUT),
     setLayout: vi.fn(async () => {}),

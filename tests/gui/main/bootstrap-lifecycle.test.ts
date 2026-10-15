@@ -66,7 +66,7 @@ vi.mock("../../../src/gui/main/queue.js", () => ({
   saveQueueBeforeSessionEnd: m.saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit: vi.fn(),
 }));
 vi.mock("../../../src/gui/main/settings-save.js", () => ({
-  discardSettingsSubmission: vi.fn(), settingsSavePending: () => false,
+  settingsDraftOpen: () => false,
   settleSettingsSave: m.settleSettingsSave, saveSettingsBeforeSessionEnd: m.saveSettingsBeforeSessionEnd,
 }));
 vi.mock("../../../src/gui/main/settings.js", () => ({
@@ -93,7 +93,7 @@ vi.mock("../../../src/gui/main/layout.js", () => ({ layoutWritesSettled: m.layou
 vi.mock("../../../src/gui/main/persist.js", () => ({ loadQueue: async () => ({ value: { jobs: [] }, quarantinedTo: undefined }) }));
 vi.mock("../../../src/gui/main/startup-dialog.js", () => ({ notifyStartupFailure: vi.fn(async () => {}), showAppMessageDialog: m.showAppMessageDialog }));
 vi.mock("../../../src/gui/main/quit-confirm-dialog.js", () => ({
-  askQueueNotSaved: m.askQueueNotSaved, askSettingsNotSaved: m.askSettingsNotSaved, confirmQuitDuringWrite: m.confirmQuitDuringWrite,
+  askDiscardSettingsDraft: vi.fn(async () => true), askQueueNotSaved: m.askQueueNotSaved, askSettingsNotSaved: m.askSettingsNotSaved, confirmQuitDuringWrite: m.confirmQuitDuringWrite,
 }));
 vi.mock("../../../src/gui/main/windowActivity.js", () => ({ configureWindowActivity: vi.fn() }));
 vi.mock("../../../src/gui/main/backupStore.js", () => ({ closeBackupStore: m.closeBackupStore }));
@@ -215,11 +215,16 @@ describe("Windows logoff, restart and shutdown", () => {
     expect(win.listenerCount("query-session-end")).toBe(0);
   });
 
-  it("turns closing the main window into the app's quit", async () => {
-    const win = await start("win32");
+});
+
+describe("closing the main window", () => {
+  it.each(["darwin", "win32"] as const)("quits the app on %s through the ordinary quit", async (host) => {
+    const win = await start(host);
     const close = quitEvent();
     win.emit("close", close);
     expect(close.preventDefault).toHaveBeenCalled();
     expect(m.app.quit).toHaveBeenCalledOnce();
+    m.app.emit("window-all-closed");
+    expect(m.app.quit).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,6 +1,6 @@
 /**
  * Quitting, per the unsaved-edits-conventions (Quitting). Every quit reaches
- * the same sequence: capture issued job edits, stop the running job, finish submitted Settings, save the queue, let the last pane
+ * the same sequence: ask before discarding an open Settings draft, capture issued job edits, stop the running job, finish submitted Settings, save the queue, let the last pane
  * layout write land, let the backup history and the log write what they hold,
  * then terminate Electron.
  *
@@ -62,6 +62,10 @@ export interface QuitSession {
 }
 
 export interface QuitSteps {
+  /** Whether the Settings dialog holds edits not yet submitted. */
+  settingsDraftOpen(): boolean;
+  /** Ask whether to discard them; resolves `true` to discard. */
+  askDiscardSettingsDraft(signal: AbortSignal): Promise<boolean>;
   captureEdits(): Promise<void>;
   /** Cancel the running job and resolve once it has stopped. */
   stopJob(): Promise<void>;
@@ -122,6 +126,17 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
     return error;
   };
   try {
+    // The Settings window's draft ends with the quit, so it is asked about first,
+    // while the user can still see it. An ending session discards it unasked.
+    if (!session.ending && steps.settingsDraftOpen()) {
+      let discard: boolean;
+      try { discard = await steps.askDiscardSettingsDraft(session.signal); }
+      catch (error) {
+        steps.onStepFailed("question", error);
+        discard = session.ending;
+      }
+      if (!discard && !session.ending) { cancelled = true; steps.onCancelled(); return; }
+    }
     for (;;) {
       const captureError = await bounded(steps.captureEdits, QUIT_BOUNDS_MS.capture, "pending job edits");
       if (captureError === undefined) break;

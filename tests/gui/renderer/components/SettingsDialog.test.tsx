@@ -24,7 +24,7 @@ afterEach(cleanup);
 
 Object.defineProperty(window, "zipkit", {
   configurable: true,
-  value: { reportError: vi.fn(), discardSettingsSubmission: vi.fn(async () => {}) },
+  value: { reportError: vi.fn(), discardSettingsSubmission: vi.fn(async () => {}), reportSettingsDraft: vi.fn() },
 });
 
 /** Settings that differ from the built-ins on every axis: edited option defaults,
@@ -287,5 +287,18 @@ describe("System entries in another interface language", () => {
     expect(ja.t("settings.system", { value: ja.t("settings.themeDark") })).toBe("システム（ダーク）");
     expect(languageNameIn("pt-BR", "en")).toBe("Portuguese");
     expect(languageNameIn("zh-Hans", "en")).toBe("Chinese");
+  });
+});
+
+describe("SettingsDialog draft report", () => {
+  it("tells main whether edits are unsaved, so quit can ask before discarding them", () => {
+    const report = window.zipkit.reportSettingsDraft as ReturnType<typeof vi.fn>;
+    report.mockClear();
+    renderDialog();
+    expect(report).toHaveBeenLastCalledWith(false);
+    fireEvent.change(fontInput(), { target: { value: "Menlo" } });
+    expect(report).toHaveBeenLastCalledWith(true);
+    cleanup();
+    expect(report).toHaveBeenLastCalledWith(false);
   });
 });

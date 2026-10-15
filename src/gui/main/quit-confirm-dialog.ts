@@ -1,7 +1,8 @@
 /**
- * The two questions quitting can ask: whether to cancel a job that is still
- * writing, verifying, or moving files to Trash, and what to do about a queue
- * that could not be saved. Both use the app's own question dialog (modal-dialog
+ * The questions quitting can ask: whether to cancel a job that is still
+ * writing, verifying, or moving files to Trash, whether to discard an open
+ * Settings draft, and what to do about a queue or Settings that could not be
+ * saved. Each uses the app's own question dialog (modal-dialog
  * conventions: app-owned message boxes), on the main window when it is open and
  * standalone when it is not. The safe choice is both the default and the
  * Escape/close outcome, so a reflexive dismissal never loses work. When the OS
@@ -62,4 +63,22 @@ export async function askSettingsNotSaved(owner: BrowserWindow | null, signal: A
     defaultId: 0, cancelId: 2, signal,
   });
   return choices[response] ?? "cancel";
+}
+
+/** Settings edited and not saved: the window owning them closes with the quit,
+ *  so quit asks before discarding them (unsaved-edits conventions, Window-owned
+ *  and app-owned work). Resolves `true` to discard; Keep editing, the default and
+ *  the Escape/close outcome, keeps the app open. */
+export async function askDiscardSettingsDraft(owner: BrowserWindow | null, signal: AbortSignal): Promise<boolean> {
+  const { t } = mainTranslator();
+  const response = await showAppQuestionDialog({
+    owner: owner ?? undefined,
+    title: t("settings.discardTitle"),
+    message: t("settings.discardMessage"),
+    labels: [t("settings.discard"), t("common.keepEditing")],
+    defaultId: 1,
+    cancelId: 1,
+    signal,
+  });
+  return response === 0;
 }

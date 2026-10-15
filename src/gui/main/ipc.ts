@@ -21,7 +21,7 @@ import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log, startProgressRun, toGuiError, zip } from "./runtime.js";
 import { currentSettings } from "./settings.js";
-import { submitSettings, discardSettingsSubmission } from "./settings-save.js";
+import { submitSettings, discardSettingsSubmission, reportSettingsDraft } from "./settings-save.js";
 import { languageEnvironment, mainTranslator, systemLanguageNow } from "./i18n.js";
 import { systemAppearance } from "./theme.js";
 import { machineTimeZone } from "../../sdk/internal/timeZone.js";
@@ -42,6 +42,7 @@ export function registerIpc(): void {
 
   ipcMain.handle("zipkit:setSettings", (_event, draft: GuiSettings) => submitSettings(draft));
   ipcMain.handle("zipkit:discardSettingsSubmission", () => discardSettingsSubmission());
+  ipcMain.on("zipkit:settingsDraft", (_event, dirty: unknown) => reportSettingsDraft(dirty === true));
 
   ipcMain.handle("zipkit:getLanguageEnvironment", async () => languageEnvironment());
   ipcMain.handle("zipkit:getSystemChoices", (): SystemChoices => ({

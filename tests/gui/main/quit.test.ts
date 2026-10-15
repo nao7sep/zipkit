@@ -14,6 +14,8 @@ import {
 
 function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
   return {
+    settingsDraftOpen: () => false,
+    askDiscardSettingsDraft: vi.fn(async () => true),
     captureEdits: vi.fn(async () => {}),
     stopJob: vi.fn(async () => {}),
     settleSettings: vi.fn(async () => {}),
@@ -59,6 +61,33 @@ const never = () => new Promise<void>(() => {});
 const totalBound = Object.values(QUIT_BOUNDS_MS).reduce((sum, ms) => sum + ms, 0);
 
 describe("stopFlushAndExit", () => {
+  it("asks before discarding an open Settings draft, and Keep editing keeps the app open", async () => {
+    const kept = steps({ settingsDraftOpen: () => true, askDiscardSettingsDraft: vi.fn(async () => false) });
+    await stopFlushAndExit(kept, userQuit());
+    expect(kept.onCancelled).toHaveBeenCalledOnce();
+    expect(kept.captureEdits).not.toHaveBeenCalled();
+    expect(kept.flush).not.toHaveBeenCalled();
+    expect(kept.exit).not.toHaveBeenCalled();
+
+    const discarded = steps({ settingsDraftOpen: () => true, askDiscardSettingsDraft: vi.fn(async () => true) });
+    await stopFlushAndExit(discarded, userQuit());
+    expect(discarded.flush).toHaveBeenCalledOnce();
+    expect(discarded.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("discards an open Settings draft unasked when the session ends, and cancels when the question cannot show", async () => {
+    const ending = steps({ settingsDraftOpen: () => true });
+    await stopFlushAndExit(ending, endingSession());
+    expect(ending.askDiscardSettingsDraft).not.toHaveBeenCalled();
+    expect(ending.exit).toHaveBeenCalledWith(0);
+
+    const broken = steps({ settingsDraftOpen: () => true, askDiscardSettingsDraft: vi.fn(async () => { throw new Error("no window"); }) });
+    await stopFlushAndExit(broken, userQuit());
+    expect(broken.onStepFailed).toHaveBeenCalledWith("question", expect.any(Error));
+    expect(broken.onCancelled).toHaveBeenCalledOnce();
+    expect(broken.exit).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
   });

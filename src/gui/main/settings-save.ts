@@ -18,7 +18,13 @@ let runningPacket: GuiSettings | undefined;
 
 export function settingsSavePending(): boolean { return running !== undefined; }
 
-/** Called only after the editor's discard decision, or its native window close.
+// Whether the Settings dialog holds edits not yet submitted. They live only in
+// the renderer; it reports each change so quit can ask before they go.
+let draftOpen = false;
+export function reportSettingsDraft(dirty: boolean): void { draftOpen = dirty; }
+export function settingsDraftOpen(): boolean { return draftOpen; }
+
+/** Called only after the editor's discard decision.
  * Refusing while busy preserves the same guard as the modal's disabled controls. */
 export function discardSettingsSubmission(): void {
   if (running) throw new Error("Settings publication is still pending");

@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildAppMessageDialogDocument, presentDialogWindow, showAppQuestionDialog } from "../../../src/gui/main/startup-dialog.js";
+import { buildAppMessageDialogDocument, presentDialogWindow, showAppQuestionDialog, visibleOwner } from "../../../src/gui/main/startup-dialog.js";
 
 const windows = vi.hoisted(() => ([] as Array<{
   events: EventEmitter;
@@ -8,13 +8,14 @@ const windows = vi.hoisted(() => ([] as Array<{
   destroyed: boolean;
   showed: boolean;
   html: string;
+  parent: unknown;
 }>));
 const controls = vi.hoisted(() => ({ load: null as Promise<void> | null, failure: null as Error | null, order: [] as string[] }));
 vi.mock("electron", () => ({
   app: { focus: (options: unknown) => { controls.order.push(`app.focus ${JSON.stringify(options)}`); } },
   BrowserWindow: class {
-    state = { events: new EventEmitter(), contents: new EventEmitter(), destroyed: false, showed: false, html: "" };
-    constructor() { windows.push(this.state); }
+    state = { events: new EventEmitter(), contents: new EventEmitter(), destroyed: false, showed: false, html: "", parent: undefined as unknown };
+    constructor(options: { parent?: unknown }) { this.state.parent = options.parent; windows.push(this.state); }
     webContents = Object.assign(this.state.contents, { executeJavaScript: async () => 260 });
     once(event: string, listener: (...args: unknown[]) => void) { this.state.events.once(event, listener); }
     async loadURL(url: string) {
@@ -123,5 +124,25 @@ describe("dialog activation", () => {
     controls.order = [];
     presentDialogWindow(win as never, "win32");
     expect(controls.order).toEqual(["show", "focus"]);
+  });
+});
+
+describe("dialog owner", () => {
+  const owner = (visible: boolean, minimized: boolean) =>
+    ({ isDestroyed: () => false, isVisible: () => visible, isMinimized: () => minimized });
+
+  it("attaches only to a window the user can see", () => {
+    expect(visibleOwner(owner(true, false))).toBe(true);
+    expect(visibleOwner(owner(false, false))).toBe(false);
+    expect(visibleOwner(owner(true, true))).toBe(false);
+    expect(visibleOwner(undefined)).toBe(false);
+  });
+
+  it("stands alone instead of bringing a hidden window back", async () => {
+    const controller = new AbortController();
+    const result = showAppQuestionDialog({ ...options(controller.signal), owner: owner(false, false) as never });
+    expect(windows[0]!.parent).toBeUndefined();
+    controller.abort();
+    await result;
   });
 });

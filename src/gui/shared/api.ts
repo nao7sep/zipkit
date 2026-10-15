@@ -135,6 +135,9 @@ export interface ZipKitGuiApi {
   onSettingsChanged(callback: (settings: GuiSettings) => void): () => void;
   /** Retire a failed submission after explicit discard; rejects while saving. */
   discardSettingsSubmission(): Promise<void>;
+  /** Tells main whether the Settings dialog holds edits not yet submitted, so
+   *  quit can ask before discarding them. */
+  reportSettingsDraft(dirty: boolean): void;
   /** Persist the dialog's settings and return the effective settings; rejects on failure. */
   setSettings(settings: GuiSettings): Promise<GuiSettings>;
 
