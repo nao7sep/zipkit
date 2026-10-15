@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
-  ABOUT_COPYRIGHT,
   AboutDialog,
 } from "../../../../src/gui/renderer/src/components/AboutDialog";
 
@@ -31,8 +30,8 @@ describe("AboutDialog", () => {
 
     render(<AboutDialog onClose={() => {}} />);
 
-    expect(ABOUT_COPYRIGHT).toBe("© 2026 Yoshinao Inoguchi · GNU GPL v3 or later");
-    expect(screen.getByText(ABOUT_COPYRIGHT)).toBeTruthy();
+    // One translated line in the fleet form; every catalogue carries it.
+    expect(screen.getByText("© 2026 Yoshinao Inoguchi · GNU GPL v3 or later")).toBeTruthy();
   });
 
   it("retains authored About load and link failures without exposing diagnostics", async () => {

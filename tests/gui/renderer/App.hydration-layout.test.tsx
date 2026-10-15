@@ -34,6 +34,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     platform: "darwin",
     onWindowActivityChanged: vi.fn(() => () => {}),
     onSettingsChanged: vi.fn(() => () => {}),
+    onOpenAbout: vi.fn(() => () => {}),
     getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const, timeZone: "system" })),
     getLanguageEnvironment: vi.fn(async () => ({ language: "en" as const, locale: "en", timeZone: null })),
     onLanguageChanged: vi.fn(() => () => {}),

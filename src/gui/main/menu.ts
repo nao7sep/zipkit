@@ -11,9 +11,17 @@ import { Menu, type MenuItemConstructorOptions } from "electron";
 import { APP_NAME } from "../shared/identity.js";
 import type { Translator } from "../shared/i18n/translate.js";
 
+/** Commands the menu hands back to the app. Without them, as at a failed launch
+ *  before any window exists, their items are left out. */
+export interface AppMenuActions {
+  /** Open the app's own About dialog; Electron's native About panel is not it. */
+  about?: () => void;
+}
+
 export function buildAppMenuTemplate(
   translator: Translator,
   platform: NodeJS.Platform,
+  actions: AppMenuActions = {},
 ): MenuItemConstructorOptions[] {
   const mac = platform === "darwin";
   const l = translator.t;
@@ -23,8 +31,12 @@ export function buildAppMenuTemplate(
           {
             label: APP_NAME,
             submenu: [
-              { role: "about", label: l("nativeMenu.about", { app: APP_NAME }) },
-              { type: "separator" },
+              ...(actions.about
+                ? ([
+                    { label: l("nativeMenu.about", { app: APP_NAME }), click: actions.about },
+                    { type: "separator" },
+                  ] satisfies MenuItemConstructorOptions[])
+                : []),
               { role: "services", label: l("nativeMenu.services") },
               { type: "separator" },
               { role: "hide", label: l("nativeMenu.hide", { app: APP_NAME }) },
@@ -107,6 +119,6 @@ export function buildAppMenuTemplate(
 }
 
 /** Replaces the application menu with one in the translator's language. */
-export function installAppMenu(translator: Translator): void {
-  Menu.setApplicationMenu(Menu.buildFromTemplate(buildAppMenuTemplate(translator, process.platform)));
+export function installAppMenu(translator: Translator, actions: AppMenuActions = {}): void {
+  Menu.setApplicationMenu(Menu.buildFromTemplate(buildAppMenuTemplate(translator, process.platform, actions)));
 }

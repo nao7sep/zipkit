@@ -102,6 +102,9 @@ export interface AppInfo {
 /** Main-to-renderer native BrowserWindow activation event. */
 export const WINDOW_ACTIVITY_CHANNEL = "zipkit:windowActivity";
 
+/** Main-to-renderer event: the app menu asked for the About dialog. */
+export const OPEN_ABOUT_CHANNEL = "zipkit:openAbout";
+
 /** Main-to-renderer event: a saved language choice moved the interface language. */
 export const LANGUAGE_CHANGED_CHANNEL = "zipkit:languageChanged";
 
@@ -126,6 +129,8 @@ export interface ZipKitGuiApi {
   getLanguageEnvironment(): Promise<LanguageEnvironment>;
   /** Follow a saved language change; returns an unsubscribe function. */
   onLanguageChanged(callback: (environment: LanguageEnvironment) => void): () => void;
+  /** Follow the app menu's About command; returns an unsubscribe function. */
+  onOpenAbout(callback: () => void): () => void;
   /** What each System choice resolves to now, for the Settings labels. */
   getSystemChoices(): Promise<SystemChoices>;
 

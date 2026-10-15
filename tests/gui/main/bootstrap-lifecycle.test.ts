@@ -31,6 +31,7 @@ const m = vi.hoisted(() => {
     logClose: fn(async () => {}),
     forceExitProcess: fn(),
     showAppMessageDialog: fn(async () => {}),
+    installAppMenu: fn((_translator: unknown, _actions?: { about?: () => void }) => {}),
   };
 });
 
@@ -41,6 +42,7 @@ vi.mock("electron", async () => {
     constructor() { super(); m.windows.push(this as never); }
     isDestroyed() { return false; }
     isMinimized() { return false; }
+    isVisible() { return true; }
     show() {}
     focus() {}
     restore() {}
@@ -78,7 +80,7 @@ vi.mock("../../../src/gui/main/i18n.js", () => ({
   onLanguageChanged: vi.fn(), readConfigText: async () => null, readSavedPreference: () => undefined,
   settleLanguage: async () => {},
 }));
-vi.mock("../../../src/gui/main/menu.js", () => ({ installAppMenu: vi.fn() }));
+vi.mock("../../../src/gui/main/menu.js", () => ({ installAppMenu: m.installAppMenu }));
 vi.mock("../../../src/gui/main/runtime.js", () => {
   let main: unknown = null;
   return {
@@ -226,5 +228,14 @@ describe("closing the main window", () => {
     expect(m.app.quit).toHaveBeenCalledOnce();
     m.app.emit("window-all-closed");
     expect(m.app.quit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the app menu's About", () => {
+  it("asks the main window for the app's own About dialog", async () => {
+    const win = await start("darwin");
+    const actions = m.installAppMenu.mock.calls.at(-1)![1]!;
+    actions.about!();
+    expect((win.webContents as { send: ReturnType<typeof vi.fn> }).send).toHaveBeenCalledWith("zipkit:openAbout");
   });
 });

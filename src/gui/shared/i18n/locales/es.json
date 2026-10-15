@@ -472,6 +472,7 @@
   "about.description": "Crea archivos ZIP en un Mac que se abran sin problemas en Windows: corrige los nombres de archivo, elimina la basura exclusiva de Mac y verifica el resultado.",
   "about.repository": "Repositorio",
   "about.issues": "Incidencias",
+  "about.copyright": "© 2026 Yoshinao Inoguchi · GNU GPL v3 o posterior",
   "about.repositoryFailed": "No se pudo abrir el enlace del repositorio en tu navegador. Vuelve a intentarlo.",
   "about.issuesFailed": "No se pudo abrir el enlace de incidencias en tu navegador. Vuelve a intentarlo."
 }

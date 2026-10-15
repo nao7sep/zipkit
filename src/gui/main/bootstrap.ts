@@ -11,6 +11,7 @@
 
 import { app, BrowserWindow, nativeTheme, powerMonitor } from "electron";
 import { APP_VERSION } from "../shared/identity.js";
+import { OPEN_ABOUT_CHANNEL } from "../shared/api.js";
 import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
 import { buildRecoveryDialogs } from "./recoveryDialogs.js";
@@ -146,6 +147,16 @@ async function reportStartupHalt(error: unknown): Promise<void> {
   });
 }
 
+// The app menu's About opens the app's own About dialog in the main window.
+const menuActions = {
+  about: () => {
+    const win = getMainWindow();
+    if (!win || !win.isVisible()) return;
+    focusWindow(win);
+    win.webContents.send(OPEN_ABOUT_CHANNEL);
+  },
+};
+
 function logLanguageError(error: unknown): void {
   log.warn("the interface language could not reach a native surface", { error: errorInfo(error) });
 }
@@ -161,8 +172,8 @@ app.whenReady().then(async () => {
   // straight from config.json so the menu that replaces Electron's default in
   // this same turn is already in it. The store's load below can still reset it.
   await settleLanguage(readSavedPreference(await readConfigText(settingsFile())), logLanguageError);
-  installAppMenu(mainTranslator());
-  onLanguageChanged(installAppMenu);
+  installAppMenu(mainTranslator(), menuActions);
+  onLanguageChanged((translator) => installAppMenu(translator, menuActions));
   log.info("app started", {
     version: APP_VERSION,
     platform: process.platform,

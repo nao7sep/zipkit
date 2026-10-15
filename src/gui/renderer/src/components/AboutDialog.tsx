@@ -15,7 +15,6 @@ import { message } from "../../../shared/i18n/translate";
 import { APP_NAME } from "../../../shared/identity";
 
 const REPO = "https://github.com/nao7sep/zipkit";
-export const ABOUT_COPYRIGHT = "© 2026 Yoshinao Inoguchi · GNU GPL v3 or later";
 
 export function AboutDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
@@ -73,7 +72,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
       </div>
       {linkErrors.repository && <ReceiverResultNotice result={{ message: message("about.repositoryFailed"), severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, repository: false }))} />}
       {linkErrors.issues && <ReceiverResultNotice result={{ message: message("about.issuesFailed"), severity: "error" }} onDismiss={() => setLinkErrors((current) => ({ ...current, issues: false }))} />}
-      <p style={{ opacity: 0.7 }}>{ABOUT_COPYRIGHT}</p>
+      <p style={{ opacity: 0.7 }}>{t("about.copyright")}</p>
     </ModalShell>
   );
 }

@@ -22,7 +22,7 @@ const KEYS = new Set(Object.keys(ENGLISH));
 describe("application menu", () => {
   it.each(["darwin", "win32"] as const)("labels every item from the catalogue on %s", (platform) => {
     for (const language of LANGUAGES) {
-      const drawn = labels(buildAppMenuTemplate(createTranslator(language), platform));
+      const drawn = labels(buildAppMenuTemplate(createTranslator(language), platform, { about: () => {} }));
       expect(drawn.filter((label) => KEYS.has(label) || label.includes("{")), language).toEqual([]);
     }
   });
@@ -33,6 +33,19 @@ describe("application menu", () => {
     const roles = (edit.submenu as MenuItemConstructorOptions[]).map((item) => item.role).filter(Boolean);
     expect(roles).toEqual(expect.arrayContaining(["undo", "redo", "cut", "copy", "paste", "selectAll"]));
     expect(menu.some((item) => item.role === "windowMenu")).toBe(true);
+  });
+
+  it("opens the app's own About dialog, never Electron's native About panel", () => {
+    const about = vi.fn();
+    const appMenu = buildAppMenuTemplate(createTranslator("en"), "darwin", { about })[0]!.submenu as MenuItemConstructorOptions[];
+    const item = appMenu.find((entry) => entry.label === "About ZipKit")!;
+    expect(item.role).toBeUndefined();
+    (item.click as () => void)();
+    expect(about).toHaveBeenCalledOnce();
+    expect(appMenu.some((entry) => entry.role === "about")).toBe(false);
+    // A failed launch has no window to show it in, so the item is left out.
+    const bare = buildAppMenuTemplate(createTranslator("en"), "darwin")[0]!.submenu as MenuItemConstructorOptions[];
+    expect(bare.some((entry) => entry.label === "About ZipKit")).toBe(false);
   });
 
   it("leads with the app menu only on macOS", () => {

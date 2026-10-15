@@ -472,6 +472,7 @@
   "about.description": "Mac で作った ZIP アーカイブが Windows でも問題なく開けるように、ファイル名を直し、Mac 特有の不要ファイルを取り除いて、結果を検証しましょう。",
   "about.repository": "リポジトリ",
   "about.issues": "問題の報告",
+  "about.copyright": "© 2026 Yoshinao Inoguchi · GNU GPL v3 以降",
   "about.repositoryFailed": "リポジトリのリンクをブラウザで開けませんでした。もう一度お試しください。",
   "about.issuesFailed": "問題報告のリンクをブラウザで開けませんでした。もう一度お試しください。"
 }

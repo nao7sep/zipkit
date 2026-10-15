@@ -294,6 +294,7 @@ export function App() {
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
   useEffect(() => window.zipkit.onSettingsChanged(applySavedSettings), []);
+  useEffect(() => window.zipkit.onOpenAbout(() => setDialog("about")), []);
 
   // Settings opens once main has said what each System choice resolves to now.
   function openSettings(): void {

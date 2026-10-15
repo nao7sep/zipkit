@@ -472,6 +472,7 @@
   "about.description": "Erstellen Sie auf einem Mac ZIP-Archive, die sich unter Windows einwandfrei öffnen lassen: Korrigieren Sie Dateinamen, entfernen Sie reine Mac-Müll-Dateien und prüfen Sie das Ergebnis.",
   "about.repository": "Repository",
   "about.issues": "Fehlermeldungen",
+  "about.copyright": "© 2026 Yoshinao Inoguchi · GNU GPL v3 oder später",
   "about.repositoryFailed": "Der Link zum Repository konnte nicht im Browser geöffnet werden. Versuchen Sie es erneut.",
   "about.issuesFailed": "Der Link zu den Fehlermeldungen konnte nicht im Browser geöffnet werden. Versuchen Sie es erneut."
 }

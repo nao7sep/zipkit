@@ -472,6 +472,7 @@
   "about.description": "Make ZIP archives on a Mac that open cleanly on Windows: fix file names, drop Mac-only junk, and verify the result.",
   "about.repository": "Repository",
   "about.issues": "Issues",
+  "about.copyright": "© 2026 Yoshinao Inoguchi · GNU GPL v3 or later",
   "about.repositoryFailed": "The repository link could not be opened in your browser. Try again.",
   "about.issuesFailed": "The issues link could not be opened in your browser. Try again."
 }

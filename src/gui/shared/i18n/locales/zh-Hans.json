@@ -472,6 +472,7 @@
   "about.description": "在 Mac 上制作能在 Windows 上正常打开的 ZIP 压缩包：修正文件名，清除 Mac 专属垃圾文件，并校验结果。",
   "about.repository": "代码仓库",
   "about.issues": "问题反馈",
+  "about.copyright": "© 2026 Yoshinao Inoguchi · GNU GPL v3 或更高版本",
   "about.repositoryFailed": "无法在浏览器中打开代码仓库链接。请重试。",
   "about.issuesFailed": "无法在浏览器中打开问题反馈链接。请重试。"
 }

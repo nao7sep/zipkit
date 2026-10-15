@@ -472,6 +472,7 @@
   "about.description": "Windows에서도 깔끔하게 열리는 ZIP 압축 파일을 Mac에서 만드세요: 파일 이름을 고치고, Mac 전용 불필요한 파일을 제거하고, 결과를 검증하세요.",
   "about.repository": "저장소",
   "about.issues": "이슈",
+  "about.copyright": "© 2026 Yoshinao Inoguchi · GNU GPL v3 이상",
   "about.repositoryFailed": "브라우저에서 저장소 링크를 열 수 없습니다. 다시 시도하십시오.",
   "about.issuesFailed": "브라우저에서 이슈 링크를 열 수 없습니다. 다시 시도하십시오."
 }
