@@ -74,12 +74,12 @@ export const LEVEL_FILTER_LABELS: Record<RecordLevelFilter, MessageKey> = {
   ...LEVEL_LABELS,
 };
 
-/** A level's pill: only the levels worth stopping at take a status colour. */
-export const LEVEL_PILLS: Record<RecordLevel, string> = {
-  error: "records-pill records-pill--error",
-  warn: "records-pill records-pill--warn",
-  info: "records-pill",
-  debug: "records-pill",
+/** A level as plain text: only the levels worth stopping at take a status colour. */
+export const LEVEL_MARKS: Record<RecordLevel, string> = {
+  error: "records-mark records-mark--error",
+  warn: "records-mark records-mark--warn",
+  info: "records-mark",
+  debug: "records-mark",
 };
 
 /** The page after the last record shown. */

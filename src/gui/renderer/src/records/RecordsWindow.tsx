@@ -38,7 +38,7 @@ import {
   KIND_LABELS,
   LEVEL_FILTER_LABELS,
   LEVEL_LABELS,
-  LEVEL_PILLS,
+  LEVEL_MARKS,
   cursorAfter,
   mergeNewestPage,
   recordDetails,
@@ -469,8 +469,8 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
                   >
                     <div className="records-row__meta">
                       <span>{t.logTime(new Date(record.time))}</span>
-                      <span className={LEVEL_PILLS[record.level]}>{t.t(LEVEL_LABELS[record.level])}</span>
-                      {record.kind === "job-event" ? <span className="records-pill">{t.t(KIND_LABELS[record.kind])}</span> : null}
+                      <span className={LEVEL_MARKS[record.level]}>{t.t(LEVEL_LABELS[record.level])}</span>
+                      {record.kind === "job-event" ? <span className="records-mark">{t.t(KIND_LABELS[record.kind])}</span> : null}
                     </div>
                     <div className="records-row__title text-line">{record.title}</div>
                     {record.text ? <div className="records-row__text text-line">{record.text}</div> : null}
@@ -596,9 +596,9 @@ function RecordDetailView({
     <>
       <div className="records-detail__header">
         <h2 className="records-detail__title">{record.kind === "log" ? record.message : record.event}</h2>
-        <div className="records-detail__pills">
-          <span className={LEVEL_PILLS[record.level]}>{t.t(LEVEL_LABELS[record.level])}</span>
-          <span className="records-pill">{t.t(KIND_LABELS[record.kind])}</span>
+        <div className="records-detail__marks">
+          <span className={LEVEL_MARKS[record.level]}>{t.t(LEVEL_LABELS[record.level])}</span>
+          <span className="records-mark">{t.t(KIND_LABELS[record.kind])}</span>
         </div>
       </div>
       <div className="records-detail__body" role="region" tabIndex={0} aria-label={t.t("records.details")}>

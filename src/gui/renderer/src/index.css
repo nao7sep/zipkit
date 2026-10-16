@@ -488,7 +488,7 @@ input[type="checkbox"] {
   background: var(--job-tint);
 }
 .job-row:hover {
-  /* The secondary surface keeps both badge and row text legible while the
+  /* The secondary surface keeps both state and row text legible while the
    * status tint remains part of the fill. */
   background: color-mix(in srgb, var(--job-tint), var(--surface-2) 50%);
 }
@@ -651,24 +651,19 @@ button.icon.compact {
 .records-note--error {
   color: var(--status-error);
 }
-/* A level or kind as a pill, as the job state badge is: only the levels worth
+/* A level or kind as plain text, as the job state is: only the levels worth
  * stopping at take a status colour. */
-.records-pill {
-  --pill-color: var(--text-2);
-  color: var(--pill-color);
-  background: color-mix(in srgb, var(--pill-color) 12%, transparent);
-  border: 1px solid var(--pill-color);
-  border-radius: 999px;
-  padding: 0 0.5rem;
+.records-mark {
+  color: var(--text-2);
   font-size: 0.7rem;
   font-weight: 600;
   white-space: nowrap;
 }
-.records-pill--error {
-  --pill-color: var(--status-error);
+.records-mark--error {
+  color: var(--status-error);
 }
-.records-pill--warn {
-  --pill-color: var(--status-warning);
+.records-mark--warn {
+  color: var(--status-warning);
 }
 .records-detail__header {
   flex-shrink: 0;
@@ -685,7 +680,7 @@ button.icon.compact {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
-.records-detail__pills {
+.records-detail__marks {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
