@@ -2,7 +2,7 @@
  * The queue screen: a bottom-bordered header (title + hamburger menu) and a body
  * of three rounded panes split by drag handles (the side widths persist). Left,
  * the job list (Add). Middle, the selected job's everything in
- * one scrollable pane, titled with the job's input inventory and a state pill:
+ * one scrollable pane, titled with the job's input inventory and a state label:
  * its Inputs (add/remove without rebuilding the job), its Parameters (the archive
  * knobs + an output-directory group, gated by a "use default parameters" toggle),
  * its Operation (file name, intent, the full output-path checkpoint, then the
@@ -67,7 +67,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { HelpDialog } from "./components/HelpDialog";
 import { Splitter } from "./components/Splitter";
-import { StateBadge } from "./components/StateBadge";
+import { StateLabel } from "./components/StateLabel";
 import {
   archiveName,
   COLOR,
@@ -991,7 +991,7 @@ function JobView({
 
   return (
     <>
-      <Pane title={label(job, t)} rootStyle={GROW} actions={<StateBadge state={job.state} />}>
+      <Pane title={label(job, t)} rootStyle={GROW} actions={<StateLabel state={job.state} />}>
         {/* Inputs lead the pane: what this job archives, add/remove without
             rebuilding it. */}
         <InputList

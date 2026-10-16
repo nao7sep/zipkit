@@ -45,7 +45,7 @@ const S: Record<string, CSSProperties> = {
     overflow: "hidden",
   },
   // A fixed header height so every pane's header lines up regardless of whether
-  // its actions hold a button (Jobs), a badge (Archive), or nothing (Progress).
+  // its actions hold a button (Jobs), a state label (Archive), or nothing (Progress).
   header: {
     flexShrink: 0,
     display: "flex",
@@ -55,8 +55,8 @@ const S: Record<string, CSSProperties> = {
     padding: "0.4rem 0.85rem",
     borderBottom: "1px solid var(--border)",
   },
-  // Truncates (one CSS-drawn marker) so a long job title never pushes the state
-  // pill off the fixed-height header. This is the deliberate exception: the
+  // Truncates (one CSS-drawn marker) so a long job title never pushes the
+  // state label off the fixed-height header. This is the deliberate exception: the
   // complete name stays shown in the selected job's row and Inputs list, which
   // keyboard and touch reach directly; the tooltip only supplements them.
   title: {
@@ -68,7 +68,7 @@ const S: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  // marginLeft:auto right-aligns it; flexShrink:0 keeps the pill at full size.
+  // marginLeft:auto right-aligns it; flexShrink:0 keeps the label whole.
   actions: { marginLeft: "auto", flexShrink: 0, display: "flex", gap: "0.5rem", alignItems: "center" },
   // position:relative makes the scrolling body the containing block for any
   // absolutely positioned descendant — notably the screen-reader-only spans in

@@ -29,7 +29,7 @@ import {
 } from "../view";
 import { navIndex, recoverIndex, typeaheadIndex } from "../listbox-nav";
 import { isComposing } from "../composition";
-import { StateBadge } from "./StateBadge";
+import { StateLabel } from "./StateLabel";
 import { useI18n, type Translator } from "../i18n/I18nContext";
 import { CloseIcon } from "./Icon";
 
@@ -242,11 +242,11 @@ export function JobListbox({
               } as CSSProperties}
             >
               {/* Filename gets the full top line; status sits under it so a long
-                  name is never squeezed by a leading badge. */}
+                  name is never squeezed by a leading state label. */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="text-line" style={S.name}>{label(job, t)}</div>
                 <div style={S.meta}>
-                  <StateBadge state={job.state} />
+                  <StateLabel state={job.state} />
                   {metaText(job, t) && <span className="text-line" style={S.dim}>{metaText(job, t)}</span>}
                 </div>
               </div>
@@ -291,7 +291,7 @@ export function JobListbox({
   );
 }
 
-/** The dim sub-line beside the state badge: the noteworthy intent tag (nothing
+/** The dim sub-line beside the state label: the noteworthy intent tag (nothing
  *  for the default save) and the job message, whichever are present. */
 function metaText(job: Job, t: Translator): string {
   return [

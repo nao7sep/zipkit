@@ -85,7 +85,7 @@ export function orderedEntries(entries: InputEntry[]): InputEntry[] {
   });
 }
 
-/** The status-badge color for each job state (exhaustive over JobState). */
+/** The state label color for each job state (exhaustive over JobState). */
 export function stateColor(state: Job["state"]): string {
   switch (state) {
     case "planning":
@@ -785,7 +785,7 @@ export function containingDir(p: string | undefined): string {
  * the main process's `resolveOutputPath` (it owns `~` expansion and absolute-path
  * validation); this is a DISPLAY preview only. It prefers the SDK-resolved
  * `job.output`, falls back to what the user typed, leaves the name empty while a
- * plan is actually running (the state badge says so; a stand-in value would not),
+ * plan is actually running (the state label says so; a stand-in value would not),
  * and otherwise names the default the user still needs to see — so it never
  * claims "planning" for a blocked/failed job. One place, so
  * the renderer has a single (tested) derivation instead of an inline ladder.

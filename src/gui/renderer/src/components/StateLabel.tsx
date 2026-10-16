@@ -1,26 +1,20 @@
 /**
- * The job state badge — a colored pill (state-tinted fill + matching text and
- * border) shared by the queue listbox row and the Archive pane header. As a pill
- * it reads at a glance and, crucially, never gets visually swallowed when it sits
- * beside a long title: the header keeps it from shrinking, this keeps its shape.
+ * A job's state as plain text in the state's colour, shared by the queue
+ * listbox row and the Archive pane header. Reaching a state takes the user no
+ * effort, so it is a quiet label rather than a pill that asks to be watched.
  */
 
 import type { CSSProperties } from "react";
 import type { Job } from "../../../shared/api";
-import { stateColor, stateLabel, stateTint } from "../view";
+import { stateColor, stateLabel } from "../view";
 import { useI18n } from "../i18n/I18nContext";
 
-export function StateBadge({ state }: { state: Job["state"] }) {
+export function StateLabel({ state }: { state: Job["state"] }) {
   const { t } = useI18n();
-  const color = stateColor(state);
   const style: CSSProperties = {
-    color,
-    background: stateTint(state),
-    border: `1px solid ${color}`,
-    borderRadius: 999,
-    padding: "0.1rem 0.55rem",
+    color: stateColor(state),
     fontWeight: 600,
-    fontSize: "0.75rem",
+    fontSize: "0.8rem",
     whiteSpace: "nowrap",
     flexShrink: 0,
   };
