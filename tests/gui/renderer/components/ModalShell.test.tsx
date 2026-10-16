@@ -54,6 +54,20 @@ describe("ModalShell", () => {
     expect(lines.every((border) => border === "1px solid var(--border)")).toBe(true);
   });
 
+  it("draws no line at all when the title is hidden, so the surface reads as one panel", () => {
+    render(
+      <ModalShell title="About" titleHidden onClose={vi.fn()} footer={<button>Close</button>}>
+        <p>body</p>
+      </ModalShell>,
+    );
+    const dialog = screen.getByRole("dialog");
+    const lines = [...dialog.querySelectorAll<HTMLElement>("*")].flatMap((el) =>
+      [el.style.borderTop, el.style.borderBottom].filter((border) => border !== ""),
+    );
+    // The hidden title's own `border: 0` is no line.
+    expect(lines.filter((border) => !/^0(px)?$/.test(border))).toEqual([]);
+  });
+
   it("Escape routes to onClose", () => {
     const onClose = renderShell();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });

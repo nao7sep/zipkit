@@ -43,8 +43,9 @@ export function ModalShell({
   /**
    * Keeps the title as the dialog's spoken name but takes it off the screen,
    * for a surface whose own content already says what it is (About). The band
-   * then holds only the close control and carries no line, since there is no
-   * title to divide from the content.
+   * then holds only the close control, and neither it nor the footer carries a
+   * line: with no title to divide from the content, the surface reads as one
+   * panel.
    */
   titleHidden?: boolean;
   onClose: () => void;
@@ -99,7 +100,7 @@ export function ModalShell({
           </div>
           <div style={ST.scroll}>{children}</div>
           {footer && (
-            <div data-modal-footer style={ST.footer}>
+            <div data-modal-footer style={titleHidden ? ST.footerBare : ST.footer}>
               {footer}
             </div>
           )}
@@ -189,5 +190,12 @@ const ST: Record<string, CSSProperties> = {
     gap: "0.75rem",
     padding: "0.85rem 1.25rem",
     borderTop: "1px solid var(--border)",
+  },
+  footerBare: {
+    flexShrink: 0,
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "0.75rem",
+    padding: "0.85rem 1.25rem",
   },
 };
