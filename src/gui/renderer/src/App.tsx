@@ -973,8 +973,9 @@ function JobView({
         />
 
         {/* Parameters: the archive knobs, with the use-defaults toggle in the
-            header and the output-directory group inside. */}
-        <div style={S.sectionHead}>
+            header and the output-directory group inside. The framed Inputs box
+            right above already closes the section before it, so no rule. */}
+        <div style={S.sectionHeadAfterInputs}>
           <span style={S.sectionTitle}>{t.t("section.parameters")}</span>
           <label style={S.defaultsToggle}>
             <input
@@ -1117,6 +1118,13 @@ const S: Record<string, CSSProperties> = {
     margin: "1.1rem 0 0.6rem",
     paddingTop: "0.6rem",
     borderTop: "1px solid var(--border)",
+  },
+  sectionHeadAfterInputs: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "0.75rem",
+    margin: "1rem 0 0.6rem",
   },
   sectionTitle: {
     fontSize: "0.75rem",
