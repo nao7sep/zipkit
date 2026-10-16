@@ -23,43 +23,44 @@ import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
 import { managedEntries } from "../../helpers/managedEntries.js";
+import { SAVE } from "../../helpers/intents.js";
 
 describe("parseQueue", () => {
   it("round-trips serialized jobs with no format marker", () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     const root = JSON.parse(serializeQueue(jobs));
     expect(root).toEqual({ jobs });
     expect(parseQueue(root)).toEqual({ jobs, skipped: 0 });
   });
 
   it("reads a leftover format marker or 0.1.0 version key as unknown", () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     expect(parseQueue({ formatVersion: 3, version: 1, jobs })).toEqual({ jobs, skipped: 0 });
   });
 
   it("defaults missing option fields over DEFAULT_OPTIONS", () => {
-    const root = { jobs: [{ id: "a", inputs: ["/x"], options: { level: 9 }, intent: "save" }] };
+    const root = { jobs: [{ id: "a", inputs: ["/x"], options: { level: 9 } }] };
     expect(parseQueue(root).jobs[0]?.options).toEqual({ ...DEFAULT_OPTIONS, level: 9 });
   });
 
-  it("skips and counts malformed entries and unknown intents, keeping the readable jobs in order", () => {
+  it("skips and counts malformed entries, keeping the readable jobs in order whatever intent they carried", () => {
     const root = {
       jobs: [
         { id: "a", inputs: ["/x"], intent: "weird" },
-        { id: "b", inputs: ["/b"], intent: "save" },
+        { id: "b", inputs: ["/b"] },
         { inputs: ["/y"] },
-        { id: "c", inputs: ["/c"], options: { level: "high" }, intent: "save" },
-        { id: "d", inputs: ["/d"], intent: "archive-and-trash" },
+        { id: "c", inputs: ["/c"], options: { level: "high" } },
+        { id: "d", inputs: ["/d"] },
       ],
     };
     const read = parseQueue(root);
-    expect(read.jobs.map((job) => job.id)).toEqual(["b", "d"]);
-    expect(read.skipped).toBe(3);
+    expect(read.jobs.map((job) => job.id)).toEqual(["a", "b", "d"]);
+    expect(read.skipped).toBe(2);
   });
 
-  it("preserves the archive-and-trash intent", () => {
+  it("ignores an intent an earlier build saved: every restored job starts at the safest choice", () => {
     const root = { jobs: [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" }] };
-    expect(parseQueue(root).jobs[0]?.intent).toBe("archive-and-trash");
+    expect(parseQueue(root).jobs[0]).toEqual({ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS });
   });
 
   it("rejects a non-array jobs field as a whole", () => {
@@ -68,7 +69,7 @@ describe("parseQueue", () => {
   });
 
   it("skips an empty job ID and a repeated one, keeping the first", () => {
-    const entry = { inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" };
+    const entry = { inputs: ["/x"], options: DEFAULT_OPTIONS };
     expect(parseQueue({ jobs: [{ id: "", ...entry }] })).toEqual({ jobs: [], skipped: 1 });
     const repeated = parseQueue({ jobs: [{ id: "a", ...entry, inputs: ["/first"] }, { id: "a", ...entry, inputs: ["/second"] }] });
     expect(repeated.jobs).toEqual([{ id: "a", ...entry, inputs: ["/first"] }]);
@@ -98,7 +99,7 @@ describe("queue file location and persistence", () => {
   });
 
   it("round-trips saved jobs through the relocated root, leaving no temp file", async () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     await saveQueue(jobs);
 
     const file = path.join(root, "queue.json");
@@ -112,7 +113,7 @@ describe("queue file location and persistence", () => {
   });
 
   it("saves the queue before returning for the end of a session, through the same atomic write", async () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
 
     saveQueueWithin(jobs, 10_000);
 
@@ -167,7 +168,7 @@ describe("queue file location and persistence", () => {
     const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"))!;
     const before = readFileSync(path.join(root, quarantined), "utf8");
 
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     await saveQueue(jobs);
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
@@ -177,8 +178,8 @@ describe("queue file location and persistence", () => {
 
   it("an unreadable job sets the whole original aside and restores its readable siblings", async () => {
     const file = path.join(root, "queue.json");
-    const good = { id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const };
-    const bytes = JSON.stringify({ jobs: [good, { id: "", inputs: ["/y"], intent: "save" }] });
+    const good = { id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS };
+    const bytes = JSON.stringify({ jobs: [good, { id: "", inputs: ["/y"] }] });
     writeFileSync(file, bytes);
     const loaded = await loadQueue();
     expect(loaded.value).toEqual({ jobs: [good], skipped: 1 });
@@ -192,7 +193,7 @@ describe("queue file location and persistence", () => {
   });
 
   it("a queue whose every job is unreadable is set aside and starts empty", async () => {
-    const bytes = JSON.stringify({ jobs: [{ id: "", inputs: ["/x"], intent: "save" }] });
+    const bytes = JSON.stringify({ jobs: [{ id: "", inputs: ["/x"] }] });
     writeFileSync(path.join(root, "queue.json"), bytes);
     const loaded = await loadQueue();
     expect(loaded.value).toEqual({ jobs: [], skipped: 1 });
@@ -200,7 +201,7 @@ describe("queue file location and persistence", () => {
   });
 
   it("loads a queue with a leftover format marker as current and leaves it in place", async () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "save" as const }];
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     const bytes = JSON.stringify({ formatVersion: 2, jobs });
     writeFileSync(path.join(root, "queue.json"), bytes);
     expect(await loadQueue()).toEqual({ value: { jobs, skipped: 0 }, quarantinedTo: null, missing: false });
@@ -213,11 +214,11 @@ describe("toResumable", () => {
     id,
     inputs: [`/${id}`],
     options: DEFAULT_OPTIONS,
-    intent: "save",
+    intent: SAVE,
     state,
   });
 
-  it("keeps pending jobs and drops terminal ones, as specs only", () => {
+  it("keeps pending jobs and drops terminal ones, as specs only, without the run's intent", () => {
     const jobs: Job[] = [
       job("a", "ready"),
       job("b", "done"),
@@ -226,9 +227,9 @@ describe("toResumable", () => {
       job("e", "running"),
     ];
     expect(toResumable(jobs)).toEqual([
-      { id: "a", inputs: ["/a"], options: DEFAULT_OPTIONS, intent: "save" },
-      { id: "c", inputs: ["/c"], options: DEFAULT_OPTIONS, intent: "save" },
-      { id: "e", inputs: ["/e"], options: DEFAULT_OPTIONS, intent: "save" },
+      { id: "a", inputs: ["/a"], options: DEFAULT_OPTIONS },
+      { id: "c", inputs: ["/c"], options: DEFAULT_OPTIONS },
+      { id: "e", inputs: ["/e"], options: DEFAULT_OPTIONS },
     ]);
   });
 });

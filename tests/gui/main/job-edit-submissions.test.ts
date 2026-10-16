@@ -2,6 +2,8 @@ import { expect, it, vi } from "vitest";
 import { createJobEditSubmissions } from "../../../src/gui/preload/job-edits.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { stopFlushAndExit, type QuitSteps } from "../../../src/gui/main/quit.js";
+import type { JobIntent } from "../../../src/gui/shared/queue.js";
+import { SAVE, TRASH } from "../../helpers/intents.js";
 
 function gate() {
   let resolve!: () => void, reject!: (error: unknown) => void;
@@ -16,7 +18,7 @@ it("quit joins an issued edit before closing admission or saving the final snaps
     if (!accepting) throw new Error("edit admission closed too early");
     comment = "last keystroke";
   });
-  const edit = submissions.submit("job", { intent: "save" });
+  const edit = submissions.submit("job", { intent: SAVE });
   const noop = async () => {};
   const steps: QuitSteps = {
     settingsDraftOpen: () => false,
@@ -32,7 +34,7 @@ it("quit joins an issued edit before closing admission or saving the final snaps
   const quit = stopFlushAndExit(steps, { ending: false, signal: new AbortController().signal });
   await Promise.resolve();
   expect(steps.stopJob).not.toHaveBeenCalled();
-  await expect(submissions.submit("job", { intent: "save" })).rejects.toThrow("suspended");
+  await expect(submissions.submit("job", { intent: SAVE })).rejects.toThrow("suspended");
   delivery.resolve(); await Promise.all([edit, quit]);
   expect(steps.flush).toHaveBeenCalledOnce();
   expect(steps.exit).toHaveBeenCalledExactlyOnceWith(0);
@@ -41,18 +43,18 @@ it("quit joins an issued edit before closing admission or saving the final snaps
 
 it("Retry preserves the latest options and intent after an older issued edit fails", async () => {
   const older = gate();
-  const send = vi.fn<(id: string, patch: { intent?: "save" | "archive-and-trash"; options?: typeof DEFAULT_OPTIONS }) => Promise<void>>()
+  const send = vi.fn<(id: string, patch: { intent?: JobIntent; options?: typeof DEFAULT_OPTIONS }) => Promise<void>>()
     .mockImplementationOnce(() => older.promise).mockResolvedValue(undefined);
   const submissions = createJobEditSubmissions(send);
   const first = submissions.submit("job", { options: { ...DEFAULT_OPTIONS, comment: "older" } }).catch(() => {});
   await submissions.submit("job", { options: { ...DEFAULT_OPTIONS, comment: "latest" } });
-  await submissions.submit("job", { intent: "archive-and-trash" });
+  await submissions.submit("job", { intent: TRASH });
   const capture = submissions.capture();
   older.reject(new Error("old delivery failed"));
   await first;
   await expect(capture).rejects.toThrow("old delivery failed");
   await submissions.capture();
-  expect(send).toHaveBeenLastCalledWith("job", { options: { ...DEFAULT_OPTIONS, comment: "latest" }, intent: "archive-and-trash" });
+  expect(send).toHaveBeenLastCalledWith("job", { options: { ...DEFAULT_OPTIONS, comment: "latest" }, intent: TRASH });
   expect(send).toHaveBeenCalledTimes(4);
 });
 
@@ -60,10 +62,10 @@ it("a late capture completion cannot retire newer submissions after Cancel", asy
   const first = gate(), newer = gate();
   const send = vi.fn().mockImplementationOnce(() => first.promise).mockImplementationOnce(() => newer.promise);
   const submissions = createJobEditSubmissions(send);
-  const edit = submissions.submit("job", { intent: "save" });
+  const edit = submissions.submit("job", { intent: SAVE });
   const stale = submissions.capture();
   submissions.resume();
-  const latest = submissions.submit("job", { intent: "archive-and-trash" });
+  const latest = submissions.submit("job", { intent: TRASH });
   let complete = false;
   const current = submissions.capture().then(() => { complete = true; });
   first.resolve(); await Promise.all([edit, stale]);

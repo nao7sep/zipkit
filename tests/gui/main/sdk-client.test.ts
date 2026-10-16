@@ -25,11 +25,11 @@ describe("createSdkClient", () => {
     expect(spawn).not.toHaveBeenCalled();
     const onProgress = vi.fn();
     const first = sdk.call("classify", [["/a"]], { onProgress });
-    const second = sdk.call("verify", ["/a.zip"]);
+    const second = sdk.call("verify", ["/a.zip", true]);
     expect(spawn).toHaveBeenCalledOnce();
     expect(host.sent).toEqual([
       { type: "call", id: 1, op: "classify", args: [["/a"]] },
-      { type: "call", id: 2, op: "verify", args: ["/a.zip"] },
+      { type: "call", id: 2, op: "verify", args: ["/a.zip", true] },
     ]);
     const event = { stage: "plan", level: "info", event: "plan.done" } as never;
     host.reply({ type: "event", id: 1, event });
@@ -49,7 +49,7 @@ describe("createSdkClient", () => {
     expect(host.sent.at(-1)).toEqual({ type: "cancel", id: 1 });
     host.reply({ type: "failed", id: 1, error: { name: "AbortError", message: "aborted", errorType: "abort", code: "abort" } });
     await expect(call).rejects.toMatchObject({ name: "AbortError", errorType: "abort", code: "abort" });
-    await expect(sdk.call("verify", ["/x"], { signal: controller.signal })).rejects.toBeDefined();
+    await expect(sdk.call("verify", ["/x", true], { signal: controller.signal })).rejects.toBeDefined();
   });
 
   it("hands a write's physical settlement over and resolves it when the host says so", async () => {
@@ -80,7 +80,7 @@ describe("createSdkClient", () => {
     await expect(write).rejects.toMatchObject({ errorType: "host", code: "host.exited" });
     await expect(plan).rejects.toMatchObject({ code: "host.exited" });
     await settlement;
-    const again = sdk.call("verify", ["/a.zip"]);
+    const again = sdk.call("verify", ["/a.zip", true]);
     expect(spawned).toBe(2);
     hosts[1]!.reply({ type: "done", id: 3, value: true });
     await expect(again).resolves.toBe(true);
@@ -89,7 +89,7 @@ describe("createSdkClient", () => {
   it("stops the host on request, failing what still waits", async () => {
     const host = fakeHost();
     const sdk = createSdkClient(() => host.process);
-    const call = sdk.call("verify", ["/a.zip"]);
+    const call = sdk.call("verify", ["/a.zip", true]);
     sdk.stop();
     expect(host.process.killed).toBe(true);
     await expect(call).rejects.toMatchObject({ code: "host.exited" });

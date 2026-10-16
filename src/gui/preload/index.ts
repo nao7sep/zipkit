@@ -73,8 +73,8 @@ const api = {
     ipcRenderer.invoke("zipkit:setSettings", settings),
   getLayout: (): Promise<PaneLayout> => ipcRenderer.invoke("zipkit:getLayout"),
   setLayout: (layout: PaneLayout): Promise<void> => ipcRenderer.invoke("zipkit:setLayout", layout),
-  addJob: (inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string> =>
-    ipcRenderer.invoke("zipkit:addJob", inputs, options, intent),
+  addJob: (inputs: string[], options: GuiOptions): Promise<string> =>
+    ipcRenderer.invoke("zipkit:addJob", inputs, options),
   updateJob: (
     id: string,
     patch: { options?: GuiOptions; intent?: JobIntent },
@@ -85,6 +85,7 @@ const api = {
   runJob: (id, scope): Promise<void> => ipcRenderer.invoke("zipkit:runJob", id, scope),
   removeArchive: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:removeArchive", id),
   trashOriginals: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:trashOriginals", id),
+  deleteOriginals: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:deleteOriginals", id),
   cancelJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:cancelJob", id),
   getPlan: (id: string): Promise<PlanReport | null> => ipcRenderer.invoke("zipkit:getPlan", id),
   getQueue: (): Promise<Job[]> => ipcRenderer.invoke("zipkit:getQueue"),

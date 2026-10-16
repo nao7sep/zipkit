@@ -1,11 +1,11 @@
 import { message, sentences, type Message } from "../shared/i18n/translate.js";
 
 /**
- * What a batch of Trash calls did, and the user-facing account of it. A path
- * lands in exactly one bucket: `moved` (the OS confirmed the move), `failed`
- * (the OS refused, or the call never started — the path is kept), or
- * `unconfirmed` (the job stopped waiting on a call that was still running, so
- * the move may yet complete; it is never described as kept).
+ * What a batch of Trash or delete calls did, and the user-facing account of
+ * it. A path lands in exactly one bucket: `moved` (the OS confirmed the move or
+ * the deletion), `failed` (the OS refused, or the call never started — the path
+ * is kept), or `unconfirmed` (the job stopped waiting on a call that was still
+ * running, so it may yet complete; it is never described as kept).
  */
 
 export interface TrashResult {
@@ -24,11 +24,12 @@ export function trashConfirmed(result: TrashResult): boolean {
 /** The account of a batch of originals that was not fully confirmed, e.g.
  *  "1 original was moved to recoverable Trash. 1 original was kept.", as one
  *  counted sentence per bucket so each keeps its own plural form. */
-export function describeOriginalsTrash(result: TrashResult): Message {
-  const parts = [message("trash.moved", { count: result.moved.length })];
+export function describeOriginalsRemoval(result: TrashResult, method: "trash" | "delete"): Message {
+  const trash = method === "trash";
+  const parts = [message(trash ? "trash.moved" : "originals.deleted", { count: result.moved.length })];
   if (result.failed.length > 0) parts.push(message("trash.kept", { count: result.failed.length }));
   if (result.unconfirmed.length > 0) {
-    parts.push(message("trash.unconfirmed", { count: result.unconfirmed.length }));
+    parts.push(message(trash ? "trash.unconfirmed" : "delete.unconfirmed", { count: result.unconfirmed.length }));
   }
   return sentences(parts)!;
 }

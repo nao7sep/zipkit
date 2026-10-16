@@ -10,6 +10,7 @@ import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { nodeFileSystem, Volume } from "../../../src/sdk/internal/volume.js";
+import { TRASH } from "../../helpers/intents.js";
 
 it("presents a real publication flush failure safely and keeps originals out of Trash", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-queue-durability-"));
@@ -32,14 +33,15 @@ it("presents a real publication flush failure safely and keeps originals out of 
     verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
     recheck: (archive, inputs, options, signal) => zip.compareSources(buildSpec(inputs, options), archive, { signal }),
     classify: async (paths) => paths.map((location) => ({ path: location, kind: "file" as const })),
+    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     trash, outputInsideInputs: async () => false, emit: () => {}, progress: () => () => {},
     newId: () => "job", log: { ...nullLog, error: logged },
   });
   try {
     await writeFile(input, "preserved original");
-    const id = engine.add([input], DEFAULT_OPTIONS, "archive-and-trash");
+    const id = engine.add([input], DEFAULT_OPTIONS, TRASH);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
-    engine.run(id, { intent: "archive-and-trash", inputs: [input] });
+    engine.run(id, { intent: TRASH, inputs: [input] });
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     const job = engine.snapshot()[0]!;
     const copy = createTranslator("en").text(job.message!);

@@ -8,6 +8,7 @@ import { settleReceiverResult } from "../../../../src/gui/renderer/src/externalD
 import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
+import { SAVE } from "../../../helpers/intents.js";
 
 afterEach(cleanup);
 
@@ -16,7 +17,7 @@ const job: Job = {
   inputs: ["/tmp/existing.txt"],
   entries: [{ path: "/tmp/existing.txt", kind: "file" }],
   options: DEFAULT_OPTIONS,
-  intent: "save",
+  intent: SAVE,
   state: "ready",
 };
 

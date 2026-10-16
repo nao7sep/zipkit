@@ -8,6 +8,7 @@ import { createArchiveEffects, fileResources } from "../../../src/gui/main/archi
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { ZipKit } from "../../../src/sdk/index.js";
+import { TRASH } from "../../helpers/intents.js";
 
 it("keeps originals when a real archive's file type changes after publication", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-queue-type-"));
@@ -31,12 +32,13 @@ it("keeps originals when a real archive's file type changes after publication", 
     verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
     recheck: (archive, inputs, options, signal) => zip.compareSources(buildSpec(inputs, options), archive, { signal }),
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
+    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     trash, outputInsideInputs: async () => false, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,
   });
   try {
-    const id = engine.add([input], DEFAULT_OPTIONS, "archive-and-trash");
+    const id = engine.add([input], DEFAULT_OPTIONS, TRASH);
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
-    engine.run(id, { intent: "archive-and-trash", inputs: [input] });
+    engine.run(id, { intent: TRASH, inputs: [input] });
     await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(trash).not.toHaveBeenCalled();
     expect(await readFile(input, "utf8")).toBe("target.txt");

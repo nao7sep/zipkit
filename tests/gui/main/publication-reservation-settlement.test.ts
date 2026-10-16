@@ -9,6 +9,7 @@ import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../s
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { AbortError, StallError, ZipKit } from "../../../src/sdk/index.js";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/internal/volume.js";
+import { SAVE } from "../../helpers/intents.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -109,6 +110,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
       zip.compareSources({ ...buildSpec(inputs, options), output: archive }, archive, { signal, onProgress }),
     classify: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
     trash: async () => { throw new Error("save jobs must never call Trash"); },
+    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     outputInsideInputs: async () => false,
     emit: (jobs) => { if (jobs[0]?.state === "failed") firstFailed.resolve(); },
     progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,
@@ -121,7 +123,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
 
   try {
     await writeFile(a, "old copy"); await writeFile(b, "NEW WINNER");
-    const first = engine.add([a], DEFAULT_OPTIONS, "save");
+    const first = engine.add([a], DEFAULT_OPTIONS, SAVE);
     await state(first, "ready");
 
     // Native I/O settles normally without advancing the clock. Advance only
@@ -142,7 +144,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     await unlinkStarted.promise;
     expect(physicallySettled).toBe(false);
     const oldBytes = await readFile(output);
-    const second = engine.add([b], { ...DEFAULT_OPTIONS, overwrite: true }, "save");
+    const second = engine.add([b], { ...DEFAULT_OPTIONS, overwrite: true }, SAVE);
     await state(second, "ready");
     run(engine, second);
     await state(second, "failed");

@@ -13,6 +13,7 @@ import { CommandBar } from "../../../../src/gui/renderer/src/components/CommandB
 import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
+import { SAVE } from "../../../helpers/intents.js";
 
 afterEach(cleanup);
 
@@ -20,7 +21,7 @@ const job = (state: Job["state"], over: Partial<Job> = {}): Job => ({
   id: "j",
   inputs: ["/a"],
   options: DEFAULT_OPTIONS,
-  intent: "save",
+  intent: SAVE,
   state,
   ...over,
 });

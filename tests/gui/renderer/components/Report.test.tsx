@@ -14,6 +14,7 @@ vi.mock("../../../../src/gui/renderer/src/view", async (original) => {
 import type { Job, PlanData } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
+import { SAVE } from "../../../helpers/intents.js";
 
 afterEach(cleanup);
 
@@ -21,7 +22,7 @@ const job = (over: Partial<Job> = {}): Job => ({
   id: "job",
   inputs: ["/input"],
   options: DEFAULT_OPTIONS,
-  intent: "save",
+  intent: SAVE,
   state: "ready",
   ...over,
 });

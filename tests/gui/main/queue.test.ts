@@ -51,6 +51,7 @@ import { shell } from "electron";
 import { readInternals } from "../../../src/sdk/internal/carrier.js";
 import { flushQueue, restoreQueue, saveQueueBeforeSessionEnd } from "../../../src/gui/main/queue.js";
 import type { SavedJob } from "../../../src/gui/shared/queue.js";
+import { SAVE } from "../../helpers/intents.js";
 
 const trashItem = vi.mocked(shell.trashItem);
 
@@ -61,7 +62,7 @@ describe("restoreQueue", () => {
   });
 
   it("re-plans the jobs startup loaded", () => {
-    const saved = [{ id: "a", inputs: ["/x"], options: {}, intent: "save" }] as unknown as SavedJob[];
+    const saved = [{ id: "a", inputs: ["/x"], options: {}, intent: SAVE }] as unknown as SavedJob[];
 
     restoreQueue(saved);
 
@@ -274,5 +275,27 @@ describe("the SDK host wiring", () => {
     await expect(wired().verify("/out.zip", signal, vi.fn())).resolves.toBe(true);
     await expect(wired().classify(["/in"])).resolves.toEqual([{ path: "/in", kind: "directory" }]);
     expect(mocks.sdkCall.mock.calls.map(([op]) => op)).toEqual(["verify", "classify"]);
+  });
+});
+
+describe("the delete dependency", () => {
+  type Deleting = { deleteOriginals(paths: string[], signal: AbortSignal): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[] }> };
+  const deleting = () => mocks.deps as unknown as Deleting;
+  beforeEach(() => mocks.sdkCall.mockReset());
+
+  it("deletes each path in the SDK host and reports each outcome", async () => {
+    mocks.sdkCall.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("EACCES"));
+    const result = await deleting().deleteOriginals(["/a", "/b"], new AbortController().signal);
+    expect(mocks.sdkCall.mock.calls).toEqual([["deletePath", ["/a"]], ["deletePath", ["/b"]]]);
+    expect(result).toEqual({ moved: ["/a"], failed: [{ path: "/b", message: "EACCES" }], unconfirmed: [] });
+  });
+
+  it("reports a deletion still running at cancel as unconfirmed, and the rest as kept", async () => {
+    const controller = new AbortController();
+    mocks.sdkCall.mockImplementationOnce(() => new Promise(() => {}));
+    const pending = deleting().deleteOriginals(["/a", "/b"], controller.signal);
+    await vi.waitFor(() => expect(mocks.sdkCall).toHaveBeenCalledOnce());
+    controller.abort();
+    await expect(pending).resolves.toEqual({ moved: [], failed: [{ path: "/b", message: "cancelled before deletion" }], unconfirmed: ["/a"] });
   });
 });

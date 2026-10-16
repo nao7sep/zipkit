@@ -13,6 +13,7 @@ import { JobListbox } from "../../../../src/gui/renderer/src/components/JobListb
 import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
+import { SAVE } from "../../../helpers/intents.js";
 
 afterEach(cleanup);
 
@@ -20,7 +21,7 @@ const job = (id: string, state: Job["state"] = "ready"): Job => ({
   id,
   inputs: [`/${id}`],
   options: DEFAULT_OPTIONS,
-  intent: "save",
+  intent: SAVE,
   state,
 });
 

@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readdir, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ describe("the SDK host", () => {
     const bytes = await sdk.call("write", [{ plan, internals: readInternals(plan)! }], { onPhysicalSettlement: (p) => settlements.push(p) });
     expect(bytes).toBeGreaterThan(0);
     await Promise.all(settlements);
-    expect(await sdk.call("verify", [plan.output])).toBe(true);
+    expect(await sdk.call("verify", [plan.output, true])).toBe(true);
     const report = await sdk.call("inspect", [plan.output, true]);
     expect(report).toEqual({ reportOk: true, summary: expect.objectContaining({ total: expect.any(Number) }), missing: [], extra: [] });
     expect(report).not.toHaveProperty("entries");
@@ -69,6 +69,21 @@ describe("the SDK host", () => {
     await writeFile(path.join(input, "inside.zip"), "");
     expect(await sdk.call("outputInsideInputs", [path.join(input, "inside.zip"), [input]])).toBe(true);
     expect(await sdk.call("outputInsideInputs", [plan.output, [input]])).toBe(false);
+  });
+
+  it("deletes an original for good: a folder with its contents, or a link itself rather than its target", async () => {
+    const folder = path.join(root, "folder");
+    await mkdir(path.join(folder, "nested"), { recursive: true });
+    await writeFile(path.join(folder, "nested", "a.txt"), "a");
+    const target = path.join(root, "target.txt");
+    await writeFile(target, "kept");
+    const link = path.join(root, "link");
+    await symlink(target, link);
+    const sdk = createSdkClient(inProcessHost);
+    await sdk.call("deletePath", [folder]);
+    await sdk.call("deletePath", [link]);
+    expect((await readdir(root)).sort()).toEqual(["target.txt"]);
+    await expect(sdk.call("deletePath", [path.join(root, "missing")])).rejects.toMatchObject({ message: expect.stringContaining("ENOENT") });
   });
 
   it("carries an SDK failure's type, code and path back to main", async () => {

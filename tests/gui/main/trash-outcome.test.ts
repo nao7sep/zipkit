@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeOriginalsTrash, trashConfirmed } from "../../../src/gui/main/trash-outcome.js";
+import { describeOriginalsRemoval, trashConfirmed } from "../../../src/gui/main/trash-outcome.js";
 import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues.js";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
 
@@ -16,25 +16,25 @@ describe("trash outcome", () => {
 
   it("names moved, kept, and still-moving originals separately", () => {
     expect(
-      en.text(describeOriginalsTrash({
+      en.text(describeOriginalsRemoval({
         moved: ["/a", "/b"],
         failed: [{ path: "/c", message: "denied" }],
         unconfirmed: ["/d"],
-      })),
+      }, "trash")),
     ).toBe(
       "2 originals were moved to recoverable Trash. 1 original was kept. 1 original was still being moved and may yet reach recoverable Trash.",
     );
   });
 
   it("omits the buckets that are empty", () => {
-    expect(en.text(describeOriginalsTrash({ moved: [], failed: [], unconfirmed: ["/a", "/b"] }))).toBe(
+    expect(en.text(describeOriginalsRemoval({ moved: [], failed: [], unconfirmed: ["/a", "/b"] }, "trash"))).toBe(
       "0 originals were moved to recoverable Trash. 2 originals were still being moved and may yet reach recoverable Trash.",
     );
   });
 
   it("gives each bucket its own plural form in the reader's language", () => {
     expect(
-      createTranslator("ru").text(describeOriginalsTrash({ moved: ["/a"], failed: [], unconfirmed: ["/b", "/c"] })),
+      createTranslator("ru").text(describeOriginalsRemoval({ moved: ["/a"], failed: [], unconfirmed: ["/b", "/c"] }, "trash")),
     ).not.toContain("{");
   });
 });

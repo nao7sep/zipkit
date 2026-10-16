@@ -10,6 +10,7 @@
  * parent port and, in tests, over an in-process channel.
  */
 
+import { rm } from "node:fs/promises";
 import { readInternals, attachInternals } from "../../sdk/internal/carrier.js";
 import type { PlanInternals } from "../../sdk/internal/carrier.js";
 import { ZipKit } from "../../sdk/index.js";
@@ -34,7 +35,8 @@ export interface SdkOps {
   resources(paths: string[]): FileResource[];
   plan(inputs: string[], options: GuiOptions): PlanTransfer;
   write(transfer: PlanTransfer): number | null;
-  verify(output: string): boolean;
+  verify(output: string, checkMetadata: boolean): boolean;
+  deletePath(path: string): void;
   inspect(archive: string, checkMetadata: boolean): VerifyReport;
   recheck(output: string, inputs: string[], options: GuiOptions): SourceComparison;
   classify(paths: string[]): InputEntry[];
@@ -98,8 +100,13 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ne
       });
       return written.bytes;
     },
-    verify: (output: string) => async (signal, onProgress) =>
-      (await zip.extract({ archive: output, dryRun: true, checkMetadata: true }, { signal, onProgress })).reportOk,
+    verify: (output: string, checkMetadata: boolean) => async (signal, onProgress) =>
+      (await zip.extract({ archive: output, dryRun: true, checkMetadata }, { signal, onProgress })).reportOk,
+    // Deletes one original for good: a folder with everything in it, a file, or
+    // a link itself, never what a link points to. Only after the job's checks.
+    deletePath: (target: string) => async () => {
+      await rm(target, { recursive: true });
+    },
     // The report needs the verdict, the counts and the paths that disagree,
     // never every entry's result.
     inspect: (archive: string, checkMetadata: boolean) => async (signal, onProgress) => {

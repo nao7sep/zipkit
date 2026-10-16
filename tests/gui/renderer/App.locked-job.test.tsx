@@ -12,6 +12,7 @@ import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost"
 import type { Job } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
+import { SAVE } from "../../helpers/intents.js";
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -29,7 +30,7 @@ const readyJob: Job = {
   inputs: ["/tmp/thing.txt"],
   entries: [{ path: "/tmp/thing.txt", kind: "file" }],
   options: CUSTOM_OPTIONS,
-  intent: "save",
+  intent: SAVE,
   state: "ready",
 };
 const otherJob: Job = { ...readyJob, id: "job-2", inputs: ["/tmp/other.txt"], entries: [{ path: "/tmp/other.txt", kind: "file" }] };

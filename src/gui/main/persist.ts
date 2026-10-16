@@ -1,7 +1,7 @@
 /**
  * Queue persistence. Only the *resumable* part of a job survives a restart —
- * inputs, options, intent — never the transient run state; restored jobs are
- * re-planned fresh. The file lives under zipkit's storage root (`ZIPKIT_DATA_DIR`
+ * inputs and options — never the transient run state or the run's intent;
+ * restored jobs are re-planned fresh and verify and keep their originals. The file lives under zipkit's storage root (`ZIPKIT_DATA_DIR`
  * or `~/.zipkit`, resolved in one place by the SDK's {@link storageRoot}, beside
  * the records database). Parsing defaults absent option fields but skips malformed
  * jobs and repeated durable identities, so the readable jobs carry on while the
@@ -29,7 +29,7 @@ function queueFile(): string {
 export function toResumable(jobs: Job[]): SavedJob[] {
   return jobs
     .filter((j) => j.state !== "done" && j.state !== "failed")
-    .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options, intent: j.intent }));
+    .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options }));
 }
 
 /** The queue file's readable jobs, and how many it held that could not be read. */
@@ -48,14 +48,11 @@ function parseJob(entry: unknown, ids: Set<string>): SavedJob {
   if (!Array.isArray(j.inputs) || j.inputs.length === 0 || !j.inputs.every((p) => typeof p === "string" && p !== "")) {
     throw new InvalidManagedJsonError("queue.json", "job inputs must be a non-empty array of non-empty strings");
   }
-  if (j.intent !== "save" && j.intent !== "archive-and-trash") {
-    throw new InvalidManagedJsonError("queue.json", "job intent is invalid");
-  }
+  // An `intent` an earlier build saved is ignored and drops out on the next save.
   return {
     id: j.id,
     inputs: j.inputs as string[],
     options: parseGuiOptions(j.options, "queue.json"),
-    intent: j.intent,
   };
 }
 

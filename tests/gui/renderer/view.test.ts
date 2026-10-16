@@ -41,6 +41,7 @@ import { RULE_ORDER } from "../../../src/sdk/registry";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
 import { createTranslator, message } from "../../../src/gui/shared/i18n/translate";
+import { DELETE, SAVE, TRASH } from "../../helpers/intents.js";
 
 await Promise.all((["ru", "de", "ja"] as const).map(loadCatalogue));
 
@@ -50,7 +51,7 @@ const job = (over: Partial<Job> = {}): Job => ({
   id: "j",
   inputs: ["/a/b/c"],
   options: DEFAULT_OPTIONS,
-  intent: "save",
+  intent: SAVE,
   state: "ready",
   ...over,
 });
@@ -166,19 +167,19 @@ describe("jobCommands", () => {
   it("offers trash-originals on a done save job only while originals remain", () => {
     const present = job({
       state: "done",
-      intent: "save",
+      intent: SAVE,
       entries: [{ path: "/a", kind: "file" }],
     });
     expect(jobCommands(present)).toContain("trash-originals");
     const gone = job({
       state: "done",
-      intent: "save",
+      intent: SAVE,
       entries: [{ path: "/a", kind: "nonexistent" }],
     });
     expect(jobCommands(gone)).not.toContain("trash-originals");
   });
   it("never offers trash-originals for archive-and-trash (it already trashed)", () => {
-    expect(jobCommands(job({ state: "done", intent: "archive-and-trash" }))).not.toContain(
+    expect(jobCommands(job({ state: "done", intent: TRASH }))).not.toContain(
       "trash-originals",
     );
   });
@@ -213,16 +214,16 @@ describe("isTerminal / isCancelable", () => {
 
 describe("manifestRequiredButMissing", () => {
   it("warns only for archive-and-trash without the manifest", () => {
-    expect(manifestRequiredButMissing("archive-and-trash", false)).toBe(true);
-    expect(manifestRequiredButMissing("archive-and-trash", true)).toBe(false);
-    expect(manifestRequiredButMissing("save", false)).toBe(false);
+    expect(manifestRequiredButMissing(TRASH, false)).toBe(true);
+    expect(manifestRequiredButMissing(TRASH, true)).toBe(false);
+    expect(manifestRequiredButMissing(SAVE, false)).toBe(false);
   });
 });
 
 describe("intentLabel", () => {
   it("tags only the noteworthy intent; the default save shows nothing", () => {
-    expect(intentLabel("save", en)).toBe("");
-    expect(intentLabel("archive-and-trash", en)).toBe("→ Trash");
+    expect(intentLabel(SAVE, en)).toBe("");
+    expect(intentLabel(TRASH, en)).toBe("→ Trash");
   });
 });
 
@@ -809,10 +810,10 @@ describe("jobCommands", () => {
     expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);
   });
   it("offers no Move to Trash after a scan that could not list a folder", () => {
-    expect(jobCommands(job({ state: "ready", intent: "archive-and-trash", scanIncomplete: true }))).toEqual([]);
-    expect(jobCommands(job({ state: "ready", intent: "save", scanIncomplete: true }))).toEqual(["create"]);
+    expect(jobCommands(job({ state: "ready", intent: TRASH, scanIncomplete: true }))).toEqual([]);
+    expect(jobCommands(job({ state: "ready", intent: SAVE, scanIncomplete: true }))).toEqual(["create"]);
     expect(
-      jobCommands(job({ state: "done", intent: "save", scanIncomplete: true, entries: [{ path: "/a", kind: "file" }] })),
+      jobCommands(job({ state: "done", intent: SAVE, scanIncomplete: true, entries: [{ path: "/a", kind: "file" }] })),
     ).toEqual(["verify", "reveal", "remove-archive"]);
   });
   it("offers create on a still-writable job stopped for review", () => {
@@ -820,11 +821,11 @@ describe("jobCommands", () => {
     expect(jobCommands(job({ state: "needs-attention", writable: false }))).toEqual([]);
   });
   it("offers only cancel while a job moves its archive or originals to Trash", () => {
-    expect(jobCommands(job({ state: "done", intent: "save", trashing: true }))).toEqual(["cancel"]);
-    expect(jobCommands(job({ state: "failed", intent: "archive-and-trash", archiveWritten: true, trashing: true }))).toEqual(["cancel"]);
+    expect(jobCommands(job({ state: "done", intent: SAVE, trashing: true }))).toEqual(["cancel"]);
+    expect(jobCommands(job({ state: "failed", intent: TRASH, archiveWritten: true, trashing: true }))).toEqual(["cancel"]);
   });
   it("offers trash-originals only when the archive carries the manifest", () => {
-    const done = { state: "done" as const, intent: "save" as const, entries: [{ path: "/a", kind: "file" as const }] };
+    const done = { state: "done" as const, intent: SAVE, entries: [{ path: "/a", kind: "file" as const }] };
     expect(jobCommands(job({ ...done, options: { ...DEFAULT_OPTIONS, metadata: false } }))).toEqual([
       "verify",
       "reveal",
@@ -832,10 +833,10 @@ describe("jobCommands", () => {
     ]);
   });
   it("offers no create or retry for a Move-to-Trash job without its manifest", () => {
-    const noManifest = { intent: "archive-and-trash" as const, options: { ...DEFAULT_OPTIONS, metadata: false } };
+    const noManifest = { intent: TRASH, options: { ...DEFAULT_OPTIONS, metadata: false } };
     expect(jobCommands(job({ state: "ready", ...noManifest }))).toEqual([]);
     expect(jobCommands(job({ state: "failed", ...noManifest }))).toEqual([]);
-    expect(jobCommands(job({ state: "ready", intent: "save", options: { ...DEFAULT_OPTIONS, metadata: false } }))).toEqual([
+    expect(jobCommands(job({ state: "ready", intent: SAVE, options: { ...DEFAULT_OPTIONS, metadata: false } }))).toEqual([
       "create",
     ]);
   });
@@ -857,16 +858,25 @@ describe("jobCommands", () => {
   it("offers only retry on a failed write, though the plan named an output", () => {
     expect(jobCommands(job({ state: "failed", output: "/out/x.zip", archiveWritten: false }))).toEqual(["retry"]);
   });
-  it("on done, offers remove-archive (and trash-originals last) only for the save intent", () => {
-    // With originals still present (entries with a file), a save job offers both;
-    // trash-originals is ordered last so the bar can seat it at the far-right end.
+  it("on done, offers moving the archive to Trash and removing the originals only while a kept job's originals remain", () => {
+    // The removal commands come last so the bar can seat them at the far-right end.
     expect(
-      jobCommands(job({ state: "done", intent: "save", entries: [{ path: "/a", kind: "file" }] })),
-    ).toEqual(["verify", "reveal", "remove-archive", "trash-originals"]);
-    expect(jobCommands(job({ state: "done", intent: "archive-and-trash" }))).toEqual([
-      "verify",
-      "reveal",
-    ]);
+      jobCommands(job({ state: "done", intent: SAVE, entries: [{ path: "/a", kind: "file" }] })),
+    ).toEqual(["verify", "reveal", "remove-archive", "trash-originals", "delete-originals"]);
+    // Once an original is gone the archive is no longer redundant, so it is not offered to Trash.
+    expect(
+      jobCommands(job({ state: "done", intent: SAVE, entries: [{ path: "/a", kind: "file" }, { path: "/b", kind: "nonexistent" }] })),
+    ).toEqual(["verify", "reveal", "trash-originals", "delete-originals"]);
+    expect(jobCommands(job({ state: "done", intent: SAVE, entries: [{ path: "/a", kind: "nonexistent" }] }))).toEqual(["verify", "reveal"]);
+    expect(jobCommands(job({ state: "done", intent: TRASH }))).toEqual(["verify", "reveal"]);
+    expect(jobCommands(job({ state: "done", intent: DELETE }))).toEqual(["verify", "reveal"]);
+  });
+
+  it("on a failed run with its archive written, keeps the archive when the run deleted some originals", () => {
+    const failed = { state: "failed" as const, archiveWritten: true };
+    expect(jobCommands(job({ ...failed, intent: TRASH, entries: [{ path: "/a", kind: "nonexistent" }] }))).toEqual(["retry", "reveal", "remove-archive"]);
+    expect(jobCommands(job({ ...failed, intent: DELETE, entries: [{ path: "/a", kind: "nonexistent" }] }))).toEqual(["retry", "reveal"]);
+    expect(jobCommands(job({ ...failed, intent: DELETE, entries: [{ path: "/a", kind: "file" }] }))).toEqual(["retry", "reveal", "remove-archive"]);
   });
 });
 

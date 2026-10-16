@@ -18,7 +18,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { Job, JobEvent, JobIntent, PlanReport, SystemChoices, VerifyResult } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
-import { isEditable } from "../../shared/queue";
+import { isEditable, removesOriginals, verifies, type OriginalsAction } from "../../shared/queue";
 import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
@@ -75,7 +75,7 @@ import {
   type JobCommand,
   label,
   manifestRequiredButMissing,
-  scanBlocksTrash,
+  scanBlocksRemoval,
   mergeJobEvents,
   outputPreview,
 } from "./view";
@@ -84,20 +84,37 @@ type DialogName = "settings" | "shortcuts" | "help" | "about";
 
 const GROW: CSSProperties = { flex: 1 };
 
+/** The originals' choices, safest first. */
+const ORIGINALS_CHOICES: ReadonlyArray<{ value: OriginalsAction; label: MessageKey }> = [
+  { value: "keep", label: "originals.keep" },
+  { value: "trash", label: "originals.trash" },
+  { value: "delete", label: "originals.delete" },
+];
+
 /** The confirmation a run needs, or null when it needs none (the confirmation
- *  policy). Only an `archive-and-trash` run is destructive — it writes, verifies,
- *  then moves the originals to the Trash, and the "Create archive" button does not
- *  say so. Shared by the button path (JobView) and the keyboard accelerator (App)
- *  so both honor the same policy. A plain `save` run moves nothing and needs no
- *  confirm. */
+ *  policy). Only a run that removes the originals is destructive — it writes,
+ *  verifies, then moves them to the Trash or deletes them for good, and the
+ *  "Create archive" button does not say so. Shared by the button path (JobView)
+ *  and the keyboard accelerator (App) so both honor the same policy. A run that
+ *  keeps the originals moves nothing and needs no confirm. */
 function runConfirmation(job: Job, t: Translator): ConfirmOptions | null {
-  if (job.intent !== "archive-and-trash") return null;
-  return {
-    title: t.t("confirm.runTitle"),
-    message: t.t("confirm.runMessage", { count: job.inputs.length }),
-    confirmLabel: t.t("confirm.runConfirm"),
-    danger: true,
-  };
+  if (job.intent.originals === "trash") {
+    return {
+      title: t.t("confirm.runTitle"),
+      message: t.t("confirm.runMessage", { count: job.inputs.length }),
+      confirmLabel: t.t("confirm.runConfirm"),
+      danger: true,
+    };
+  }
+  if (job.intent.originals === "delete") {
+    return {
+      title: t.t("confirm.runDeleteTitle"),
+      message: t.t("confirm.runDeleteMessage", { count: job.inputs.length }),
+      confirmLabel: t.t("confirm.runDeleteConfirm"),
+      danger: true,
+    };
+  }
+  return null;
 }
 
 export function App() {
@@ -320,7 +337,7 @@ export function App() {
     const admission = planInputAdmission([], inputs);
     if (admission.accepted.length === 0) return { changed: false, accepted: 0, result: null };
     try {
-      const id = await window.zipkit.addJob(admission.accepted, defaults, "save");
+      const id = await window.zipkit.addJob(admission.accepted, defaults);
       setSelectedId(id);
       setPullFocusId(id); // focus the new row once it renders (focus/selection policy)
       return {
@@ -796,9 +813,9 @@ function JobView({
     if (checked) commitOptions({ ...defaults });
   }
 
-  // No confirmation here: choosing an intent only edits a parameter — nothing is
-  // moved or deleted until the job actually runs, and the move-to-Trash
-  // consequence is surfaced on that run path, not on this selection.
+  // No confirmation here: choosing what happens after creating only edits the
+  // job — nothing is moved or deleted until it actually runs, and that
+  // consequence is surfaced on the run path, not on this selection.
   function changeIntent(intent: JobIntent) {
     const attempt = beginOperation();
     void window.zipkit.updateJob(job.id, { intent })
@@ -935,6 +952,21 @@ function JobView({
           catch (error) { failOperation(attempt, "trash job originals", "result.trashOriginalsFailed", error); }
         }
         break;
+      case "delete-originals":
+        // Irreversible, so confirm explicitly and say so.
+        if (
+          await confirm({
+            title: t.t("confirm.deleteOriginalsTitle"),
+            message: t.t("confirm.deleteOriginalsMessage"),
+            confirmLabel: t.t("confirm.deletePermanently"),
+            danger: true,
+          })
+        ) {
+          const attempt = beginOperation();
+          try { await window.zipkit.deleteOriginals(job.id); finishOperation(attempt); }
+          catch (error) { failOperation(attempt, "delete job originals", "result.deleteOriginalsFailed", error); }
+        }
+        break;
       case "remove-archive":
         // Deletes the user's archive (to the Trash), so confirm explicitly. The
         // inputs are untouched, so the job stays and can create the archive again.
@@ -1005,18 +1037,38 @@ function JobView({
               onChange={(e) => commitOptions({ ...opts, fileName: e.target.value })}
             />
           </label>
-          <label style={S.stack}>
-            <span style={S.stackLabel}>{t.t("op.intent")}</span>
-            <select
-              value={job.intent}
-              disabled={!editable}
-              onChange={(e) => changeIntent(e.target.value as JobIntent)}
-            >
-              <option value="save">{t.t("intent.save")}</option>
-              <option value="archive-and-trash">{t.t("intent.archiveAndTrash")}</option>
-            </select>
-          </label>
         </div>
+        {/* What happens once the archive is written: verify it, and keep, move to
+            Trash or delete the originals. Both are this run's choice only, reset
+            to the safest for every new or restored job. Removing the originals
+            always verifies first, so the box is then ticked and locked. */}
+        <label style={S.choiceToggle}>
+          <input
+            type="checkbox"
+            checked={verifies(job.intent)}
+            disabled={!editable || removesOriginals(job.intent)}
+            onChange={(e) => changeIntent({ ...job.intent, verify: e.target.checked })}
+          />
+          {t.t("op.verify")}
+        </label>
+        {removesOriginals(job.intent) && <span style={S.choiceHint}>{t.t("op.verifyRequired")}</span>}
+        <fieldset style={S.choiceField} disabled={!editable}>
+          <legend style={S.stackLabel}>{t.t("op.originals")}</legend>
+          <div style={S.choiceOptions}>
+            {ORIGINALS_CHOICES.map(({ value, label }) => (
+              <label key={value} style={S.choiceOption}>
+                <input
+                  type="radio"
+                  name={`originals-${job.id}`}
+                  value={value}
+                  checked={job.intent.originals === value}
+                  onChange={() => changeIntent({ ...job.intent, originals: value })}
+                />
+                {t.t(label)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         {/* The destination checkpoint above Create. "Where" (directory) and "what
             name" (file name) are still separate concerns here, so they are shown as
             two labeled lines, never joined into one finalized path. */}
@@ -1036,7 +1088,7 @@ function JobView({
         {manifestRequiredButMissing(job.intent, opts.metadata) && (
           <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>{t.t("op.manifestNeeded")}</p>
         )}
-        {scanBlocksTrash(job) && (
+        {scanBlocksRemoval(job) && (
           <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>{t.t("op.scanIncomplete")}</p>
         )}
         <CommandBar job={job} onCommand={onCommand} />
@@ -1108,6 +1160,12 @@ const S: Record<string, CSSProperties> = {
     alignItems: "end",
   },
   stack: { display: "grid", gap: "0.25rem", minWidth: 0 },
+  // The run's choices below the file name: the verify box, then the originals.
+  choiceToggle: { display: "flex", gap: "0.4rem", alignItems: "center", marginTop: "0.75rem", fontSize: "0.9rem" },
+  choiceHint: { display: "block", margin: "0.2rem 0 0 1.4rem", color: "var(--text-2)", fontSize: "0.8rem" },
+  choiceField: { margin: "0.75rem 0 0", padding: 0, border: "none", minWidth: 0 },
+  choiceOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem", marginTop: "0.3rem" },
+  choiceOption: { display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.9rem" },
   stackLabel: { color: "var(--text-2)", fontSize: "0.85rem" },
   // Section divider rows inside the single Archive pane (Operation, Report).
   sectionHead: {

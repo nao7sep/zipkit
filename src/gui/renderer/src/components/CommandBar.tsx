@@ -21,6 +21,7 @@ const LABEL: Record<JobCommand, MessageKey> = {
   verify: "command.verify",
   reveal: "command.reveal",
   "trash-originals": "command.trashOriginals",
+  "delete-originals": "command.deleteOriginals",
   "remove-archive": "command.removeArchive",
 };
 
@@ -28,6 +29,7 @@ const CLASS: Partial<Record<JobCommand, string>> = {
   create: "accent",
   retry: "accent",
   "trash-originals": "danger",
+  "delete-originals": "danger",
   "remove-archive": "danger",
 };
 

@@ -60,6 +60,16 @@ function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved
 // (./sdk-host); the engine supplies a job-tagging `onProgress`, so progress
 // reaches the right job's Progress stream. The plan comes back with the
 // internals the writer needs and goes back with them to be written.
+/** The call's own outcome, or "aborted" once `signal` aborts first. The call
+ *  itself goes on; only the wait ends. */
+function untilAborted<T>(call: Promise<T>, signal: AbortSignal): Promise<T | "aborted"> {
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => resolve("aborted");
+    signal.addEventListener("abort", onAbort, { once: true });
+    call.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 const engine = createQueueEngine({
   admission: appAdmission,
   effects: appArchiveEffects,
@@ -71,7 +81,7 @@ const engine = createQueueEngine({
   },
   write: (plan, signal, onProgress, onPhysicalSettlement) =>
     sdk.call("write", [{ plan, internals: readInternals(plan)! }], { signal, onProgress, onPhysicalSettlement }),
-  verify: (output, signal, onProgress) => sdk.call("verify", [output], { signal, onProgress }),
+  verify: (output, signal, onProgress, checkMetadata) => sdk.call("verify", [output, checkMetadata], { signal, onProgress }),
   recheck: (output, inputs, options, signal, onProgress) =>
     sdk.call("recheck", [output, inputs, options], { signal, onProgress }),
   classify: (paths) => sdk.call("classify", [paths]),
@@ -93,6 +103,26 @@ const engine = createQueueEngine({
       }
     }
     result.settlement = Promise.all(settlements).then(() => {});
+    return result;
+  },
+  // Each path is deleted in the SDK host, one at a time. A deletion still
+  // running when the job stops waiting may yet finish, so it is reported as
+  // unconfirmed, never as kept.
+  deleteOriginals: async (paths, signal) => {
+    const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };
+    for (const p of paths) {
+      if (signal.aborted) {
+        result.failed.push({ path: p, message: "cancelled before deletion" });
+        continue;
+      }
+      try {
+        const outcome = await untilAborted(sdk.call("deletePath", [p]), signal);
+        if (outcome === "aborted") result.unconfirmed.push(p);
+        else result.moved.push(p);
+      } catch (err) {
+        result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
+      }
+    }
     return result;
   },
   outputInsideInputs: (output, inputs, signal) => sdk.call("outputInsideInputs", [output, inputs], { signal }),
@@ -191,8 +221,7 @@ export function registerQueueIpc(): void {
 
   ipcMain.handle(
     "zipkit:addJob",
-    async (_e, inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string> =>
-      engine.add(inputs, options, intent),
+    async (_e, inputs: string[], options: GuiOptions): Promise<string> => engine.add(inputs, options),
   );
 
   ipcMain.handle(
@@ -216,7 +245,10 @@ export function registerQueueIpc(): void {
   );
 
   ipcMain.handle("zipkit:trashOriginals", async (_e, id: string): Promise<void> =>
-    engine.trashOriginals(id),
+    engine.removeOriginals(id, "trash"),
+  );
+  ipcMain.handle("zipkit:deleteOriginals", async (_e, id: string): Promise<void> =>
+    engine.removeOriginals(id, "delete"),
   );
 
   ipcMain.handle("zipkit:cancelJob", async (_e, id: string): Promise<void> => engine.cancel(id));

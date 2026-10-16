@@ -10,6 +10,7 @@ import type { Job } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 import { planInputAdmission } from "../../../src/gui/shared/input-admission";
+import { SAVE } from "../../helpers/intents.js";
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -109,7 +110,7 @@ describe("App file-drop receivers", () => {
     const drop = fileEvent("drop", [folder]);
     await act(async () => jobs.dispatchEvent(drop));
 
-    expect(addJob).toHaveBeenCalledWith(["/tmp/ZIPKIT-DRAG-ME"], DEFAULT_OPTIONS, "save");
+    expect(addJob).toHaveBeenCalledWith(["/tmp/ZIPKIT-DRAG-ME"], DEFAULT_OPTIONS);
     expect(jobs.style.boxShadow).toBe("");
 
     addJob.mockClear();
@@ -125,7 +126,7 @@ describe("App file-drop receivers", () => {
       inputs: ["/tmp/existing.txt"],
       entries: [{ path: "/tmp/existing.txt", kind: "file" }],
       options: DEFAULT_OPTIONS,
-      intent: "save",
+      intent: SAVE,
       state: "ready",
     }]);
     await act(async () => {
@@ -152,7 +153,7 @@ describe("App file-drop receivers", () => {
     let inputs = ["/tmp/existing.txt"];
     getQueue.mockResolvedValue([{
       id: "job-1", inputs, entries: [{ path: inputs[0]!, kind: "file" }],
-      options: DEFAULT_OPTIONS, intent: "save", state: "ready",
+      options: DEFAULT_OPTIONS, intent: SAVE, state: "ready",
     }]);
     updateJob.mockImplementation(async (_id?: string, patch?: { inputs?: string[] }) => {
       if (patch?.inputs) inputs = patch.inputs;
@@ -265,7 +266,7 @@ describe("App file-drop receivers", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(addJob).toHaveBeenCalledWith(["/tmp/new.txt"], DEFAULT_OPTIONS, "save");
+    expect(addJob).toHaveBeenCalledWith(["/tmp/new.txt"], DEFAULT_OPTIONS);
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 });

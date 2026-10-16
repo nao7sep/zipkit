@@ -9,8 +9,34 @@ import type { PlanSummary, Severity } from "../../sdk/types.js";
 import type { GuiOptions } from "./spec.js";
 import type { Message } from "./i18n/translate.js";
 
-/** What a job does when run: just write, or write-verify-then-Trash the originals. */
-export type JobIntent = "save" | "archive-and-trash";
+/** What happens to the originals once the archive is created and verified. */
+export type OriginalsAction = "keep" | "trash" | "delete";
+
+/** How a job runs once its archive is written: whether it verifies the archive,
+ *  and what happens to the originals. Transient, like a dialog's choice: never
+ *  saved with the job or as a default, and every new or restored job starts at
+ *  the safest choice. */
+export interface JobIntent {
+  verify: boolean;
+  originals: OriginalsAction;
+}
+
+/** Verify, and keep the originals. */
+export const SAFEST_INTENT: JobIntent = { verify: true, originals: "keep" };
+
+/** Whether the run moves the originals to Trash or deletes them. */
+export function removesOriginals(intent: JobIntent): boolean {
+  return intent.originals !== "keep";
+}
+
+/** Removing the originals always verifies the archive first, whatever the box says. */
+export function verifies(intent: JobIntent): boolean {
+  return intent.verify || removesOriginals(intent);
+}
+
+export function sameIntent(a: JobIntent, b: JobIntent): boolean {
+  return a.verify === b.verify && a.originals === b.originals;
+}
 
 /**
  * What an input path is on disk, for the GUI's job-management UX (the label, the
@@ -33,7 +59,7 @@ export interface InputEntry {
  * - `queued` — asked to run while another job is running; waiting its turn. (A job
  *   asked to run while the engine is idle goes straight to `running`, never through
  *   `queued` — the state appears only when there is a real wait.)
- * - `running` — being written (and, for the destructive intent, verified + trashed).
+ * - `running` — being written, then verified, and its originals removed when chosen.
  * - `done` / `failed` — terminal.
  */
 export type JobState =
@@ -59,18 +85,26 @@ export function isEditable(job: Pick<Job, "state" | "archiveWritten">): boolean 
   return job.state !== "running" && job.state !== "done" && job.state !== "queued";
 }
 
-/** A Move-to-Trash job verifies the archive against its manifest before it
- *  moves anything, so it cannot run with the manifest turned off. One copy, so
- *  the engine refuses exactly the runs the renderer does not offer. */
-export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean): boolean {
-  return intent === "archive-and-trash" && !metadata;
+/** Whether every input is still on disk, as last classified (unknown counts as
+ *  there). Moving the archive to Trash is offered only then, since its
+ *  confirmation promises the originals are kept; one rule for both sides. */
+export function originalsIntact(job: Pick<Job, "entries">): boolean {
+  return job.entries?.every((entry) => entry.kind !== "nonexistent") ?? true;
 }
 
-/** A Move-to-Trash job whose plan found a folder it could not list: that
- *  folder's contents are in neither the archive nor its manifest, so no check
- *  could show the originals are safe to move. */
-export function scanBlocksTrash(job: Pick<Job, "intent" | "scanIncomplete">): boolean {
-  return job.intent === "archive-and-trash" && job.scanIncomplete === true;
+/** A job that removes its originals verifies the archive against its manifest
+ *  before it moves or deletes anything, so it cannot run with the manifest
+ *  turned off. One copy, so the engine refuses exactly the runs the renderer
+ *  does not offer. */
+export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean): boolean {
+  return removesOriginals(intent) && !metadata;
+}
+
+/** A job that removes its originals, whose plan found a folder it could not
+ *  list: that folder's contents are in neither the archive nor its manifest, so
+ *  no check could show the originals are safe to remove. */
+export function scanBlocksRemoval(job: Pick<Job, "intent" | "scanIncomplete">): boolean {
+  return removesOriginals(job.intent) && job.scanIncomplete === true;
 }
 
 export interface Job {
@@ -105,14 +139,15 @@ export interface Job {
    *  checking, but it is there to reveal or move to Trash). */
   archiveWritten?: boolean;
   /** Set while a finished job's originals are being checked and moved to
-   *  Trash on request: the job is busy, and only Cancel is offered. */
+   *  Trash or deleted on request, or its archive moved to Trash: the job is
+   *  busy, and only Cancel is offered. */
   trashing?: boolean;
 }
 
-/** The resumable part of a job that survives a restart (no transient run state). */
+/** The resumable part of a job that survives a restart: no transient run
+ *  state, and no intent, which every restored job takes as {@link SAFEST_INTENT}. */
 export interface SavedJob {
   id: string;
   inputs: string[];
   options: GuiOptions;
-  intent: JobIntent;
 }

@@ -12,6 +12,8 @@ import { nullLog } from "../../../src/gui/main/log.js";
 import type { Job, JobIntent, PlanData, ZipKitGuiApi } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
+import { SAVE, TRASH } from "../../helpers/intents.js";
+import { SAFEST_INTENT } from "../../../src/gui/shared/queue.js";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -22,7 +24,7 @@ const job = (id: string): Job => ({
   id,
   inputs: [`/${id}`],
   options: DEFAULT_OPTIONS,
-  intent: "save",
+  intent: SAVE,
   state: "ready",
 });
 
@@ -52,6 +54,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     runJob: vi.fn(async () => {}),
     removeArchive: vi.fn(async () => {}),
     trashOriginals: vi.fn(async () => {}),
+    deleteOriginals: vi.fn(async () => {}),
     cancelJob: vi.fn(async () => {}),
     getPlan: vi.fn(async () => null),
     getQueue: vi.fn(async () => []),
@@ -250,13 +253,12 @@ describe("selected-job IPC ownership", () => {
     const bridge = api({ getQueue: vi.fn(async () => [job("intent-job")]), updateJob });
     renderApp(bridge);
     fireEvent.click(await screen.findByRole("option"));
-    const intent = await screen.findByRole("combobox", { name: "Action" });
-    fireEvent.change(intent, { target: { value: "archive-and-trash" } });
+    fireEvent.click(await screen.findByRole("radio", { name: "Delete permanently" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("previous action is still selected");
+    expect(alert.textContent).toContain("previous choice is still selected");
     expect(alert.textContent).not.toContain("ZIPKIT_INTENT_SENTINEL");
-    expect((intent as HTMLSelectElement).value).toBe("save");
+    expect((screen.getByRole("radio", { name: "Keep" }) as HTMLInputElement).checked).toBe(true);
     expect(bridge.reportError).toHaveBeenCalledWith("update job intent", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_INTENT_SENTINEL") }));
   });
 
@@ -362,7 +364,7 @@ describe("mounted run consent across queue projection changes", () => {
   const original = "/sources/original.txt";
   const added = "/sources/later.txt";
 
-  function ownedQueue(intent: JobIntent) {
+  function ownedQueue(intent: JobIntent, { withholdIntentProjection = true } = {}) {
     let publish: ((jobs: Job[]) => void) | undefined;
     let withholdProjection = false;
     const deps: EngineDeps = {
@@ -383,6 +385,7 @@ describe("mounted run consent across queue projection changes", () => {
       recheck: vi.fn(async () => ({ matches: true, added: [], missing: [], changed: [], unlisted: [] })),
       classify: vi.fn(async (paths: string[]) => paths.map((path) => ({ path, kind: "file" as const }))),
       trash: vi.fn(async (paths) => ({ moved: paths, failed: [], unconfirmed: [] })),
+      deleteOriginals: vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] })),
       outputInsideInputs: vi.fn(async () => false),
       emit: vi.fn((jobs) => { if (!withholdProjection) publish?.(jobs); }),
       progress: vi.fn(() => vi.fn()),
@@ -399,7 +402,7 @@ describe("mounted run consent across queue projection changes", () => {
       }),
       updateJob: vi.fn(async (id, patch) => {
         // Main has accepted the intent before its pushed projection reaches the window.
-        if (patch.intent !== undefined) withholdProjection = true;
+        if (patch.intent !== undefined && withholdIntentProjection) withholdProjection = true;
         engine.update(id, patch);
       }),
       addJobInputs: vi.fn(async (id, paths) => engine.addInputs(id, paths)),
@@ -410,7 +413,7 @@ describe("mounted run consent across queue projection changes", () => {
   }
 
   it("captures comment, filename and output-folder keystrokes before an immediate quit or window close", async () => {
-    const { engine, deps, bridge, id } = ownedQueue("save");
+    const { engine, deps, bridge, id } = ownedQueue(SAVE);
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
       await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
@@ -437,23 +440,23 @@ describe("mounted run consent across queue projection changes", () => {
     { trigger: "Create button", context: "run job" },
     { trigger: "Cmd+Enter", context: "run selected job" },
   ])("rejects the old save scope from $trigger after main accepts a destructive intent", async ({ trigger, context }) => {
-    const { engine, deps, bridge, id } = ownedQueue("save");
+    const { engine, deps, bridge, id } = ownedQueue(SAVE);
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
       await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
-      const action = await screen.findByRole("combobox", { name: "Action" });
-      fireEvent.change(action, { target: { value: "archive-and-trash" } });
-      await waitFor(() => expect(bridge.updateJob).toHaveBeenCalledWith(id, { intent: "archive-and-trash" }));
-      expect(engine.snapshot()[0]?.intent).toBe("archive-and-trash");
-      expect((action as HTMLSelectElement).value).toBe("save");
+      fireEvent.click(await screen.findByRole("radio", { name: "Move to Trash" }));
+      const destructive = { ...SAVE, originals: "trash" as const };
+      await waitFor(() => expect(bridge.updateJob).toHaveBeenCalledWith(id, { intent: destructive }));
+      expect(engine.snapshot()[0]?.intent).toEqual(destructive);
+      expect((screen.getByRole("radio", { name: "Keep" }) as HTMLInputElement).checked).toBe(true);
 
       if (trigger === "Create button") fireEvent.click(screen.getByRole("button", { name: "Create archive" }));
       else fireEvent.keyDown(window, { key: "Enter", metaKey: true });
 
       const alert = await screen.findByRole("alert");
-      expect(bridge.runJob).toHaveBeenCalledExactlyOnceWith(id, { intent: "save", inputs: [original] });
+      expect(bridge.runJob).toHaveBeenCalledExactlyOnceWith(id, { intent: SAVE, inputs: [original] });
       expect(alert.textContent).toContain("Archive creation could not start. The job is unchanged; try again.");
       expect(alert.textContent).not.toContain("The job changed since this action was confirmed");
       expect(bridge.reportError).toHaveBeenCalledWith(context, expect.objectContaining({ message: "The job changed since this action was confirmed" }));
@@ -467,7 +470,7 @@ describe("mounted run consent across queue projection changes", () => {
   });
 
   it("rejects the captured destructive scope when an in-flight input picker adds a source during confirmation", async () => {
-    const { engine, deps, bridge, id } = ownedQueue("archive-and-trash");
+    const { engine, deps, bridge, id } = ownedQueue(TRASH);
     let releasePicker!: (paths: string[]) => void;
     vi.mocked(bridge.chooseInputs).mockReturnValueOnce(new Promise<string[]>((resolve) => { releasePicker = resolve; }));
     let mounted: ReturnType<typeof renderApp> | undefined;
@@ -490,7 +493,7 @@ describe("mounted run consent across queue projection changes", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Create and move to Trash" }));
 
       const alert = await screen.findByRole("alert");
-      expect(bridge.runJob).toHaveBeenCalledExactlyOnceWith(id, { intent: "archive-and-trash", inputs: [original] });
+      expect(bridge.runJob).toHaveBeenCalledExactlyOnceWith(id, { intent: TRASH, inputs: [original] });
       expect(alert.textContent).toContain("Archive creation could not start. The job is unchanged; try again.");
       expect(alert.textContent).not.toContain("The job changed since this action was confirmed");
       expect(bridge.reportError).toHaveBeenCalledWith("run job", expect.objectContaining({ message: "The job changed since this action was confirmed" }));
@@ -498,6 +501,38 @@ describe("mounted run consent across queue projection changes", () => {
       expect(deps.trash).not.toHaveBeenCalled();
     } finally {
       releasePicker([]);
+      mounted?.unmount();
+      await engine.shutdown();
+    }
+  });
+
+  it("verifies by default, locks verification on when the originals are deleted, and asks before deleting them for good", async () => {
+    const { engine, deps, bridge, id } = ownedQueue(SAFEST_INTENT, { withholdIntentProjection: false });
+    let mounted: ReturnType<typeof renderApp> | undefined;
+    try {
+      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      mounted = renderApp(bridge);
+      fireEvent.click(await screen.findByRole("option"));
+      const verify = await screen.findByRole("checkbox", { name: "Verify the archive after creating it" }) as HTMLInputElement;
+      expect(verify.checked).toBe(true);
+      expect(verify.disabled).toBe(false);
+      expect((screen.getByRole("radio", { name: "Keep" }) as HTMLInputElement).checked).toBe(true);
+
+      fireEvent.click(screen.getByRole("radio", { name: "Delete permanently" }));
+      await waitFor(() => expect(engine.snapshot()[0]?.intent).toEqual({ verify: true, originals: "delete" }));
+      await waitFor(() => expect(verify.disabled).toBe(true));
+      expect(verify.checked).toBe(true);
+      expect(screen.getByText("Removing the originals always verifies the archive first.")).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Create archive" }));
+      const dialog = await screen.findByRole("dialog", { name: "Create archive and delete originals permanently?" });
+      expect(dialog.textContent).toContain("can’t be undone");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create and delete permanently" }));
+      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+      expect(bridge.runJob).toHaveBeenCalledWith(id, { intent: { verify: true, originals: "delete" }, inputs: [original] });
+      expect(deps.deleteOriginals).toHaveBeenCalledWith([original], expect.any(AbortSignal));
+      expect(deps.trash).not.toHaveBeenCalled();
+    } finally {
       mounted?.unmount();
       await engine.shutdown();
     }

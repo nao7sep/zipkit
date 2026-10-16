@@ -15,7 +15,7 @@
 
 import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
-import { manifestRequiredButMissing, scanBlocksTrash } from "../../shared/queue";
+import { manifestRequiredButMissing, originalsIntact, removesOriginals, scanBlocksRemoval } from "../../shared/queue";
 import type { ExtractData, Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
 import { renamedItself, type PlanReport } from "../../shared/plan-report";
 import type { MessageKey } from "../../shared/i18n/catalogues";
@@ -170,19 +170,20 @@ export type JobCommand =
   | "verify"
   | "reveal"
   | "trash-originals"
+  | "delete-originals"
   | "remove-archive";
 
-export { manifestRequiredButMissing, scanBlocksTrash };
+export { manifestRequiredButMissing, scanBlocksRemoval };
 
 /** The lifecycle commands available for a job in its current state. Pure, so the
  *  command bar reads one source and is unit-tested without a DOM. `needs-attention`
  *  intentionally offers none — the job is blocked until its options are fixed —
- *  and neither does a Move-to-Trash job without its manifest or with a folder
- *  its scan could not list, whose note says why. */
+ *  and neither does a job that removes its originals without its manifest or
+ *  with a folder its scan could not list, whose note says why. */
 export function jobCommands(job: Job): JobCommand[] {
   // Moving the archive or the originals to Trash on request: busy until it ends or is cancelled.
   if (job.trashing) return ["cancel"];
-  const runnable = !manifestRequiredButMissing(job.intent, job.options.metadata) && !scanBlocksTrash(job);
+  const runnable = !manifestRequiredButMissing(job.intent, job.options.metadata) && !scanBlocksRemoval(job);
   switch (job.state) {
     case "planning":
       return ["cancel"];
@@ -198,30 +199,40 @@ export function jobCommands(job: Job): JobCommand[] {
     case "running":
       return ["cancel"];
     case "failed":
-      // If the archive was written but a later step failed (an archive-and-trash
-      // whose checks or Trash failed, so the .zip exists and the originals are
-      // kept), let the user inspect or clean up that file, or retry from it. A
+      // If the archive was written but a later step failed (its checks or the
+      // removal of the originals failed, so the .zip exists), let the user
+      // inspect it, retry from it, or move it to Trash — unless some originals
+      // were deleted for good, when the archive is all that is left of them. A
       // write failure leaves no archive, so it offers only "Try again" (the
       // planned `output` names where it would have gone, not a file).
-      if (job.archiveWritten) return runnable ? ["retry", "reveal", "remove-archive"] : ["reveal", "remove-archive"];
+      if (job.archiveWritten) {
+        const after: JobCommand[] = job.intent.originals !== "delete" || originalsIntact(job)
+          ? ["reveal", "remove-archive"] : ["reveal"];
+        return runnable ? ["retry", ...after] : after;
+      }
       return runnable ? ["retry"] : [];
-    case "done":
-      if (job.intent !== "save") return ["verify", "reveal"];
-      // A saved archive: verify/reveal it, remove the archive to edit and
-      // re-create, or (only while they still exist, and only when the archive
-      // carries the manifest the check before Trash needs) trash the originals.
-      // The most destructive command (trash-originals) is ordered last so the
-      // command bar can seat it at the far-right end, away from the everyday buttons.
-      return job.options.metadata && !job.scanIncomplete && originalsPresent(job)
-        ? ["verify", "reveal", "remove-archive", "trash-originals"]
-        : ["verify", "reveal", "remove-archive"];
+    case "done": {
+      // A job that removed its originals on its run has only its archive left.
+      if (removesOriginals(job.intent)) return ["verify", "reveal"];
+      // A kept job: verify/reveal it, move the archive to Trash while every
+      // original is still there (to edit and re-create), or — while some
+      // remain, and only when the archive carries the manifest the checks
+      // need — remove the originals. The destructive commands come last so
+      // the command bar seats them at the far-right end.
+      const commands: JobCommand[] = ["verify", "reveal"];
+      if (originalsIntact(job)) commands.push("remove-archive");
+      if (job.options.metadata && !job.scanIncomplete && originalsPresent(job)) commands.push("trash-originals", "delete-originals");
+      return commands;
+    }
   }
 }
 
 /** The short intent tag shown on a job row — only the noteworthy intent gets a
  *  tag; the plain "save" is the default and adds no signal, so it shows nothing. */
 export function intentLabel(intent: JobIntent, t: Translator): string {
-  return intent === "archive-and-trash" ? t.t("jobs.trashTag") : "";
+  if (intent.originals === "trash") return t.t("jobs.trashTag");
+  if (intent.originals === "delete") return t.t("jobs.deleteTag");
+  return "";
 }
 
 /** One line of the report outside the plan's files — the summary, an advisory,
@@ -543,6 +554,7 @@ const RUN_HEADINGS: Record<JobAction, MessageKey> = {
   create: "progress.runCreate",
   verify: "progress.runVerify",
   trash: "progress.runTrash",
+  delete: "progress.runDelete",
 };
 
 /** A Progress run's heading: the action that started it and its start time,

@@ -11,6 +11,7 @@ import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { JobIntent } from "../../../src/gui/shared/queue.js";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { createDirectoryLink, fileSymlinksSupported } from "../../helpers/symlink.js";
+import { SAVE, TRASH } from "../../helpers/intents.js";
 
 const use = (location: string, mode: FileUse["mode"], identity: string | null = location): FileUse => ({ location, mode, identity });
 it("claims the whole conflicting path set atomically, permits shared reads and independent work", () => {
@@ -112,6 +113,7 @@ async function fixture() {
       for (const file of paths) await rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
       return { moved: paths, failed: [], unconfirmed: [] };
     },
+    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     outputInsideInputs: (output, inputs, signal) => outputInsideInputs(output, inputs, zip.volume(signal)),
     emit: () => {}, progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,
   };
@@ -133,14 +135,14 @@ const terminal = (engine: QueueEngine, id: string, state: string) => vi.waitFor(
 it("refuses an older job's archive removal after a real later job overwrites it and moves its originals", async () => {
   const f = await fixture();
   try {
-    const a = await f.add(f.a, "save"); run(f.engine, a); await terminal(f.engine, a, "done");
-    const b = await f.add(f.b, "archive-and-trash"); run(f.engine, b); await terminal(f.engine, b, "done");
+    const a = await f.add(f.a, SAVE); run(f.engine, a); await terminal(f.engine, a, "done");
+    const b = await f.add(f.b, TRASH); run(f.engine, b); await terminal(f.engine, b, "done");
     const published = await readFile(f.output);
     f.engine.removeArchive(a);
     await vi.waitFor(() => expect(f.engine.snapshot().find((job) => job.id === a)?.actionResult?.severity).toBe("error"));
     expect(await readFile(f.output)).toEqual(published);
     expect(await readFile(f.a, "utf8")).toBe("original A");
-    f.engine.trashOriginals(a);
+    f.engine.removeOriginals(a, "trash");
     await vi.waitFor(() => expect(f.engine.snapshot().find((job) => job.id === a)?.trashing).toBe(false));
     expect(await readFile(f.a, "utf8")).toBe("original A");
   } finally { await f.close(); }
@@ -152,7 +154,7 @@ it("blocks replacement until an unconfirmed archive Trash physically settles, wh
   const gate = new Promise<void>((resolve) => { release = resolve; });
   let physical: Promise<void> | undefined;
   try {
-    const a = await f.add(f.a, "save"); run(f.engine, a); await terminal(f.engine, a, "done");
+    const a = await f.add(f.a, SAVE); run(f.engine, a); await terminal(f.engine, a, "done");
     const original = await readFile(f.output);
     f.deps.trash = async (paths) => {
       physical = gate.then(() => rename(paths[0]!, path.join(f.root, "trash", "late.zip")));
@@ -160,9 +162,9 @@ it("blocks replacement until an unconfirmed archive Trash physically settles, wh
     };
     f.engine.removeArchive(a);
     await vi.waitFor(() => expect(f.engine.snapshot().find((job) => job.id === a)?.actionResult?.severity).toBe("warning"));
-    const b = await f.add(f.b, "save"); run(f.engine, b); await terminal(f.engine, b, "failed");
+    const b = await f.add(f.b, SAVE); run(f.engine, b); await terminal(f.engine, b, "failed");
     expect(await readFile(f.output)).toEqual(original);
-    const independent = await f.add(f.b, "save", "independent.zip");
+    const independent = await f.add(f.b, SAVE, "independent.zip");
     run(f.engine, independent); await terminal(f.engine, independent, "done");
     release(); await physical;
     run(f.engine, b); await terminal(f.engine, b, "done");

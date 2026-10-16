@@ -48,7 +48,7 @@ export type { LanguageEnvironment, Message, PaneLayout };
 /** The action that started a Progress run: a background plan, Create (its
  *  fresh plan, write, verify and Trash), Verify, or moving a finished job's
  *  originals to Trash. */
-export type JobAction = "plan" | "create" | "verify" | "trash";
+export type JobAction = "plan" | "create" | "verify" | "trash" | "delete";
 
 /** An SDK progress event under the job it ran for, as main records it in
  *  `records.sqlite3` and sends it to the window. `session` (the launch's start)
@@ -157,7 +157,8 @@ export interface ZipKitGuiApi {
 
   /** Enqueue a job (planned in the background); returns its id. Non-blocking — it
    *  never waits on a running write. */
-  addJob(inputs: string[], options: GuiOptions, intent: JobIntent): Promise<string>;
+  /** A new job verifies and keeps its originals until the user chooses otherwise. */
+  addJob(inputs: string[], options: GuiOptions): Promise<string>;
   /** Change an editable job's options or intent; plan-affecting options re-plan. */
   updateJob(
     id: string,
@@ -174,6 +175,7 @@ export interface ZipKitGuiApi {
   removeArchive(id: string): Promise<void>;
   /** Move a finished `save` job's originals to Trash on explicit request. */
   trashOriginals(id: string): Promise<void>;
+  deleteOriginals(id: string): Promise<void>;
   /** Cancel a job's in-flight plan or write. */
   cancelJob(id: string): Promise<void>;
   /** The full plan for a job's detail view, or null if it has none right now. */

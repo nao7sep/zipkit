@@ -31,6 +31,7 @@ import { JobListbox } from "../../../../src/gui/renderer/src/components/JobListb
 import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
+import { SAVE } from "../../../helpers/intents.js";
 
 afterEach(cleanup);
 
@@ -45,7 +46,7 @@ describe("per-item X alignment: first line, not the wrapped block's middle", () 
         { path: "/tmp/b.txt", kind: "file" },
       ],
       options: DEFAULT_OPTIONS,
-      intent: "save",
+      intent: SAVE,
       state: "ready",
     };
     render(
@@ -120,7 +121,7 @@ describe("per-item X alignment: first line, not the wrapped block's middle", () 
       id: "job-1",
       inputs: ["/tmp/a.txt"],
       options: DEFAULT_OPTIONS,
-      intent: "save",
+      intent: SAVE,
       state: "ready",
     };
     render(

@@ -43,7 +43,6 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "options.archive",
     "log.info",
     "about.version",
-    "op.intent",
   ],
   it: [
     "nativeMenu.file",
