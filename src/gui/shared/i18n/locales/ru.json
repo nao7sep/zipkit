@@ -171,9 +171,7 @@
   "jobs.queue": "Очередь заданий",
   "jobs.empty": "Заданий пока нет. Нажмите «Добавить», чтобы выбрать папки или файлы.",
   "jobs.noInput": "(нет исходных данных)",
-  "jobs.items": { "one": "{count} элемент", "few": "{count} элемента", "many": "{count} элементов", "other": "{count} элемента" },
-  "jobs.directories": { "one": "{count} папка", "few": "{count} папки", "many": "{count} папок", "other": "{count} папки" },
-  "jobs.files": { "one": "{count} файл", "few": "{count} файла", "many": "{count} файлов", "other": "{count} файла" },
+  "jobs.andMore": { "one": "{name} и ещё {count} элемент", "few": "{name} и ещё {count} элемента", "many": "{name} и ещё {count} элементов", "other": "{name} и ещё {count} элемента" },
   "jobs.trashTag": "→ Корзина",
 
   "state.planning": "Подготовка…",

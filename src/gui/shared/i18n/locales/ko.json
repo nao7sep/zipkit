@@ -171,9 +171,7 @@
   "jobs.queue": "작업 대기열",
   "jobs.empty": "아직 작업이 없습니다. “추가”를 클릭하여 폴더 또는 파일을 선택하십시오.",
   "jobs.noInput": "(입력 없음)",
-  "jobs.items": { "other": "항목 {count}개" },
-  "jobs.directories": { "other": "폴더 {count}개" },
-  "jobs.files": { "other": "파일 {count}개" },
+  "jobs.andMore": { "other": "{name} 외 {count}개" },
   "jobs.trashTag": "→ 휴지통",
 
   "state.planning": "준비 중…",

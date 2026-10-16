@@ -171,9 +171,7 @@
   "jobs.queue": "Cola de trabajos",
   "jobs.empty": "Todavía no hay trabajos. Haz clic en «Agregar» para elegir carpetas o archivos.",
   "jobs.noInput": "(sin entrada)",
-  "jobs.items": { "one": "{count} elemento", "many": "{count} de elementos", "other": "{count} elementos" },
-  "jobs.directories": { "one": "{count} carpeta", "many": "{count} de carpetas", "other": "{count} carpetas" },
-  "jobs.files": { "one": "{count} archivo", "many": "{count} de archivos", "other": "{count} archivos" },
+  "jobs.andMore": { "one": "{name} y {count} más", "many": "{name} y {count} más", "other": "{name} y {count} más" },
   "jobs.trashTag": "→ Papelera",
 
   "state.planning": "Preparando…",

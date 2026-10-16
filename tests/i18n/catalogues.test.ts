@@ -49,13 +49,12 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "nativeMenu.zoom",
     "messageDialog.ok",
     "header.menu",
-    "jobs.files",
     "inputs.file",
     "log.debug",
     "about.repository",
   ],
   ja: ["messageDialog.ok"],
-  "pt-BR": ["nativeMenu.zoom", "messageDialog.ok", "header.menu", "jobs.items"],
+  "pt-BR": ["nativeMenu.zoom", "messageDialog.ok", "header.menu"],
 };
 
 // The hidden-character-conventions set, plus the no-break spaces, figure space,

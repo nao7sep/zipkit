@@ -171,9 +171,7 @@
   "jobs.queue": "Auftragswarteschlange",
   "jobs.empty": "Noch keine Aufträge. Klicken Sie auf „Hinzufügen“, um Ordner oder Dateien auszuwählen.",
   "jobs.noInput": "(keine Eingabe)",
-  "jobs.items": { "one": "{count} Objekt", "other": "{count} Objekte" },
-  "jobs.directories": { "one": "{count} Ordner", "other": "{count} Ordner" },
-  "jobs.files": { "one": "{count} Datei", "other": "{count} Dateien" },
+  "jobs.andMore": { "one": "{name} und {count} weiteres", "other": "{name} und {count} weitere" },
   "jobs.trashTag": "→ Papierkorb",
 
   "state.planning": "Wird vorbereitet\u00a0…",

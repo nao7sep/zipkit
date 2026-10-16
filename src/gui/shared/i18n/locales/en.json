@@ -171,9 +171,7 @@
   "jobs.queue": "Job queue",
   "jobs.empty": "No jobs yet. Click “Add” to choose directories or files.",
   "jobs.noInput": "(no input)",
-  "jobs.items": { "one": "{count} item", "other": "{count} items" },
-  "jobs.directories": { "one": "{count} directory", "other": "{count} directories" },
-  "jobs.files": { "one": "{count} file", "other": "{count} files" },
+  "jobs.andMore": { "one": "{name} + {count} more", "other": "{name} + {count} more" },
   "jobs.trashTag": "→ Trash",
 
   "state.planning": "Planning…",

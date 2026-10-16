@@ -21,13 +21,13 @@ describe("createTranslator", () => {
 
   it("chooses the plural form by the language's own rules", () => {
     const ru = createTranslator("ru");
-    const one = ru.t("jobs.files", { count: 1 });
-    const few = ru.t("jobs.files", { count: 3 });
-    const many = ru.t("jobs.files", { count: 5 });
+    const one = ru.t("job.blocking", { count: 1 });
+    const few = ru.t("job.blocking", { count: 3 });
+    const many = ru.t("job.blocking", { count: 5 });
     expect(new Set([one, few.replace("3", "1"), many.replace("5", "1")]).size).toBe(3);
-    expect(ru.t("jobs.files", { count: 21 })).toBe(one.replace("1", "21"));
-    expect(createTranslator("en").t("jobs.files", { count: 1 })).toBe("1 file");
-    expect(createTranslator("en").t("jobs.files", { count: 0 })).toBe("0 files");
+    expect(ru.t("job.blocking", { count: 21 })).toBe(one.replace("1", "21"));
+    expect(createTranslator("en").t("job.blocking", { count: 1 })).toBe("1 blocking finding");
+    expect(createTranslator("en").t("job.blocking", { count: 0 })).toBe("0 blocking findings");
   });
 
   it("renders a message descriptor, with a message as a value in the same language", () => {

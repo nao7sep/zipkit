@@ -171,9 +171,7 @@
   "jobs.queue": "任务队列",
   "jobs.empty": "还没有任务。点按“添加”选择文件夹或文件。",
   "jobs.noInput": "（无输入）",
-  "jobs.items": { "other": "{count} 个项目" },
-  "jobs.directories": { "other": "{count} 个文件夹" },
-  "jobs.files": { "other": "{count} 个文件" },
+  "jobs.andMore": { "other": "{name} 及另外 {count} 项" },
   "jobs.trashTag": "→ 废纸篓",
 
   "state.planning": "准备中…",

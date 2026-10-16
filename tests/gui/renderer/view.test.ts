@@ -71,25 +71,24 @@ describe("label", () => {
     expect(label(job({ inputs: ["/x/y/report.pdf"] }), en)).toBe("report.pdf");
     expect(label(job({ inputs: ["/x/y/photos"] }), en)).toBe("photos");
   });
-  it("counts directories and files for multiple inputs (omitting a zero count)", () => {
+  it("names the first input the Inputs list shows and counts the rest, whatever they are", () => {
     const j = job({
-      inputs: ["/d1", "/d2", "/f1"],
+      inputs: ["/f1.txt", "/b/photos", "/a/docs"],
       entries: [
-        { path: "/d1", kind: "directory" },
-        { path: "/d2", kind: "directory" },
-        { path: "/f1", kind: "file" },
+        { path: "/f1.txt", kind: "file" },
+        { path: "/b/photos", kind: "directory" },
+        { path: "/a/docs", kind: "directory" },
       ],
     });
-    expect(label(j, en)).toBe("2 directories, 1 file");
-    expect(
-      label(job({ inputs: ["/f1", "/f2"], entries: [
-        { path: "/f1", kind: "file" },
-        { path: "/f2", kind: "file" },
-      ] }), en),
-    ).toBe("2 files");
+    // Folders come first in the Inputs list, by path: /a/docs.
+    expect(label(j, en)).toBe("docs + 2 more");
+    expect(label(job({ inputs: ["/x/report.pdf", "/x/gone.txt"], entries: [
+      { path: "/x/report.pdf", kind: "file" },
+      { path: "/x/gone.txt", kind: "nonexistent" },
+    ] }), en)).toBe("report.pdf + 1 more");
   });
-  it("falls back to an item count before classification resolves", () => {
-    expect(label(job({ inputs: ["/a", "/b", "/c"] }), en)).toBe("3 items");
+  it("uses the order the inputs were added before they are classified", () => {
+    expect(label(job({ inputs: ["/z/last", "/a/first", "/c"] }), en)).toBe("last + 2 more");
   });
   it("falls back when there are no inputs", () => {
     expect(label(job({ inputs: [] }), en)).toBe("(no input)");

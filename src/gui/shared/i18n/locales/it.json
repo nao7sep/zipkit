@@ -171,9 +171,7 @@
   "jobs.queue": "Coda delle operazioni",
   "jobs.empty": "Ancora nessuna operazione. Fai clic su «Aggiungi» per scegliere cartelle o file.",
   "jobs.noInput": "(nessun input)",
-  "jobs.items": { "one": "{count} elemento", "many": "{count} di elementi", "other": "{count} elementi" },
-  "jobs.directories": { "one": "{count} cartella", "many": "{count} di cartelle", "other": "{count} cartelle" },
-  "jobs.files": { "one": "{count} file", "many": "{count} di file", "other": "{count} file" },
+  "jobs.andMore": { "one": "{name} e {count} altro", "many": "{name} e altri {count}", "other": "{name} e altri {count}" },
   "jobs.trashTag": "→ Cestino",
 
   "state.planning": "In preparazione…",

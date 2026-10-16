@@ -171,9 +171,7 @@
   "jobs.queue": "Fila de trabalhos",
   "jobs.empty": "Ainda não há trabalhos. Clique em “Adicionar” para escolher pastas ou arquivos.",
   "jobs.noInput": "(sem entrada)",
-  "jobs.items": { "one": "{count} item", "many": "{count} de itens", "other": "{count} itens" },
-  "jobs.directories": { "one": "{count} pasta", "many": "{count} de pastas", "other": "{count} pastas" },
-  "jobs.files": { "one": "{count} arquivo", "many": "{count} de arquivos", "other": "{count} arquivos" },
+  "jobs.andMore": { "one": "{name} e mais {count}", "many": "{name} e mais {count}", "other": "{name} e mais {count}" },
   "jobs.trashTag": "→ Lixeira",
 
   "state.planning": "Preparando…",

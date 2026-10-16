@@ -171,9 +171,7 @@
   "jobs.queue": "File des tâches",
   "jobs.empty": "Aucune tâche pour l’instant. Cliquez sur «\u00a0Ajouter\u00a0» pour choisir des dossiers ou des fichiers.",
   "jobs.noInput": "(aucune entrée)",
-  "jobs.items": { "one": "{count} élément", "many": "{count} d’éléments", "other": "{count} éléments" },
-  "jobs.directories": { "one": "{count} dossier", "many": "{count} de dossiers", "other": "{count} dossiers" },
-  "jobs.files": { "one": "{count} fichier", "many": "{count} de fichiers", "other": "{count} fichiers" },
+  "jobs.andMore": { "one": "{name} et {count} autre", "many": "{name} et {count} d’autres", "other": "{name} et {count} autres" },
   "jobs.trashTag": "→ Corbeille",
 
   "state.planning": "Préparation…",

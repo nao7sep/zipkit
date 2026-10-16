@@ -171,9 +171,7 @@
   "jobs.queue": "ジョブのキュー",
   "jobs.empty": "ジョブはまだありません。「追加」をクリックして、フォルダまたはファイルを選択してください。",
   "jobs.noInput": "（入力なし）",
-  "jobs.items": { "other": "{count} 項目" },
-  "jobs.directories": { "other": "{count} フォルダ" },
-  "jobs.files": { "other": "{count} ファイル" },
+  "jobs.andMore": { "other": "{name} ほか {count} 件" },
   "jobs.trashTag": "→ ゴミ箱",
 
   "state.planning": "準備中…",

@@ -48,22 +48,16 @@ function baseName(p: string): string {
   return norm.split("/").pop() || norm;
 }
 
-/** A job's label: a single input shows its own name (with extension); multiple
- *  inputs show a quiet count of directories and files (each only when > 0) rather
- *  than a noisy file list. The counts need the on-disk classification (`entries`);
- *  before it resolves it falls back to a plain item count. */
+/** A job's label: the name of the first input as the Inputs list orders it,
+ *  and how many others there are, so every job is told apart by a real name
+ *  ("photos", "photos + 3 more") however many it archives. Before the inputs
+ *  are classified, both the list and the label use the order they were added. */
 export function label(job: Job, t: Translator): string {
   if (job.inputs.length === 0) return t.t("jobs.noInput");
-  if (job.inputs.length === 1) return baseName(job.inputs[0]!);
-  const entries = job.entries;
-  if (!entries || entries.length === 0) return t.t("jobs.items", { count: job.inputs.length });
-  const dirs = entries.filter((e) => e.kind === "directory").length;
-  const files = entries.filter((e) => e.kind === "file").length;
-  const parts: string[] = [];
-  if (dirs > 0) parts.push(t.t("jobs.directories", { count: dirs }));
-  if (files > 0) parts.push(t.t("jobs.files", { count: files }));
-  // All inputs missing/other: still say something honest.
-  return parts.length > 0 ? t.list(parts) : t.t("jobs.items", { count: entries.length });
+  const ordered = job.entries && job.entries.length > 0 ? orderedEntries(job.entries) : [];
+  const first = baseName(ordered[0]?.path ?? job.inputs[0]!);
+  if (job.inputs.length === 1) return first;
+  return t.t("jobs.andMore", { name: first, count: job.inputs.length - 1 });
 }
 
 /** Whether any of the job's originals still exist on disk, so trashing them is
