@@ -225,15 +225,13 @@ export function SettingsDialog({
         />
         <span style={S.fontHint}>{t("settings.uiFontHint")}</span>
       </label>
-      {/* The defaults every new job starts with, under their own heading, so the
-          reset beside it plainly covers these and nothing above (config-sets
-          conventions, Reset: one control per group, named for it). */}
+      {/* The defaults every new job starts with, under their own heading, with
+          their reset closing the group as in the fleet's other Settings, so it
+          plainly covers these and nothing above (config-sets conventions,
+          Reset: one control per group, named for it). */}
       <section aria-labelledby="settings-default-parameters">
         <div style={S.sectionHead}>
           <h3 id="settings-default-parameters" style={S.sectionTitle}>{t("settings.defaultParameters")}</h3>
-          <button style={S.resetDefaultParameters} disabled={saving} onClick={resetDefaultParameters}>
-            {t("settings.resetDefaults")}
-          </button>
         </div>
         <p style={S.sectionHint}>{t("settings.defaultParametersHint")}</p>
         <OptionsPanel
@@ -241,6 +239,11 @@ export function SettingsDialog({
           onChange={(o) => setDraft({ ...draft, defaults: o })}
           disabled={saving}
         />
+        <div style={S.resetRow}>
+          <button style={S.resetDefaultParameters} disabled={saving} onClick={resetDefaultParameters}>
+            {t("settings.resetDefaults")}
+          </button>
+        </div>
       </section>
       {saveError && <p role="alert" style={S.error}>{t("settings.saveFailed")}</p>}
     </ModalShell>
@@ -248,12 +251,10 @@ export function SettingsDialog({
 }
 
 const S: Record<string, CSSProperties> = {
-  // The section's heading row, in the main window's section style: its title at
-  // the left, its reset at the right, on one line however long the translation.
+  // The section's heading row, in the main window's section style.
   sectionHead: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: "0.75rem",
     margin: "0.25rem 0 0.35rem",
     paddingTop: "0.75rem",
@@ -269,8 +270,9 @@ const S: Record<string, CSSProperties> = {
     color: "var(--text-2)",
   },
   sectionHint: { margin: "0 0 0.75rem", fontSize: "0.8rem", color: "var(--text-2)" },
-  // A button's caption never wraps; the title beside it gives way instead.
-  resetDefaultParameters: { flexShrink: 0, whiteSpace: "nowrap" },
+  resetRow: { marginTop: "1rem" },
+  // A button's caption never wraps.
+  resetDefaultParameters: { whiteSpace: "nowrap" },
   themeField: { display: "flex", flexDirection: "column", gap: "0.35rem", margin: "0 0 1rem", padding: 0, border: "none", minWidth: 0 },
   themeLegend: { fontWeight: 600, padding: 0, marginBottom: "0.35rem" },
   themeOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem" },
