@@ -233,7 +233,6 @@
   "inputs.locked": "在任务的当前状态下无法更改输入。",
 
   "section.parameters": "参数",
-  "section.operation": "操作",
   "section.report": "报告",
   "params.useSettings": "使用设置中的参数",
   "op.fileName": "文件名",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "已取消删除原始项目。原始项目已保留。",
   "result.deleteOriginalsFailed": "无法删除原始项目。它们仍在原处，请重试。",
   "progress.runDelete": "删除原始项目 · {time}",
-  "dest.willSave": "将保存到",
-  "dest.saved": "已保存到",
-  "dest.folder": "文件夹",
-  "dest.name": "名称",
   "dest.setFileName": "（请设置文件名）",
   "dest.besideInput": "（与输入相同的位置）",
   "op.manifestNeeded": "请打开“嵌入清单”。在移除原始项目之前，会先对照清单校验归档。",

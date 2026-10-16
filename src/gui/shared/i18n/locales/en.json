@@ -233,7 +233,6 @@
   "inputs.locked": "Inputs cannot be changed in the current job state.",
 
   "section.parameters": "Parameters",
-  "section.operation": "Operation",
   "section.report": "Report",
   "params.useSettings": "Use the parameters from Settings",
   "op.fileName": "File name",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "Deleting the originals was cancelled. The originals were kept.",
   "result.deleteOriginalsFailed": "The originals could not be deleted. They remain in place; try again.",
   "progress.runDelete": "Delete originals · {time}",
-  "dest.willSave": "Will save",
-  "dest.saved": "Saved",
-  "dest.folder": "Folder",
-  "dest.name": "Name",
   "dest.setFileName": "(set a file name)",
   "dest.besideInput": "(beside the input)",
   "op.manifestNeeded": "Turn on “Embed manifest”. The archive is checked against it before the originals are removed.",

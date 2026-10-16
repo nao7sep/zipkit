@@ -233,7 +233,6 @@
   "inputs.locked": "Gli input non possono essere modificati nello stato attuale dell’operazione.",
 
   "section.parameters": "Parametri",
-  "section.operation": "Esecuzione",
   "section.report": "Resoconto",
   "params.useSettings": "Usa i parametri delle Impostazioni",
   "op.fileName": "Nome del file",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "L’eliminazione degli originali è stata annullata. Gli originali sono stati conservati.",
   "result.deleteOriginalsFailed": "Impossibile eliminare gli originali. Restano al loro posto; riprova.",
   "progress.runDelete": "Elimina gli originali · {time}",
-  "dest.willSave": "Verrà salvato",
-  "dest.saved": "Salvato",
-  "dest.folder": "Cartella",
-  "dest.name": "Nome",
   "dest.setFileName": "(imposta un nome di file)",
   "dest.besideInput": "(accanto all’input)",
   "op.manifestNeeded": "Attiva «Includi manifesto». L’archivio viene verificato in base a esso prima che gli originali vengano rimossi.",

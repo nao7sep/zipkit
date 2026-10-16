@@ -542,3 +542,38 @@ describe("mounted run consent across queue projection changes", () => {
     }
   });
 });
+
+describe("the Archive pane layout", () => {
+  it("leads with the control panel and closes with the inputs, folder before file name", async () => {
+    renderApp(api({ getQueue: vi.fn(async () => [job("a")]) }));
+    fireEvent.click(await screen.findByRole("option"));
+    const order = [
+      screen.getByRole("textbox", { name: /Output directory/ }),
+      screen.getByRole("textbox", { name: "File name" }),
+      screen.getByRole("checkbox", { name: /Overwrite/ }),
+      screen.getByRole("radiogroup"),
+      screen.getByRole("button", { name: /Parameters/ }),
+      screen.getByRole("textbox", { name: "Comment" }),
+      screen.getByText("Inputs"),
+    ];
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it("folds the parameters while the job uses the Settings' ones, unfolds them on request, and unticking unfolds them", async () => {
+    renderApp(api({ getQueue: vi.fn(async () => [job("a")]) }));
+    fireEvent.click(await screen.findByRole("option"));
+    const fold = screen.getByRole("button", { name: /Parameters/ });
+    expect(fold.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("checkbox", { name: /Drop OS junk files/ })).toBeNull();
+    fireEvent.click(fold);
+    expect(fold.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: /Drop OS junk files/ })).toBeTruthy();
+    fireEvent.click(fold);
+    expect(fold.getAttribute("aria-expanded")).toBe("false");
+    // Unticking is for editing, so the parameters open with it.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Use the parameters from Settings" }));
+    expect(fold.getAttribute("aria-expanded")).toBe("true");
+  });
+});

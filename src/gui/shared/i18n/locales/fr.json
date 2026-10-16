@@ -233,7 +233,6 @@
   "inputs.locked": "Les entrées ne peuvent pas être modifiées dans l’état actuel de la tâche.",
 
   "section.parameters": "Paramètres",
-  "section.operation": "Opération",
   "section.report": "Rapport",
   "params.useSettings": "Utiliser les paramètres des Réglages",
   "op.fileName": "Nom du fichier",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "La suppression des originaux a été annulée. Les originaux ont été conservés.",
   "result.deleteOriginalsFailed": "Les originaux n’ont pas pu être supprimés. Ils restent en place\u00a0; réessayez.",
   "progress.runDelete": "Supprimer les originaux · {time}",
-  "dest.willSave": "Sera enregistrée",
-  "dest.saved": "Enregistrée",
-  "dest.folder": "Dossier",
-  "dest.name": "Nom",
   "dest.setFileName": "(indiquez un nom de fichier)",
   "dest.besideInput": "(à côté de l’entrée)",
   "op.manifestNeeded": "Activez «\u00a0Intégrer le manifeste\u00a0». L’archive est vérifiée à l’aide de celui-ci avant que les originaux soient retirés.",

@@ -233,7 +233,6 @@
   "inputs.locked": "Im aktuellen Zustand des Auftrags lassen sich die Eingaben nicht ändern.",
 
   "section.parameters": "Parameter",
-  "section.operation": "Vorgang",
   "section.report": "Bericht",
   "params.useSettings": "Parameter aus den Einstellungen verwenden",
   "op.fileName": "Dateiname",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "Das Löschen der Originale wurde abgebrochen. Die Originale wurden behalten.",
   "result.deleteOriginalsFailed": "Die Originale konnten nicht gelöscht werden. Sie bleiben an ihrem Ort; versuchen Sie es erneut.",
   "progress.runDelete": "Originale löschen · {time}",
-  "dest.willSave": "Wird gespeichert",
-  "dest.saved": "Gespeichert",
-  "dest.folder": "Ordner",
-  "dest.name": "Name",
   "dest.setFileName": "(Dateinamen festlegen)",
   "dest.besideInput": "(neben der Eingabe)",
   "op.manifestNeeded": "Aktivieren Sie „Manifest einbetten“. Das Archiv wird damit geprüft, bevor die Originale entfernt werden.",

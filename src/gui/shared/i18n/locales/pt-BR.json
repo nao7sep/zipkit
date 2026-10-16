@@ -233,7 +233,6 @@
   "inputs.locked": "As entradas não podem ser alteradas no estado atual do trabalho.",
 
   "section.parameters": "Parâmetros",
-  "section.operation": "Operação",
   "section.report": "Relatório",
   "params.useSettings": "Usar os parâmetros das Configurações",
   "op.fileName": "Nome do arquivo",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "A exclusão dos originais foi cancelada. Os originais foram mantidos.",
   "result.deleteOriginalsFailed": "Não foi possível excluir os originais. Eles continuam no lugar; tente de novo.",
   "progress.runDelete": "Excluir os originais · {time}",
-  "dest.willSave": "Será salvo",
-  "dest.saved": "Salvo",
-  "dest.folder": "Pasta",
-  "dest.name": "Nome",
   "dest.setFileName": "(defina um nome de arquivo)",
   "dest.besideInput": "(ao lado da entrada)",
   "op.manifestNeeded": "Ative “Incluir manifesto”. O arquivo compactado é verificado com ele antes de os originais serem removidos.",

@@ -32,3 +32,19 @@ export function HamburgerIcon(): ReactElement {
     </svg>
   );
 }
+
+/** A disclosure mark: points right when folded and turns down when open. */
+export function ChevronIcon({ open }: { open: boolean }): ReactElement {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      focusable="false"
+      style={{ display: "inline-block", transform: open ? "rotate(90deg)" : undefined, transition: "transform 120ms" }}
+    >
+      <path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

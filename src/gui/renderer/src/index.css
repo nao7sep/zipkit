@@ -443,6 +443,43 @@ input[type="checkbox"] {
   flex: 0 1 auto;
 }
 
+/* The Archive pane's control grid: each label beside its control, the label
+ * column only as wide as its longest label up to two fifths of the pane, past
+ * which a label wraps, so no language and no pane width can push a label into
+ * its control (no breakpoint decides it). An item is two cells (`display:
+ * contents`), so a label still names the control it holds. */
+.control-grid {
+  display: grid;
+  grid-template-columns: fit-content(40%) minmax(0, 1fr);
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+.control-grid__item {
+  display: contents;
+}
+.control-grid__label {
+  color: var(--text-2);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.control-grid__control {
+  grid-column: 2;
+  min-width: 0;
+}
+.control-grid__wide {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+/* A comment is rarely set, so its field is one line until it holds more. */
+.comment-field {
+  field-sizing: content;
+  min-height: 0;
+  max-height: 10lh;
+  resize: none;
+  width: 100%;
+  font-family: inherit;
+}
+
 /* Radix dropdown menu (hamburger). */
 /* Menu/popover layer sits above the app but BELOW the modal layer (backdrop 1000,
  * surface 1001), per the modal-dialog layering order — no accidental shared z. */

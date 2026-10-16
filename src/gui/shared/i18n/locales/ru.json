@@ -233,7 +233,6 @@
   "inputs.locked": "В текущем состоянии задания исходные данные изменить нельзя.",
 
   "section.parameters": "Параметры",
-  "section.operation": "Операция",
   "section.report": "Отчёт",
   "params.useSettings": "Использовать параметры из настроек",
   "op.fileName": "Имя файла",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "Удаление оригиналов отменено. Оригиналы остались на месте.",
   "result.deleteOriginalsFailed": "Не удалось удалить оригиналы. Они остались на месте; попробуйте ещё раз.",
   "progress.runDelete": "Удаление оригиналов · {time}",
-  "dest.willSave": "Будет сохранён",
-  "dest.saved": "Сохранён",
-  "dest.folder": "Папка",
-  "dest.name": "Имя",
   "dest.setFileName": "(укажите имя файла)",
   "dest.besideInput": "(рядом с исходными данными)",
   "op.manifestNeeded": "Включите «Встроить манифест». Перед удалением оригиналов архив сверяется с ним.",

@@ -233,7 +233,6 @@
   "inputs.locked": "現在のジョブの状態では、入力を変更できません。",
 
   "section.parameters": "パラメータ",
-  "section.operation": "操作",
   "section.report": "レポート",
   "params.useSettings": "設定のパラメータを使用",
   "op.fileName": "ファイル名",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "元の項目の削除をキャンセルしました。元の項目は残っています。",
   "result.deleteOriginalsFailed": "元の項目を削除できませんでした。元の場所に残っています。もう一度お試しください。",
   "progress.runDelete": "元の項目を削除 · {time}",
-  "dest.willSave": "保存先",
-  "dest.saved": "保存済み",
-  "dest.folder": "フォルダ",
-  "dest.name": "名前",
   "dest.setFileName": "（ファイル名を指定してください）",
   "dest.besideInput": "（入力と同じ場所）",
   "op.manifestNeeded": "「マニフェストを埋め込む」をオンにしてください。元の項目を取り除く前に、アーカイブをマニフェストと照合して検証します。",

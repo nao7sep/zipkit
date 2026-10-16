@@ -52,9 +52,11 @@ export function DirectoryField({
     }
   }
 
+  // Two cells of the pane's control grid: the label beside the field while the
+  // pane is wide enough, above it when it is not (`.control-grid`, index.css).
   return (
-    <label style={S.stack}>
-      <span style={S.label}>{label}</span>
+    <label className="control-grid__item">
+      <span className="control-grid__label">{label}</span>
       <span style={S.row}>
         <input
           type="text"
@@ -71,14 +73,16 @@ export function DirectoryField({
           {t("common.choose")}
         </button>
       </span>
-      {pickerError && <ReceiverResultNotice result={{ message: message("directory.pickerFailed"), severity: "error" }} onDismiss={() => setPickerError(false)} />}
+      {pickerError && (
+        <span className="control-grid__control">
+          <ReceiverResultNotice result={{ message: message("directory.pickerFailed"), severity: "error" }} onDismiss={() => setPickerError(false)} />
+        </span>
+      )}
     </label>
   );
 }
 
 const S: Record<string, CSSProperties> = {
-  stack: { display: "grid", gap: "0.25rem", minWidth: 0 },
-  label: { color: "var(--text-2)", fontSize: "0.85rem" },
   row: { display: "flex", gap: "0.4rem", minWidth: 0 },
   input: { flex: 1, minWidth: 0 },
 };

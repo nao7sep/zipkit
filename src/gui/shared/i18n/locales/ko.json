@@ -233,7 +233,6 @@
   "inputs.locked": "작업의 현재 상태에서는 입력을 변경할 수 없습니다.",
 
   "section.parameters": "매개변수",
-  "section.operation": "실행",
   "section.report": "보고서",
   "params.useSettings": "설정의 매개변수 사용",
   "op.fileName": "파일 이름",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "원본 삭제를 취소했습니다. 원본은 유지되었습니다.",
   "result.deleteOriginalsFailed": "원본을 삭제할 수 없습니다. 원래 위치에 남아 있습니다. 다시 시도하십시오.",
   "progress.runDelete": "원본 삭제 · {time}",
-  "dest.willSave": "저장 위치",
-  "dest.saved": "저장됨",
-  "dest.folder": "폴더",
-  "dest.name": "이름",
   "dest.setFileName": "(파일 이름을 설정하십시오)",
   "dest.besideInput": "(입력과 같은 위치)",
   "op.manifestNeeded": "“매니페스트 포함”을 켜십시오. 원본을 제거하기 전에 아카이브를 매니페스트와 대조해 검증합니다.",

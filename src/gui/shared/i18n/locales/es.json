@@ -233,7 +233,6 @@
   "inputs.locked": "Las entradas no se pueden cambiar en el estado actual del trabajo.",
 
   "section.parameters": "Parámetros",
-  "section.operation": "Operación",
   "section.report": "Informe",
   "params.useSettings": "Usar los parámetros de Configuración",
   "op.fileName": "Nombre de archivo",
@@ -263,10 +262,6 @@
   "action.originalsDeleteCancelled": "Se canceló la eliminación de los originales. Se conservaron los originales.",
   "result.deleteOriginalsFailed": "No se pudieron eliminar los originales. Siguen en su lugar; vuelve a intentarlo.",
   "progress.runDelete": "Eliminar los originales · {time}",
-  "dest.willSave": "Se guardará",
-  "dest.saved": "Guardado",
-  "dest.folder": "Carpeta",
-  "dest.name": "Nombre",
   "dest.setFileName": "(indica un nombre de archivo)",
   "dest.besideInput": "(junto a la entrada)",
   "op.manifestNeeded": "Activa «Incluir manifiesto». El archivo comprimido se verifica con él antes de quitar los originales.",

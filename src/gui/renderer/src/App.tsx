@@ -71,7 +71,6 @@ import { Splitter } from "./components/Splitter";
 import { StateLabel } from "./components/StateLabel";
 import {
   archiveName,
-  COLOR,
   jobCommands,
   type JobCommand,
   label,
@@ -79,7 +78,10 @@ import {
   scanBlocksRemoval,
   mergeJobEvents,
   outputPreview,
+  reportSummary,
+  severityColor,
 } from "./view";
+import { ChevronIcon } from "./components/Icon";
 
 type DialogName = "settings" | "shortcuts" | "about";
 
@@ -711,6 +713,8 @@ function JobView({
   // job is actually customized. Unchecking enables editing; re-checking restores
   // the defaults (see toggleUseDefaults).
   const [useDefaults, setUseDefaults] = useState(() => parametersEqual(job.options, defaults));
+  // Folded while the job uses the Settings' parameters; unticking unfolds.
+  const [paramsOpen, setParamsOpen] = useState(() => !parametersEqual(job.options, defaults));
   const operationAttempt = useRef(0);
   useEffect(() => () => { operationAttempt.current++; }, []);
 
@@ -810,6 +814,7 @@ function JobView({
   // falsely. The job's own destination, name and comment stay as they are.
   function toggleUseDefaults(checked: boolean) {
     setUseDefaults(checked);
+    if (!checked) setParamsOpen(true);
     if (checked) commitOptions({ ...opts, ...parametersOf(defaults) });
   }
 
@@ -986,29 +991,108 @@ function JobView({
     }
   }
 
-  // Destination preview (directory + file name), derived in one place — see view.ts.
-  const { dir: destDir, name: target } = outputPreview(job, opts, t);
+  // The control panel's one-line digest: the same sentence the report leads
+  // with — what blocks the job, what it will do, or what it did.
+  const digest = useMemo(() => reportSummary(job, plan, t), [job, plan, t]);
 
   return (
     <>
       <Pane title={label(job, t)} rootStyle={GROW} actions={<StateLabel state={job.state} />}>
-        {/* Inputs lead the pane: what this job archives, add/remove without
-            rebuilding it. */}
-        <InputList
-          job={job}
-          editable={editable}
-          onAdd={addInputs}
-          onRemove={removeInput}
-          onDropFiles={onDropFiles}
-          result={inputResult}
-          onResult={onInputResult}
-        />
+        {/* The control panel: where the archive goes and what it is called,
+            what happens once it is written, the commands, and a one-line digest
+            of where the job stands. Everything a run needs is here, above the
+            fold; what is set once and rarely changed follows the rule below. */}
+        <div>
+          <div className="control-grid">
+            <DirectoryField
+              label={t.t("options.outputDir")}
+              value={opts.outputDir}
+              disabled={!editable}
+              onChange={(outputDir) => commitOptions({ ...opts, outputDir })}
+              placeholder={outputPreview(job, opts, t).dir}
+            />
+            <label className="control-grid__item">
+              <span className="control-grid__label">{t.t("op.fileName")}</span>
+              <input
+                type="text"
+                value={opts.fileName}
+                placeholder={archiveName(job.output) || t.t("op.automatic")}
+                disabled={!editable}
+                onChange={(e) => commitOptions({ ...opts, fileName: e.target.value })}
+                style={S.gridInput}
+              />
+            </label>
+            {/* What happens once the archive is written: verify it, and keep,
+                move to Trash or delete the originals. Both are this run's choice
+                only, reset to the safest for every new or restored job. Removing
+                the originals always verifies first, so the box is then ticked
+                and locked. */}
+            <div className="control-grid__wide" style={S.checks}>
+              <label style={S.check}>
+                <input
+                  type="checkbox"
+                  checked={opts.overwrite}
+                  disabled={!editable}
+                  onChange={(e) => commitOptions({ ...opts, overwrite: e.target.checked })}
+                />
+                {t.t("options.overwrite")}
+              </label>
+              <label style={S.check}>
+                <input
+                  type="checkbox"
+                  checked={verifies(job.intent)}
+                  disabled={!editable || removesOriginals(job.intent)}
+                  onChange={(e) => changeIntent({ ...job.intent, verify: e.target.checked })}
+                />
+                {t.t("op.verify")}
+              </label>
+              {removesOriginals(job.intent) && <span style={S.choiceHint}>{t.t("op.verifyRequired")}</span>}
+            </div>
+            <span id={`originals-label-${job.id}`} className="control-grid__label">{t.t("op.originals")}</span>
+            <div role="radiogroup" aria-labelledby={`originals-label-${job.id}`} style={S.choiceOptions}>
+              {ORIGINALS_CHOICES.map(({ value, label }) => (
+                <label key={value} style={S.check}>
+                  <input
+                    type="radio"
+                    name={`originals-${job.id}`}
+                    value={value}
+                    checked={job.intent.originals === value}
+                    disabled={!editable}
+                    onChange={() => changeIntent({ ...job.intent, originals: value })}
+                  />
+                  {t.t(label)}
+                </label>
+              ))}
+            </div>
+          </div>
+          {manifestRequiredButMissing(job.intent, opts.metadata) && (
+            <p style={S.caution}>{t.t("op.manifestNeeded")}</p>
+          )}
+          {scanBlocksRemoval(job) && (
+            <p style={S.caution}>{t.t("op.scanIncomplete")}</p>
+          )}
+          <CommandBar job={job} onCommand={onCommand} />
+          {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
+          {digest && (
+            <p className="text-line" style={{ ...S.digest, color: severityColor(digest.level) }} title={digest.text}>
+              {digest.text}
+            </p>
+          )}
+        </div>
 
-        {/* Parameters: the archive knobs, with the use-defaults toggle in the
-            header and the output-directory group inside. The framed Inputs box
-            right above already closes the section before it, so no rule. */}
-        <div style={S.sectionHeadAfterInputs}>
-          <span style={S.sectionTitle}>{t.t("section.parameters")}</span>
+        {/* Parameters: folded while the job uses the Settings' parameters, and
+            unfoldable to read them without unticking. */}
+        <div style={S.sectionHead}>
+          <button
+            type="button"
+            style={S.disclosure}
+            aria-expanded={paramsOpen}
+            aria-controls={`parameters-${job.id}`}
+            onClick={() => setParamsOpen((open) => !open)}
+          >
+            <ChevronIcon open={paramsOpen} />
+            <span style={S.sectionTitle}>{t.t("section.parameters")}</span>
+          </button>
           <label style={S.defaultsToggle}>
             <input
               type="checkbox"
@@ -1019,113 +1103,45 @@ function JobView({
             <span>{t.t("params.useSettings")}</span>
           </label>
         </div>
-        <OptionsPanel options={opts} onChange={(parameters) => commitOptions({ ...opts, ...parameters })} disabled={useDefaults || !editable} />
+        <div id={`parameters-${job.id}`} hidden={!paramsOpen}>
+          <OptionsPanel options={opts} onChange={(parameters) => commitOptions({ ...opts, ...parameters })} disabled={useDefaults || !editable} />
+        </div>
 
-        {/* Operation: this archive's own name, folder, overwrite choice and
-            comment, then the run's choices, then the output path as the final
-            checkpoint right above Create, then the lifecycle buttons. */}
-        <div style={S.sectionHead}>
-          <span style={S.sectionTitle}>{t.t("section.operation")}</span>
-        </div>
-        <div style={S.opsGrid}>
-          <label style={S.stack}>
-            <span style={S.stackLabel}>{t.t("op.fileName")}</span>
-            <input
-              type="text"
-              value={opts.fileName}
-              placeholder={archiveName(job.output) || t.t("op.automatic")}
-              disabled={!editable}
-              onChange={(e) => commitOptions({ ...opts, fileName: e.target.value })}
-            />
-          </label>
-          <DirectoryField
-            label={t.t("options.outputDir")}
-            value={opts.outputDir}
-            disabled={!editable}
-            onChange={(outputDir) => commitOptions({ ...opts, outputDir })}
-            placeholder={t.t("dest.besideInput")}
-          />
-        </div>
-        <label style={S.choiceToggle}>
-          <input
-            type="checkbox"
-            checked={opts.overwrite}
-            disabled={!editable}
-            onChange={(e) => commitOptions({ ...opts, overwrite: e.target.checked })}
-          />
-          {t.t("options.overwrite")}
-        </label>
         {/* A ZIP comment may span lines, so this is a multiline field cleaned on
-            blur (commit-time, never mid-edit, IME-safe). */}
-        <label style={{ ...S.stack, marginTop: "0.75rem" }}>
-          <span style={S.stackLabel}>{t.t("options.comment")}</span>
-          <textarea
-            value={opts.comment}
-            rows={2}
-            disabled={!editable}
-            onChange={(e) => commitOptions({ ...opts, comment: e.target.value })}
-            onBlur={(e) => commitOptions({ ...opts, comment: multiline(e.target.value) })}
-            style={S.comment}
-          />
-        </label>
-        {/* What happens once the archive is written: verify it, and keep, move to
-            Trash or delete the originals. Both are this run's choice only, reset
-            to the safest for every new or restored job. Removing the originals
-            always verifies first, so the box is then ticked and locked. */}
-        <label style={S.choiceToggle}>
-          <input
-            type="checkbox"
-            checked={verifies(job.intent)}
-            disabled={!editable || removesOriginals(job.intent)}
-            onChange={(e) => changeIntent({ ...job.intent, verify: e.target.checked })}
-          />
-          {t.t("op.verify")}
-        </label>
-        {removesOriginals(job.intent) && <span style={S.choiceHint}>{t.t("op.verifyRequired")}</span>}
-        <fieldset style={S.choiceField} disabled={!editable}>
-          <legend style={S.stackLabel}>{t.t("op.originals")}</legend>
-          <div style={S.choiceOptions}>
-            {ORIGINALS_CHOICES.map(({ value, label }) => (
-              <label key={value} style={S.choiceOption}>
-                <input
-                  type="radio"
-                  name={`originals-${job.id}`}
-                  value={value}
-                  checked={job.intent.originals === value}
-                  onChange={() => changeIntent({ ...job.intent, originals: value })}
-                />
-                {t.t(label)}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        {/* The destination checkpoint above Create. "Where" (directory) and "what
-            name" (file name) are still separate concerns here, so they are shown as
-            two labeled lines, never joined into one finalized path. */}
-        <div style={S.dest}>
-          <span style={S.destLead}>{t.t(job.state === "done" ? "dest.saved" : "dest.willSave")}</span>
-          <div style={S.destRows}>
-            <span style={S.destKey}>{t.t("dest.folder")}</span>
-            <span style={S.destVal} title={destDir}>
-              {destDir}
-            </span>
-            <span style={S.destKey}>{t.t("dest.name")}</span>
-            <span style={S.destVal} title={target}>
-              {target}
-            </span>
+            blur (commit-time, never mid-edit, IME-safe). It is rarely set, so it
+            takes one line until it holds more. */}
+        <div style={S.commentRow}>
+          <div className="control-grid">
+            <label className="control-grid__item">
+              <span className="control-grid__label">{t.t("options.comment")}</span>
+              <textarea
+                className="comment-field"
+                value={opts.comment}
+                rows={1}
+                disabled={!editable}
+                onChange={(e) => commitOptions({ ...opts, comment: e.target.value })}
+                onBlur={(e) => commitOptions({ ...opts, comment: multiline(e.target.value) })}
+              />
+            </label>
           </div>
         </div>
-        {manifestRequiredButMissing(job.intent, opts.metadata) && (
-          <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>{t.t("op.manifestNeeded")}</p>
-        )}
-        {scanBlocksRemoval(job) && (
-          <p style={{ color: COLOR.warn, margin: "0.5rem 0 0" }}>{t.t("op.scanIncomplete")}</p>
-        )}
-        <CommandBar job={job} onCommand={onCommand} />
-        {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
 
-        {/* Report: a context-aware, natural-language log of what the archive does
-            for the user, integrated into the same pane. */}
+        {/* The inputs close the pane: chosen before the job existed, so they are
+            for reference and the occasional addition. */}
+        <div style={S.inputs}>
+          <InputList
+            job={job}
+            editable={editable}
+            onAdd={addInputs}
+            onRemove={removeInput}
+            onDropFiles={onDropFiles}
+            result={inputResult}
+            onResult={onInputResult}
+          />
+        </div>
+
+        {/* Report: what the archive does with each item, until the right pane
+            shows it when it is needed. */}
         <div style={S.sectionHead}>
           <span style={S.sectionTitle}>{t.t("section.report")}</span>
         </div>
@@ -1173,32 +1189,32 @@ const S: Record<string, CSSProperties> = {
     boxShadow: "0 0 0 2px var(--accent-strong)",
     background: "color-mix(in srgb, var(--accent) 10%, transparent)",
   },
-  // The destination checkpoint above Create: a "Will save" lead, then the folder
-  // and the file name on their own labelled lines so where and what-name read as
-  // the two separate concerns they still are. Plain text (no box); values
-  // selectable and wrapping so the whole path/name is always visible. The label
-  // column is as wide as its longest label in the interface language.
-  dest: { display: "grid", gap: "0.25rem", margin: "0.85rem 0 0.25rem", userSelect: "text" },
-  destLead: { color: "var(--text-2)", fontSize: "0.85rem" },
-  destRows: { display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "0.25rem 0.6rem", alignItems: "baseline" },
-  destKey: { color: "var(--text-2)", fontSize: "0.85rem", whiteSpace: "nowrap" },
-  destVal: { minWidth: 0, fontSize: "0.95rem", fontWeight: 600, wordBreak: "break-all" },
-  opsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
-    gap: "0.6rem 1rem",
-    alignItems: "end",
+  // The control panel's fields fill their grid cell.
+  gridInput: { width: "100%", minWidth: 0 },
+  // Overwrite and Verify share one row, wrapping under each other when narrow.
+  checks: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.35rem 1.25rem" },
+  check: { display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.9rem" },
+  choiceHint: { color: "var(--text-2)", fontSize: "0.8rem" },
+  choiceOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem", minWidth: 0 },
+  caution: { color: "var(--status-warning)", margin: "0.6rem 0 0" },
+  // One line under the commands: what blocks the job, what it will do, or what
+  // it did; the whole sentence is in its tooltip and the report.
+  digest: { margin: "0.6rem 0 0", fontSize: "0.85rem" },
+  // The Parameters heading is its own fold control: no button chrome, the
+  // section title's look.
+  disclosure: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.35rem",
+    padding: "0.1rem 0.2rem 0.1rem 0",
+    background: "transparent",
+    border: "none",
+    color: "var(--text-2)",
+    cursor: "pointer",
   },
-  stack: { display: "grid", gap: "0.25rem", minWidth: 0 },
-  comment: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3rem" },
-  // The run's choices below the file name: the verify box, then the originals.
-  choiceToggle: { display: "flex", gap: "0.4rem", alignItems: "center", marginTop: "0.75rem", fontSize: "0.9rem" },
-  choiceHint: { display: "block", margin: "0.2rem 0 0 1.4rem", color: "var(--text-2)", fontSize: "0.8rem" },
-  choiceField: { margin: "0.75rem 0 0", padding: 0, border: "none", minWidth: 0 },
-  choiceOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem", marginTop: "0.3rem" },
-  choiceOption: { display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.9rem" },
-  stackLabel: { color: "var(--text-2)", fontSize: "0.85rem" },
-  // Section divider rows inside the single Archive pane (Operation, Report).
+  commentRow: { marginTop: "0.85rem" },
+  inputs: { marginTop: "1rem" },
+  // Section divider rows inside the single Archive pane (Parameters, Report).
   sectionHead: {
     display: "flex",
     alignItems: "center",
@@ -1207,13 +1223,6 @@ const S: Record<string, CSSProperties> = {
     margin: "1.1rem 0 0.6rem",
     paddingTop: "0.6rem",
     borderTop: "1px solid var(--border)",
-  },
-  sectionHeadAfterInputs: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "0.75rem",
-    margin: "1rem 0 0.6rem",
   },
   sectionTitle: {
     fontSize: "0.75rem",
