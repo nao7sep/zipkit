@@ -1,20 +1,14 @@
 /**
- * Shared main-process singletons: the one `ZipKit` instance, the app's records
+ * Shared main-process singletons: the app's records
  * (lifecycle, orchestration, and every SDK event under its job),
  * the target window for pushed streams, and the error mapper. Both the plain IPC
  * handlers and the queue engine use these.
  */
 
 import { BrowserWindow } from "electron";
-import { StallError, ZipKit, ZipKitError } from "../../sdk/index.js";
 import type { GuiError, Job, JobAction, JobEvent, LogEvent } from "../shared/api.js";
 import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
-
-/** Every `zip.*` call passes an `onProgress` that records its events in
- *  `records.sqlite3` (see {@link startProgressRun}), so the SDK's own session log file
- *  would only duplicate them; the results' `log` is therefore `null`. */
-export const zip = new ZipKit({ sessionLog: false });
 
 /** The app's records for this launch. */
 export const log = createAppLog();
@@ -87,14 +81,17 @@ export function sendQueueSaved(saved: boolean): void {
   liveWindow()?.webContents.send("zipkit:queueSaved", saved);
 }
 
+/** SDK failures reach main from the SDK host as plain fields (./sdk-client). */
 export function toGuiError(err: unknown): GuiError {
-  if (err instanceof StallError) {
-    return { type: err.errorType, code: err.code, presentation: message("error.stalled", { path: err.path }) };
+  const fields = (err ?? {}) as { errorType?: unknown; code?: unknown; path?: unknown };
+  if (typeof fields.errorType !== "string" || typeof fields.code !== "string") {
+    return { type: "unknown", code: "unknown", presentation: guiErrorPresentation("unknown") };
   }
-  if (err instanceof ZipKitError) {
-    return { type: err.errorType, code: err.code, presentation: guiErrorPresentation(err.errorType) };
+  if (fields.errorType === "stall" && typeof fields.path === "string") {
+    return { type: fields.errorType, code: fields.code, presentation: message("error.stalled", { path: fields.path }) };
   }
-  return { type: "unknown", code: "unknown", presentation: guiErrorPresentation("unknown") };
+  if (fields.code === "host.exited") return { type: fields.errorType, code: fields.code, presentation: message("error.hostExited") };
+  return { type: fields.errorType, code: fields.code, presentation: guiErrorPresentation(fields.errorType) };
 }
 
 function guiErrorPresentation(type: string): Message {

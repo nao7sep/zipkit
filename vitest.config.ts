@@ -40,6 +40,8 @@ export default defineConfig({
         "src/sdk/types.ts", // type declarations only, no runtime code
         "src/gui/main/index.ts", // Electron main entry: storage-root guard + dynamic import
         "src/gui/main/bootstrap.ts", // window creation + app lifecycle wiring
+        "src/gui/main/sdk-host-entry.ts", // the utility process's parent-port wiring
+        "src/gui/main/sdk-process.ts", // utilityProcess.fork wiring
         "src/gui/preload/index.ts", // contextBridge: one-line ipcRenderer passthroughs
         "src/gui/renderer/src/main.tsx", // React DOM mount
         "src/gui/renderer/src/records.tsx", // the Records window's React DOM mount

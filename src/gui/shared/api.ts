@@ -84,7 +84,10 @@ export interface GuiReportedError {
   cause?: GuiReportedError;
 }
 
-export type VerifyResult = { ok: true; data: ExtractData } | { ok: false; error: GuiError };
+/** What a verification tells the window: the verdict, the counts and the paths
+ *  the archive and its manifest disagree on, never every entry's result. */
+export type VerifyReport = Pick<ExtractData, "reportOk" | "summary" | "missing" | "extra">;
+export type VerifyResult = { ok: true; data: VerifyReport } | { ok: false; error: GuiError };
 
 /** What each System choice in Settings resolves to now (app-chrome and
  *  timestamp conventions): the OS appearance, the computer's language and its zone. */

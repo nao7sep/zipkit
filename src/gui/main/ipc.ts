@@ -19,7 +19,8 @@ import {
 import type { RecordsRead, RecordsReadResults } from "./records-worker.js";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
-import { getMainWindow, log, startProgressRun, toGuiError, zip } from "./runtime.js";
+import { getMainWindow, log, startProgressRun, toGuiError } from "./runtime.js";
+import { sdk } from "./sdk-process.js";
 import { currentSettings } from "./settings.js";
 import { submitSettings, discardSettingsSubmission, reportSettingsDraft } from "./settings-save.js";
 import { languageEnvironment, mainTranslator, systemLanguageNow } from "./i18n.js";
@@ -29,7 +30,7 @@ import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
 import { appAdmission } from "./command-admission.js";
-import { appArchiveEffects, fileResources, type EffectClaim } from "./archive-effects.js";
+import { appArchiveEffects, type EffectClaim } from "./archive-effects.js";
 
 export function registerIpc(): void {
   ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {
@@ -96,14 +97,11 @@ export function registerIpc(): void {
       let claim: EffectClaim | undefined;
       try {
         if (!appAdmission.accepting()) throw new Error("The app is shutting down");
-        const resources = await fileResources([archive], zip.volume());
+        const resources = await sdk.call("resources", [[archive]]);
         if (!appAdmission.accepting()) throw new Error("The app is shutting down");
         claim = appArchiveEffects.claim(resources.map((item) => ({ ...item, mode: "read" as const }))) ?? undefined;
         if (!claim) throw new Error("Another archive action still owns these files");
-        const data = await zip.extract(
-          { archive, dryRun: true, checkMetadata },
-          { onProgress: startProgressRun(jobId, "verify") },
-        );
+        const data = await sdk.call("inspect", [archive, checkMetadata], { onProgress: startProgressRun(jobId, "verify") });
         log.info("verify done", { jobId, archive, reportOk: data.reportOk });
         return { ok: true, data };
       } catch (err) {

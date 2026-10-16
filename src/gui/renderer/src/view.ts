@@ -813,7 +813,7 @@ export function stateTint(state: Job["state"]): string {
 }
 
 /** The verify result one-liner. */
-export function verifySummary(data: ExtractData, t: Translator): string {
+export function verifySummary(data: Pick<ExtractData, "summary">, t: Translator): string {
   const s = data.summary;
   return t.list([
     t.t("report.entries", { count: s.total }),

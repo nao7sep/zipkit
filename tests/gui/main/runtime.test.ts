@@ -1,30 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
-  zipOptions: [] as unknown[],
   jobEvent: vi.fn((jobId: string, event: unknown, action: string, run: string) => ({ jobId, session: "s", seq: 1, action, run, event })),
 }));
 
 vi.mock("electron", () => ({ BrowserWindow: class {} }));
-vi.mock("../../../src/sdk/index.js", () => {
-  class ZipKitError extends Error {}
-  class StallError extends ZipKitError {
-    readonly errorType = "stall";
-    readonly code = "io.stalled";
-    constructor(readonly path: string) {
-      super(`read did not respond within 30000 ms: ${path}`);
-    }
-  }
-  class ZipKit {
-    constructor(options: unknown) {
-      hoisted.zipOptions.push(options);
-    }
-  }
-  return { ZipKit, ZipKitError, StallError };
-});
 vi.mock("../../../src/gui/main/log.js", () => ({ createAppLog: () => ({ jobEvent: hoisted.jobEvent }) }));
 
-import { StallError } from "../../../src/sdk/index.js";
+import { SdkHostError } from "../../../src/gui/main/sdk-client.js";
 import {
   clearMainWindow,
   ensureMainWindow,
@@ -85,9 +68,7 @@ describe("SDK events", () => {
     vi.useRealTimers();
   });
 
-  it("builds the one SDK instance without a session log file of its own", () => {
-    expect(hoisted.zipOptions).toEqual([{ sessionLog: false }]);
-  });
+
 
   it("records an event under its job and run when no window is open", () => {
     const sink = startProgressRun("job-1", "plan");
@@ -145,11 +126,16 @@ describe("GUI error presentation", () => {
   });
 
   it("names the path that stopped responding for a stalled volume", () => {
-    const StallErrorMock = StallError as unknown as new (path: string) => Error;
-    expect(toGuiError(new StallErrorMock("/Volumes/NAS/a.zip"))).toEqual({
+    const stalled = new SdkHostError({ name: "StallError", message: "read did not respond", errorType: "stall", code: "io.stalled", path: "/Volumes/NAS/a.zip" });
+    expect(toGuiError(stalled)).toEqual({
       type: "stall",
       code: "io.stalled",
       presentation: { key: "error.stalled", values: { path: "/Volumes/NAS/a.zip" } },
     });
+  });
+
+  it("explains a host process that ended during the work", () => {
+    const ended = new SdkHostError({ name: "SdkHostExited", message: "ended", errorType: "host", code: "host.exited" });
+    expect(toGuiError(ended)).toEqual({ type: "host", code: "host.exited", presentation: { key: "error.hostExited" } });
   });
 });

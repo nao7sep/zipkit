@@ -76,6 +76,7 @@
   "error.readFailed": "Das Archiv konnte nicht gelesen werden. Prüfen Sie, ob es noch vorhanden und eine gültige ZIP-Datei ist.",
   "error.verifyIncomplete": "Die Prüfung konnte nicht abgeschlossen werden. Prüfen Sie, ob das Archiv noch vorhanden ist, und versuchen Sie es dann erneut.",
   "error.stalled": "Das Laufwerk oder die Netzwerkfreigabe mit {path} reagiert nicht mehr.",
+  "error.hostExited": "Der Archivierungsprozess von ZipKit wurde unerwartet beendet, vielleicht weil dieser Ordner mehr Arbeitsspeicher braucht, als der Computer bereitstellen konnte. Ihn auf kleinere Aufträge aufzuteilen, kann helfen.",
 
   "job.blocking": { "one": "{count} blockierender Befund", "other": "{count} blockierende Befunde" },
   "job.prepareFailed": "Dieser Auftrag konnte nicht vorbereitet werden. Prüfen Sie, ob seine Eingaben noch vorhanden sind, und versuchen Sie es dann erneut.",

@@ -8,19 +8,18 @@
 
 import { ipcMain, shell } from "electron";
 import { nanoid } from "nanoid";
-import { buildSpec, type GuiOptions } from "../shared/spec.js";
+import type { GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { PlanReport } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
-import { log, sendQueue, sendQueueSaved, startProgressRun, zip } from "./runtime.js";
+import { log, sendQueue, sendQueueSaved, startProgressRun } from "./runtime.js";
+import { sdk } from "./sdk-process.js";
+import { attachInternals, readInternals } from "../../sdk/internal/carrier.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
-import { resolveOutputPath } from "./output.js";
-import { classifyPaths } from "./inputs.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
-import { outputInsideInputs } from "./safety.js";
 import { appAdmission } from "./command-admission.js";
-import { appArchiveEffects, fileResources } from "./archive-effects.js";
+import { appArchiveEffects } from "./archive-effects.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingJobs: SavedJob[] | undefined;
@@ -57,37 +56,25 @@ function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved
   });
 }
 
+// Every look at the user's files runs in the SDK host's utility process
+// (./sdk-host); the engine supplies a job-tagging `onProgress`, so progress
+// reaches the right job's Progress stream. The plan comes back with the
+// internals the writer needs and goes back with them to be written.
 const engine = createQueueEngine({
   admission: appAdmission,
   effects: appArchiveEffects,
-  resources: (paths, signal) => fileResources(paths, zip.volume(signal)),
-  // Compose the output path from the GUI's directory + file name at the boundary
-  // (absolute, or empty so the SDK infers beside the input — never resolved
-  // against the unpredictable working directory). The engine supplies a
-  // job-tagging `onProgress`, so progress reaches the right job's Progress stream.
+  resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
   plan: async (inputs, options, signal, onProgress) => {
-    const spec = buildSpec(inputs, options);
-    const output = await resolveOutputPath(options.outputDir, options.fileName, inputs, zip.volume(signal));
-    if (output) spec.output = output;
-    return zip.plan(spec, { signal, onProgress });
+    const { plan, internals } = await sdk.call("plan", [inputs, options], { signal, onProgress });
+    attachInternals(plan, internals);
+    return plan;
   },
-  write: async (plan, signal, onProgress, onPhysicalSettlement) =>
-    (await zip.write(plan, { signal, onProgress, onPhysicalSettlement })).bytes,
-  verify: async (output, signal, onProgress) =>
-    (
-      await zip.extract(
-        { archive: output, dryRun: true, checkMetadata: true },
-        { signal, onProgress },
-      )
-    ).reportOk,
-  // The archive is the output: naming it keeps the fresh scan from counting
-  // the archive itself when it sits beside the inputs.
-  recheck: (output, inputs, options, signal, onProgress) => {
-    const spec = buildSpec(inputs, options);
-    spec.output = output;
-    return zip.compareSources(spec, output, { signal, onProgress });
-  },
-  classify: (paths) => classifyPaths(paths, zip.volume()),
+  write: (plan, signal, onProgress, onPhysicalSettlement) =>
+    sdk.call("write", [{ plan, internals: readInternals(plan)! }], { signal, onProgress, onPhysicalSettlement }),
+  verify: (output, signal, onProgress) => sdk.call("verify", [output], { signal, onProgress }),
+  recheck: (output, inputs, options, signal, onProgress) =>
+    sdk.call("recheck", [output, inputs, options], { signal, onProgress }),
+  classify: (paths) => sdk.call("classify", [paths]),
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };
     const settlements: Promise<void>[] = [];
@@ -108,7 +95,7 @@ const engine = createQueueEngine({
     result.settlement = Promise.all(settlements).then(() => {});
     return result;
   },
-  outputInsideInputs: (output, inputs, signal) => outputInsideInputs(output, inputs, zip.volume(signal)),
+  outputInsideInputs: (output, inputs, signal) => sdk.call("outputInsideInputs", [output, inputs], { signal }),
   emit: (jobs) => {
     pendingJobs = toResumable(jobs);
     clearTimeout(saveTimer);

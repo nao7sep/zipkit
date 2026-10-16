@@ -229,6 +229,9 @@ function explainMoved(comparison: SourceComparison, present: string[], moved: st
 /** A failed step's job message: the step's own sentence, led by the path that
  *  stopped responding when the failure was a stalled volume. */
 function failureMessage(err: unknown, key: MessageKey, values?: MessageValues): Message {
+  // The SDK host's process ended mid-job; most likely the folder needed more
+  // memory than the computer could give it.
+  if (errCode(err) === "host.exited") return sentences([message("error.hostExited"), message(key, values)]) ?? message(key, values);
   const path = stalledPath(err);
   if (path === undefined) return message(key, values);
   return sentences([message("error.stalled", { path }), message(key, values)]) ?? message(key, values);
