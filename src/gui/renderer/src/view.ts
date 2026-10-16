@@ -68,12 +68,19 @@ const COUNT_KEYS: Record<PathKind, MessageKey> = {
   other: "jobs.countOther",
 };
 
-/** What a job holds, for its row: the inputs by kind (only the kinds present,
- *  in the Inputs list's order), then what its plan excluded, warned about and
- *  could not include, each only when there is any. Before classification the
- *  inputs are one plain count; before planning there is no plan part. */
+/** What a job holds, for its row, most important first so a narrow row cuts
+ *  the least: what its plan could not include, warned about and excluded, each
+ *  only when there is any, then the inputs by kind (only the kinds present, in
+ *  the Inputs list's order). Before classification the inputs are one plain
+ *  count; before planning there is no plan part. */
 export function jobCounts(job: Job, t: Translator): JobCount[] {
   const counts: JobCount[] = [];
+  const summary = job.summary;
+  if (summary) {
+    if (summary.errors > 0) counts.push({ text: t.t("jobs.countErrors", { count: summary.errors }), severity: "error" });
+    if (summary.warnings > 0) counts.push({ text: t.t("jobs.countWarnings", { count: summary.warnings }), severity: "warning" });
+    if (summary.excluded > 0) counts.push({ text: t.t("jobs.countExcluded", { count: summary.excluded }) });
+  }
   if (job.entries && job.entries.length > 0) {
     for (const kind of ["directory", "file", "nonexistent", "other"] as const) {
       const count = job.entries.filter((entry) => entry.kind === kind).length;
@@ -81,12 +88,6 @@ export function jobCounts(job: Job, t: Translator): JobCount[] {
     }
   } else if (job.inputs.length > 0) {
     counts.push({ text: t.t("jobs.countItems", { count: job.inputs.length }) });
-  }
-  const summary = job.summary;
-  if (summary) {
-    if (summary.excluded > 0) counts.push({ text: t.t("jobs.countExcluded", { count: summary.excluded }) });
-    if (summary.warnings > 0) counts.push({ text: t.t("jobs.countWarnings", { count: summary.warnings }), severity: "warning" });
-    if (summary.errors > 0) counts.push({ text: t.t("jobs.countErrors", { count: summary.errors }), severity: "error" });
   }
   return counts;
 }

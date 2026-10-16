@@ -119,14 +119,14 @@ describe("jobCounts", () => {
     expect(jobCounts(job({ inputs: [] }), en)).toEqual([]);
   });
 
-  it("adds the plan's exclusions, warnings and errors only when there are any, colouring the last two", () => {
+  it("leads with the plan's errors, warnings and exclusions, only when there are any, colouring the first two", () => {
     const entries = [{ path: "/d", kind: "directory" as const }];
     expect(jobCounts(job({ inputs: ["/d"], entries, summary }), en)).toEqual([{ text: "1 folder" }]);
     expect(jobCounts(job({ inputs: ["/d"], entries, summary: { ...summary, excluded: 4, warnings: 1, errors: 1240 } }), en)).toEqual([
-      { text: "1 folder" },
-      { text: "4 excluded" },
-      { text: "1 warning", severity: "warning" },
       { text: "1,240 errors", severity: "error" },
+      { text: "1 warning", severity: "warning" },
+      { text: "4 excluded" },
+      { text: "1 folder" },
     ]);
   });
 
@@ -134,7 +134,7 @@ describe("jobCounts", () => {
     const ja = createTranslator("ja");
     const entries = [{ path: "/d", kind: "directory" as const }, { path: "/f", kind: "file" as const }, { path: "/g", kind: "file" as const }];
     expect(texts(job({ inputs: ["/d", "/f", "/g"], entries, summary: { ...summary, excluded: 4, errors: 1 } }), ja))
-      .toEqual(["フォルダ 1", "ファイル 2", "除外 4", "エラー 1"]);
+      .toEqual(["エラー 1", "除外 4", "フォルダ 1", "ファイル 2"]);
     expect(texts(job({ inputs: ["/f", "/g"], entries: entries.slice(1) }), createTranslator("ru"))).toEqual(["2 файла"]);
   });
 });

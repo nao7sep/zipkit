@@ -65,7 +65,8 @@ describe("JobListbox", () => {
     expect(screen.getByText("photos").className).toBe("text-line");
     const line = screen.getByText("1 folder").parentElement!;
     expect(line.className).toBe("text-line");
-    expect(line.textContent).toBe("1 folder · 1 file · 2 excluded · 1 error");
+    // Errors first, so a narrow row cuts the inputs, not the errors.
+    expect(line.textContent).toBe("1 error · 2 excluded · 1 folder · 1 file");
     expect(screen.getByText("1 error").style.color).toBe("var(--status-error)");
   });
 
