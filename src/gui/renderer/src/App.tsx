@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Job, JobEvent, JobIntent, PlanData, SystemChoices, VerifyResult } from "../../shared/api";
+import type { Job, JobEvent, JobIntent, PlanReport, SystemChoices, VerifyResult } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable } from "../../shared/queue";
@@ -682,7 +682,7 @@ function JobView({
   // Keyed by job id in the parent, so this remounts per job: local option draft and
   // verify state start fresh, no manual re-sync.
   const [opts, setOpts] = useState<GuiOptions>(job.options);
-  const [plan, setPlan] = useState<PlanData | null>(null);
+  const [plan, setPlan] = useState<PlanReport | null>(null);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
   const [planLoadFailed, setPlanLoadFailed] = useState(false);
   const [planAttempt, setPlanAttempt] = useState(0);
@@ -725,8 +725,9 @@ function JobView({
 
   useEffect(() => {
     let live = true;
-    const unsubscribe = window.zipkit.onEvent((event) => {
-      if (event.jobId === job.id) setEvents((held) => mergeJobEvents(held, [event]));
+    const unsubscribe = window.zipkit.onEvents((batch) => {
+      const mine = batch.filter((event) => event.jobId === job.id);
+      if (mine.length > 0) setEvents((held) => mergeJobEvents(held, mine));
     });
     void window.zipkit.getJobEvents(job.id).then((recorded) => {
       if (live) setEvents((held) => mergeJobEvents(recorded, held));

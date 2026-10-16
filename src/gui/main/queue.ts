@@ -10,7 +10,8 @@ import { ipcMain, shell } from "electron";
 import { nanoid } from "nanoid";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
-import type { PlanData } from "../shared/api.js";
+import type { PlanReport } from "../shared/api.js";
+import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendQueue, sendQueueSaved, startProgressRun, zip } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
@@ -233,5 +234,8 @@ export function registerQueueIpc(): void {
 
   ipcMain.handle("zipkit:cancelJob", async (_e, id: string): Promise<void> => engine.cancel(id));
 
-  ipcMain.handle("zipkit:getPlan", async (_e, id: string): Promise<PlanData | null> => engine.getPlan(id));
+  ipcMain.handle("zipkit:getPlan", async (_e, id: string): Promise<PlanReport | null> => {
+    const plan = engine.getPlan(id);
+    return plan ? toPlanReport(plan) : null;
+  });
 }

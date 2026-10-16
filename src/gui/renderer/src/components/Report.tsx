@@ -9,9 +9,10 @@
  * times, so the report never shows a result that no longer holds.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CSSProperties } from "react";
-import type { Job, PlanData, VerifyResult } from "../../../shared/api";
+import type { Job, PlanReport, VerifyResult } from "../../../shared/api";
 import { useI18n } from "../i18n/I18nContext";
 import {
   jobAdvisories,
@@ -27,17 +28,19 @@ import {
   type ReportRow,
 } from "../view";
 
-export function Report({
+/** Memoized: the Archive pane re-renders on every Progress batch, and the
+ *  report depends only on the job, its plan and its verification. */
+export const Report = memo(function Report({
   job,
   plan,
   verify,
 }: {
   job: Job;
-  plan: PlanData | null;
+  plan: PlanReport | null;
   verify: VerifyResult | null;
 }) {
   const t = useI18n();
-  const groups = plan ? planReport(plan, t) : [];
+  const groups = useMemo(() => (plan ? planReport(plan, t) : []), [plan, t]);
   const summary = reportSummary(job, plan, t, groups);
   // GUI advisories about the inputs (e.g. re-zipping a .zip) lead the log — they
   // are relevant before any plan exists, so they keep the report from reading
@@ -50,12 +53,12 @@ export function Report({
   // Paths the verification found missing or unexpected are listed one per row,
   // like the plan's groups, rather than joined into one sentence that grows
   // with the archive (interface-styling-conventions, Labels).
-  const verifyGroups: PathGroupData[] = verifyData
+  const verifyGroups = useMemo((): PathGroupData[] => verifyData
     ? [
         { title: t.t("report.missing", { count: verifyData.missing.length }), level: "error" as const, paths: verifyData.missing },
         { title: t.t("report.extra", { count: verifyData.extra.length }), level: "warning" as const, paths: verifyData.extra },
       ].filter((group) => group.paths.length > 0)
-    : [];
+    : [], [verifyData, t]);
 
   const verificationResult = verify
     ? verify.ok
@@ -157,12 +160,7 @@ export function Report({
           ))}
         </ul>
       )}
-      {groups.map((group) => (
-        <Group key={group.kind} group={group} />
-      ))}
-      {verifyGroups.map((group) => (
-        <PathGroup key={group.title} group={group} />
-      ))}
+      <ReportRows groups={groups} verifyGroups={verifyGroups} />
       <span aria-live="assertive" aria-atomic="true" style={S.srOnly}>
         {assertiveAnnouncement}
       </span>
@@ -171,7 +169,7 @@ export function Report({
       </span>
     </div>
   );
-}
+});
 
 function LogRow({ line }: { line: ReportLine }) {
   return (
@@ -181,44 +179,103 @@ function LogRow({ line }: { line: ReportLine }) {
   );
 }
 
-function Group({ group }: { group: ReportGroup }) {
-  const t = useI18n();
-  const color = severityColor(reportGroupLevel(group.kind));
-  return (
-    <section style={S.group}>
-      <h3 style={S.groupTitle}>{t.t(reportGroupTitle(group.kind), { count: group.rows.length })}</h3>
-      <ul style={S.log}>
-        {group.rows.map((row, i) => (
-          <li key={i} style={{ ...S.fileRow, borderColor: color }}>
-            <RowPath row={row} />
-            {row.changes.map((change, j) => (
-              <span key={j} style={S.change}>{change}</span>
-            ))}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 interface PathGroupData {
   title: string;
   level: ReportLine["level"];
   paths: string[];
 }
 
-function PathGroup({ group }: { group: PathGroupData }) {
+/** One line of the report's lists: a group's heading, or one of its rows. */
+type ReportItem =
+  | { kind: "title"; key: string; text: string }
+  | { kind: "row"; key: string; color: string; row: ReportRow; last: boolean }
+  | { kind: "path"; key: string; color: string; path: string; last: boolean };
+
+function reportItems(groups: readonly ReportGroup[], verifyGroups: readonly PathGroupData[], t: ReturnType<typeof useI18n>): ReportItem[] {
+  const items: ReportItem[] = [];
+  for (const group of groups) {
+    const color = severityColor(reportGroupLevel(group.kind));
+    items.push({ kind: "title", key: `title:${group.kind}`, text: t.t(reportGroupTitle(group.kind), { count: group.rows.length }) });
+    group.rows.forEach((row, i) => items.push({ kind: "row", key: `${group.kind}:${i}`, color, row, last: i === group.rows.length - 1 }));
+  }
+  for (const group of verifyGroups) {
+    const color = severityColor(group.level);
+    items.push({ kind: "title", key: `title:${group.title}`, text: group.title });
+    group.paths.forEach((path, i) => items.push({ kind: "path", key: `${group.title}:${i}`, color, path, last: i === group.paths.length - 1 }));
+  }
+  return items;
+}
+
+/** The nearest ancestor that scrolls: the Archive pane's body. */
+function scrollParent(element: HTMLElement | null): HTMLElement | null {
+  for (let node = element?.parentElement ?? null; node; node = node.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(node).overflowY)) return node;
+  }
+  return null;
+}
+
+/**
+ * The report's groups as one virtualized list (volume-handling conventions,
+ * Item count): only the lines in or near the pane's view are drawn, each
+ * measured as it appears, so a folder that flags every file costs no more to
+ * show than its visible rows. The list scrolls with the pane, below whatever
+ * the report shows above it.
+ */
+function ReportRows({ groups, verifyGroups }: { groups: readonly ReportGroup[]; verifyGroups: readonly PathGroupData[] }) {
+  const t = useI18n();
+  const items = useMemo(() => reportItems(groups, verifyGroups, t), [groups, verifyGroups, t]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
+  const [offset, setOffset] = useState(0);
+  useLayoutEffect(() => { setScrollElement(scrollParent(listRef.current)); }, []);
+  // The text above the list can change height, so its start is measured on each render.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !scrollElement) return;
+    const next = list.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top + scrollElement.scrollTop;
+    if (next !== offset) setOffset(next);
+  });
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollElement,
+    estimateSize: (index) => (items[index]!.kind === "title" ? 28 : 40),
+    getItemKey: (index) => items[index]!.key,
+    scrollMargin: offset,
+    overscan: 8,
+    initialRect: { width: 0, height: window.innerHeight },
+  });
+  if (items.length === 0) return null;
   return (
-    <section style={S.group}>
-      <h3 style={S.groupTitle}>{group.title}</h3>
-      <ul style={S.log}>
-        {group.paths.map((path) => (
-          <li key={path} style={{ ...S.fileRow, borderColor: severityColor(group.level) }}>
-            <span style={S.path}>{path}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <div ref={listRef} style={{ position: "relative", height: virtualizer.getTotalSize() }}>
+      {virtualizer.getVirtualItems().map((virtual) => {
+        const item = items[virtual.index]!;
+        return (
+          <div
+            key={virtual.key}
+            data-index={virtual.index}
+            ref={virtualizer.measureElement}
+            style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtual.start - offset}px)` }}
+          >
+            {item.kind === "title" ? (
+              <h3 style={S.groupTitle}>{item.text}</h3>
+            ) : (
+              <div style={{ ...S.fileRow, borderColor: item.color, marginBottom: item.last ? "0.6rem" : "0.3rem" }}>
+                {item.kind === "row" ? (
+                  <>
+                    <RowPath row={item.row} />
+                    {item.row.changes.map((change, j) => (
+                      <span key={j} style={S.change}>{change}</span>
+                    ))}
+                  </>
+                ) : (
+                  <span style={S.path}>{item.path}</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -255,7 +312,6 @@ const S: Record<string, CSSProperties> = {
   summary: { margin: "0 0 0.5rem", fontSize: "0.95rem", fontWeight: 600 },
   note: { color: "var(--text-2)", margin: "0 0 0.5rem", fontSize: "0.85rem" },
   log: { listStyle: "none", margin: "0 0 0.6rem", padding: 0, display: "grid", gap: "0.3rem" },
-  group: { margin: 0 },
   groupTitle: { margin: "0 0 0.35rem", fontSize: "0.85rem", fontWeight: 600 },
   fileRow: {
     display: "flex",

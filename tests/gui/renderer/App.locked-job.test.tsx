@@ -65,7 +65,7 @@ describe("a job that finishes mid-edit", () => {
         getLayout: async () => DEFAULT_LAYOUT,
         getPlan: async () => null,
         getJobEvents: async () => [],
-        onEvent: () => () => {},
+        onEvents: () => () => {},
         updateJob,
         reportError: vi.fn(),
       },

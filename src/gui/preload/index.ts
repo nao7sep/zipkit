@@ -10,7 +10,7 @@ import { createJobEditSubmissions } from "./job-edits.js";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "../shared/records.js";
-import { LANGUAGE_CHANGED_CHANNEL, OPEN_ABOUT_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type SystemChoices, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanData, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
+import { LANGUAGE_CHANGED_CHANNEL, OPEN_ABOUT_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type SystemChoices, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanReport, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
 const jobEdits = createJobEditSubmissions((id, patch) => ipcRenderer.invoke("zipkit:updateJob", id, patch));
 // Preload has a browser document but keeps Node types out of renderer compilation.
@@ -86,7 +86,7 @@ const api = {
   removeArchive: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:removeArchive", id),
   trashOriginals: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:trashOriginals", id),
   cancelJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:cancelJob", id),
-  getPlan: (id: string): Promise<PlanData | null> => ipcRenderer.invoke("zipkit:getPlan", id),
+  getPlan: (id: string): Promise<PlanReport | null> => ipcRenderer.invoke("zipkit:getPlan", id),
   getQueue: (): Promise<Job[]> => ipcRenderer.invoke("zipkit:getQueue"),
   onQueue: (callback: (jobs: Job[]) => void): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, jobs: Job[]): void => callback(jobs);
@@ -106,11 +106,11 @@ const api = {
     ipcRenderer.invoke("zipkit:verify", jobId, archive, checkMetadata),
   reveal: (path: string): Promise<void> => ipcRenderer.invoke("zipkit:reveal", path),
   getJobEvents: (jobId: string): Promise<JobEvent[]> => ipcRenderer.invoke("zipkit:getJobEvents", jobId),
-  onEvent: (callback: (event: JobEvent) => void): (() => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, event: JobEvent): void => callback(event);
-    ipcRenderer.on("zipkit:event", handler);
+  onEvents: (callback: (events: JobEvent[]) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, events: JobEvent[]): void => callback(events);
+    ipcRenderer.on("zipkit:events", handler);
     return () => {
-      ipcRenderer.removeListener("zipkit:event", handler);
+      ipcRenderer.removeListener("zipkit:events", handler);
     };
   },
   openRecordsWindow: (): Promise<void> => ipcRenderer.invoke("zipkit:openRecordsWindow"),

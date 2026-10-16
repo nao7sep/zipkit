@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   zipOptions: [] as unknown[],
@@ -31,6 +31,7 @@ import {
   getMainWindow,
   setMainWindow,
   startProgressRun,
+  EVENT_BATCH_MS,
   toGuiError,
 } from "../../../src/gui/main/runtime.js";
 import type { LogEvent } from "../../../src/gui/shared/api.js";
@@ -73,9 +74,15 @@ describe("main-window ownership", () => {
 describe("SDK events", () => {
   const event = { time: "t", level: "info", message: "m", stage: "plan", event: "plan.done" } as unknown as LogEvent;
 
+  // Each test's batch is sent before the next begins.
   beforeEach(() => {
+    vi.useFakeTimers();
     setMainWindow(null);
     hoisted.jobEvent.mockClear();
+  });
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
   });
 
   it("builds the one SDK instance without a session log file of its own", () => {
@@ -100,23 +107,24 @@ describe("SDK events", () => {
     expect(a?.[3]).not.toBe(b?.[3]);
   });
 
-  it("records an event, then sends the recorded event to the open window", () => {
-    const win = fakeWindow();
-    setMainWindow(win as never);
+  it("records each event at once and sends the window one batch of them", () => {
+    {
+      const win = fakeWindow();
+      setMainWindow(win as never);
+      const sink = startProgressRun("job-1", "verify");
+      sink(event);
+      sink(event);
 
-    startProgressRun("job-1", "verify")(event);
-
-    const run = hoisted.jobEvent.mock.calls[0]?.[3];
-    expect(hoisted.jobEvent).toHaveBeenCalledExactlyOnceWith("job-1", event, "verify", run);
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith("zipkit:event", {
-      jobId: "job-1",
-      session: "s",
-      seq: 1,
-      action: "verify",
-      run,
-      event,
-    });
+      const run = hoisted.jobEvent.mock.calls[0]?.[3];
+      expect(hoisted.jobEvent).toHaveBeenCalledTimes(2);
+      expect(hoisted.jobEvent).toHaveBeenCalledWith("job-1", event, "verify", run);
+      expect(win.webContents.send).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(EVENT_BATCH_MS);
+      const recorded = { jobId: "job-1", session: "s", seq: 1, action: "verify", run, event };
+      expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith("zipkit:events", [recorded, recorded]);
+    }
   });
+
 });
 
 describe("GUI error presentation", () => {

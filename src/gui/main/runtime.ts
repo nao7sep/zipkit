@@ -7,7 +7,7 @@
 
 import { BrowserWindow } from "electron";
 import { StallError, ZipKit, ZipKitError } from "../../sdk/index.js";
-import type { GuiError, Job, JobAction, LogEvent } from "../shared/api.js";
+import type { GuiError, Job, JobAction, JobEvent, LogEvent } from "../shared/api.js";
 import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
 
@@ -58,10 +58,24 @@ let lastRun = 0;
  *  the launch, and a record's session tells launches apart. */
 export function startProgressRun(jobId: string, action: JobAction): (event: LogEvent) => void {
   const run = String(++lastRun);
-  return (event) => {
-    const recorded = log.jobEvent(jobId, event, action, run);
-    liveWindow()?.webContents.send("zipkit:event", recorded);
-  };
+  return (event) => sendEvent(log.jobEvent(jobId, event, action, run));
+}
+
+// Progress reaches the window in batches, one message and one render however
+// fast a run reports, as a folder that flags every file does (volume-handling
+// conventions, Item count). Short enough to read as live.
+export const EVENT_BATCH_MS = 50;
+let pendingEvents: JobEvent[] = [];
+let eventsTimer: ReturnType<typeof setTimeout> | undefined;
+
+function sendEvent(recorded: JobEvent): void {
+  pendingEvents.push(recorded);
+  eventsTimer ??= setTimeout(() => {
+    eventsTimer = undefined;
+    const batch = pendingEvents;
+    pendingEvents = [];
+    liveWindow()?.webContents.send("zipkit:events", batch);
+  }, EVENT_BATCH_MS);
 }
 
 export function sendQueue(jobs: Job[]): void {

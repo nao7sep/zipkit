@@ -15,7 +15,8 @@
  */
 
 import type { InputAdmission } from "./input-admission.js";
-import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, Severity, SourceComparison } from "../../sdk/types.js";
+import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, Severity, SourceComparison } from "../../sdk/types.js";
+import type { PlanReport } from "./plan-report.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
 import type { PaneLayout } from "./layout.js";
@@ -41,7 +42,7 @@ export type GuiPlatform =
   | "cygwin"
   | "netbsd";
 
-export type { ArchiveSpec, ExtractData, Finding, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity, SourceComparison };
+export type { ArchiveSpec, ExtractData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity, SourceComparison };
 export type { LanguageEnvironment, Message, PaneLayout };
 
 /** The action that started a Progress run: a background plan, Create (its
@@ -173,7 +174,8 @@ export interface ZipKitGuiApi {
   /** Cancel a job's in-flight plan or write. */
   cancelJob(id: string): Promise<void>;
   /** The full plan for a job's detail view, or null if it has none right now. */
-  getPlan(id: string): Promise<PlanData | null>;
+  /** The selected job's plan as the report shows it: only the entries it lists. */
+  getPlan(id: string): Promise<PlanReport | null>;
   /** The current job list — the initial fetch on mount; `onQueue` pushes updates. */
   getQueue(): Promise<Job[]>;
   /** Subscribe to the job list; returns an unsubscribe function. */
@@ -190,7 +192,7 @@ export interface ZipKitGuiApi {
    *  launches. */
   getJobEvents(jobId: string): Promise<JobEvent[]>;
   /** Subscribe to the live progress events of every job; returns an unsubscribe fn. */
-  onEvent(callback: (event: JobEvent) => void): () => void;
+  onEvents(callback: (events: JobEvent[]) => void): () => void;
 
   /** Open the Records window, or bring it forward when it is open. */
   openRecordsWindow(): Promise<void>;

@@ -16,7 +16,8 @@
 import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
 import { manifestRequiredButMissing, scanBlocksTrash } from "../../shared/queue";
-import type { ExtractData, Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, PlanData, Severity } from "../../shared/api";
+import type { ExtractData, Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
+import { renamedItself, type PlanReport } from "../../shared/plan-report";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
 import type { GuiOptions } from "../../shared/spec";
@@ -245,7 +246,7 @@ const ERROR_GUIDANCE: Record<string, MessageKey> = {
  *  "Windows-safe" claim. Speaks to the job's actual state — failed, done, blocked,
  *  or ready (with what the archive will carry / what was auto-handled). */
 export function reportSummary(
-  job: Job, plan: PlanData | null, t: Translator,
+  job: Job, plan: PlanReport | null, t: Translator,
   groups: readonly ReportGroup[] = plan ? planReport(plan, t) : [],
 ): ReportLine | null {
   if (job.state === "failed") {
@@ -422,29 +423,13 @@ function severityGroup(findings: readonly Finding[]): ReportGroupKind | null {
   return null;
 }
 
-function lastSegment(p: string): string {
-  return p.split("/").filter((s) => s !== "").pop() ?? "";
-}
-
-/** Whether an entry was renamed in its own right: its own name changed, or the
- *  SDK reported a rename on it (a parent segment with no folder entry of its
- *  own is reported on the entry). A name changed only because its folder was
- *  renamed is the folder's change, shown once on the folder's row. */
-function renamedItself(entry: PlanData["entries"][number]): boolean {
-  if (entry.originalPath === entry.archivePath) return false;
-  return (
-    lastSegment(entry.originalPath) !== lastSegment(entry.archivePath) ||
-    entry.findings.some((f) => f.fix?.kind === "rename")
-  );
-}
-
 /** The Report's files: one row per file the plan changes or has a finding on,
  *  with every change it makes to that file, grouped by kind. Each entry's own
  *  findings are its changes; a finding no entry carries (the output already
  *  existing) is a row of its own. An entry whose only change is a renamed
  *  folder above it (every file of a renamed `.pages` bundle) gets no row. Pure
  *  and testable. */
-export function planReport(plan: PlanData, t: Translator): ReportGroup[] {
+export function planReport(plan: PlanReport, t: Translator): ReportGroup[] {
   const rows: Record<ReportGroupKind, ReportRow[]> = { blocking: [], warnings: [], renamed: [], excluded: [], notes: [] };
   const findingId = (f: Finding): string => `${f.rule}\0${f.path}\0${f.message}`;
   const onEntries = new Set<string>();

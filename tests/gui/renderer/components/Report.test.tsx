@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import { Report } from "../../../../src/gui/renderer/src/components/Report";
+import * as view from "../../../../src/gui/renderer/src/view";
+
+// Counted, so a test can tell whether the report rendered again.
+vi.mock("../../../../src/gui/renderer/src/view", async (original) => {
+  const real = await original<typeof import("../../../../src/gui/renderer/src/view")>();
+  return { ...real, reportSummary: vi.fn(real.reportSummary) };
+});
 import type { Job, PlanData } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
@@ -67,7 +74,7 @@ describe("Report result announcements", () => {
     rerender(<Report job={job()} plan={withFinding} verify={null} />);
 
     expect(screen.getAllByText(/ready to archive/)).toHaveLength(2);
-    expect(screen.getByText("Review this name").closest("li")?.getAttribute("role")).toBeNull();
+    expect(screen.getByText("Review this name").closest("[aria-live], [role='alert'], [role='status']")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(live.textContent).toContain("ready to archive");
   });
@@ -182,4 +189,42 @@ describe("Report verification paths", () => {
     expect(screen.getByRole("heading", { name: "Unexpected extra entries (1)" })).toBeTruthy();
     for (const path of [...missing, "stray.bin"]) expect(screen.getByText(path).tagName).toBe("SPAN");
   });
+});
+
+describe("Report at volume", () => {
+  const many = (count: number) => ({
+    ...plan(),
+    entries: Array.from({ length: count }, (_, i) => ({
+      archivePath: `photos/IMG_${i}.HEIC`, originalPath: `photos/IMG_${i}.heic`,
+      type: "file" as const, method: "deflate" as const, excluded: false, findings: [],
+    })),
+  }) as PlanData;
+
+  it("draws only the rows near the pane's view of a report with thousands of rows", () => {
+    // jsdom lays nothing out: each line measures 40 px and the pane 600 px.
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ top: 0, bottom: 40, height: 40, width: 600, left: 0, right: 600, x: 0, y: 0, toJSON() {} } as DOMRect);
+    const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight")!;
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 600 });
+    try {
+      render(<div style={{ overflowY: "auto", height: 600 }}><Report job={job()} plan={many(5000)} verify={null} /></div>);
+      expect(screen.getByRole("heading", { name: "Renamed for portability (5,000)" })).toBeTruthy();
+      const drawn = screen.getAllByText(/^photos\/IMG_/).length;
+      expect(drawn).toBeGreaterThan(0);
+      expect(drawn).toBeLessThan(100);
+    } finally { rect.mockRestore(); Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight); }
+  });
+
+  it("is not rebuilt when its parent re-renders with the same job, plan and verification", () => {
+    const summaries = vi.mocked(view.reportSummary);
+    const shown = job();
+    const report = many(3);
+    const view_ = (tick: number) => <div data-tick={tick}><Report job={shown} plan={report} verify={null} /></div>;
+    const { rerender } = render(view_(0));
+    const first = summaries.mock.calls.length;
+    rerender(view_(1));
+    rerender(view_(2));
+    expect(summaries.mock.calls.length).toBe(first);
+  });
+
 });
