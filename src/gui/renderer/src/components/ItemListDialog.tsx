@@ -14,7 +14,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ModalShell } from "./ModalShell";
 import { ReportRowView } from "./ReportRowView";
 import { useI18n } from "../i18n/I18nContext";
-import { rowsByName, rowsByPath, type ReportRow } from "../view";
+import { rowsByName, rowsByPath, splitName, type ReportRow } from "../view";
 
 export type ListOrder = "path" | "name";
 const ORDER_KEY = "zipkit.listOrder";
@@ -26,17 +26,15 @@ function savedOrder(): ListOrder {
 
 type Item =
   | { kind: "heading"; key: string; text: string }
-  | { kind: "row"; key: string; row: ReportRow; showChanges: boolean };
+  | { kind: "row"; key: string; row: ReportRow; inGroup: boolean };
 
 export function ItemListDialog({
   title,
   rows,
-  color,
   onClose,
 }: {
   title: string;
   rows: readonly ReportRow[];
-  color: string;
   onClose: () => void;
 }) {
   const t = useI18n();
@@ -46,18 +44,22 @@ export function ItemListDialog({
     try { localStorage.setItem(ORDER_KEY, next); } catch { /* remembered for this view only */ }
   };
   const items = useMemo((): Item[] => {
-    if (order === "path") return rowsByPath(rows).map((row, i) => ({ kind: "row", key: `p:${i}`, row, showChanges: true }));
-    return rowsByName(rows).flatMap((group, g) => [
-      { kind: "heading" as const, key: `h:${g}`, text: t.t("details.counted", { name: group.name, count: t.number(group.rows.length) }) },
-      ...group.rows.map((row, i) => ({ kind: "row" as const, key: `r:${g}:${i}`, row, showChanges: false })),
-    ]);
+    if (order === "path") return rowsByPath(rows).map((row, i) => ({ kind: "row", key: `p:${i}`, row, inGroup: false }));
+    const { repeated, single } = rowsByName(rows);
+    return [
+      ...repeated.flatMap((group, g): Item[] => [
+        { kind: "heading", key: `h:${g}`, text: t.t("details.counted", { name: group.name, count: t.number(group.rows.length) }) },
+        ...group.rows.map((row, i): Item => ({ kind: "row", key: `r:${g}:${i}`, row, inGroup: true })),
+      ]),
+      ...single.map((row, i): Item => ({ kind: "row", key: `s:${i}`, row, inGroup: false })),
+    ];
   }, [order, rows, t]);
 
   return (
     <ModalShell
       title={title}
       onClose={onClose}
-      maxWidth="48rem"
+      width="min(48rem, 90vw)"
       footer={
         <>
           <div role="radiogroup" aria-label={t.t("details.order")} style={S.orders}>
@@ -78,12 +80,12 @@ export function ItemListDialog({
         </>
       }
     >
-      <VirtualRows items={items} color={color} />
+      <VirtualRows items={items} />
     </ModalShell>
   );
 }
 
-function VirtualRows({ items, color }: { items: readonly Item[]; color: string }) {
+function VirtualRows({ items }: { items: readonly Item[] }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => { setScrollElement(scrollParent(listRef.current)); }, []);
@@ -104,11 +106,15 @@ function VirtualRows({ items, color }: { items: readonly Item[]; color: string }
             key={virtual.key}
             data-index={virtual.index}
             ref={virtualizer.measureElement}
-            style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtual.start}px)`, paddingBottom: "0.3rem" }}
+            style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtual.start}px)`, paddingBottom: "0.45rem" }}
           >
             {item.kind === "heading"
               ? <h3 style={S.heading}>{item.text}</h3>
-              : <ReportRowView row={item.row} color={color} showChanges={item.showChanges} />}
+              // In a group the heading names the item, so each row shows only
+              // where it is.
+              : item.inGroup
+                ? <span style={S.groupedFolder}>{splitName(item.row.path).folder || item.row.path}</span>
+                : <ReportRowView row={item.row} variant="full" />}
           </div>
         );
       })}
@@ -128,4 +134,5 @@ const S: Record<string, CSSProperties> = {
   // The order choice sits at the footer's start, away from Close.
   orders: { display: "flex", gap: "0.35rem", marginInlineEnd: "auto" },
   heading: { margin: "0.4rem 0 0.2rem", fontSize: "0.85rem", fontWeight: 600 },
+  groupedFolder: { display: "block", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--text-2)", overflowWrap: "anywhere", paddingInlineStart: "0.75rem" },
 };

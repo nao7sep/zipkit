@@ -875,13 +875,14 @@ export function stateTint(state: Job["state"]): string {
  *  renames and notes, which ask nothing of the user, fold into one line. */
 export interface DetailsSection {
   key: string;
-  title: string;
+  /** The kind, without its count: the count is shown once, beside it. */
+  label: string;
   level: Severity;
   rows: ReportRow[];
   show: "rows" | "reasons" | "count";
 }
 
-/** How many rows a listed section shows before its "Show all". */
+/** How many rows a listed section shows before its list link. */
 export const DETAILS_INLINE_ROWS = 5;
 
 /** The plan's groups, then what a verification found, as the Details pane's
@@ -894,15 +895,15 @@ export function detailsSections(
   const sections: DetailsSection[] = [];
   const pathRows = (paths: readonly string[]): ReportRow[] => paths.map((path) => ({ path, changes: [] }));
   if (verify && verify.missing.length > 0) {
-    sections.push({ key: "missing", title: t.t("report.missing", { count: verify.missing.length }), level: "error", rows: pathRows(verify.missing), show: "rows" });
+    sections.push({ key: "missing", label: t.t("report.missing"), level: "error", rows: pathRows(verify.missing), show: "rows" });
   }
   if (verify && verify.extra.length > 0) {
-    sections.push({ key: "extra", title: t.t("report.extra", { count: verify.extra.length }), level: "warning", rows: pathRows(verify.extra), show: "rows" });
+    sections.push({ key: "extra", label: t.t("report.extra"), level: "warning", rows: pathRows(verify.extra), show: "rows" });
   }
   for (const group of groups) {
     sections.push({
       key: group.kind,
-      title: t.t(reportGroupTitle(group.kind), { count: group.rows.length }),
+      label: t.t(reportGroupTitle(group.kind)),
       level: reportGroupLevel(group.kind),
       rows: group.rows,
       show: group.kind === "blocking" || group.kind === "warnings" ? "rows" : group.kind === "excluded" ? "reasons" : "count",
@@ -927,25 +928,39 @@ function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** A path's last segment, and the folder it is in ("" at the top). */
+export function splitName(path: string): { name: string; folder: string } {
+  const trimmed = path.replace(/\/+$/, "");
+  const cut = trimmed.lastIndexOf("/");
+  return cut < 0 ? { name: trimmed, folder: "" } : { name: trimmed.slice(cut + 1), folder: trimmed.slice(0, cut) };
+}
+
 /** Every row by its path, so a folder's rows read together. */
 export function rowsByPath(rows: readonly ReportRow[]): ReportRow[] {
   return [...rows].sort((a, b) => compareText(a.path, b.path));
 }
 
-/** Rows grouped by their name, folders first and then files, each group by
- *  name and its rows by path: every `.DS_Store` under one heading, so a whole
- *  group of expected junk is passed over at a glance. */
-export function rowsByName(rows: readonly ReportRow[]): Array<{ name: string; dir: boolean; rows: ReportRow[] }> {
+/** Rows by name, folders first and then files: each name that occurs more than
+ *  once as one counted group (every `.DS_Store` under one heading, passed over
+ *  at a glance), then every name that occurs once, as a plain row. */
+export function rowsByName(rows: readonly ReportRow[]): {
+  repeated: Array<{ name: string; dir: boolean; rows: ReportRow[] }>;
+  single: ReportRow[];
+} {
   const groups = new Map<string, { name: string; dir: boolean; rows: ReportRow[] }>();
   for (const row of rows) {
-    const name = row.path.split("/").filter((segment) => segment !== "").pop() ?? row.path;
+    const name = splitName(row.path).name;
     const dir = row.dir === true;
     const key = `${dir ? "d" : "f"}\0${name}`;
     const group = groups.get(key) ?? { name, dir, rows: [] };
     group.rows.push(row);
     groups.set(key, group);
   }
-  return [...groups.values()]
-    .map((group) => ({ ...group, rows: rowsByPath(group.rows) }))
-    .sort((a, b) => Number(b.dir) - Number(a.dir) || compareText(a.name.toLowerCase(), b.name.toLowerCase()) || compareText(a.name, b.name));
+  const byName = (a: { name: string; dir: boolean }, b: { name: string; dir: boolean }): number =>
+    Number(b.dir) - Number(a.dir) || compareText(a.name.toLowerCase(), b.name.toLowerCase()) || compareText(a.name, b.name);
+  const all = [...groups.values()];
+  return {
+    repeated: all.filter((group) => group.rows.length > 1).sort(byName).map((group) => ({ ...group, rows: rowsByPath(group.rows) })),
+    single: all.filter((group) => group.rows.length === 1).sort(byName).map((group) => group.rows[0]!),
+  };
 }

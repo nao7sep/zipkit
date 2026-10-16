@@ -971,7 +971,7 @@ describe("Details pane sections and orders", () => {
       ["renamed", "count", "info"],
       ["excluded", "reasons", "info"],
     ]);
-    expect(sections[0]!.title).toBe("Missing from the archive (1)");
+    expect(sections[0]!.label).toBe("Missing from the archive");
   });
 
   it("groups exclusions by reason, the largest group first", () => {
@@ -979,14 +979,14 @@ describe("Details pane sections and orders", () => {
     expect(grouped.map((group) => [group.reason, group.rows.length])).toEqual([["Junk", 2], ["Empty", 1]]);
   });
 
-  it("orders by path, or by name with folders first and each group's rows by path", () => {
-    const rows = [row("z/.DS_Store"), row("a/.DS_Store"), row("m/Thumbs.db"), row("q/.Trashes", [], true), row("b/a.txt")];
-    expect(rowsByPath(rows).map((r) => r.path)).toEqual(["a/.DS_Store", "b/a.txt", "m/Thumbs.db", "q/.Trashes", "z/.DS_Store"]);
-    expect(rowsByName(rows).map((group) => [group.name, group.dir, group.rows.map((r) => r.path)])).toEqual([
-      [".Trashes", true, ["q/.Trashes"]],
+  it("orders by path, or by name: repeated names grouped first, folders first, then each name that occurs once", () => {
+    const rows = [row("z/.DS_Store"), row("a/.DS_Store"), row("m/Thumbs.db"), row("q/.Trashes", [], true), row("p/.Trashes", [], true), row("b/a.txt"), row("c/x", [], true)];
+    expect(rowsByPath(rows).map((r) => r.path)).toEqual(["a/.DS_Store", "b/a.txt", "c/x", "m/Thumbs.db", "p/.Trashes", "q/.Trashes", "z/.DS_Store"]);
+    const { repeated, single } = rowsByName(rows);
+    expect(repeated.map((group) => [group.name, group.dir, group.rows.map((r) => r.path)])).toEqual([
+      [".Trashes", true, ["p/.Trashes", "q/.Trashes"]],
       [".DS_Store", false, ["a/.DS_Store", "z/.DS_Store"]],
-      ["a.txt", false, ["b/a.txt"]],
-      ["Thumbs.db", false, ["m/Thumbs.db"]],
     ]);
+    expect(single.map((r) => r.path)).toEqual(["c/x", "b/a.txt", "m/Thumbs.db"]);
   });
 });

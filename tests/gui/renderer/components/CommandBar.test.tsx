@@ -65,4 +65,9 @@ describe("CommandBar focus retention", () => {
     // No buttons to land on, so focus rests on the bar container rather than <body>.
     expect(document.activeElement).not.toBe(document.body);
   });
+
+  it("says nothing for a blocked job, whose digest already says why", () => {
+    const { container } = render(<CommandBar job={job("needs-attention", { message: message("job.blocking", { count: 1 }) })} onCommand={noop} />);
+    expect(container.textContent).toBe("");
+  });
 });

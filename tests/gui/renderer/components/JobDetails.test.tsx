@@ -55,11 +55,11 @@ const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = 
 describe("JobDetails", () => {
   it("lists a blocking group's first rows, and opens all of them on request", () => {
     show(plan(Array.from({ length: 7 }, (_, i) => blocking(`a/${i}.txt`))));
-    expect(screen.getByRole("heading", { name: "Blocking issues (7)" })).toBeTruthy();
-    expect(screen.getAllByText(/^a\/\d\.txt$/)).toHaveLength(5);
-    fireEvent.click(screen.getByRole("button", { name: "Show all 7" }));
+    expect(screen.getByRole("heading", { name: "Blocking issues 7" })).toBeTruthy();
+    expect(screen.getAllByTitle(/^a\/\d\.txt$/)).toHaveLength(5);
+    fireEvent.click(screen.getByRole("button", { name: "Blocking issues (7)" }));
     const dialog = screen.getByRole("dialog", { name: "Blocking issues (7)" });
-    expect(within(dialog).getAllByText(/^a\/\d\.txt$/)).toHaveLength(7);
+    expect(within(dialog).getAllByText(/^\d\.txt$/)).toHaveLength(7);
   });
 
   it("folds exclusions into one line per reason, the largest first, each opening its own list", () => {
@@ -67,28 +67,30 @@ describe("JobDetails", () => {
       junk("a/.DS_Store"), junk("b/.DS_Store"),
       entry("empty", { type: "dir", excluded: true, excludeReason: "empty-dir" }),
     ]));
-    expect(screen.getByRole("heading", { name: "Excluded (3)" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Excluded 3" })).toBeTruthy();
     const reasons = screen.getAllByRole("listitem").map((item) => item.textContent);
-    expect(reasons[0]).toMatch(/^Excluded by the junk preset \(2\)/);
+    expect(reasons[0]).toMatch(/^Excluded by the junk preset 2List$/);
     expect(reasons).toHaveLength(2);
-    expect(screen.queryByText("a/.DS_Store")).toBeNull();
-    fireEvent.click(within(screen.getAllByRole("listitem")[0]!).getByRole("button", { name: "Show list" }));
+    expect(screen.queryByText(".DS_Store")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Excluded by the junk preset (2)" }));
     const dialog = screen.getByRole("dialog", { name: "Excluded by the junk preset (2)" });
-    expect(within(dialog).getByText("a/.DS_Store")).toBeTruthy();
+    expect(within(dialog).getAllByText(".DS_Store")).toHaveLength(2);
+    expect(within(dialog).getByText("a")).toBeTruthy();
     expect(within(dialog).queryByText("empty")).toBeNull();
   });
 
-  it("groups a list by name, folders first, and remembers the order chosen", () => {
-    show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("z/.Trashes", "dir"), junk("w/Thumbs.db")]));
-    fireEvent.click(screen.getByRole("button", { name: "Show all 4" }));
+  it("groups the names that repeat, folders first, lists the rest plainly, and remembers the order chosen", () => {
+    show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("z/.Trashes", "dir"), junk("v/.Trashes", "dir"), junk("w/Thumbs.db")]));
+    fireEvent.click(screen.getByRole("button", { name: "Excluded (5)" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("radio", { name: "By name" }));
-    expect(within(dialog).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
-      ".Trashes (1)", ".DS_Store (2)", "Thumbs.db (1)",
-    ]);
+    expect(within(dialog).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([".Trashes (2)", ".DS_Store (2)"]);
+    // A name that occurs once is a plain row: its name, then its folder.
+    expect(within(dialog).getByText("Thumbs.db")).toBeTruthy();
+    expect(within(dialog).getByText("w")).toBeTruthy();
     expect(localStorage.getItem("zipkit.listOrder")).toBe("name");
     fireEvent.click(within(dialog).getByText("Close", { selector: "button" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show all 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluded (5)" }));
     expect(within(screen.getByRole("dialog")).getByRole("radio", { name: "By name" }).getAttribute("aria-checked")).toBe("true");
   });
 
@@ -98,7 +100,7 @@ describe("JobDetails", () => {
       findings: [{ rule: "name.invalid-char", severity: "info", path: "a:b.txt", message: "substituted", fix: { kind: "rename", to: "a_b.txt" } }],
     })]));
     expect(document.querySelector("del")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show all 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Renamed for portability (1)" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog.querySelector("del")!.textContent).toBe(":");
     expect(dialog.querySelector("ins")!.textContent).toBe("_");
@@ -111,9 +113,9 @@ describe("JobDetails", () => {
       ok: true,
       data: { reportOk: false, missing, extra: ["stray.bin"], summary: { total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } } as never,
     }} />);
-    expect(screen.getByRole("heading", { name: "Missing from the archive (2)" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Unexpected extra entries (1)" })).toBeTruthy();
-    for (const path of [...missing, "stray.bin"]) expect(screen.getByText(path)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Missing from the archive 2" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Unexpected extra entries 1" })).toBeTruthy();
+    for (const path of [...missing, "stray.bin"]) expect(screen.getByTitle(path)).toBeTruthy();
   });
 
   it("says when nothing needs a look, and shows the step a working job is on", () => {
@@ -132,7 +134,7 @@ describe("JobDetails", () => {
 
   it("draws only the rows near the view of a list with thousands of rows", () => {
     show(plan(Array.from({ length: 5000 }, (_, i) => junk(`photos/${i}/.DS_Store`))));
-    fireEvent.click(screen.getByRole("button", { name: "Show all 5,000" }));
+    fireEvent.click(screen.getByRole("button", { name: "Excluded (5,000)" }));
     const drawn = within(screen.getByRole("dialog")).getAllByText(/^photos\//).length;
     expect(drawn).toBeGreaterThan(0);
     expect(drawn).toBeLessThan(100);

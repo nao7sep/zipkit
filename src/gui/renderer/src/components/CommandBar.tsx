@@ -3,8 +3,8 @@
  * (Archive) pane, beside the intent and target, since these are all
  * operation-related. It renders the commands the job's state allows (from the
  * pure `jobCommands` map) and reports the chosen one; the parent performs it.
- * When a job is blocked (`needs-attention`) there are no commands, so it shows
- * why instead.
+ * When a job is blocked (`needs-attention`) there are no commands, and the bar
+ * shows nothing: the control panel's digest already says why.
  */
 
 import { useLayoutEffect, useRef } from "react";
@@ -34,7 +34,7 @@ const CLASS: Partial<Record<JobCommand, string>> = {
 };
 
 export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCommand) => void }) {
-  const { t, text } = useI18n();
+  const { t } = useI18n();
   const commands = jobCommands(job);
   // Seat the destructive group at the far-right end (an auto left-margin on the
   // first danger button pushes it and the rest right), away from the everyday
@@ -46,7 +46,7 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
   // through planning to ready), the browser drops focus to <body>. We act only when
   // the command SET changes AND focus has fallen to the body — i.e. exactly when a
   // button just unmounted from under focus — and pull it to the bar's new primary
-  // (falling back to the bar itself when the job is blocked and shows only a hint).
+  // (falling back to the bar itself when the job is blocked and offers none).
   // Two properties make this robust where the obvious approaches break:
   //  - It triggers on the set change, not on a prior render, so it works for a
   //    keyboard user who tabbed to a button (no render happened while focused).
@@ -75,26 +75,20 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
 
   return (
     // tabIndex -1 so the bar itself can hold focus as a last resort (a blocked job
-    // shows only a hint with no button to land on); it never becomes a tab stop.
+    // offers no button to land on); it never becomes a tab stop.
     // It draws no ring when it does: the focus is a place to stand, not a control,
     // and the key that led here would light one around the whole bar.
-    <div ref={barRef} tabIndex={-1} style={{ ...S.bar, outline: "none" }}>
-      {commands.length === 0 ? (
-        <span style={S.hint}>
-          {job.message ? text(job.message) : t("command.blockedHint")}
-        </span>
-      ) : (
-        commands.map((c, i) => (
-          <button
-            key={c}
-            className={CLASS[c]}
-            style={i === firstDanger ? S.pushRight : undefined}
-            onClick={() => onCommand(c)}
-          >
-            {t(LABEL[c])}
-          </button>
-        ))
-      )}
+    <div ref={barRef} tabIndex={-1} style={{ ...(commands.length > 0 ? S.bar : null), outline: "none" }}>
+      {commands.map((c, i) => (
+        <button
+          key={c}
+          className={CLASS[c]}
+          style={i === firstDanger ? S.pushRight : undefined}
+          onClick={() => onCommand(c)}
+        >
+          {t(LABEL[c])}
+        </button>
+      ))}
     </div>
   );
 }
@@ -107,6 +101,5 @@ const S: Record<string, CSSProperties> = {
     flexWrap: "wrap",
     marginTop: "0.85rem",
   },
-  hint: { color: "var(--text-2)", fontSize: "0.85rem" },
   pushRight: { marginLeft: "auto" },
 };

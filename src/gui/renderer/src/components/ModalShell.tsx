@@ -38,6 +38,7 @@ export function ModalShell({
   footer,
   describedById,
   maxWidth,
+  width,
 }: {
   title: string;
   /**
@@ -54,6 +55,9 @@ export function ModalShell({
   describedById?: string;
   /** Override the default surface width cap (e.g. a wider settings form). */
   maxWidth?: string;
+  /** A fixed width, for a surface whose content gives it none of its own, such
+   *  as a virtualized list; it still never grows past its cap. */
+  width?: string;
 }) {
   const { t } = useI18n();
   return (
@@ -66,7 +70,7 @@ export function ModalShell({
       <Dialog.Portal>
         <Dialog.Overlay style={ST.backdrop} />
         <Dialog.Content
-          style={maxWidth ? { ...ST.surface, maxWidth } : ST.surface}
+          style={{ ...ST.surface, ...(maxWidth ? { maxWidth } : null), ...(width ? { width, maxWidth: maxWidth ?? width } : null) }}
           aria-describedby={describedById}
           onOpenAutoFocus={(e) => {
             const surface = e.currentTarget as HTMLElement | null;

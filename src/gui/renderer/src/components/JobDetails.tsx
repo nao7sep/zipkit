@@ -28,7 +28,7 @@ import {
   type ReportRow,
 } from "../view";
 
-interface OpenList { title: string; rows: readonly ReportRow[]; color: string }
+interface OpenList { title: string; rows: readonly ReportRow[] }
 
 /** Memoized: the window re-renders on every Progress batch, and the sections
  *  depend only on the plan and the verification. */
@@ -66,41 +66,47 @@ export const JobDetails = memo(function JobDetails({
       {sections.map((section) => (
         <Section key={section.key} section={section} onOpen={setOpen} />
       ))}
-      {open && <ItemListDialog title={open.title} rows={open.rows} color={open.color} onClose={() => setOpen(null)} />}
+      {open && <ItemListDialog title={open.title} rows={open.rows} onClose={() => setOpen(null)} />}
     </div>
   );
 });
 
 function Section({ section, onOpen }: { section: DetailsSection; onOpen: (list: OpenList) => void }) {
   const t = useI18n();
-  const color = severityColor(section.level);
-  const openAll = (): void => onOpen({ title: section.title, rows: section.rows, color });
+  const color = section.level === "info" ? undefined : severityColor(section.level);
+  const title = t.t("details.counted", { name: section.label, count: t.number(section.rows.length) });
   const more = section.show !== "rows" || section.rows.length > DETAILS_INLINE_ROWS;
   return (
     <section style={S.section}>
+      {/* The heading wraps rather than squeezing beside its link: on a narrow
+          pane the link drops to the line below. */}
       <div style={S.head}>
-        <h3 style={{ ...S.title, color: section.level === "info" ? undefined : color }}>{section.title}</h3>
+        <h3 style={{ ...S.title, color }}>
+          {section.label} <span style={S.count}>{t.number(section.rows.length)}</span>
+        </h3>
         {more && (
-          <button type="button" className="text-button" onClick={openAll}>
-            {t.t("details.showAll", { count: section.rows.length })}
+          <button type="button" className="text-button" aria-label={title} onClick={() => onOpen({ title, rows: section.rows })}>
+            {t.t("details.showList")}
           </button>
         )}
       </div>
       {section.show === "rows" && (
         <div style={S.rows}>
           {section.rows.slice(0, DETAILS_INLINE_ROWS).map((row, i) => (
-            <ReportRowView key={i} row={row} color={color} />
+            <ReportRowView key={i} row={row} variant="line" />
           ))}
         </div>
       )}
       {section.show === "reasons" && (
         <ul style={S.reasons}>
           {rowsByReason(section.rows).map(({ reason, rows }) => {
-            const title = t.t("details.counted", { name: reason, count: t.number(rows.length) });
+            const listTitle = t.t("details.counted", { name: reason, count: t.number(rows.length) });
             return (
               <li key={reason} style={S.reason}>
-                <span style={S.reasonText}>{title}</span>
-                <button type="button" className="text-button" onClick={() => onOpen({ title, rows, color })}>
+                <span style={S.reasonText}>
+                  {reason} <span style={S.count}>{t.number(rows.length)}</span>
+                </span>
+                <button type="button" className="text-button" aria-label={listTitle} onClick={() => onOpen({ title: listTitle, rows })}>
                   {t.t("details.showList")}
                 </button>
               </li>
@@ -119,10 +125,11 @@ const S: Record<string, CSSProperties> = {
   runLine: { fontSize: "0.8rem", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap", wordBreak: "break-word" },
   nothing: { margin: 0, color: "var(--text-2)", fontSize: "0.85rem" },
   section: { display: "grid", gap: "0.4rem", minWidth: 0 },
-  head: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.75rem", minWidth: 0 },
+  head: { display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: "0.15rem 0.75rem", minWidth: 0 },
   title: { margin: 0, fontSize: "0.85rem", fontWeight: 600, minWidth: 0 },
-  rows: { display: "grid", gap: "0.3rem" },
-  reasons: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.25rem" },
-  reason: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.75rem", fontSize: "0.85rem", minWidth: 0 },
-  reasonText: { minWidth: 0, overflowWrap: "anywhere" },
+  count: { fontWeight: 400, color: "var(--text-2)" },
+  rows: { display: "grid", gap: "0.5rem" },
+  reasons: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.35rem" },
+  reason: { display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: "0.15rem 0.75rem", fontSize: "0.85rem", minWidth: 0 },
+  reasonText: { minWidth: 0 },
 };

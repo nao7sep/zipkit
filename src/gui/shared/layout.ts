@@ -25,10 +25,11 @@ export interface PaneLayout {
 /** Min/max for each user-resizable side column, so a drag (or a stale file)
  *  can't make a column unusably thin or starve the flexible middle column. The
  *  jobs minimum holds the pane's title beside its Add button in every language
- *  (German is widest; `scripts/label-fit.mjs` measures it). */
+ *  (German is widest; `scripts/label-fit.mjs` measures it); the details minimum
+ *  keeps its section headings and one-line paths readable. */
 export const LAYOUT_BOUNDS = {
   jobsWidth: { min: 224, max: 480 },
-  progressWidth: { min: 240, max: 600 },
+  progressWidth: { min: 300, max: 600 },
 } as const;
 
 /** Minimum width of the center Archive column. Unlike the side columns it has no
@@ -53,7 +54,7 @@ export const BODY_PADDING = 10;
 export const HEADER_MIN_HEIGHT = 50;
 export const BODY_MIN_HEIGHT = 360;
 
-export const DEFAULT_LAYOUT: PaneLayout = { jobsWidth: 288, progressWidth: 320 };
+export const DEFAULT_LAYOUT: PaneLayout = { jobsWidth: 288, progressWidth: 340 };
 
 /**
  * The minimum window width, DERIVED from the pane minimums and the fixed chrome:
