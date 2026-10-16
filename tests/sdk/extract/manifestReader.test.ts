@@ -15,6 +15,7 @@ describe("createManifestReader", () => {
   const doc = {
     about: "x", formatVersion: 1, policy: { filters: [{ pattern: "*.tmp" }] },
     entries: [{ archivePath: "café/é.txt", size: 3, mtime: { ns: "1" } }, { archivePath: "b", size: 0, mtime: { ns: "2" } }],
+    excluded: [{ archivePath: "x", reason: "junk" }],
     findings: [{ rule: "r", message: "m" }],
   };
 
@@ -29,12 +30,16 @@ describe("createManifestReader", () => {
   it("keeps only what accept keeps and reports the first refusal", async () => {
     let seen = 0;
     const reading = await read(JSON.stringify(doc), 5, (record) => (++seen === 2 ? { refuse: "second is bad" } : { keep: (record as { archivePath: string }).archivePath }));
+    // Nothing after the first refusal is kept or asked about.
     expect(reading.records).toEqual(["café/é.txt"]);
     expect(reading.problem).toBe("second is bad");
+    expect(seen).toBe(2);
   });
 
   it("reports a record that is not an object, and entries that are not a list", async () => {
     expect((await read(JSON.stringify({ formatVersion: 1, entries: [5] }), 4, (r) => (typeof r === "object" ? { keep: r } : { refuse: "not an object" }))).problem).toBe("not an object");
+    const nested = await read(JSON.stringify({ formatVersion: 1, entries: [[1, [2]], { archivePath: "after" }] }), 3);
+    expect(nested.records).toEqual([[], { archivePath: "after" }]);
     expect((await read(JSON.stringify({ formatVersion: 1, entries: {} }), 4)).hasEntries).toBe(false);
     expect((await read(JSON.stringify({ formatVersion: "1", entries: [] }), 4)).formatVersion).toBeNull();
   });

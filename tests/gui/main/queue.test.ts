@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn((): unknown[] => []),
   toResumable: vi.fn((jobs: unknown) => jobs),
   restore: vi.fn(),
+  sdkCall: vi.fn(),
   deps: undefined as
     | undefined
     | {
@@ -31,8 +32,8 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
   log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   startProgressRun: vi.fn(() => vi.fn()),
   sendQueue: vi.fn(),
-  zip: {},
 }));
+vi.mock("../../../src/gui/main/sdk-process.js", () => ({ sdk: { call: mocks.sdkCall } }));
 vi.mock("../../../src/gui/main/queue-engine.js", () => ({
   createQueueEngine: (deps: {
     emit(jobs: unknown[]): void;
@@ -45,11 +46,9 @@ vi.mock("../../../src/gui/main/queue-engine.js", () => ({
     return { restore: mocks.restore, snapshot: mocks.snapshot };
   },
 }));
-vi.mock("../../../src/gui/shared/spec.js", () => ({ buildSpec: vi.fn() }));
-vi.mock("../../../src/gui/main/output.js", () => ({ resolveOutputPath: vi.fn() }));
-vi.mock("../../../src/gui/main/inputs.js", () => ({ classifyPaths: vi.fn() }));
 
 import { shell } from "electron";
+import { readInternals } from "../../../src/sdk/internal/carrier.js";
 import { flushQueue, restoreQueue, saveQueueBeforeSessionEnd } from "../../../src/gui/main/queue.js";
 import type { SavedJob } from "../../../src/gui/shared/queue.js";
 
@@ -240,5 +239,40 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
 
     expect(trashItem).toHaveBeenCalledTimes(2);
     expect({ moved: result.moved, failed: result.failed, unconfirmed: result.unconfirmed }).toEqual({ moved: ["/a", "/b"], failed: [], unconfirmed: [] });
+  });
+});
+
+describe("the SDK host wiring", () => {
+  type Wired = {
+    plan(inputs: string[], options: unknown, signal: AbortSignal, onProgress: () => void): Promise<object>;
+    write(plan: object, signal: AbortSignal, onProgress: () => void, onSettlement: () => void): Promise<number | null>;
+    verify(output: string, signal: AbortSignal, onProgress: () => void): Promise<boolean>;
+    classify(paths: string[]): Promise<unknown>;
+  };
+  const wired = () => mocks.deps as unknown as Wired;
+  beforeEach(() => mocks.sdkCall.mockReset());
+
+  it("gives the engine a plan carrying its internals, and sends both back to be written", async () => {
+    const internals = { writeEntries: [{ archivePath: "a" }], policy: {}, overwrite: false, timeZone: "UTC" };
+    const plan = { mode: "plan", output: "/out.zip", writable: true };
+    mocks.sdkCall.mockResolvedValueOnce({ plan, internals }).mockResolvedValueOnce(42);
+    const signal = new AbortController().signal;
+    const onProgress = vi.fn();
+    const planned = await wired().plan(["/in"], { level: 6 }, signal, onProgress);
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }], { signal, onProgress });
+    // What the writer needs travels hidden with the plan, as the SDK's own plans carry it.
+    expect(readInternals(planned)).toBe(internals);
+    expect(Object.keys(planned)).not.toContain("internals");
+    const onSettlement = vi.fn();
+    await expect(wired().write(planned, signal, onProgress, onSettlement)).resolves.toBe(42);
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [{ plan: planned, internals }], { signal, onProgress, onPhysicalSettlement: onSettlement });
+  });
+
+  it("asks the SDK host to verify and classify", async () => {
+    mocks.sdkCall.mockResolvedValueOnce(true).mockResolvedValueOnce([{ path: "/in", kind: "directory" }]);
+    const signal = new AbortController().signal;
+    await expect(wired().verify("/out.zip", signal, vi.fn())).resolves.toBe(true);
+    await expect(wired().classify(["/in"])).resolves.toEqual([{ path: "/in", kind: "directory" }]);
+    expect(mocks.sdkCall.mock.calls.map(([op]) => op)).toEqual(["verify", "classify"]);
   });
 });

@@ -49,6 +49,28 @@ describe("the SDK host", () => {
     expect((await readdir(root)).sort()).toEqual(["photos", "photos.zip"]);
   });
 
+  it("rechecks the inputs against the written archive, and classifies and resolves paths", async () => {
+    const input = path.join(root, "docs");
+    await mkdir(input);
+    await writeFile(path.join(input, "note.txt"), "hello");
+    const sdk = createSdkClient(inProcessHost);
+    const { plan, internals } = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }]);
+    await sdk.call("write", [{ plan, internals }]);
+    const comparison = await sdk.call("recheck", [plan.output, [input], { ...DEFAULT_OPTIONS }]);
+    expect(comparison).toMatchObject({ matches: true });
+    await writeFile(path.join(input, "late.txt"), "added after the archive");
+    expect(await sdk.call("recheck", [plan.output, [input], { ...DEFAULT_OPTIONS }])).toMatchObject({ matches: false });
+    expect(await sdk.call("classify", [[input, path.join(root, "gone")]])).toEqual([
+      { path: input, kind: "directory" },
+      { path: path.join(root, "gone"), kind: "nonexistent" },
+    ]);
+    const [resource] = await sdk.call("resources", [[plan.output]]);
+    expect(resource).toMatchObject({ location: expect.stringContaining("docs.zip"), identity: expect.any(String) });
+    await writeFile(path.join(input, "inside.zip"), "");
+    expect(await sdk.call("outputInsideInputs", [path.join(input, "inside.zip"), [input]])).toBe(true);
+    expect(await sdk.call("outputInsideInputs", [plan.output, [input]])).toBe(false);
+  });
+
   it("carries an SDK failure's type, code and path back to main", async () => {
     const sdk = createSdkClient(inProcessHost);
     await expect(sdk.call("plan", [[path.join(root, "missing")], { ...DEFAULT_OPTIONS }])).rejects.toMatchObject({
