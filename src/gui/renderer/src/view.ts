@@ -49,15 +49,46 @@ function baseName(p: string): string {
 }
 
 /** A job's label: the name of the first input as the Inputs list orders it,
- *  and how many others there are, so every job is told apart by a real name
- *  ("photos", "photos + 3 more") however many it archives. Before the inputs
- *  are classified, both the list and the label use the order they were added. */
+ *  so every job is told apart by a real name however many inputs it archives;
+ *  the counts line beside it says how many there are. Before the inputs are
+ *  classified, both the list and the label use the order they were added. */
 export function label(job: Job, t: Translator): string {
   if (job.inputs.length === 0) return t.t("jobs.noInput");
   const ordered = job.entries && job.entries.length > 0 ? orderedEntries(job.entries) : [];
-  const first = baseName(ordered[0]?.path ?? job.inputs[0]!);
-  if (job.inputs.length === 1) return first;
-  return t.t("jobs.andMore", { name: first, count: job.inputs.length - 1 });
+  return baseName(ordered[0]?.path ?? job.inputs[0]!);
+}
+
+/** One count in a job's counts line; a severity colours the ones to look at. */
+export type JobCount = { text: string; severity?: "warning" | "error" };
+
+const COUNT_KEYS: Record<PathKind, MessageKey> = {
+  directory: "jobs.countFolders",
+  file: "jobs.countFiles",
+  nonexistent: "jobs.countMissing",
+  other: "jobs.countOther",
+};
+
+/** What a job holds, for its row: the inputs by kind (only the kinds present,
+ *  in the Inputs list's order), then what its plan excluded, warned about and
+ *  could not include, each only when there is any. Before classification the
+ *  inputs are one plain count; before planning there is no plan part. */
+export function jobCounts(job: Job, t: Translator): JobCount[] {
+  const counts: JobCount[] = [];
+  if (job.entries && job.entries.length > 0) {
+    for (const kind of ["directory", "file", "nonexistent", "other"] as const) {
+      const count = job.entries.filter((entry) => entry.kind === kind).length;
+      if (count > 0) counts.push({ text: t.t(COUNT_KEYS[kind], { count }) });
+    }
+  } else if (job.inputs.length > 0) {
+    counts.push({ text: t.t("jobs.countItems", { count: job.inputs.length }) });
+  }
+  const summary = job.summary;
+  if (summary) {
+    if (summary.excluded > 0) counts.push({ text: t.t("jobs.countExcluded", { count: summary.excluded }) });
+    if (summary.warnings > 0) counts.push({ text: t.t("jobs.countWarnings", { count: summary.warnings }), severity: "warning" });
+    if (summary.errors > 0) counts.push({ text: t.t("jobs.countErrors", { count: summary.errors }), severity: "error" });
+  }
+  return counts;
 }
 
 /** Whether any of the job's originals still exist on disk, so trashing them is

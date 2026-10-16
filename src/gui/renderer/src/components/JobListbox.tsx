@@ -17,12 +17,14 @@
  *   focus, scroll, and aria-selected are projections of it.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { Job } from "../../../shared/api";
 import {
+  COLOR,
   intentLabel,
   isCancelable,
+  jobCounts,
   label,
   stateLabel,
   stateTint,
@@ -245,6 +247,7 @@ export function JobListbox({
                   name is never squeezed by a leading state label. */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="text-line" style={S.name}>{label(job, t)}</div>
+                <JobCounts job={job} />
                 <div style={S.meta}>
                   <StateLabel state={job.state} />
                   {metaText(job, t) && <span className="text-line" style={S.dim}>{metaText(job, t)}</span>}
@@ -293,6 +296,26 @@ export function JobListbox({
 
 /** The dim sub-line beside the state label: the noteworthy intent tag (nothing
  *  for the default save) and the job message, whichever are present. */
+/** The row's middle line: what the job holds, with the counts that need a
+ *  look drawn in their severity's colour. */
+function JobCounts({ job }: { job: Job }) {
+  const t = useI18n();
+  const counts = jobCounts(job, t);
+  if (counts.length === 0) return null;
+  return (
+    <div className="text-line" style={S.counts}>
+      {counts.map((count, index) => (
+        <Fragment key={index}>
+          {index > 0 && " · "}
+          <span style={count.severity ? { color: COUNT_COLOR[count.severity] } : undefined}>{count.text}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+const COUNT_COLOR = { warning: COLOR.warn, error: COLOR.bad } as const;
+
 function metaText(job: Job, t: Translator): string {
   return [
     intentLabel(job.intent, t),
@@ -339,8 +362,8 @@ const S: Record<string, CSSProperties> = {
   // Selection reads as an accent ring on top of the state tint, so both the
   // status (background) and the selection are visible at once.
   jobRowSel: { borderColor: "var(--accent-strong)", boxShadow: "0 0 0 1px var(--accent-strong)" },
-  // A row identifies its job on two fixed lines (interface-styling-conventions,
-  // Labels): the name and a summary of its status, each one line. Selecting the
+  // A row identifies its job on fixed lines (interface-styling-conventions,
+  // Labels): the name, what it holds, and its status, each one line. Selecting the
   // job shows its inputs and its full message in the Archive pane.
   name: { fontWeight: 600 },
   meta: {
@@ -351,6 +374,7 @@ const S: Record<string, CSSProperties> = {
     marginTop: "0.15rem",
   },
   dim: { color: "var(--text-2)", fontSize: "0.8rem" },
+  counts: { color: "var(--text-2)", fontSize: "0.8rem", marginTop: "0.1rem" },
   // name's first line IS the row's first text line, always flush on the
   // row's top edge (the row stays flex-start, and
   // name gets no special treatment). `position: relative` nudges the button

@@ -15,6 +15,7 @@ import {
   isCancelable,
   isTerminal,
   jobCommands,
+  jobCounts,
   label,
   logLevelColor,
   logLevelLabel,
@@ -71,7 +72,7 @@ describe("label", () => {
     expect(label(job({ inputs: ["/x/y/report.pdf"] }), en)).toBe("report.pdf");
     expect(label(job({ inputs: ["/x/y/photos"] }), en)).toBe("photos");
   });
-  it("names the first input the Inputs list shows and counts the rest, whatever they are", () => {
+  it("names the first input the Inputs list shows, however many there are", () => {
     const j = job({
       inputs: ["/f1.txt", "/b/photos", "/a/docs"],
       entries: [
@@ -81,17 +82,60 @@ describe("label", () => {
       ],
     });
     // Folders come first in the Inputs list, by path: /a/docs.
-    expect(label(j, en)).toBe("docs + 2 more");
+    expect(label(j, en)).toBe("docs");
     expect(label(job({ inputs: ["/x/report.pdf", "/x/gone.txt"], entries: [
       { path: "/x/report.pdf", kind: "file" },
       { path: "/x/gone.txt", kind: "nonexistent" },
-    ] }), en)).toBe("report.pdf + 1 more");
+    ] }), en)).toBe("report.pdf");
   });
   it("uses the order the inputs were added before they are classified", () => {
-    expect(label(job({ inputs: ["/z/last", "/a/first", "/c"] }), en)).toBe("last + 2 more");
+    expect(label(job({ inputs: ["/z/last", "/a/first", "/c"] }), en)).toBe("last");
   });
   it("falls back when there are no inputs", () => {
     expect(label(job({ inputs: [] }), en)).toBe("(no input)");
+  });
+});
+
+describe("jobCounts", () => {
+  const summary = { total: 0, included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false };
+  const texts = (j: Job, t = en) => jobCounts(j, t).map((count) => count.text);
+
+  it("counts the inputs by kind, only the kinds present, in the Inputs list's order", () => {
+    expect(texts(job({ inputs: ["/a.txt"], entries: [{ path: "/a.txt", kind: "file" }] }))).toEqual(["1 file"]);
+    expect(texts(job({
+      inputs: ["/f", "/d", "/e", "/g", "/s"],
+      entries: [
+        { path: "/f", kind: "file" },
+        { path: "/s", kind: "other" },
+        { path: "/d", kind: "directory" },
+        { path: "/g", kind: "nonexistent" },
+        { path: "/e", kind: "directory" },
+      ],
+    }))).toEqual(["2 folders", "1 file", "1 missing", "1 other"]);
+  });
+
+  it("counts unclassified inputs as items, and nothing when there are none", () => {
+    expect(texts(job({ inputs: ["/a", "/b"] }))).toEqual(["2 items"]);
+    expect(jobCounts(job({ inputs: [] }), en)).toEqual([]);
+  });
+
+  it("adds the plan's exclusions, warnings and errors only when there are any, colouring the last two", () => {
+    const entries = [{ path: "/d", kind: "directory" as const }];
+    expect(jobCounts(job({ inputs: ["/d"], entries, summary }), en)).toEqual([{ text: "1 folder" }]);
+    expect(jobCounts(job({ inputs: ["/d"], entries, summary: { ...summary, excluded: 4, warnings: 1, errors: 1240 } }), en)).toEqual([
+      { text: "1 folder" },
+      { text: "4 excluded" },
+      { text: "1 warning", severity: "warning" },
+      { text: "1,240 errors", severity: "error" },
+    ]);
+  });
+
+  it("reads in the interface language", () => {
+    const ja = createTranslator("ja");
+    const entries = [{ path: "/d", kind: "directory" as const }, { path: "/f", kind: "file" as const }, { path: "/g", kind: "file" as const }];
+    expect(texts(job({ inputs: ["/d", "/f", "/g"], entries, summary: { ...summary, excluded: 4, errors: 1 } }), ja))
+      .toEqual(["フォルダ 1", "ファイル 2", "除外 4", "エラー 1"]);
+    expect(texts(job({ inputs: ["/f", "/g"], entries: entries.slice(1) }), createTranslator("ru"))).toEqual(["2 файла"]);
   });
 });
 

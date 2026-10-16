@@ -34,7 +34,7 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "about.repository",
     "records.details",
   ],
-  es: ["nativeMenu.zoom", "log.error", "event.errors", "shortcuts.general"],
+  es: ["nativeMenu.zoom", "log.error", "event.errors", "jobs.countErrors", "shortcuts.general"],
   fr: [
     "nativeMenu.services",
     "messageDialog.ok",
@@ -50,11 +50,12 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "messageDialog.ok",
     "header.menu",
     "inputs.file",
+    "jobs.countFiles",
     "log.debug",
     "about.repository",
   ],
   ja: ["messageDialog.ok"],
-  "pt-BR": ["nativeMenu.zoom", "messageDialog.ok", "header.menu"],
+  "pt-BR": ["nativeMenu.zoom", "messageDialog.ok", "header.menu", "jobs.countItems"],
 };
 
 // The hidden-character-conventions set, plus the no-break spaces, figure space,
