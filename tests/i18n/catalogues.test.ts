@@ -25,6 +25,8 @@ const translations = LANGUAGES.filter((language) => language !== "en");
 const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
   de: [
     "messageDialog.ok",
+    "details.factManifest",
+    "details.factFormat",
     "pane.details",
     "options.manifest",
     "log.debug",
@@ -36,6 +38,8 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
   ],
   es: ["nativeMenu.zoom", "log.error", "event.errors", "jobs.countErrors", "shortcuts.general"],
   fr: [
+    "details.archive",
+    "details.factFormat",
     "nativeMenu.services",
     "messageDialog.ok",
     "header.menu",

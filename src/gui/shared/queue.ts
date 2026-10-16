@@ -163,6 +163,11 @@ export interface Job {
   archiveStatus?: ArchiveStatus;
   /** What has happened to this job so far in this session, oldest first. */
   history?: JobHistoryEntry[];
+  /** The archive's size in bytes, once written. */
+  archiveBytes?: number;
+  /** How the originals differed from the archive when a removal was refused
+   *  because they changed: the paths, as the archive names them. */
+  originalsChanges?: { missing: string[]; added: string[]; changed: string[]; unlisted: string[] };
   /** Set while a finished job's originals are being checked and moved to
    *  Trash or deleted on request, or its archive moved to Trash: the job is
    *  busy, and only Cancel is offered. */

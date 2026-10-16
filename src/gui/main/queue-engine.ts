@@ -421,6 +421,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       actionResult: undefined,
       archiveWritten: false,
       archiveStatus: undefined,
+      archiveBytes: undefined,
+      originalsChanges: undefined,
     });
     rec.publishedOutput = null;
     rec.publication = null;
@@ -468,6 +470,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     moved: string[] = [],
   ): Promise<TrashRefusal | null> {
     const id = rec.job.id;
+    set(rec, { originalsChanges: undefined });
     if (!(await publicationCurrent(rec, output, signal))) return { reason: "replaced" };
     try {
       if (await deps.outputInsideInputs(output, inputs, signal)) {
@@ -503,6 +506,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           changed: comparison.changed.length,
           unlisted: comparison.unlisted.length,
         });
+        const { missing, added, changed, unlisted } = comparison;
+        set(rec, { originalsChanges: { missing, added, changed, unlisted } });
         return { reason: "changed", comparison };
       }
     } catch (err) {
@@ -677,7 +682,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.publishedOutput = plan.output;
     const written = await lookAt(rec, plan.output, signal);
     rec.fingerprint = written?.kind === "present" ? written.fingerprint : null;
-    set(rec, { archiveWritten: true, archiveStatus: "written" });
+    set(rec, { archiveWritten: true, archiveStatus: "written", ...(bytes === null ? {} : { archiveBytes: bytes }) });
     try { rec.publication = (await deps.resources([plan.output], signal))[0] ?? null; }
     catch (error) { deps.log.warn("archive publication identity unavailable", { jobId: id, error: errorInfo(error) }); }
     return { output: plan.output, bytes, claim };

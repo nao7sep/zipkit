@@ -1348,6 +1348,8 @@ describe("queue engine", () => {
         "The originals changed after the archive was made, so the originals and the archive were kept. " +
         "To include the changes, move the archive to Trash and create it again.",
     );
+    expect(engine.snapshot()[0]?.originalsChanges).toEqual({ missing: [], added: ["data/new.txt"], changed: [], unlisted: [] });
+    expect(engine.snapshot()[0]?.archiveBytes).toBe(123);
     expect(calls.verify).toBe(1);
     expect(calls.trash).toEqual([]);
   });

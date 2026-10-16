@@ -451,27 +451,6 @@ export interface ReportGroup {
   rows: ReportRow[];
 }
 
-/** The severity a group's rows are painted in. */
-export function reportGroupLevel(kind: ReportGroupKind): Severity {
-  return kind === "blocking" ? "error" : kind === "warnings" ? "warning" : "info";
-}
-
-/** The group heading, with the group's row count. */
-export function reportGroupTitle(kind: ReportGroupKind): MessageKey {
-  switch (kind) {
-    case "blocking":
-      return "report.groupBlocking";
-    case "warnings":
-      return "report.groupWarnings";
-    case "renamed":
-      return "report.groupRenamed";
-    case "excluded":
-      return "report.groupExcluded";
-    case "notes":
-      return "report.groupNotes";
-  }
-}
-
 function severityGroup(findings: readonly Finding[]): ReportGroupKind | null {
   if (findings.some((f) => f.severity === "error")) return "blocking";
   if (findings.some((f) => f.severity === "warning")) return "warnings";
@@ -869,59 +848,146 @@ export function stateTint(state: Job["state"]): string {
   }
 }
 
-/** One part of the Details pane: a kind of row the user may need to look at,
- *  how it is shown there, and the rows behind it. Errors and warnings list
- *  their first rows at once; exclusions fold into one line per reason;
- *  renames and notes, which ask nothing of the user, fold into one line. */
-export interface DetailsSection {
+/** One card of the Details pane: one kind of thing found about the job, its
+ *  inputs or its archive, coloured by how much it matters. */
+export interface DetailsCard {
   key: string;
-  /** The kind, without its count: the count is shown once, beside it. */
-  label: string;
+  title: string;
   level: Severity;
   rows: ReportRow[];
-  show: "rows" | "reasons" | "count";
+  /** Whether each row shows its own line of detail; a card whose title says
+   *  it all leaves its rows to their paths. */
+  rowDetail: boolean;
+  /** Whether its rows show without a click: errors and warnings always, and
+   *  anything else while it is short. */
+  open: boolean;
+  /** One line under the title, such as where excluded items go. */
+  note?: string;
+  /** The facts a card states instead of rows, such as the archive's size. */
+  facts?: Array<{ label: string; value: string }>;
 }
 
-/** How many rows a listed section shows before its list link. */
-export const DETAILS_INLINE_ROWS = 5;
+/** How many rows an open card shows before its toggle. */
+export const CARD_INLINE_ROWS = 5;
+/** How many rows a card may unfold in the pane; past this, its list opens in
+ *  the full-list dialog, which draws only what is in view. */
+export const CARD_EXPAND_LIMIT = 100;
 
-/** The plan's groups, then what a verification found, as the Details pane's
- *  sections, the ones to act on first. */
-export function detailsSections(
-  groups: readonly ReportGroup[],
+const JUNK_RULES = new Set(["macos.junk", "windows.junk", "linux.junk"]);
+const LEVEL_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
+
+/** The Details pane's cards for a job: one per kind of finding, one per reason
+ *  something is left out, what a verification found, how the originals
+ *  changed when a removal was refused, and the archive itself once made, the
+ *  ones that block first. When the originals are to be removed, what is left
+ *  out goes with them unarchived, which each excluded card says; anything but
+ *  OS junk is then worth a look. */
+export function detailsCards(
+  job: Job,
+  plan: PlanReport | null,
   verify: { missing: readonly string[]; extra: readonly string[] } | null,
   t: Translator,
-): DetailsSection[] {
-  const sections: DetailsSection[] = [];
-  const pathRows = (paths: readonly string[]): ReportRow[] => paths.map((path) => ({ path, changes: [] }));
-  if (verify && verify.missing.length > 0) {
-    sections.push({ key: "missing", label: t.t("report.missing"), level: "error", rows: pathRows(verify.missing), show: "rows" });
+): DetailsCard[] {
+  const cards = new Map<string, DetailsCard & { excluded: boolean; junk: boolean }>();
+  const card = (key: string, title: string, level: Severity, rowDetail: boolean) => {
+    let found = cards.get(key);
+    if (!found) {
+      found = { key, title, level, rows: [], rowDetail, open: false, excluded: false, junk: false };
+      cards.set(key, found);
+    }
+    return found;
+  };
+  if (plan) {
+    const findingId = (f: Finding): string => `${f.rule}\0${f.path}\0${f.message}`;
+    const onEntries = new Set<string>();
+    for (const entry of plan.entries) {
+      const dir = entry.type === "dir" ? { dir: true } : {};
+      for (const f of entry.findings) {
+        onEntries.add(findingId(f));
+        const renamed = f.fix?.kind === "rename" ? { from: entry.originalPath } : {};
+        const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, f.severity !== "info");
+        c.rows.push({ path: entry.archivePath, changes: [findingText(f, t, entry.excluded)], ...renamed, ...dir });
+        if (entry.excluded && EXCLUDING_RULES.has(f.rule)) {
+          c.excluded = true;
+          c.junk = JUNK_RULES.has(f.rule);
+        }
+      }
+      if (entry.excluded && !entry.findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
+        const reason = excludedText(entry.excludeReason, t);
+        const c = card(`excluded:${reason}`, reason, "info", false);
+        c.rows.push({ path: entry.archivePath, changes: [reason], ...dir });
+        c.excluded = true;
+      }
+    }
+    for (const f of plan.findings) {
+      if (onEntries.has(findingId(f))) continue;
+      card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, true).rows.push({ path: f.path, changes: [findingText(f, t)] });
+    }
   }
-  if (verify && verify.extra.length > 0) {
-    sections.push({ key: "extra", label: t.t("report.extra"), level: "warning", rows: pathRows(verify.extra), show: "rows" });
+  const pathRows = (paths: readonly string[], change = ""): ReportRow[] =>
+    paths.map((path) => ({ path, changes: change ? [change] : [] }));
+  if (verify && verify.missing.length > 0) card("verify:missing", t.t("report.missing"), "error", false).rows.push(...pathRows(verify.missing));
+  if (verify && verify.extra.length > 0) card("verify:extra", t.t("report.extra"), "warning", false).rows.push(...pathRows(verify.extra));
+  const changes = job.originalsChanges;
+  if (changes) {
+    card("originals:changed", t.t("details.originalsChanged"), "error", true).rows.push(
+      ...pathRows(changes.missing, t.t("details.changeMissing")),
+      ...pathRows(changes.added, t.t("details.changeAdded")),
+      ...pathRows(changes.changed, t.t("details.changeChanged")),
+      ...pathRows(changes.unlisted, t.t("details.changeUnlisted")),
+    );
   }
-  for (const group of groups) {
-    sections.push({
-      key: group.kind,
-      label: t.t(reportGroupTitle(group.kind)),
-      level: reportGroupLevel(group.kind),
-      rows: group.rows,
-      show: group.kind === "blocking" || group.kind === "warnings" ? "rows" : group.kind === "excluded" ? "reasons" : "count",
-    });
+
+  // What is left out leaves with the originals when they are removed.
+  const removing = job.intent.originals !== "keep" && job.state !== "done" && job.state !== "failed";
+  const result: DetailsCard[] = [];
+  for (const { excluded, junk, ...c } of cards.values()) {
+    if (c.rows.length === 0) continue;
+    const shown: DetailsCard = { ...c };
+    if (excluded && removing) {
+      shown.note = t.t(job.intent.originals === "delete" ? "details.deletedUnarchived" : "details.trashedUnarchived");
+      if (!junk && shown.level === "info") shown.level = "warning";
+    }
+    shown.open = shown.level !== "info" || shown.rows.length <= CARD_INLINE_ROWS;
+    result.push(shown);
   }
-  return sections;
+
+  const archive = archiveCard(job, t);
+  if (archive) result.push(archive);
+  // Most important first; within a level the archive leads, then the order found.
+  const rank = (c: DetailsCard): number => LEVEL_RANK[c.level] * 2 + (c.key === "archive" ? 0 : 1);
+  return result.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(({ c }) => c);
 }
 
-/** Excluded rows by why they were left out, the largest group first, so a
- *  stray reason among the expected junk stands out. */
-export function rowsByReason(rows: readonly ReportRow[]): Array<{ reason: string; rows: ReportRow[] }> {
-  const groups = new Map<string, ReportRow[]>();
-  for (const row of rows) {
-    const reason = row.changes.join(" · ");
-    groups.set(reason, [...(groups.get(reason) ?? []), row]);
-  }
-  return [...groups].map(([reason, grouped]) => ({ reason, rows: grouped }))
-    .sort((a, b) => b.rows.length - a.rows.length || compareText(a.reason, b.reason));
+const ARCHIVE_STATUS_KEYS: Record<NonNullable<Job["archiveStatus"]>, MessageKey> = {
+  written: "details.statusWritten",
+  verified: "details.statusVerified",
+  changed: "details.statusChanged",
+  missing: "details.statusMissing",
+  unavailable: "details.statusUnavailable",
+};
+
+/** The archive a job made, as facts: what ZipKit knows of it now, where it is,
+ *  how large, what it holds. Absent until there is one. */
+function archiveCard(job: Job, t: Translator): DetailsCard | null {
+  if (!job.archiveStatus || !job.output) return null;
+  const facts: Array<{ label: string; value: string }> = [
+    { label: t.t("details.factStatus"), value: t.t(ARCHIVE_STATUS_KEYS[job.archiveStatus]) },
+    { label: t.t("details.factPath"), value: job.output },
+  ];
+  if (job.archiveBytes !== undefined) facts.push({ label: t.t("details.factSize"), value: t.size(job.archiveBytes) });
+  if (job.summary) facts.push({ label: t.t("details.factEntries"), value: t.number(job.summary.included) });
+  facts.push({
+    label: t.t("details.factManifest"),
+    value: job.options.metadata
+      ? (job.options.hash ? t.t("details.manifestWithHash", { file: "zipkit.json" }) : "zipkit.json")
+      : t.t("details.manifestNone"),
+  });
+  if (job.summary?.zip64) facts.push({ label: t.t("details.factFormat"), value: "Zip64" });
+  const level: Severity = job.archiveStatus === "missing"
+    ? "error"
+    : job.archiveStatus === "changed" || job.archiveStatus === "unavailable" ? "warning" : "info";
+  return { key: "archive", title: t.t("details.archive"), level, rows: [], rowDetail: false, open: true, facts };
 }
 
 function compareText(a: string, b: string): number {

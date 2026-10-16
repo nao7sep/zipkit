@@ -14,10 +14,9 @@ import {
   intentLabel,
   isCancelable,
   isTerminal,
-  detailsSections,
+  detailsCards,
   rowsByName,
   rowsByPath,
-  rowsByReason,
   jobCommands,
   jobCounts,
   label,
@@ -958,25 +957,25 @@ describe("jobCommands", () => {
 describe("Details pane sections and orders", () => {
   const row = (path: string, changes: string[] = [], dir = false) => ({ path, changes, ...(dir ? { dir: true } : {}) });
 
-  it("puts a verification's findings first, then the plan's groups, each shown its own way", () => {
-    const groups = [
-      { kind: "blocking" as const, rows: [row("a")] },
-      { kind: "renamed" as const, rows: [row("b")] },
-      { kind: "excluded" as const, rows: [row("c")] },
-    ];
-    const sections = detailsSections(groups, { missing: ["m"], extra: [] }, en);
-    expect(sections.map((section) => [section.key, section.show, section.level])).toEqual([
-      ["missing", "rows", "error"],
-      ["blocking", "rows", "error"],
-      ["renamed", "count", "info"],
-      ["excluded", "reasons", "info"],
+  it("makes one card per kind, the ones that block first, and the archive first among the rest", () => {
+    const entry = (archivePath: string, rule: string, severity: Severity, excluded = false) => ({
+      archivePath, originalPath: archivePath, type: "file" as const, method: "deflate" as const, excluded,
+      findings: [{ rule, severity, path: archivePath, message: rule }],
+    });
+    const plan = { writable: false, summary: { total: 3, included: 2, excluded: 1, renamed: 0, warnings: 1, errors: 1, zip64: false }, findings: [],
+      entries: [entry("a/.DS_Store", "macos.junk", "info", true), entry("long", "path.too-long", "warning"), entry("A", "collision.case", "error")] };
+    const done = job({ state: "done", output: "/out/a.zip", archiveStatus: "written", summary: plan.summary });
+    const cards = detailsCards(done, plan as never, { missing: ["m"], extra: [] }, en);
+    expect(cards.map((card) => [card.key, card.level, card.open])).toEqual([
+      ["rule:collision.case", "error", true],
+      ["verify:missing", "error", true],
+      ["rule:path.too-long", "warning", true],
+      ["archive", "info", true],
+      ["rule:macos.junk", "info", true],
     ]);
-    expect(sections[0]!.label).toBe("Missing from the archive");
-  });
-
-  it("groups exclusions by reason, the largest group first", () => {
-    const grouped = rowsByReason([row("a", ["Empty"]), row("b", ["Junk"]), row("c", ["Junk"])]);
-    expect(grouped.map((group) => [group.reason, group.rows.length])).toEqual([["Junk", 2], ["Empty", 1]]);
+    // A card of many informational rows folds to its count.
+    const many = { ...plan, entries: Array.from({ length: 6 }, (_, i) => entry(`d${i}/.DS_Store`, "macos.junk", "info", true)) };
+    expect(detailsCards(job(), many as never, null, en)[0]!.open).toBe(false);
   });
 
   it("orders by path, or by name: repeated names grouped first, folders first, then each name that occurs once", () => {
