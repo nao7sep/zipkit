@@ -9,6 +9,7 @@ import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { TRASH } from "../../helpers/intents.js";
+import { realArchiveState } from "../../helpers/archiveState.js";
 
 it("keeps originals when a real archive's file type changes after publication", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-queue-type-"));
@@ -33,6 +34,11 @@ it("keeps originals when a real archive's file type changes after publication", 
     recheck: (archive, inputs, options, signal) => zip.compareSources(buildSpec(inputs, options), archive, { signal }),
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
+    archiveState: realArchiveState,
+    inspect: async (archive, signal, onProgress, checkMetadata) => {
+      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
+      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
+    },
     trash, outputInsideInputs: async () => false, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,
   });
   try {

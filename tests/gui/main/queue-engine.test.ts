@@ -55,6 +55,8 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
     admission: new CommandAdmission(),
     effects: createArchiveEffects(),
     resources: async (paths) => paths.map((location) => ({ location, identity: location })),
+    archiveState: async (output) => `state:${output}`,
+    inspect: async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] }),
     plan: async (inputs) => {
       calls.plan++;
       return planData(inputs[0] !== "bad");
@@ -1599,5 +1601,152 @@ describe("a write that stalls", () => {
     const text = await failedWith(stall(false));
     expect(text).toContain("stopped responding");
     expect(text).toContain("could not be written");
+  });
+});
+
+describe("the archive's recorded state and the job's history", () => {
+  const VERIFY = { verify: true, originals: "keep" } as const;
+  const keys = (engine: QueueEngine) => (engine.snapshot()[0]?.history ?? []).map((entry) => entry.message.key);
+
+  /** Deps whose archive state the test sets: a string while it is there, null once gone. */
+  function withArchive(overrides: Partial<EngineDeps> = {}) {
+    const archive = { state: "first" as string | null };
+    const made = makeDeps({ archiveState: async () => archive.state, ...overrides });
+    return { ...made, archive };
+  }
+  async function finished(engine: QueueEngine, id: string): Promise<void> {
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    run(engine, id);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+  }
+
+  it("records a run that verified as verified, and says so once in the history", async () => {
+    const { deps } = withArchive();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, VERIFY);
+    try {
+      await finished(engine, id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
+      expect(keys(engine)).toEqual(["job.savedVerified"]);
+    } finally { await engine.shutdown(); }
+  });
+
+  it("records a verification on request, and a later change to the archive", async () => {
+    const { deps, archive } = withArchive();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("written");
+      expect((await engine.verify(id))?.reportOk).toBe(true);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
+      expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("Verified 1 entry. No problems were found.");
+      // Looking again at the same archive changes nothing.
+      await engine.checkArchive(id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
+      archive.state = "rewritten";
+      await engine.checkArchive(id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("changed");
+      expect(keys(engine)).toEqual(["job.saved", "history.verified", "report.archiveChanged"]);
+      // Verifying the changed archive records it as verified again.
+      await engine.verify(id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
+    } finally { await engine.shutdown(); }
+  });
+
+  it("records a failed verification on request as a problem count", async () => {
+    const { deps } = withArchive({
+      inspect: async () => ({ reportOk: false, summary: { total: 3, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0 } as never, missing: ["a"], extra: [] }),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      await engine.verify(id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("written");
+      expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("Verification found 2 problems. The archive is left as it is.");
+    } finally { await engine.shutdown(); }
+  });
+
+  it("returns a job whose archive was deleted outside ZipKit to ready, saying why", async () => {
+    const { deps, archive, calls } = withArchive();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      archive.state = null;
+      await engine.checkArchive(id);
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      const job = engine.snapshot()[0]!;
+      expect(job.archiveWritten).toBe(false);
+      expect(job.archiveStatus).toBeUndefined();
+      expect(keys(engine)).toEqual(["job.saved", "action.archiveMissing"]);
+      expect(calls.trash).toEqual([]);
+    } finally { await engine.shutdown(); }
+  });
+
+  it("says the archive is gone, not that it could not be trashed or read, when an action finds it missing", async () => {
+    const { deps, archive, calls } = withArchive();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      archive.state = null;
+      expect(await engine.verify(id)).toBeNull();
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(keys(engine)).toEqual(["job.saved", "action.archiveMissing"]);
+
+      // Created again, then gone again before Move archive to Trash.
+      archive.state = "second";
+      run(engine, id);
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+      archive.state = null;
+      engine.removeArchive(id);
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(calls.trash).toEqual([]);
+      expect(keys(engine)).toEqual(["job.saved", "action.archiveMissing", "job.saved", "action.archiveMissing"]);
+      expect(keys(engine)).not.toContain("action.archiveTrashFailed");
+    } finally { await engine.shutdown(); }
+  });
+
+  it("keeps a job whose originals are gone finished when its archive goes too, with nothing left to offer", async () => {
+    const { deps, archive } = withArchive();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, TRASH);
+    try {
+      await finished(engine, id);
+      archive.state = null;
+      await engine.checkArchive(id);
+      const job = engine.snapshot()[0]!;
+      expect(job.state).toBe("done");
+      expect(job.archiveStatus).toBe("missing");
+      expect(keys(engine)).toEqual(["job.archivedAndTrashed", "action.archiveMissingOriginalsGone"]);
+    } finally { await engine.shutdown(); }
+  });
+
+  it("keeps the originals and says the archive is gone when removing them finds it missing", async () => {
+    const { deps, archive, calls } = withArchive();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      archive.state = null;
+      engine.removeOriginals(id, "trash");
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(calls.trash).toEqual([]);
+      expect(keys(engine)).toEqual(["job.saved", "action.archiveMissing"]);
+    } finally { await engine.shutdown(); }
+  });
+
+  it("adds a moved-to-Trash line when the user removes the archive", async () => {
+    const { deps } = withArchive();
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      engine.removeArchive(id);
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(keys(engine)).toEqual(["job.saved", "action.archiveTrashed"]);
+    } finally { await engine.shutdown(); }
   });
 });

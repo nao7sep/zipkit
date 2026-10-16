@@ -107,6 +107,18 @@ export function scanBlocksRemoval(job: Pick<Job, "intent" | "scanIncomplete">): 
   return removesOriginals(job.intent) && job.scanIncomplete === true;
 }
 
+/** What ZipKit last found of the archive a job wrote: as written, verified and
+ *  unchanged since, changed since it was written or verified, or gone. */
+export type ArchiveStatus = "written" | "verified" | "changed" | "missing";
+
+/** One thing that happened to a job, in the order it happened: a run's
+ *  outcome, a verification, an archive found missing, the originals removed. */
+export interface JobHistoryEntry {
+  at: number;
+  severity: Severity;
+  message: Message;
+}
+
 export interface Job {
   id: string;
   inputs: string[];
@@ -138,6 +150,11 @@ export interface Job {
   /** Whether this job's latest run wrote its archive (the file may still need
    *  checking, but it is there to reveal or move to Trash). */
   archiveWritten?: boolean;
+  /** The archive's state as last checked, while the job has one, or "missing"
+   *  once it is gone and the job cannot simply create it again. */
+  archiveStatus?: ArchiveStatus;
+  /** What has happened to this job so far in this session, oldest first. */
+  history?: JobHistoryEntry[];
   /** Set while a finished job's originals are being checked and moved to
    *  Trash or deleted on request, or its archive moved to Trash: the job is
    *  busy, and only Cancel is offered. */

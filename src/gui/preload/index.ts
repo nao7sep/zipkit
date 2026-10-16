@@ -103,8 +103,8 @@ const api = {
       ipcRenderer.removeListener("zipkit:queueSaved", handler);
     };
   },
-  verify: (jobId: string, archive: string, checkMetadata: boolean): Promise<VerifyResult> =>
-    ipcRenderer.invoke("zipkit:verify", jobId, archive, checkMetadata),
+  verify: (jobId: string): Promise<VerifyResult | null> => ipcRenderer.invoke("zipkit:verify", jobId),
+  checkArchive: (jobId: string): Promise<void> => ipcRenderer.invoke("zipkit:checkArchive", jobId),
   reveal: (path: string): Promise<void> => ipcRenderer.invoke("zipkit:reveal", path),
   getJobEvents: (jobId: string): Promise<JobEvent[]> => ipcRenderer.invoke("zipkit:getJobEvents", jobId),
   onEvents: (callback: (events: JobEvent[]) => void): (() => void) => {

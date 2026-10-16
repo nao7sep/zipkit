@@ -848,6 +848,16 @@ describe("humanSentence", () => {
 });
 
 describe("jobCommands", () => {
+  it("offers Verify until the archive verifies, again once it changes, and nothing once it is gone with the originals", () => {
+    const done = (archiveStatus: Job["archiveStatus"], intent = SAVE) =>
+      jobCommands(job({ state: "done", intent, archiveStatus, entries: [{ path: "/a", kind: "file" }] }));
+    expect(done("written")).toContain("verify");
+    expect(done("verified")).not.toContain("verify");
+    expect(done("verified")).toContain("reveal");
+    expect(done("changed")).toContain("verify");
+    expect(done("verified", TRASH)).toEqual(["reveal"]);
+    expect(done("missing", TRASH)).toEqual([]);
+  });
   it("offers create only when ready, and nothing when blocked", () => {
     expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention" }))).toEqual([]);

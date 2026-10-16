@@ -12,6 +12,7 @@ import type { JobIntent } from "../../../src/gui/shared/queue.js";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { createDirectoryLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 import { SAVE, TRASH } from "../../helpers/intents.js";
+import { realArchiveState } from "../../helpers/archiveState.js";
 
 const use = (location: string, mode: FileUse["mode"], identity: string | null = location): FileUse => ({ location, mode, identity });
 it("claims the whole conflicting path set atomically, permits shared reads and independent work", () => {
@@ -114,6 +115,11 @@ async function fixture() {
       return { moved: paths, failed: [], unconfirmed: [] };
     },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
+    archiveState: realArchiveState,
+    inspect: async (archive, signal, onProgress, checkMetadata) => {
+      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
+      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
+    },
     outputInsideInputs: (output, inputs, signal) => outputInsideInputs(output, inputs, zip.volume(signal)),
     emit: () => {}, progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,
   };

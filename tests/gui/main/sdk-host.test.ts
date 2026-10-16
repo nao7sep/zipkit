@@ -71,6 +71,19 @@ describe("the SDK host", () => {
     expect(await sdk.call("outputInsideInputs", [plan.output, [input]])).toBe(false);
   });
 
+  it("states an archive as one string that changes with its content, and as null once it is gone", async () => {
+    const archive = path.join(root, "a.zip");
+    await writeFile(archive, "first");
+    const sdk = createSdkClient(inProcessHost);
+    const first = await sdk.call("archiveState", [archive]);
+    expect(first).toEqual(expect.any(String));
+    expect(await sdk.call("archiveState", [archive])).toBe(first);
+    await writeFile(archive, "a longer second version");
+    expect(await sdk.call("archiveState", [archive])).not.toBe(first);
+    await rm(archive);
+    expect(await sdk.call("archiveState", [archive])).toBeNull();
+  });
+
   it("deletes an original for good: a folder with its contents, or a link itself rather than its target", async () => {
     const folder = path.join(root, "folder");
     await mkdir(path.join(folder, "nested"), { recursive: true });

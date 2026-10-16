@@ -923,15 +923,13 @@ function JobView({
         break;
       }
       case "verify": {
-        if (job.output) {
-          const attempt = beginOperation();
-          try {
-            const result = await window.zipkit.verify(job.id, job.output, job.options.metadata);
-            if (operationAttempt.current === attempt) setVerify(result);
-            finishOperation(attempt);
-          }
-          catch (error) { failOperation(attempt, "verify archive", "result.verifyFailed", error); }
+        const attempt = beginOperation();
+        try {
+          const result = await window.zipkit.verify(job.id);
+          if (operationAttempt.current === attempt) setVerify(result);
+          finishOperation(attempt);
         }
+        catch (error) { failOperation(attempt, "verify archive", "result.verifyFailed", error); }
         break;
       }
       case "reveal": {
@@ -991,9 +989,25 @@ function JobView({
     }
   }
 
-  // The control panel's one-line digest: the same sentence the report leads
-  // with — what blocks the job, what it will do, or what it did.
-  const digest = useMemo(() => reportSummary(job, plan, t), [job, plan, t]);
+  // The control panel's one-line digest: what blocks the job or what it will
+  // do. Once it has run, its history says what it did instead.
+  const finished = job.state === "done" || job.state === "failed";
+  const digest = useMemo(() => (finished ? null : reportSummary(job, plan, t)), [finished, job, plan, t]);
+
+  // A finished job's archive is looked at again whenever the job is selected
+  // and the window comes back, so a change or deletion made outside ZipKit
+  // shows before any button is pressed.
+  useEffect(() => {
+    if (!finished) return;
+    const look = (): void => {
+      void window.zipkit.checkArchive(job.id).catch((error) => {
+        window.zipkit.reportError("check job archive", reportableError(error));
+      });
+    };
+    look();
+    window.addEventListener("focus", look);
+    return () => window.removeEventListener("focus", look);
+  }, [finished, job.id]);
 
   return (
     <>
@@ -1077,6 +1091,17 @@ function JobView({
             <p className="text-line" style={{ ...S.digest, color: severityColor(digest.level) }} title={digest.text}>
               {digest.text}
             </p>
+          )}
+          {/* What has happened to the job, oldest first, so the user can read it
+              through before removing the originals. */}
+          {job.history && job.history.length > 0 && (
+            <ul style={S.history} aria-label={t.t("history.label")}>
+              {job.history.map((entry, index) => (
+                <li key={index} style={entry.severity === "info" ? undefined : { color: severityColor(entry.severity) }}>
+                  {t.text(entry.message)}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 
@@ -1200,6 +1225,7 @@ const S: Record<string, CSSProperties> = {
   // One line under the commands: what blocks the job, what it will do, or what
   // it did; the whole sentence is in its tooltip and the report.
   digest: { margin: "0.6rem 0 0", fontSize: "0.85rem" },
+  history: { margin: "0.6rem 0 0", paddingInlineStart: "1.2rem", display: "grid", gap: "0.2rem", fontSize: "0.85rem" },
   // The Parameters heading is its own fold control: no button chrome, the
   // section title's look.
   disclosure: {

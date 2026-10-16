@@ -61,6 +61,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     onQueue: vi.fn(() => () => {}),
     onQueueSaved: vi.fn(() => () => {}),
     verify: vi.fn(),
+    checkArchive: vi.fn(async () => {}),
     reveal: vi.fn(),
     getJobEvents: vi.fn(async () => []),
     onEvents: vi.fn(() => () => {}),
@@ -371,6 +372,8 @@ describe("mounted run consent across queue projection changes", () => {
       trash: vi.fn(async (paths) => ({ moved: paths, failed: [], unconfirmed: [] })),
       deleteOriginals: vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] })),
       outputInsideInputs: vi.fn(async () => false),
+      archiveState: vi.fn(async (output: string) => `state:${output}`),
+      inspect: vi.fn(async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] })),
       emit: vi.fn((jobs) => { if (!withholdProjection) publish?.(jobs); }),
       progress: vi.fn(() => vi.fn()),
       newId: vi.fn(() => "consent-job"),
@@ -575,5 +578,34 @@ describe("the Archive pane layout", () => {
     // Unticking is for editing, so the parameters open with it.
     fireEvent.click(screen.getByRole("checkbox", { name: "Use the parameters from Settings" }));
     expect(fold.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("a finished job's history and archive", () => {
+  it("lists what happened under the commands and looks at the archive again on selection and on focus", async () => {
+    const finished: Job = {
+      ...job("a"),
+      state: "done",
+      archiveWritten: true,
+      archiveStatus: "verified",
+      history: [
+        { at: 1, severity: "info", message: { key: "job.savedVerified", values: { count: 10 } } },
+        { at: 2, severity: "warning", message: { key: "report.archiveChanged" } },
+      ],
+    };
+    const bridge = api({ getQueue: vi.fn(async () => [finished]) });
+    renderApp(bridge);
+    fireEvent.click(await screen.findByRole("option"));
+    const history = screen.getByRole("list", { name: "History" });
+    expect(within(history).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Saved and verified (10 bytes).",
+      "The archive has changed since ZipKit last checked it. Verify it again.",
+    ]);
+    // A verified archive offers no second Verify.
+    expect(screen.queryByRole("button", { name: "Verify" })).toBeNull();
+    await waitFor(() => expect(bridge.checkArchive).toHaveBeenCalledWith("a"));
+    const before = vi.mocked(bridge.checkArchive).mock.calls.length;
+    fireEvent.focus(window);
+    expect(vi.mocked(bridge.checkArchive).mock.calls.length).toBe(before + 1);
   });
 });

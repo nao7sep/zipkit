@@ -11,6 +11,7 @@ import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { nodeFileSystem, Volume } from "../../../src/sdk/internal/volume.js";
 import { TRASH } from "../../helpers/intents.js";
+import { realArchiveState } from "../../helpers/archiveState.js";
 
 it("presents a real publication flush failure safely and keeps originals out of Trash", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-queue-durability-"));
@@ -34,6 +35,11 @@ it("presents a real publication flush failure safely and keeps originals out of 
     recheck: (archive, inputs, options, signal) => zip.compareSources(buildSpec(inputs, options), archive, { signal }),
     classify: async (paths) => paths.map((location) => ({ path: location, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
+    archiveState: realArchiveState,
+    inspect: async (archive, signal, onProgress, checkMetadata) => {
+      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
+      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
+    },
     trash, outputInsideInputs: async () => false, emit: () => {}, progress: () => () => {},
     newId: () => "job", log: { ...nullLog, error: logged },
   });

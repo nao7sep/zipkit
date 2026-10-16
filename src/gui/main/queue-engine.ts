@@ -29,11 +29,12 @@ import {
   scanBlocksRemoval,
   type InputEntry,
   type Job,
+  type JobHistoryEntry,
   type JobIntent,
   type OriginalsAction,
   type SavedJob,
 } from "../shared/queue.js";
-import type { JobAction, LogEvent, PlanData, SourceComparison } from "../shared/api.js";
+import type { JobAction, LogEvent, PlanData, SourceComparison, VerifyReport } from "../shared/api.js";
 import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
@@ -49,6 +50,9 @@ export interface EngineDeps {
   admission: CommandAdmission;
   effects: ReturnType<typeof createArchiveEffects>;
   resources(paths: string[], signal: AbortSignal): Promise<FileResource[]>;
+  /** The archive as it stands — which file, its size and when it last changed —
+   *  as one comparable string, or null when nothing is at the path. */
+  archiveState(output: string, signal: AbortSignal): Promise<string | null>;
   /** Dry-run plan for the given inputs/options; progress events go to `onProgress`. */
   plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count (or null if unknown). */
@@ -57,6 +61,9 @@ export interface EngineDeps {
   /** Verify a written archive: every entry's CRC-32, and against its manifest
    *  when `checkMetadata`; resolves to the SDK's reportOk. */
   verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void, checkMetadata: boolean): Promise<boolean>;
+  /** Verify a written archive on request: the verdict, the counts and the
+   *  paths that disagree, for the job's review. */
+  inspect(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void, checkMetadata: boolean): Promise<VerifyReport>;
   /** Re-scan the inputs under the job's options and compare them with the
    *  archive's manifest: the last check before any of them goes to Trash. */
   recheck(
@@ -110,6 +117,12 @@ export interface QueueEngine {
   /** Move a finished job's originals to Trash, or delete them permanently, on
    *  explicit, deliberate request, after the same checks a run makes. */
   removeOriginals(id: string, method: RemovalMethod): void;
+  /** Verify a finished job's archive on request and record the outcome. Throws
+   *  when it could not be verified at all; the job's history says why. */
+  verify(id: string): Promise<VerifyReport | null>;
+  /** Look at a finished job's archive again: note a change since it was written
+   *  or verified, and handle it having gone. */
+  checkArchive(id: string): Promise<void>;
   getPlan(id: string): PlanData | null;
   restore(saved: SavedJob[]): void;
   /** True while a job is actually writing/verifying/trashing (not merely queued),
@@ -133,6 +146,8 @@ interface Rec {
   /** The archive path from the most recent write that actually committed. */
   publishedOutput: string | null;
   publication: FileResource | null;
+  /** The archive's state when ZipKit last wrote or verified it. */
+  fingerprint: string | null;
   /** A Create accepted for the current plan; only its completion consumes it. */
   runAfterPlan: boolean;
 }
@@ -270,8 +285,93 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   function emit(): void {
     deps.emit(snapshot());
   }
+  /** Apply a patch to the job. A run's outcome and a follow-up action's result
+   *  are also added to the job's history, so the user can read, in order, what
+   *  happened to it however many times it was re-planned since. */
   function set(rec: Rec, patch: Partial<Job>): void {
+    const entry = historyEntry(patch);
     rec.job = { ...rec.job, ...patch };
+    if (entry) rec.job = { ...rec.job, history: [...(rec.job.history ?? []), entry] };
+  }
+  function historyEntry(patch: Partial<Job>): JobHistoryEntry | null {
+    if (patch.actionResult) return { at: Date.now(), ...patch.actionResult };
+    if ((patch.state === "done" || patch.state === "failed") && patch.message) {
+      return { at: Date.now(), severity: patch.state === "done" ? "info" : "error", message: patch.message };
+    }
+    return null;
+  }
+  /** The archive's state, or undefined when it could not be read: a failed
+   *  look never claims the archive is gone. */
+  async function lookAt(rec: Rec, output: string, signal: AbortSignal): Promise<string | null | undefined> {
+    try { return await deps.archiveState(output, signal); }
+    catch (error) {
+      deps.log.warn("archive state unavailable", { jobId: rec.job.id, output, error: errorInfo(error) });
+      return undefined;
+    }
+  }
+  /** Look at the archive this job wrote: note a change since ZipKit last wrote
+   *  or verified it, and handle it having gone. Resolves to whether it is still
+   *  there, true when that could not be told. */
+  async function observeArchive(rec: Rec, signal: AbortSignal): Promise<boolean> {
+    const output = rec.publishedOutput;
+    if (!output) return false;
+    const state = await lookAt(rec, output, signal);
+    if (rec.publishedOutput !== output || state === undefined) return true;
+    if (state === null) {
+      archiveGone(rec, output);
+      return false;
+    }
+    if (state !== rec.fingerprint && rec.job.archiveStatus !== "changed") {
+      deps.log.info("archive changed since it was last checked", { jobId: rec.job.id, output });
+      set(rec, { archiveStatus: "changed", actionResult: { severity: "warning", message: message("report.archiveChanged") } });
+      emit();
+    }
+    return true;
+  }
+  /** The archive was moved or deleted outside ZipKit. While every original is
+   *  still there the job goes back to planning so it can be created again;
+   *  once the originals are gone it stays finished and says the archive is gone. */
+  function archiveGone(rec: Rec, output: string): void {
+    const id = rec.job.id;
+    rec.publishedOutput = null;
+    rec.publication = null;
+    rec.fingerprint = null;
+    const originalsGone = (rec.job.state === "done" && removesOriginals(rec.job.intent)) || !originalsIntact(rec.job);
+    deps.log.warn("archive missing", { jobId: id, output, originalsGone });
+    if (originalsGone) {
+      set(rec, {
+        archiveWritten: false,
+        archiveStatus: "missing",
+        actionResult: { severity: "error", message: message("action.archiveMissingOriginalsGone") },
+      });
+      emit();
+      return;
+    }
+    set(rec, { actionResult: { severity: "warning", message: message("action.archiveMissing") } });
+    resetForRecreate(rec);
+  }
+  /** Back to an editable, re-planned job whose archive is gone, so options can
+   *  be adjusted and the archive created again. */
+  function resetForRecreate(rec: Rec): void {
+    set(rec, {
+      output: undefined,
+      summary: undefined,
+      writable: undefined,
+      message: undefined,
+      actionResult: undefined,
+      archiveWritten: false,
+      archiveStatus: undefined,
+    });
+    rec.publishedOutput = null;
+    rec.publication = null;
+    rec.fingerprint = null;
+    emit();
+    void planJob(rec.job.id);
+  }
+  /** Record a verification that passed, against the archive as it stood when it began. */
+  function markVerified(rec: Rec, seen: string | null | undefined): void {
+    if (seen) rec.fingerprint = seen;
+    set(rec, { archiveStatus: "verified" });
   }
   /** The commands on finished jobs that are still moving originals to Trash,
    *  so quit can wait for them as it waits for a run. */
@@ -319,10 +419,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return { reason: "location-error", err };
     }
     try {
+      const seen = await lookAt(rec, output, signal);
       if (!(await deps.verify(output, signal, onProgress, true))) {
         deps.log.error("trash blocked: verification failed; originals kept", { jobId: id, output });
         return { reason: "verify-failed" };
       }
+      markVerified(rec, seen);
     } catch (err) {
       deps.log.error("trash blocked: verification errored; originals kept", { jobId: id, error: errorInfo(err) });
       return { reason: "verify-error", err };
@@ -500,7 +602,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return null;
     }
     rec.publishedOutput = plan.output;
-    set(rec, { archiveWritten: true });
+    rec.fingerprint = (await lookAt(rec, plan.output, signal)) ?? null;
+    set(rec, { archiveWritten: true, archiveStatus: "written" });
     try { rec.publication = (await deps.resources([plan.output], signal))[0] ?? null; }
     catch (error) { deps.log.warn("archive publication identity unavailable", { jobId: id, error: errorInfo(error) }); }
     return { output: plan.output, bytes, claim };
@@ -610,6 +713,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return;
     }
     let verified: boolean;
+    const seen = rec.fingerprint;
     try {
       verified = await deps.verify(output, signal, onProgress, rec.job.options.metadata);
     } catch (err) {
@@ -622,6 +726,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.error("job saved; verification failed", { jobId: id, output });
       return;
     }
+    markVerified(rec, seen);
     set(rec, { state: "done", message: message("job.savedVerified", { count: bytes ?? 0 }) });
     deps.log.info("job saved and verified", { jobId: id, output, bytes });
   }
@@ -734,7 +839,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     add(inputs, options, intent = SAFEST_INTENT) {
       if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const id = deps.newId();
-      recs.set(id, { job: { id, inputs, options, intent, state: "planning" }, plan: null, aborter: null, publishedOutput: null, publication: null, runAfterPlan: false });
+      recs.set(id, { job: { id, inputs, options, intent, state: "planning" }, plan: null, aborter: null, publishedOutput: null, publication: null, fingerprint: null, runAfterPlan: false });
       order.push(id);
       deps.log.info("job added", { jobId: id, inputs: inputs.length });
       emit();
@@ -890,6 +995,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         let claim: EffectClaim | undefined;
         try {
           claim = await claimFiles([], [output], aborter.signal);
+          if (!(await observeArchive(rec, aborter.signal))) return;
           if (!(await publicationCurrent(rec, output, aborter.signal))) {
             set(rec, { actionResult: { severity: "error", message: message("action.archiveTrashFailed") } });
             deps.log.warn("archive removal refused: publication was replaced", { jobId: id, output });
@@ -934,20 +1040,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         }
         if (!removed) return;
         deps.log.info("archive removed", { jobId: id, output });
-        // Back to an editable, re-planned job so options can be adjusted and the
-        // archive created again.
-        set(rec, {
-          output: undefined,
-          summary: undefined,
-          writable: undefined,
-          message: undefined,
-          actionResult: undefined,
-          archiveWritten: false,
-        });
-        rec.publishedOutput = null;
-        rec.publication = null;
-        emit();
-        void planJob(id);
+        set(rec, { actionResult: { severity: "info", message: message("action.archiveTrashed") } });
+        resetForRecreate(rec);
       })();
       actions.add(work);
       void work.finally(() => actions.delete(work));
@@ -977,11 +1071,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       emit();
       deps.log.info("removing originals requested", { jobId: id, method, count: inputs.length });
       const work = (async () => {
-        let result: NonNullable<Job["actionResult"]>;
+        // Null when the archive turned out to be gone: that already says so.
+        let result: NonNullable<Job["actionResult"]> | null;
         let claim: EffectClaim | undefined;
         try {
           if (!output) {
             result = { severity: "error", message: message("action.noArchive") };
+          } else if (!(await observeArchive(rec, aborter.signal))) {
+            result = null;
           } else {
             claim = await claimFiles([output], inputs, aborter.signal);
             const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id, method));
@@ -1007,7 +1104,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           deps.log.error("removing originals failed", { jobId: id, method, error: errorInfo(err) });
         } finally { claim?.release(); }
         if (rec.aborter === aborter) rec.aborter = null;
-        set(rec, { trashing: false, actionResult: result });
+        set(rec, result ? { trashing: false, actionResult: result } : { trashing: false });
         emit();
         // Re-classify so removed originals read as missing and the commands hide.
         void classifyInputs(id);
@@ -1015,12 +1112,59 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       actions.add(work);
       void work.finally(() => actions.delete(work));
     },
+    async verify(id) {
+      if (!deps.admission.accepting()) throw new Error("The app is shutting down");
+      const rec = recs.get(id);
+      const output = rec?.publishedOutput;
+      if (!rec || !output || rec.job.trashing || rec.job.state === "running" || rec.job.state === "queued") return null;
+      deps.log.info("verify requested", { jobId: id, output });
+      const signal = new AbortController().signal;
+      const work = (async (): Promise<VerifyReport | null> => {
+        let claim: EffectClaim | undefined;
+        try {
+          if (!(await observeArchive(rec, signal))) return null;
+          claim = await claimFiles([output], [], signal);
+          const seen = await lookAt(rec, output, signal);
+          const report = await deps.inspect(output, signal, deps.progress(id, "verify"), rec.job.options.metadata);
+          if (report.reportOk) {
+            markVerified(rec, seen);
+            set(rec, { actionResult: { severity: "info", message: message("history.verified", { count: report.summary.total }) } });
+          } else {
+            const s = report.summary;
+            const problems = s.crcFailed + s.shaMismatched + s.manifestMismatched + report.missing.length + report.extra.length;
+            set(rec, {
+              archiveStatus: rec.job.archiveStatus === "verified" ? "changed" : rec.job.archiveStatus,
+              actionResult: { severity: "error", message: message("history.verifyFailed", { count: Math.max(problems, 1) }) },
+            });
+          }
+          deps.log.info("verify done", { jobId: id, output, reportOk: report.reportOk });
+          return report;
+        } catch (err) {
+          deps.log.error("verify failed", { jobId: id, output, error: errorInfo(err) });
+          set(rec, { actionResult: { severity: "error", message: failureMessage(err, "action.verifyErrored") } });
+          throw err;
+        } finally {
+          claim?.release();
+          emit();
+        }
+      })();
+      const tracked = work.then(() => {}, () => {});
+      actions.add(tracked);
+      void tracked.finally(() => actions.delete(tracked));
+      return work;
+    },
+    async checkArchive(id) {
+      const rec = recs.get(id);
+      if (!rec || !rec.publishedOutput || rec.job.trashing) return;
+      if (rec.job.state !== "done" && rec.job.state !== "failed") return;
+      await observeArchive(rec, new AbortController().signal);
+    },
     getPlan(id) {
       return recs.get(id)?.plan ?? null;
     },
     restore(saved) {
       for (const s of saved) {
-        recs.set(s.id, { job: { ...s, intent: SAFEST_INTENT, state: "planning" }, plan: null, aborter: null, publishedOutput: null, publication: null, runAfterPlan: false });
+        recs.set(s.id, { job: { ...s, intent: SAFEST_INTENT, state: "planning" }, plan: null, aborter: null, publishedOutput: null, publication: null, fingerprint: null, runAfterPlan: false });
         order.push(s.id);
       }
       if (saved.length > 0) emit();

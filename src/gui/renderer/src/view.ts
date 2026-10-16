@@ -238,14 +238,18 @@ export function jobCommands(job: Job): JobCommand[] {
       }
       return runnable ? ["retry"] : [];
     case "done": {
+      // An archive gone after the originals were removed leaves nothing to act on.
+      if (job.archiveStatus === "missing") return [];
+      // Verify is offered until the archive verifies, and again once it changes.
+      const verify: JobCommand[] = job.archiveStatus === "verified" ? [] : ["verify"];
       // A job that removed its originals on its run has only its archive left.
-      if (removesOriginals(job.intent)) return ["verify", "reveal"];
+      if (removesOriginals(job.intent)) return [...verify, "reveal"];
       // A kept job: verify/reveal it, move the archive to Trash while every
       // original is still there (to edit and re-create), or — while some
       // remain, and only when the archive carries the manifest the checks
       // need — remove the originals. The destructive commands come last so
       // the command bar seats them at the far-right end.
-      const commands: JobCommand[] = ["verify", "reveal"];
+      const commands: JobCommand[] = [...verify, "reveal"];
       if (originalsIntact(job)) commands.push("remove-archive");
       if (job.options.metadata && !job.scanIncomplete && originalsPresent(job)) commands.push("trash-originals", "delete-originals");
       return commands;
@@ -307,7 +311,7 @@ export function reportSummary(
   if (!plan) return null; // planning — nothing to report yet
   const s = plan.summary;
   if (job.state === "done") {
-    return { level: "info", text: t.t("report.archived", { count: s.included }) };
+    return { level: "info", text: t.t(job.archiveStatus === "verified" ? "report.archivedVerified" : "report.archived", { count: s.included }) };
   }
   const notes: string[] = [];
   // Counted as the Report's Renamed rows, so a renamed folder counts once, as

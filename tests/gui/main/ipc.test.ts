@@ -14,8 +14,6 @@ const mocks = vi.hoisted(() => ({
   applyTheme: vi.fn(),
   applyLanguage: vi.fn(),
   showAppMessageDialog: vi.fn(),
-  sdkCall: vi.fn(),
-  toGuiError: vi.fn((error: unknown) => ({ type: "mapped", code: "mapped", presentation: { key: "error.readFailed" }, error })),
 }));
 
 vi.mock("electron", () => ({
@@ -40,10 +38,7 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
     session: "2026-06-15T01:00:00.000Z",
     records: mocks.records,
   },
-  startProgressRun: vi.fn(() => vi.fn()),
-  toGuiError: mocks.toGuiError,
 }));
-vi.mock("../../../src/gui/main/sdk-process.js", () => ({ sdk: { call: mocks.sdkCall } }));
 vi.mock("../../../src/gui/main/settings.js", () => ({
   checkedSettings: (settings: unknown) => settings,
   currentSettings: mocks.currentSettings,
@@ -204,31 +199,5 @@ describe("Records window IPC", () => {
     mocks.openRecordsWindow.mockRejectedValueOnce(failure);
     await expect(invoke("zipkit:openRecordsWindow")).rejects.toBe(failure);
     expect(mocks.logError).toHaveBeenCalledWith("records window failed to open", expect.anything());
-  });
-});
-
-describe("verify IPC", () => {
-  beforeEach(() => { mocks.sdkCall.mockReset(); registerIpc(); });
-  const verify = (...args: unknown[]) => mocks.handlers.get("zipkit:verify")!({}, ...args);
-
-  it("claims the archive for reading, verifies it in the SDK host and returns its compact report", async () => {
-    const report = { reportOk: true, summary: { total: 1 }, missing: [], extra: [] };
-    mocks.sdkCall.mockImplementation(async (op: string) =>
-      op === "resources" ? [{ location: "/out/a.zip", identity: "1:2" }] : report);
-    await expect(verify("job-1", "/out/a.zip", true)).resolves.toEqual({ ok: true, data: report });
-    expect(mocks.sdkCall).toHaveBeenNthCalledWith(1, "resources", [["/out/a.zip"]]);
-    expect(mocks.sdkCall).toHaveBeenNthCalledWith(2, "inspect", ["/out/a.zip", true], { onProgress: expect.any(Function) });
-  });
-
-  it("maps a host failure, the host's own ending included, into the window's error", async () => {
-    const ended = Object.assign(new Error("ended"), { errorType: "host", code: "host.exited" });
-    mocks.sdkCall.mockImplementation(async (op: string) => {
-      if (op === "resources") return [];
-      throw ended;
-    });
-    const result = await verify("job-1", "/out/a.zip", true) as { ok: false; error: { error: unknown } };
-    expect(result.ok).toBe(false);
-    expect(mocks.toGuiError).toHaveBeenCalledWith(ended);
-    expect(result.error.error).toBe(ended);
   });
 });

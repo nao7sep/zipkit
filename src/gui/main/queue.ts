@@ -10,9 +10,9 @@ import { ipcMain, shell } from "electron";
 import { nanoid } from "nanoid";
 import type { GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
-import type { PlanReport } from "../shared/api.js";
+import type { PlanReport, VerifyResult } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
-import { log, sendQueue, sendQueueSaved, startProgressRun } from "./runtime.js";
+import { log, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
 import { attachInternals, readInternals } from "../../sdk/internal/carrier.js";
 import { errorInfo } from "./log.js";
@@ -74,6 +74,8 @@ const engine = createQueueEngine({
   admission: appAdmission,
   effects: appArchiveEffects,
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
+  archiveState: (output, signal) => sdk.call("archiveState", [output], { signal }),
+  inspect: (output, signal, onProgress, checkMetadata) => sdk.call("inspect", [output, checkMetadata], { signal, onProgress }),
   plan: async (inputs, options, signal, onProgress) => {
     const { plan, internals } = await sdk.call("plan", [inputs, options], { signal, onProgress });
     attachInternals(plan, internals);
@@ -233,6 +235,17 @@ export function registerQueueIpc(): void {
     ): Promise<void> => engine.update(id, patch),
   );
 
+  // Null when there was nothing to verify, such as an archive found gone; the
+  // job's history says why.
+  ipcMain.handle("zipkit:verify", async (_e, id: string): Promise<VerifyResult | null> => {
+    try {
+      const data = await engine.verify(id);
+      return data ? { ok: true, data } : null;
+    } catch (err) {
+      return { ok: false, error: toGuiError(err) };
+    }
+  });
+  ipcMain.handle("zipkit:checkArchive", async (_e, id: string): Promise<void> => engine.checkArchive(id));
   ipcMain.handle("zipkit:addJobInputs", async (_e, id: string, paths: string[]) => engine.addInputs(id, paths));
   ipcMain.handle("zipkit:removeJobInput", async (_e, id: string, path: string): Promise<void> => engine.removeInput(id, path));
 
