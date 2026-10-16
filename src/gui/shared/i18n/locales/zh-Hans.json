@@ -412,6 +412,8 @@
   "settings.uiFont": "界面字体",
   "settings.uiFontHint": "应用界面使用的字体。填写以逗号分隔的字体系列，将使用系统中第一个可用的字体。留空则使用内置默认字体。",
   "settings.resetDefaults": "恢复默认参数",
+  "settings.defaultParameters": "默认参数",
+  "settings.defaultParametersHint": "每个新任务都从这些值开始。各任务可以单独修改。",
   "settings.saving": "正在保存…",
   "settings.saveFailed": "设置未能保存。你的更改仍然保留，请再次尝试保存。",
   "settings.savedApplyFailed": "设置已保存，但界面未能完全更新。请重启 ZipKit 以应用设置。",

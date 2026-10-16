@@ -142,14 +142,9 @@ export function SettingsDialog({
       onClose={() => void requestClose()}
       maxWidth="44rem"
       footer={
-        // Initial focus is named on Cancel (modal-dialog conventions), never the
-        // reset or Save. The reset is pulled to the far left (flex order + auto
-        // margin); Save stays last.
+        // Initial focus is named on Cancel (modal-dialog conventions), never Save.
         <>
           <button data-modal-autofocus disabled={saving} onClick={() => void requestClose()}>{t("common.cancel")}</button>
-          <button style={S.resetDefaultParameters} disabled={saving} onClick={resetDefaultParameters}>
-            {t("settings.resetDefaults")}
-          </button>
           <button className="accent" disabled={!canSave || saving} onClick={() => void save()}>
             {t(saving ? "settings.saving" : "common.save")}
           </button>
@@ -230,20 +225,52 @@ export function SettingsDialog({
         />
         <span style={S.fontHint}>{t("settings.uiFontHint")}</span>
       </label>
-      <OptionsPanel
-        options={draft.defaults}
-        onChange={(o) => setDraft({ ...draft, defaults: o })}
-        disabled={saving}
-      />
+      {/* The defaults every new job starts with, under their own heading, so the
+          reset beside it plainly covers these and nothing above (config-sets
+          conventions, Reset: one control per group, named for it). */}
+      <section aria-labelledby="settings-default-parameters">
+        <div style={S.sectionHead}>
+          <h3 id="settings-default-parameters" style={S.sectionTitle}>{t("settings.defaultParameters")}</h3>
+          <button style={S.resetDefaultParameters} disabled={saving} onClick={resetDefaultParameters}>
+            {t("settings.resetDefaults")}
+          </button>
+        </div>
+        <p style={S.sectionHint}>{t("settings.defaultParametersHint")}</p>
+        <OptionsPanel
+          options={draft.defaults}
+          onChange={(o) => setDraft({ ...draft, defaults: o })}
+          disabled={saving}
+        />
+      </section>
       {saveError && <p role="alert" style={S.error}>{t("settings.saveFailed")}</p>}
     </ModalShell>
   );
 }
 
 const S: Record<string, CSSProperties> = {
-  // Reset sits at the far left of the footer, apart from the Cancel/Save pair:
-  // the auto margin pushes those two right, the order pulls it ahead of Cancel.
-  resetDefaultParameters: { order: -1, marginRight: "auto" },
+  // The section's heading row, in the main window's section style: its title at
+  // the left, its reset at the right, on one line however long the translation.
+  sectionHead: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "0.75rem",
+    margin: "0.25rem 0 0.35rem",
+    paddingTop: "0.75rem",
+    borderTop: "1px solid var(--border)",
+  },
+  sectionTitle: {
+    margin: 0,
+    minWidth: 0,
+    fontSize: "0.75rem",
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--text-2)",
+  },
+  sectionHint: { margin: "0 0 0.75rem", fontSize: "0.8rem", color: "var(--text-2)" },
+  // A button's caption never wraps; the title beside it gives way instead.
+  resetDefaultParameters: { flexShrink: 0, whiteSpace: "nowrap" },
   themeField: { display: "flex", flexDirection: "column", gap: "0.35rem", margin: "0 0 1rem", padding: 0, border: "none", minWidth: 0 },
   themeLegend: { fontWeight: 600, padding: 0, marginBottom: "0.35rem" },
   themeOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem" },

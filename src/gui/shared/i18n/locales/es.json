@@ -412,6 +412,8 @@
   "settings.uiFont": "Fuente de la interfaz",
   "settings.uiFontHint": "La fuente de la interfaz de la app. Familias separadas por comas; se usa la primera que tenga tu sistema. En blanco se usa la predeterminada integrada.",
   "settings.resetDefaults": "Restablecer los parámetros predeterminados",
+  "settings.defaultParameters": "Parámetros predeterminados",
+  "settings.defaultParametersHint": "Cada trabajo nuevo empieza con estos valores. Un trabajo puede cambiar los suyos.",
   "settings.saving": "Guardando…",
   "settings.saveFailed": "No se guardó la configuración. Tus cambios siguen abiertos; vuelve a intentar guardarlos.",
   "settings.savedApplyFailed": "Los ajustes se guardaron, pero la interfaz no pudo actualizarse por completo. Reinicia ZipKit para aplicarlos.",

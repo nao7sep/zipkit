@@ -302,3 +302,15 @@ describe("SettingsDialog draft report", () => {
     expect(report).toHaveBeenLastCalledWith(false);
   });
 });
+
+describe("SettingsDialog default parameters section", () => {
+  it("names the parameters under their own heading, with the reset that covers them beside it", () => {
+    renderDialog();
+    const section = screen.getByRole("region", { name: "Default parameters" });
+    expect(within(section).getByRole("button", { name: "Reset default parameters" })).toBeTruthy();
+    expect(within(section).getByLabelText("Compression level (1–9)")).toBeTruthy();
+    // Language, theme and font sit above it, outside what the reset covers.
+    expect(within(section).queryByLabelText(/^UI font/)).toBeNull();
+    expect(within(section).queryByRole("group", { name: "Theme" })).toBeNull();
+  });
+});

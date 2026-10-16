@@ -412,6 +412,8 @@
   "settings.uiFont": "UI font",
   "settings.uiFontHint": "The app interface font. Comma-separated families; the first one your system has is used. Blank uses the built-in default.",
   "settings.resetDefaults": "Reset default parameters",
+  "settings.defaultParameters": "Default parameters",
+  "settings.defaultParametersHint": "Every new job starts with these. A job can change its own.",
   "settings.saving": "Saving…",
   "settings.saveFailed": "Settings were not saved. Your changes are still open; try saving again.",
   "settings.savedApplyFailed": "Settings were saved, but the interface could not fully update. Restart ZipKit to apply them.",

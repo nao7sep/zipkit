@@ -412,6 +412,8 @@
   "settings.uiFont": "Police de l’interface",
   "settings.uiFontHint": "La police de l’interface de l’application. Familles séparées par des virgules\u00a0; la première présente sur votre système est utilisée. Vide\u00a0: la police intégrée par défaut.",
   "settings.resetDefaults": "Rétablir les paramètres par défaut",
+  "settings.defaultParameters": "Paramètres par défaut",
+  "settings.defaultParametersHint": "Chaque nouvelle tâche commence avec ces valeurs. Une tâche peut modifier les siennes.",
   "settings.saving": "Enregistrement…",
   "settings.saveFailed": "Les réglages n’ont pas été enregistrés. Vos modifications sont toujours ouvertes\u00a0; réessayez d’enregistrer.",
   "settings.savedApplyFailed": "Les réglages ont été enregistrés, mais l’interface n’a pas pu être entièrement mise à jour. Redémarrez ZipKit pour les appliquer.",
