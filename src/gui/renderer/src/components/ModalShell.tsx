@@ -13,7 +13,7 @@
  *   not the dialog (text-input-and-IME conventions). Radix honors
  *   `defaultPrevented`, so the guard simply prevents the default close.
  *
- * Feature modals (confirm, about, help) supply their title, body, and footer;
+ * Feature modals (confirm, about, shortcuts) supply their title, body, and footer;
  * they never re-implement any of the chrome. One close path: Escape, an
  * outside click, or a caller's own button all settle through `onClose`.
  */

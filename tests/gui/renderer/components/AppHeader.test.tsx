@@ -10,7 +10,6 @@ function mountHeader() {
     onOpenSettings: vi.fn(),
     onOpenRecords: vi.fn(),
     onOpenShortcuts: vi.fn(),
-    onOpenHelp: vi.fn(),
     onOpenAbout: vi.fn(),
   };
   render(<AppHeader {...callbacks} />);
@@ -35,8 +34,8 @@ describe("AppHeader menu targets", () => {
     fireEvent.pointerLeave(settings, { pointerType: "mouse" });
     expect(document.activeElement).toBe(shortcuts);
     fireEvent.keyDown(shortcuts, { key: "ArrowDown" });
-    fireEvent.keyDown(await focused("Help"), { key: "Enter" });
-    expect(header.onOpenHelp).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(await focused("About ZipKit"), { key: "Enter" });
+    expect(header.onOpenAbout).toHaveBeenCalledTimes(1);
     expect(header.onOpenSettings).not.toHaveBeenCalled();
     expect(header.onOpenShortcuts).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
@@ -56,7 +55,7 @@ describe("AppHeader menu targets", () => {
     trigger.focus();
     fireEvent.keyDown(trigger, { key: "ArrowUp" });
     fireEvent.keyDown(await focused("About ZipKit"), { key: "ArrowUp" });
-    await focused("Help");
+    await focused("Shortcut keys");
   });
 
   it("activates the clicked command when a different command has keyboard focus", async () => {

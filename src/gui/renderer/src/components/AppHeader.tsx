@@ -20,13 +20,11 @@ export function AppHeader({
   onOpenSettings,
   onOpenRecords,
   onOpenShortcuts,
-  onOpenHelp,
   onOpenAbout,
 }: {
   onOpenSettings: () => void;
   onOpenRecords: () => void;
   onOpenShortcuts: () => void;
-  onOpenHelp: () => void;
   onOpenAbout: () => void;
 }) {
   const { t } = useI18n();
@@ -36,7 +34,6 @@ export function AppHeader({
     { key: "header.settings", onSelect: onOpenSettings },
     { key: "header.records", onSelect: onOpenRecords },
     { key: "header.shortcuts", onSelect: onOpenShortcuts },
-    { key: "header.help", onSelect: onOpenHelp },
     { key: "header.about", onSelect: onOpenAbout },
   ] as const;
   return (
