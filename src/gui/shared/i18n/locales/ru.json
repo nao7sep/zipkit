@@ -240,7 +240,6 @@
   "inputs.locked": "В текущем состоянии задания исходные данные изменить нельзя.",
 
   "section.parameters": "Параметры",
-  "section.report": "Отчёт",
   "params.useSettings": "Использовать параметры из настроек",
   "op.fileName": "Имя файла",
   "op.automatic": "(автоматически)",
@@ -305,8 +304,6 @@
   "options.comment": "Комментарий",
   "directory.pickerFailed": "Не удалось открыть окно выбора папки для сохранения. Текущий путь не изменён; повторите попытку.",
 
-  "report.noReport": "Отчёта пока нет.",
-  "report.clean": "Всё чисто — исправлять ничего не пришлось.",
   "report.createFailed": "Не удалось создать архив.",
   "report.blockingIssues": { "one": "Перед архивацией нужно устранить {count} блокирующую проблему.", "few": "Перед архивацией нужно устранить {count} блокирующие проблемы.", "many": "Перед архивацией нужно устранить {count} блокирующих проблем.", "other": "Перед архивацией нужно устранить {count} блокирующей проблемы." },
   "report.cannotArchiveYet": "Это задание пока нельзя архивировать.",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "one": "{count} предупреждение", "few": "{count} предупреждения", "many": "{count} предупреждений", "other": "{count} предупреждения" },
   "report.missing": "Отсутствует в архиве ({count})",
   "report.extra": "Неожиданные лишние записи ({count})",
-  "report.verified": "Проверено: {summary}",
-  "report.verificationFailed": "Проверка не пройдена: {summary}",
   "report.entries": { "one": "{count} запись", "few": "{count} записи", "many": "{count} записей", "other": "{count} записи" },
   "report.crcFailures": { "one": "{count} ошибка CRC", "few": "{count} ошибки CRC", "many": "{count} ошибок CRC", "other": "{count} ошибки CRC" },
   "report.shaMismatches": { "one": "{count} несовпадение SHA", "few": "{count} несовпадения SHA", "many": "{count} несовпадений SHA", "other": "{count} несовпадения SHA" },

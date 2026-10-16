@@ -16,7 +16,7 @@
 import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
 import { manifestRequiredButMissing, originalsIntact, removesOriginals, scanBlocksRemoval } from "../../shared/queue";
-import type { ExtractData, Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
+import type { Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
 import { renamedItself, type PlanReport } from "../../shared/plan-report";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
@@ -854,13 +854,3 @@ export function stateTint(state: Job["state"]): string {
   }
 }
 
-/** The verify result one-liner. */
-export function verifySummary(data: Pick<ExtractData, "summary">, t: Translator): string {
-  const s = data.summary;
-  return t.list([
-    t.t("report.entries", { count: s.total }),
-    t.t("report.crcFailures", { count: s.crcFailed }),
-    t.t("report.shaMismatches", { count: s.shaMismatched }),
-    t.t("report.manifestMismatches", { count: s.manifestMismatched }),
-  ]);
-}

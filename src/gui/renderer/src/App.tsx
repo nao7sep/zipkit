@@ -71,6 +71,7 @@ import { Splitter } from "./components/Splitter";
 import { StateLabel } from "./components/StateLabel";
 import {
   archiveName,
+  jobAdvisories,
   jobCommands,
   type JobCommand,
   label,
@@ -82,6 +83,7 @@ import {
   severityColor,
 } from "./view";
 import { ChevronIcon } from "./components/Icon";
+import { JobDigest } from "./components/JobDigest";
 
 type DialogName = "settings" | "shortcuts" | "about";
 
@@ -993,6 +995,8 @@ function JobView({
   // do. Once it has run, its history says what it did instead.
   const finished = job.state === "done" || job.state === "failed";
   const digest = useMemo(() => (finished ? null : reportSummary(job, plan, t)), [finished, job, plan, t]);
+  // Advice about the inputs themselves, such as archiving a .zip again.
+  const advisories = jobAdvisories(job, t);
 
   // A finished job's archive is looked at again whenever the job is selected
   // and the window comes back, so a change or deletion made outside ZipKit
@@ -1087,21 +1091,15 @@ function JobView({
           )}
           <CommandBar job={job} onCommand={onCommand} />
           {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
-          {digest && (
-            <p className="text-line" style={{ ...S.digest, color: severityColor(digest.level) }} title={digest.text}>
-              {digest.text}
-            </p>
-          )}
-          {/* What has happened to the job, oldest first, so the user can read it
-              through before removing the originals. */}
-          {job.history && job.history.length > 0 && (
-            <ul style={S.history} aria-label={t.t("history.label")}>
-              {job.history.map((entry, index) => (
-                <li key={index} style={entry.severity === "info" ? undefined : { color: severityColor(entry.severity) }}>
-                  {t.text(entry.message)}
-                </li>
-              ))}
-            </ul>
+          {advisories.map((line, index) => (
+            <p key={index} style={{ ...S.caution, color: severityColor(line.level) }}>{line.text}</p>
+          ))}
+          <JobDigest job={job} digest={digest} />
+          {planLoadFailed && (
+            <div style={S.planRecovery}>
+              <p role="alert">{t.t("report.planLoadFailed")}</p>
+              <button onClick={() => setPlanAttempt((value) => value + 1)}>{t.t("report.retryPlan")}</button>
+            </div>
           )}
         </div>
 
@@ -1164,23 +1162,17 @@ function JobView({
             onResult={onInputResult}
           />
         </div>
-
-        {/* Report: what the archive does with each item, until the right pane
-            shows it when it is needed. */}
-        <div style={S.sectionHead}>
-          <span style={S.sectionTitle}>{t.t("section.report")}</span>
-        </div>
-        {planLoadFailed ? (
-          <div style={S.planRecovery}>
-            <p role="alert">{t.t("report.planLoadFailed")}</p>
-            <button onClick={() => setPlanAttempt((value) => value + 1)}>{t.t("report.retryPlan")}</button>
-          </div>
-        ) : <Report job={job} plan={plan} verify={verify} />}
       </Pane>
 
       {splitter}
 
       <Pane title={t.t("pane.progress")} rootStyle={GROW} bodyStyle={S.progressBody}>
+        {/* The plan's lists, until this pane shows only what is needed when it
+            is needed: what will be renamed, flagged or left out, and what a
+            verification found. */}
+        <div style={S.lists}>
+          <Report plan={plan} verify={verify} />
+        </div>
         <ProgressLog events={events} />
       </Pane>
     </>
@@ -1201,6 +1193,9 @@ const S: Record<string, CSSProperties> = {
   },
   listBody: { display: "flex", flexDirection: "column", padding: "0.5rem", overflow: "hidden" },
   progressBody: { display: "flex", flexDirection: "column", padding: "0.6rem", overflow: "hidden" },
+  // The lists take what they need up to most of the pane and scroll there; the
+  // Progress log keeps the rest.
+  lists: { flex: "0 1 auto", maxHeight: "65%", minHeight: 0, overflowY: "auto", position: "relative" },
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
   jobsReceiver: {
     flex: 1,
@@ -1222,10 +1217,6 @@ const S: Record<string, CSSProperties> = {
   choiceHint: { color: "var(--text-2)", fontSize: "0.8rem" },
   choiceOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem", minWidth: 0 },
   caution: { color: "var(--status-warning)", margin: "0.6rem 0 0" },
-  // One line under the commands: what blocks the job, what it will do, or what
-  // it did; the whole sentence is in its tooltip and the report.
-  digest: { margin: "0.6rem 0 0", fontSize: "0.85rem" },
-  history: { margin: "0.6rem 0 0", paddingInlineStart: "1.2rem", display: "grid", gap: "0.2rem", fontSize: "0.85rem" },
   // The Parameters heading is its own fold control: no button chrome, the
   // section title's look.
   disclosure: {
@@ -1258,5 +1249,5 @@ const S: Record<string, CSSProperties> = {
     color: "var(--text-2)",
   },
   defaultsToggle: { display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.85rem" },
-  planRecovery: { display: "grid", gap: "0.5rem", justifyItems: "start" },
+  planRecovery: { display: "grid", gap: "0.5rem", justifyItems: "start", marginTop: "0.6rem" },
 };

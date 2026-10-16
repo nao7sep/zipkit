@@ -6,26 +6,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { Report } from "../../../../src/gui/renderer/src/components/Report";
 import * as view from "../../../../src/gui/renderer/src/view";
 
-// Counted, so a test can tell whether the report rendered again.
+// Counted, so a test can tell whether the lists were rebuilt.
 vi.mock("../../../../src/gui/renderer/src/view", async (original) => {
   const real = await original<typeof import("../../../../src/gui/renderer/src/view")>();
-  return { ...real, reportSummary: vi.fn(real.reportSummary) };
+  return { ...real, planReport: vi.fn(real.planReport) };
 });
-import type { Job, PlanData } from "../../../../src/gui/shared/api";
-import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
-import { message } from "../../../../src/gui/shared/i18n/translate";
-import { SAVE } from "../../../helpers/intents.js";
+import type { PlanData } from "../../../../src/gui/shared/api";
 
 afterEach(cleanup);
-
-const job = (over: Partial<Job> = {}): Job => ({
-  id: "job",
-  inputs: ["/input"],
-  options: DEFAULT_OPTIONS,
-  intent: SAVE,
-  state: "ready",
-  ...over,
-});
 
 const plan = (warnings = 0): PlanData => ({
   mode: "plan",
@@ -45,90 +33,6 @@ const plan = (warnings = 0): PlanData => ({
   writable: true,
 } as PlanData);
 
-describe("Report result announcements", () => {
-  it("announces an actionable job failure assertively as one atomic headline", () => {
-    const { rerender } = render(
-      <Report job={job({ state: "planning" })} plan={null} verify={null} />,
-    );
-    const live = document.querySelector<HTMLElement>("[aria-live='assertive']")!;
-    expect(live.textContent).toBe("");
-
-    rerender(<Report job={job({ state: "failed", message: message("job.writeFailed") })} plan={null} verify={null} />);
-
-    expect(live.textContent).toBe(
-      "The archive could not be written. Check the output location and available storage, then try again.",
-    );
-    expect(live.getAttribute("aria-atomic")).toBe("true");
-  });
-
-  it("announces a ready or warning headline politely without making every report row live", () => {
-    const withFinding = {
-      ...plan(1),
-      findings: [{ rule: "name.test", severity: "warning", path: "a", message: "Review this name" }],
-    } as PlanData;
-    const { rerender } = render(
-      <Report job={job({ state: "planning" })} plan={null} verify={null} />,
-    );
-    const live = document.querySelector<HTMLElement>("[aria-live='polite']")!;
-    expect(live.textContent).toBe("");
-
-    rerender(<Report job={job()} plan={withFinding} verify={null} />);
-
-    expect(screen.getAllByText(/ready to archive/)).toHaveLength(2);
-    expect(screen.getByText("Review this name").closest("[aria-live], [role='alert'], [role='status']")).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(live.textContent).toContain("ready to archive");
-  });
-
-  it("announces a follow-up job action failure at the selected job report", () => {
-    const base = job({ state: "done", message: message("job.saved", { count: 12 }) });
-    const { rerender } = render(
-      <Report job={base} plan={plan()} verify={null} />,
-    );
-    const live = document.querySelector<HTMLElement>("[aria-live='assertive']")!;
-
-    rerender(
-      <Report
-        job={{
-          ...base,
-          actionResult: { severity: "error", message: message("action.originalsTrashFailed") },
-        }}
-        plan={plan()}
-        verify={null}
-      />,
-    );
-
-    expect(live.textContent).toContain("The originals could not be moved to Trash");
-  });
-
-  it("announces an IPC verification fault without turning the detail rows into live regions", () => {
-    const done = job({ state: "done" });
-    const currentPlan = plan();
-    const { rerender } = render(
-      <Report job={done} plan={currentPlan} verify={null} />,
-    );
-    const live = document.querySelector<HTMLElement>("[aria-live='assertive']")!;
-
-    rerender(
-      <Report
-        job={done}
-        plan={currentPlan}
-        verify={{
-          ok: false,
-          error: {
-            type: "IoError",
-            code: "verify.failed",
-            presentation: message("error.readFailed"),
-          },
-        }}
-      />,
-    );
-
-    expect(live.textContent).toContain("The archive could not be read");
-    expect(live.textContent).not.toContain("archive unreadable");
-  });
-});
-
 describe("Report renamed rows", () => {
   const renamedPlan = (from: string, to: string): PlanData =>
     ({
@@ -146,7 +50,7 @@ describe("Report renamed rows", () => {
     }) as PlanData;
 
   it("marks the change visually and gives a screen reader the path and its old name", () => {
-    render(<Report job={job()} plan={renamedPlan("a:b.txt", "a_b.txt")} verify={null} />);
+    render(<Report plan={renamedPlan("a:b.txt", "a_b.txt")} verify={null} />);
     const removed = document.querySelector("del")!;
     const added = document.querySelector("ins")!;
     expect(removed.textContent).toBe(":");
@@ -161,7 +65,7 @@ describe("Report renamed rows", () => {
     const nfc = nfd.normalize("NFC");
     const p = renamedPlan(nfd, nfc);
     p.entries[0]!.findings = [{ rule: "name.nfd", severity: "info", path: nfd, message: "normalized", fix: { kind: "rename", to: nfc } }];
-    render(<Report job={job()} plan={p} verify={null} />);
+    render(<Report plan={p} verify={null} />);
     expect(document.querySelector("del")).toBeNull();
     expect(screen.getByText(nfc)).toBeTruthy();
     expect(screen.getByText("Name normalized from NFD to NFC")).toBeTruthy();
@@ -173,7 +77,7 @@ describe("Report verification paths", () => {
     const missing = ["a/one.txt", "a/two.txt", "a/three.txt", "a/four.txt"];
     render(
       <Report
-        job={job({ state: "done" })}
+       
         plan={plan()}
         verify={{
           ok: true,
@@ -208,7 +112,7 @@ describe("Report at volume", () => {
     const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight")!;
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 600 });
     try {
-      render(<div style={{ overflowY: "auto", height: 600 }}><Report job={job()} plan={many(5000)} verify={null} /></div>);
+      render(<div style={{ overflowY: "auto", height: 600 }}><Report plan={many(5000)} verify={null} /></div>);
       expect(screen.getByRole("heading", { name: "Renamed for portability (5,000)" })).toBeTruthy();
       const drawn = screen.getAllByText(/^photos\/IMG_/).length;
       expect(drawn).toBeGreaterThan(0);
@@ -216,11 +120,10 @@ describe("Report at volume", () => {
     } finally { rect.mockRestore(); Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight); }
   });
 
-  it("is not rebuilt when its parent re-renders with the same job, plan and verification", () => {
-    const summaries = vi.mocked(view.reportSummary);
-    const shown = job();
+  it("is not rebuilt when its parent re-renders with the same plan and verification", () => {
+    const summaries = vi.mocked(view.planReport);
     const report = many(3);
-    const view_ = (tick: number) => <div data-tick={tick}><Report job={shown} plan={report} verify={null} /></div>;
+    const view_ = (tick: number) => <div data-tick={tick}><Report plan={report} verify={null} /></div>;
     const { rerender } = render(view_(0));
     const first = summaries.mock.calls.length;
     rerender(view_(1));

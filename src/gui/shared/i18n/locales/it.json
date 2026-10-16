@@ -240,7 +240,6 @@
   "inputs.locked": "Gli input non possono essere modificati nello stato attuale dell’operazione.",
 
   "section.parameters": "Parametri",
-  "section.report": "Resoconto",
   "params.useSettings": "Usa i parametri delle Impostazioni",
   "op.fileName": "Nome del file",
   "op.automatic": "(automatico)",
@@ -305,8 +304,6 @@
   "options.comment": "Commento",
   "directory.pickerFailed": "Impossibile aprire la selezione della cartella di destinazione. Il percorso attuale non è cambiato; riprova.",
 
-  "report.noReport": "Ancora nessun resoconto.",
-  "report.clean": "Tutto pulito: non c’era niente da correggere.",
   "report.createFailed": "Impossibile creare l’archivio.",
   "report.blockingIssues": { "one": "{count} problema bloccante deve essere risolto prima di poter archiviare.", "many": "{count} di problemi bloccanti devono essere risolti prima di poter archiviare.", "other": "{count} problemi bloccanti devono essere risolti prima di poter archiviare." },
   "report.cannotArchiveYet": "Questa operazione non può ancora essere archiviata.",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "one": "{count} avviso", "many": "{count} di avvisi", "other": "{count} avvisi" },
   "report.missing": "Manca nell’archivio ({count})",
   "report.extra": "Voci aggiuntive inattese ({count})",
-  "report.verified": "Verificato: {summary}",
-  "report.verificationFailed": "Verifica non riuscita: {summary}",
   "report.entries": { "one": "{count} voce", "many": "{count} di voci", "other": "{count} voci" },
   "report.crcFailures": { "one": "{count} errore CRC", "many": "{count} di errori CRC", "other": "{count} errori CRC" },
   "report.shaMismatches": { "one": "{count} discrepanza SHA", "many": "{count} di discrepanze SHA", "other": "{count} discrepanze SHA" },

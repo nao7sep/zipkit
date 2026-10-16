@@ -240,7 +240,6 @@
   "inputs.locked": "Im aktuellen Zustand des Auftrags lassen sich die Eingaben nicht ändern.",
 
   "section.parameters": "Parameter",
-  "section.report": "Bericht",
   "params.useSettings": "Parameter aus den Einstellungen verwenden",
   "op.fileName": "Dateiname",
   "op.automatic": "(automatisch)",
@@ -305,8 +304,6 @@
   "options.comment": "Kommentar",
   "directory.pickerFailed": "Die Auswahl des Ausgabeordners konnte nicht geöffnet werden. Der aktuelle Pfad ist unverändert; versuchen Sie es erneut.",
 
-  "report.noReport": "Noch kein Bericht.",
-  "report.clean": "Alles sauber – nichts musste korrigiert werden.",
   "report.createFailed": "Das Archiv konnte nicht erstellt werden.",
   "report.blockingIssues": { "one": "{count} blockierendes Problem muss behoben werden, bevor archiviert werden kann.", "other": "{count} blockierende Probleme müssen behoben werden, bevor archiviert werden kann." },
   "report.cannotArchiveYet": "Dieser Auftrag kann noch nicht archiviert werden.",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "one": "{count} Warnung", "other": "{count} Warnungen" },
   "report.missing": "Fehlt im Archiv ({count})",
   "report.extra": "Unerwartete zusätzliche Einträge ({count})",
-  "report.verified": "Geprüft: {summary}",
-  "report.verificationFailed": "Prüfung fehlgeschlagen: {summary}",
   "report.entries": { "one": "{count} Eintrag", "other": "{count} Einträge" },
   "report.crcFailures": { "one": "{count} CRC-Fehler", "other": "{count} CRC-Fehler" },
   "report.shaMismatches": { "one": "{count} SHA-Abweichung", "other": "{count} SHA-Abweichungen" },

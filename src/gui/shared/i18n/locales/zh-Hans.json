@@ -240,7 +240,6 @@
   "inputs.locked": "在任务的当前状态下无法更改输入。",
 
   "section.parameters": "参数",
-  "section.report": "报告",
   "params.useSettings": "使用设置中的参数",
   "op.fileName": "文件名",
   "op.automatic": "（自动）",
@@ -305,8 +304,6 @@
   "options.comment": "注释",
   "directory.pickerFailed": "无法打开输出文件夹选择器。当前路径未改动，请重试。",
 
-  "report.noReport": "暂无报告。",
-  "report.clean": "一切正常，没有需要修复的内容。",
   "report.createFailed": "无法创建归档。",
   "report.blockingIssues": { "other": "必须先解决 {count} 个阻止创建的问题，才能进行归档。" },
   "report.cannotArchiveYet": "此任务暂时无法归档。",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "other": "{count} 个警告" },
   "report.missing": "归档中缺少（{count}）",
   "report.extra": "意外的多余条目（{count}）",
-  "report.verified": "已通过校验：{summary}",
-  "report.verificationFailed": "校验失败：{summary}",
   "report.entries": { "other": "{count} 个条目" },
   "report.crcFailures": { "other": "{count} 个 CRC 错误" },
   "report.shaMismatches": { "other": "{count} 个 SHA 不匹配" },

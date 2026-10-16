@@ -1,54 +1,41 @@
 /**
- * The job report: a context-aware, human-readable account of what the archive will
- * do (or did) for the user — one row per file with every change to it, grouped by
- * kind (issues that block, warnings, renames, exclusions), each group colored by
- * level. No corner "verdict" badge, nothing folded: a dropped or renamed path is
- * exactly what the user must see, so every row is always visible. The verify
- * result, when present, follows. Verdict/derivations are pure (`reportSummary` /
- * `planReport` in view); this just renders. The parent clears stale state (verify, the plan) at the right
- * times, so the report never shows a result that no longer holds.
+ * The job's lists: one row per file with every change to it, grouped by kind
+ * (issues that block, warnings, renames, exclusions), each group colored by
+ * level, then the paths a verification found missing or unexpected. It sits in
+ * the right pane until that pane shows only what the user needs when it is
+ * needed; what happened to the job is said once, in the Archive pane's history.
+ * The derivations are pure (`planReport` in view); this just renders. The
+ * parent clears stale state (verify, the plan) at the right times, so the lists
+ * never show a result that no longer holds.
  */
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CSSProperties } from "react";
-import type { Job, PlanReport, VerifyResult } from "../../../shared/api";
+import type { PlanReport, VerifyResult } from "../../../shared/api";
 import { useI18n } from "../i18n/I18nContext";
 import {
-  jobAdvisories,
   planReport,
   reportGroupLevel,
   reportGroupTitle,
   renameDisplay,
-  reportSummary,
   severityColor,
-  verifySummary,
   type ReportGroup,
   type ReportLine,
   type ReportRow,
 } from "../view";
 
-/** Memoized: the Archive pane re-renders on every Progress batch, and the
- *  report depends only on the job, its plan and its verification. */
+/** Memoized: the window re-renders on every Progress batch, and the lists
+ *  depend only on the plan and the verification. */
 export const Report = memo(function Report({
-  job,
   plan,
   verify,
 }: {
-  job: Job;
   plan: PlanReport | null;
   verify: VerifyResult | null;
 }) {
   const t = useI18n();
   const groups = useMemo(() => (plan ? planReport(plan, t) : []), [plan, t]);
-  const summary = reportSummary(job, plan, t, groups);
-  // GUI advisories about the inputs (e.g. re-zipping a .zip) lead the log — they
-  // are relevant before any plan exists, so they keep the report from reading
-  // "No report yet" when there's genuinely something to say.
-  const advisories = jobAdvisories(job, t);
-
-  const noReport = !plan && !summary && advisories.length === 0;
-
   const verifyData = verify?.ok ? verify.data : null;
   // Paths the verification found missing or unexpected are listed one per row,
   // like the plan's groups, rather than joined into one sentence that grows
@@ -59,125 +46,8 @@ export const Report = memo(function Report({
         { title: t.t("report.extra", { count: verifyData.extra.length }), level: "warning" as const, paths: verifyData.extra },
       ].filter((group) => group.paths.length > 0)
     : [], [verifyData, t]);
-
-  const verificationResult = verify
-    ? verify.ok
-      ? {
-          level: verify.data.reportOk ? "info" as const : "error" as const,
-          text: t.t(verify.data.reportOk ? "report.verified" : "report.verificationFailed", {
-            summary: verifySummary(verify.data, t),
-          }),
-        }
-      : {
-          level: "error" as const,
-          text: t.text(verify.error.presentation),
-        }
-    : null;
-
-  const priorResults = useRef<{ summary: string; action: string; verification: string } | null>(null);
-  const [assertiveAnnouncement, setAssertiveAnnouncement] = useState("");
-  const [politeAnnouncement, setPoliteAnnouncement] = useState("");
-  const summarySignature = summary ? `${summary.level}|${summary.text}` : "";
-  const actionText = job.actionResult ? t.text(job.actionResult.message) : "";
-  const actionSignature = job.actionResult ? `${job.actionResult.severity}|${actionText}` : "";
-  const verificationSignature = verificationResult
-    ? `${verificationResult.level}|${verificationResult.text}`
-    : "";
-  const summaryAnnouncement = summary
-    ? { level: summary.level, text: summary.text }
-    : null;
-  const actionAnnouncement = job.actionResult
-    ? { level: job.actionResult.severity, text: actionText }
-    : null;
-
-  // The Report remounts when selection changes, so its first render establishes
-  // a silent baseline. Only later result transitions announce; selecting a job,
-  // restoring existing results, and ordinary report rows remain quiet.
-  useEffect(() => {
-    const current = {
-      summary: summarySignature,
-      action: actionSignature,
-      verification: verificationSignature,
-    };
-    const previous = priorResults.current;
-    priorResults.current = current;
-    if (!previous) return;
-
-    const changed = [
-      { before: previous.summary, after: current.summary, result: summaryAnnouncement },
-      { before: previous.action, after: current.action, result: actionAnnouncement },
-      { before: previous.verification, after: current.verification, result: verificationResult },
-    ];
-    if (!changed.some(({ before, after }) => before !== after)) return;
-
-    let candidate: { level: ReportLine["level"]; text: string } | null = null;
-    for (const item of changed) {
-      if (item.before !== item.after && item.result) {
-        if (!candidate || item.result.level === "error" || candidate.level !== "error") {
-          candidate = item.result;
-        }
-      }
-    }
-
-    if (!candidate) {
-      setAssertiveAnnouncement("");
-      setPoliteAnnouncement("");
-    } else if (candidate.level === "error") {
-      setPoliteAnnouncement("");
-      setAssertiveAnnouncement(candidate.text);
-    } else {
-      setAssertiveAnnouncement("");
-      setPoliteAnnouncement(candidate.text);
-    }
-  }, [actionSignature, summarySignature, verificationSignature]);
-
-  return (
-    <div>
-      {noReport && <p style={S.muted}>{t.t("report.noReport")}</p>}
-      {summary && (
-        <p style={{ ...S.summary, color: severityColor(summary.level) }}>
-          {summary.text}
-        </p>
-      )}
-      {job.state === "done" && job.message && <p style={S.note}>{t.text(job.message)}</p>}
-      {job.actionResult && (
-        <p style={{ ...S.note, color: severityColor(job.actionResult.severity) }}>
-          {actionText}
-        </p>
-      )}
-      {verificationResult && (
-        <p style={{ ...S.note, color: severityColor(verificationResult.level) }}>
-          {verificationResult.text}
-        </p>
-      )}
-      {plan && groups.length === 0 && plan.writable && (
-        <p style={S.note}>{t.t("report.clean")}</p>
-      )}
-      {advisories.length > 0 && (
-        <ul style={S.log}>
-          {advisories.map((line, i) => (
-            <LogRow key={i} line={line} />
-          ))}
-        </ul>
-      )}
-      <ReportRows groups={groups} verifyGroups={verifyGroups} />
-      <span aria-live="assertive" aria-atomic="true" style={S.srOnly}>
-        {assertiveAnnouncement}
-      </span>
-      <span aria-live="polite" aria-atomic="true" style={S.srOnly}>
-        {politeAnnouncement}
-      </span>
-    </div>
-  );
+  return <ReportRows groups={groups} verifyGroups={verifyGroups} />;
 });
-
-function LogRow({ line }: { line: ReportLine }) {
-  return (
-    <li style={{ ...S.row, borderColor: severityColor(line.level) }}>
-      <span style={S.text}>{line.text}</span>
-    </li>
-  );
-}
 
 interface PathGroupData {
   title: string;
@@ -308,10 +178,6 @@ function RowPath({ row }: { row: ReportRow }) {
 }
 
 const S: Record<string, CSSProperties> = {
-  muted: { color: "var(--text-2)", margin: "0.4rem 0" },
-  summary: { margin: "0 0 0.5rem", fontSize: "0.95rem", fontWeight: 600 },
-  note: { color: "var(--text-2)", margin: "0 0 0.5rem", fontSize: "0.85rem" },
-  log: { listStyle: "none", margin: "0 0 0.6rem", padding: 0, display: "grid", gap: "0.3rem" },
   groupTitle: { margin: "0 0 0.35rem", fontSize: "0.85rem", fontWeight: 600 },
   fileRow: {
     display: "flex",
@@ -321,14 +187,6 @@ const S: Record<string, CSSProperties> = {
     paddingLeft: "0.55rem",
   },
   change: { fontSize: "0.85rem", wordBreak: "break-word" },
-  row: {
-    display: "flex",
-    alignItems: "baseline",
-    minWidth: 0,
-    borderLeft: "2px solid",
-    paddingLeft: "0.55rem",
-  },
-  text: { flex: 1, minWidth: 0, fontSize: "0.85rem", wordBreak: "break-word" },
   path: { fontFamily: "var(--font-mono)", fontSize: "0.8rem", wordBreak: "break-all" },
   // A removed character is struck through in the error colour; an added one
   // sits on a tint of the success colour, in the text colour so it stays legible.

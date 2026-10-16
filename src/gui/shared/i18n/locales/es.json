@@ -240,7 +240,6 @@
   "inputs.locked": "Las entradas no se pueden cambiar en el estado actual del trabajo.",
 
   "section.parameters": "Parámetros",
-  "section.report": "Informe",
   "params.useSettings": "Usar los parámetros de Configuración",
   "op.fileName": "Nombre de archivo",
   "op.automatic": "(automático)",
@@ -305,8 +304,6 @@
   "options.comment": "Comentario",
   "directory.pickerFailed": "No se pudo abrir el selector de la carpeta de salida. La ruta actual no ha cambiado; vuelve a intentarlo.",
 
-  "report.noReport": "Todavía no hay informe.",
-  "report.clean": "Todo está limpio; no hubo nada que corregir.",
   "report.createFailed": "No se pudo crear el archivo comprimido.",
   "report.blockingIssues": { "one": "Hay que resolver {count} problema bloqueante antes de poder comprimir.", "many": "Hay que resolver {count} de problemas bloqueantes antes de poder comprimir.", "other": "Hay que resolver {count} problemas bloqueantes antes de poder comprimir." },
   "report.cannotArchiveYet": "Este trabajo todavía no se puede comprimir.",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "one": "{count} advertencia", "many": "{count} de advertencias", "other": "{count} advertencias" },
   "report.missing": "Falta en el archivo comprimido ({count})",
   "report.extra": "Entradas adicionales inesperadas ({count})",
-  "report.verified": "Verificado: {summary}",
-  "report.verificationFailed": "La verificación falló: {summary}",
   "report.entries": { "one": "{count} entrada", "many": "{count} de entradas", "other": "{count} entradas" },
   "report.crcFailures": { "one": "{count} error de CRC", "many": "{count} de errores de CRC", "other": "{count} errores de CRC" },
   "report.shaMismatches": { "one": "{count} discrepancia de SHA", "many": "{count} de discrepancias de SHA", "other": "{count} discrepancias de SHA" },

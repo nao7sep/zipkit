@@ -240,7 +240,6 @@
   "inputs.locked": "As entradas não podem ser alteradas no estado atual do trabalho.",
 
   "section.parameters": "Parâmetros",
-  "section.report": "Relatório",
   "params.useSettings": "Usar os parâmetros das Configurações",
   "op.fileName": "Nome do arquivo",
   "op.automatic": "(automático)",
@@ -305,8 +304,6 @@
   "options.comment": "Comentário",
   "directory.pickerFailed": "Não foi possível abrir o seletor da pasta de saída. O caminho atual não foi alterado; tente novamente.",
 
-  "report.noReport": "Ainda não há relatório.",
-  "report.clean": "Tudo limpo: nada precisou ser corrigido.",
   "report.createFailed": "Não foi possível criar o arquivo compactado.",
   "report.blockingIssues": { "one": "É preciso resolver {count} problema que impede a criação antes de compactar.", "many": "É preciso resolver {count} de problemas que impedem a criação antes de compactar.", "other": "É preciso resolver {count} problemas que impedem a criação antes de compactar." },
   "report.cannotArchiveYet": "Este trabalho ainda não pode ser compactado.",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "one": "{count} aviso", "many": "{count} de avisos", "other": "{count} avisos" },
   "report.missing": "Faltando no arquivo compactado ({count})",
   "report.extra": "Entradas extras inesperadas ({count})",
-  "report.verified": "Verificado: {summary}",
-  "report.verificationFailed": "A verificação falhou: {summary}",
   "report.entries": { "one": "{count} entrada", "many": "{count} de entradas", "other": "{count} entradas" },
   "report.crcFailures": { "one": "{count} erro de CRC", "many": "{count} de erros de CRC", "other": "{count} erros de CRC" },
   "report.shaMismatches": { "one": "{count} divergência de SHA", "many": "{count} de divergências de SHA", "other": "{count} divergências de SHA" },

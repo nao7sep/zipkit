@@ -240,7 +240,6 @@
   "inputs.locked": "Les entrées ne peuvent pas être modifiées dans l’état actuel de la tâche.",
 
   "section.parameters": "Paramètres",
-  "section.report": "Rapport",
   "params.useSettings": "Utiliser les paramètres des Réglages",
   "op.fileName": "Nom du fichier",
   "op.automatic": "(automatique)",
@@ -305,8 +304,6 @@
   "options.comment": "Commentaire",
   "directory.pickerFailed": "Le sélecteur du dossier de sortie n’a pas pu s’ouvrir. Le chemin actuel est inchangé\u00a0; réessayez.",
 
-  "report.noReport": "Pas encore de rapport.",
-  "report.clean": "Tout est propre, rien n’a eu besoin d’être corrigé.",
   "report.createFailed": "L’archive n’a pas pu être créée.",
   "report.blockingIssues": { "one": "{count} problème bloquant doit être résolu avant de pouvoir archiver.", "many": "{count} de problèmes bloquants doivent être résolus avant de pouvoir archiver.", "other": "{count} problèmes bloquants doivent être résolus avant de pouvoir archiver." },
   "report.cannotArchiveYet": "Cette tâche ne peut pas encore être archivée.",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "one": "{count} avertissement", "many": "{count} d’avertissements", "other": "{count} avertissements" },
   "report.missing": "Absent de l’archive ({count})",
   "report.extra": "Entrées supplémentaires inattendues ({count})",
-  "report.verified": "Vérifiée\u00a0: {summary}",
-  "report.verificationFailed": "Échec de la vérification\u00a0: {summary}",
   "report.entries": { "one": "{count} entrée d’archive", "many": "{count} d’entrées d’archive", "other": "{count} entrées d’archive" },
   "report.crcFailures": { "one": "{count} erreur CRC", "many": "{count} d’erreurs CRC", "other": "{count} erreurs CRC" },
   "report.shaMismatches": { "one": "{count} écart SHA", "many": "{count} d’écarts SHA", "other": "{count} écarts SHA" },

@@ -35,9 +35,8 @@ import {
   severityColor,
   stateColor,
   stateLabel,
-  verifySummary,
 } from "../../../src/gui/renderer/src/view";
-import { JOB_EVENT_LIMIT, type ExtractData, type Job, type JobEvent, type LogEvent, type PlanData, type Severity } from "../../../src/gui/shared/api";
+import { JOB_EVENT_LIMIT, type Job, type JobEvent, type LogEvent, type PlanData, type Severity } from "../../../src/gui/shared/api";
 import { RULE_ORDER } from "../../../src/sdk/registry";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
@@ -933,11 +932,3 @@ describe("jobCommands", () => {
   });
 });
 
-describe("verifySummary", () => {
-  it("summarizes the verify counts", () => {
-    const data = {
-      summary: { total: 10, crcFailed: 1, shaMismatched: 2, manifestMismatched: 1 },
-    } as unknown as ExtractData;
-    expect(verifySummary(data, en)).toBe("10 entries, 1 CRC failure, 2 SHA mismatches, 1 manifest mismatch");
-  });
-});

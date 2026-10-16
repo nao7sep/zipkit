@@ -240,7 +240,6 @@
   "inputs.locked": "現在のジョブの状態では、入力を変更できません。",
 
   "section.parameters": "パラメータ",
-  "section.report": "レポート",
   "params.useSettings": "設定のパラメータを使用",
   "op.fileName": "ファイル名",
   "op.automatic": "（自動）",
@@ -305,8 +304,6 @@
   "options.comment": "コメント",
   "directory.pickerFailed": "出力先フォルダの選択画面を開けませんでした。現在のパスは変更されていません。もう一度お試しください。",
 
-  "report.noReport": "まだレポートはありません。",
-  "report.clean": "問題はありません。修正が必要な項目はありませんでした。",
   "report.createFailed": "アーカイブを作成できませんでした。",
   "report.blockingIssues": { "other": "アーカイブするには、作成を妨げている問題 {count} 件を解決する必要があります。" },
   "report.cannotArchiveYet": "このジョブはまだアーカイブできません。",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "other": "警告 {count} 件" },
   "report.missing": "アーカイブにない項目（{count}）",
   "report.extra": "想定外の追加項目（{count}）",
-  "report.verified": "検証済み: {summary}",
-  "report.verificationFailed": "検証に失敗しました: {summary}",
   "report.entries": { "other": "{count} エントリ" },
   "report.crcFailures": { "other": "CRC エラー {count} 件" },
   "report.shaMismatches": { "other": "SHA 不一致 {count} 件" },

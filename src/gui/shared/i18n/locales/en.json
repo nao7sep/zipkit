@@ -240,7 +240,6 @@
   "inputs.locked": "Inputs cannot be changed in the current job state.",
 
   "section.parameters": "Parameters",
-  "section.report": "Report",
   "params.useSettings": "Use the parameters from Settings",
   "op.fileName": "File name",
   "op.automatic": "(automatic)",
@@ -305,8 +304,6 @@
   "options.comment": "Comment",
   "directory.pickerFailed": "The output folder picker could not be opened. The current path is unchanged; try again.",
 
-  "report.noReport": "No report yet.",
-  "report.clean": "Everything is clean — nothing needed fixing.",
   "report.createFailed": "The archive could not be created.",
   "report.blockingIssues": { "one": "{count} blocking issue must be resolved before this can be archived.", "other": "{count} blocking issues must be resolved before this can be archived." },
   "report.cannotArchiveYet": "This job can’t be archived yet.",
@@ -320,8 +317,6 @@
   "report.warningsNote": { "one": "{count} warning", "other": "{count} warnings" },
   "report.missing": "Missing from the archive ({count})",
   "report.extra": "Unexpected extra entries ({count})",
-  "report.verified": "Verified: {summary}",
-  "report.verificationFailed": "Verification failed: {summary}",
   "report.entries": { "one": "{count} entry", "other": "{count} entries" },
   "report.crcFailures": { "one": "{count} CRC failure", "other": "{count} CRC failures" },
   "report.shaMismatches": { "one": "{count} SHA mismatch", "other": "{count} SHA mismatches" },
