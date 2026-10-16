@@ -16,7 +16,7 @@ import { ZipKit } from "../../../src/sdk/index.js";
 import { extractArchive } from "../../../src/sdk/extract/extract.js";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/internal/volume.js";
 import { createLogger } from "../../../src/sdk/log/logger.js";
-import { MANIFEST_FORMAT_VERSION, MAX_MANIFEST_BYTES } from "../../../src/sdk/write/metadata.js";
+import { MANIFEST_FORMAT_VERSION } from "../../../src/sdk/write/metadata.js";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../../helpers/writeZip.js";
 import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 
@@ -93,13 +93,13 @@ async function writeArchive(
 }
 
 describe("extract round-trip", () => {
-  it("reports an oversized manifest distinctly before reading its content", async () => {
+  it("reads a manifest whatever size it declares, refusing data that disagrees with it", async () => {
     const archive = await writeArchive([fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [] }))]);
     const bytes = await readFile(archive);
     const central = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
-    bytes.writeUInt32LE(MAX_MANIFEST_BYTES + 1, central + 24);
+    bytes.writeUInt32LE(64 * 1024 * 1024 + 1, central + 24);
     await writeFile(archive, bytes);
-    await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({ code: "read.manifest-too-large" });
+    await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({ code: "read.size-mismatch" });
   });
 
   it.each([

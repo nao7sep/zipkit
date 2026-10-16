@@ -30,7 +30,7 @@ type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 /** The `mode:"write"` member of {@link CreateData}; the writer's success shape.
  *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
 type WriteData = Unlogged<Extract<CreateData, { mode: "write" }>>;
-import { buildMetadata, MAX_MANIFEST_BYTES } from "./metadata.js";
+import { buildMetadata, manifestText } from "./metadata.js";
 import type { MetadataEntryInput } from "./metadata.js";
 import { EntryCompressor, ZipWriter } from "./zipWriter.js";
 import type { StreamResult, WriteEntryInput } from "./zipWriter.js";
@@ -155,6 +155,37 @@ async function streamBuffer(
   });
 }
 
+/** Stream text produced in pieces as one entry, gathered into chunk-sized
+ *  writes so many small pieces cost no more than one large one. */
+async function streamPieces(
+  writer: ZipWriter,
+  input: WriteEntryInput,
+  pieces: Iterable<string>,
+  chunkSize: number,
+  level: number,
+): Promise<StreamResult> {
+  return writer.streamEntry(input, async (sink) => {
+    const compressor = new EntryCompressor(input.method, sink, chunkSize, level);
+    try {
+      let gathered: string[] = [];
+      let length = 0;
+      for (const piece of pieces) {
+        gathered.push(piece);
+        length += piece.length;
+        if (length < chunkSize) continue;
+        await compressor.update(Buffer.from(gathered.join(""), "utf8"));
+        gathered = [];
+        length = 0;
+      }
+      if (length > 0) await compressor.update(Buffer.from(gathered.join(""), "utf8"));
+    } catch (err) {
+      await compressor.dispose();
+      throw err;
+    }
+    return compressor.finish();
+  });
+}
+
 export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<WriteData> {
   const internals = readInternals(plan);
   if (!internals) {
@@ -271,28 +302,25 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
 
     if (policy.metadata !== false) {
       // A ZIP is a container, so the manifest rides inside it rather than as a
-      // loose file that could drift away from the archive. It is generated in
-      // memory and streamed like any other entry, last. Admit the exact UTF-8
-      // serialization before allocating its buffer or publishing. The planning
-      // estimate is conservative and cannot decide this supported-size gate.
-      const text = JSON.stringify(metadata, null, 2);
-      if (Buffer.byteLength(text, "utf8") > MAX_MANIFEST_BYTES) {
-        throw new WriteError("write.manifest-too-large", `manifest exceeds the ${MAX_MANIFEST_BYTES}-byte verification limit`);
-      }
-      const json = Buffer.from(text, "utf8");
-      await streamBuffer(
+      // loose file that could drift away from the archive. Its text is produced
+      // in pieces twice, once to count its bytes for the entry's header and once
+      // into the archive, so the whole text is never held (volume-handling
+      // conventions, Data size): a folder of any size gets its manifest.
+      let length = 0;
+      for (const piece of manifestText(metadata)) length += Buffer.byteLength(piece, "utf8");
+      await streamPieces(
         writer,
         {
           name: policy.metadata.name,
           type: "file",
           method: "deflate",
-          uncompressedSize: json.length,
+          uncompressedSize: length,
           mtimeNs: createdNs,
           atimeNs: createdNs,
           birthtimeNs: createdNs,
           mode: 0,
         },
-        json,
+        manifestText(metadata),
         deps.chunkSize,
         level,
       );

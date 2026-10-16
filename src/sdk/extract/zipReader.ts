@@ -395,29 +395,3 @@ async function* compressedChunks(
     yield bytesRead === length ? buf : buf.subarray(0, bytesRead);
   }
 }
-
-/**
- * Read one entry's full decompressed bytes into a buffer. Reserved for small,
- * structural entries — the embedded manifest — where the content must be parsed
- * whole; the extraction path streams instead so it never buffers an entry.
- */
-export async function readEntryBuffer(file: VolumeFile, entry: ReadEntry, maxBytes: number): Promise<Buffer> {
-  if (entry.uncompSize > maxBytes) {
-    throw new ReadError("read.entry-too-large", `${entry.archivePath} exceeds the in-memory size limit`);
-  }
-  const chunks: Buffer[] = [];
-  let bytes = 0;
-  await readEntryData(
-    file,
-    entry,
-    async (chunk) => {
-      bytes += chunk.length;
-      if (bytes > maxBytes) {
-        throw new ReadError("read.entry-too-large", `${entry.archivePath} exceeds the in-memory size limit`);
-      }
-      chunks.push(chunk);
-    },
-    65536,
-  );
-  return Buffer.concat(chunks);
-}

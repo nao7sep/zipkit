@@ -36,10 +36,6 @@ const ABOUT =
 const REPOSITORY = "https://github.com/nao7sep/zipkit";
 /** The manifest's format version (store-recovery conventions); a reader refuses a newer one. */
 export const MANIFEST_FORMAT_VERSION = 1;
-/** Shared producer/reader bound on uncompressed UTF-8 bytes. This supports
- * representative 65,535-entry projects while bounding untrusted manifest input;
- * parsed objects, JSON text and the central directory consume additional memory. */
-export const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 
 /** The `mode:"plan"` member of {@link CreateData} — the planning view the
  *  metadata document is built from (entries, summary, findings). The metadata
@@ -173,4 +169,29 @@ export function buildMetadata(
   // does not carry an empty field.
   if (comment !== undefined) document.comment = comment;
   return document;
+}
+
+/**
+ * The manifest's JSON text in pieces, exactly as `JSON.stringify(document,
+ * null, 2)` would write it, so neither the writer nor the archive ever holds
+ * the whole text (volume-handling conventions, Data size). A large list is
+ * written one record at a time; every other value is small and is written whole.
+ */
+export function* manifestText(document: Metadata): Generator<string> {
+  const indent = (text: string, pad: string): string => text.replaceAll("\n", `\n${pad}`);
+  const fields = Object.entries(document).filter(([, value]) => value !== undefined);
+  yield "{";
+  for (const [i, [key, value]] of fields.entries()) {
+    yield `${i > 0 ? "," : ""}\n  ${JSON.stringify(key)}: `;
+    if (Array.isArray(value) && value.length > 0) {
+      yield "[";
+      for (const [j, item] of value.entries()) {
+        yield `${j > 0 ? "," : ""}\n    ${indent(JSON.stringify(item, null, 2), "    ")}`;
+      }
+      yield "\n  ]";
+    } else {
+      yield indent(JSON.stringify(value, null, 2), "  ");
+    }
+  }
+  yield fields.length > 0 ? "\n}" : "}";
 }

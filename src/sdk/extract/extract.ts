@@ -23,7 +23,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { nanoid } from "nanoid";
-import { AbortError, ReadError, StallError, throwIfAborted, toAbortError, ZipKitError } from "../errors.js";
+import { ReadError, StallError, throwIfAborted, toAbortError, ZipKitError } from "../errors.js";
 import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
@@ -34,13 +34,14 @@ import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobb
 import type { Volume, VolumeFile } from "../internal/volume.js";
 import { METADATA_DEFAULTS } from "../policy.js";
 import { finding } from "../registry.js";
-import { MANIFEST_FORMAT_VERSION, MAX_MANIFEST_BYTES } from "../write/metadata.js";
+import { MANIFEST_FORMAT_VERSION } from "../write/metadata.js";
+import { createManifestReader, type ManifestReading } from "./manifestReader.js";
 import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
 import { restoreTimes } from "./restore.js";
 import { findTargetCollision } from "./targetCollision.js";
 import { createLinkTargetGuard, type LinkTargetGuard } from "./linkTargets.js";
 import { extractionSegments } from "./windowsNames.js";
-import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "./zipReader.js";
+import { parseZip, readEntryData, type ReadEntry } from "./zipReader.js";
 
 const MAX_SYMLINK_TARGET_BYTES = 64 * 1024;
 
@@ -187,19 +188,26 @@ async function loadManifest(
       `metadata validation requested but no manifest '${name}' is embedded in the archive`,
     );
   }
-  let doc: { formatVersion?: unknown; entries?: unknown };
+  const paths = new Set<string>();
+  const reader = createManifestReader((record) => {
+    if (!isManifestRecord(record)) return { refuse: `manifest ${name} holds a malformed entry record` };
+    if (paths.has(record.archivePath)) return { refuse: `manifest ${name} records '${record.archivePath}' twice` };
+    paths.add(record.archivePath);
+    return { keep: compactRecord(record) };
+  });
+  let reading: ManifestReading;
   try {
-    doc = JSON.parse((await readEntryBuffer(archive, inside, MAX_MANIFEST_BYTES)).toString("utf8"));
+    await readEntryData(archive, inside, (chunk) => reader.push(chunk), 65536);
+    reading = await reader.finish();
   } catch (err) {
-    if (err instanceof StallError || err instanceof AbortError) throw err;
-    if (err instanceof ReadError && err.code === "read.entry-too-large") {
-      throw new ReadError("read.manifest-too-large", `manifest ${name} exceeds the ${MAX_MANIFEST_BYTES}-byte limit`, { cause: err });
-    }
+    // A stall, a cancel or a damaged archive keeps its own code; only the
+    // document itself failing to parse is an invalid manifest.
+    if (err instanceof ZipKitError) throw err;
     throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
       cause: err,
     });
   }
-  const formatVersion = doc?.formatVersion;
+  const formatVersion = reading.formatVersion;
   if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {
     throw new ReadError("read.manifest-invalid", `manifest ${name} has no valid formatVersion`);
   }
@@ -209,20 +217,26 @@ async function loadManifest(
       `manifest ${name} has format version ${formatVersion}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
     );
   }
-  if (!Array.isArray(doc.entries)) {
+  if (!reading.hasEntries) {
     throw new ReadError("read.manifest-invalid", `manifest ${name} has no entries list`);
   }
-  const paths = new Set<string>();
-  for (const record of doc.entries as unknown[]) {
-    if (!isManifestRecord(record)) {
-      throw new ReadError("read.manifest-invalid", `manifest ${name} holds a malformed entry record`);
-    }
-    if (paths.has(record.archivePath)) {
-      throw new ReadError("read.manifest-invalid", `manifest ${name} records '${record.archivePath}' twice`);
-    }
-    paths.add(record.archivePath);
-  }
-  return { entry: inside, records: doc.entries as ManifestRecord[] };
+  if (reading.problem !== null) throw new ReadError("read.manifest-invalid", reading.problem);
+  return { entry: inside, records: reading.records as ManifestRecord[] };
+}
+
+/** Only the fields verification and source comparison read, so a large
+ *  folder's records hold nothing else. */
+function compactRecord(record: ManifestRecord): ManifestRecord {
+  const kept: ManifestRecord = {
+    archivePath: record.archivePath,
+    sourcePath: record.sourcePath,
+    type: record.type,
+    size: record.size,
+    crc32: record.crc32,
+    mtime: { ns: record.mtime.ns },
+  };
+  if (record.sha256 !== undefined) kept.sha256 = record.sha256;
+  return kept;
 }
 
 /** Open an archive and read its embedded manifest's entry records. */

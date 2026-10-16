@@ -2,7 +2,7 @@
 
 Make ZIP archives on a Mac that open cleanly on Windows: fix file names, drop Mac-only junk, and verify the result. ZipKit is a cross-platform **ZIP archiver and portability linter/fixer**, with a TypeScript SDK underneath. It produces archives that carry nothing a recipient on another OS will trip over, and it reads them back — `extract` verifies an archive's CRC integrity (and, against an embedded manifest, its completeness and per-file content identity), then unpacks it.
 
-Embedded manifests support up to 64 MiB of uncompressed UTF-8 data. Creation checks the exact serialized size before publishing, and verification uses the same limit. This supports large folders and ZIP64 archives while bounding manifest input; it is not a limit on total process memory or archive content size.
+Embedded manifests have no size limit. ZipKit writes a manifest and reads it back one record at a time, so even a folder of hundreds of thousands of files is archived and verified without holding the whole manifest in memory.
 
 The compression is the small part; the value is the **portability checks and the policy** that decides each one — NFD-decomposed names, Windows-illegal characters, reserved device names, OS junk files, and Unix-only attributes — each fixed, warned, or made a hard build-failing error per your settings. The planning core is pure (a dry run is faithful to the real write by construction), and the desktop app drives that same SDK. Out of scope: repairing existing archives, encryption, compression methods beyond Store and Deflate, and split/multi-volume archives.
 

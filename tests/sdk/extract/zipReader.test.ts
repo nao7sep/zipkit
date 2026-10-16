@@ -9,7 +9,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseZip, readEntryBuffer, readEntryData, type ReadEntry } from "../../../src/sdk/extract/zipReader.js";
+import { parseZip, readEntryData, type ReadEntry } from "../../../src/sdk/extract/zipReader.js";
 import type { VolumeFile } from "../../../src/sdk/internal/volume.js";
 import { openRead } from "../../helpers/volume.js";
 
@@ -162,7 +162,7 @@ describe("readEntryData rejects unreadable entries", () => {
     }
   });
 
-  it.each([3, 5])("bounds declared and actual inflated bytes read into memory: declared %i", async (declared) => {
+  it.each([3, 7])("refuses inflated bytes that disagree with the declared size: declared %i", async (declared) => {
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     const data = Buffer.from("12345");
@@ -184,9 +184,7 @@ describe("readEntryData rejects unreadable entries", () => {
       extra: Buffer.alloc(0),
     };
     try {
-      await expect(readEntryBuffer(fh, entry, 4)).rejects.toMatchObject({
-        code: declared === 3 ? "read.size-mismatch" : "read.entry-too-large",
-      });
+      await expect(readEntryData(fh, entry, async () => {}, 65536)).rejects.toMatchObject({ code: "read.size-mismatch" });
     } finally {
       await fh.close();
     }
