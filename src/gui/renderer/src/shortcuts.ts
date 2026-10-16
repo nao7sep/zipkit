@@ -68,10 +68,11 @@ export function modifierWord(platform: GuiPlatform): string {
   return platform === "darwin" ? "Cmd" : "Ctrl";
 }
 
-// Grouped semantically and ordered general → navigate → act; within "navigate",
-// by increasing scope (one step → ends → page → by name). Built per-render with
-// the running platform's modifier word so the displayed accelerator matches the
-// host OS rather than showing the combined "Cmd/Ctrl".
+// Grouped by where the keys work: the general ones anywhere in the main window,
+// the rest while the job list has focus. Within the job list, by increasing
+// scope (one step → ends → page → by name), then acting on the selected job.
+// Built per-render with the running platform's modifier word so the displayed
+// accelerator matches the host OS rather than showing the combined "Cmd/Ctrl".
 export function buildShortcuts(mod: string): ShortcutGroup[] {
   return [
     {
@@ -80,21 +81,16 @@ export function buildShortcuts(mod: string): ShortcutGroup[] {
         { keys: `${mod}+N`, description: "shortcuts.addJob" },
         { keys: `${mod}+Comma`, description: "shortcuts.openSettings" },
         { keys: `${mod}+Question`, description: "shortcuts.showShortcuts" },
+        { keys: `${mod}+Enter`, description: "shortcuts.createSelected" },
       ],
     },
     {
-      title: "shortcuts.navigate",
+      title: "shortcuts.jobList",
       items: [
         { keys: "Up/Down", description: "shortcuts.selectPrevNext" },
         { keys: "Home/End", description: "shortcuts.selectFirstLast" },
         { keys: "PageUp/PageDown", description: "shortcuts.jumpPage" },
         { keys: "type-a-name", keysText: "shortcuts.typeName", description: "shortcuts.jumpMatching" },
-      ],
-    },
-    {
-      title: "shortcuts.act",
-      items: [
-        { keys: `${mod}+Enter`, description: "shortcuts.createSelected" },
         { keys: "Delete/Backspace", description: "shortcuts.removeJob" },
         { keys: "Escape", description: "shortcuts.cancelJob" },
       ],

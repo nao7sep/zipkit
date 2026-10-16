@@ -11,6 +11,18 @@ describe("keyboard shortcut catalogue", () => {
   });
 });
 
+describe("shortcut groups", () => {
+  it("groups by where the keys work: the modifier chords anywhere, the plain keys in the job list", () => {
+    const [general, jobList] = buildShortcuts("Cmd");
+    expect(general!.title).toBe("shortcuts.general");
+    expect(general!.items.every((item) => item.keys.startsWith("Cmd+"))).toBe(true);
+    expect(general!.items.map((item) => item.description)).toContain("shortcuts.createSelected");
+    expect(jobList!.title).toBe("shortcuts.jobList");
+    expect(jobList!.items.some((item) => item.keys.includes("Cmd+"))).toBe(false);
+    expect(jobList!.items.map((item) => item.keys)).toEqual(expect.arrayContaining(["Delete/Backspace", "Escape"]));
+  });
+});
+
 describe("platform modifiers", () => {
   const key = (init: KeyboardEventInit) => new KeyboardEvent("keydown", { key: "n", ...init });
 
