@@ -67,6 +67,10 @@ describe("per-item X alignment: first line, not the wrapped block's middle", () 
     expect(path.style.paddingTop).toBe("");
     const kind = row.querySelector(":scope > span:not([title])") as HTMLElement;
     expect(kind.style.paddingTop).toBe("");
+    // The Inputs title starts where each row's kind does.
+    const title = screen.getByText("Inputs");
+    expect(title.style.paddingLeft).toBe(row.style.paddingLeft);
+    expect(row.style.paddingLeft).not.toBe("");
     // The path never wraps, so the X needs no nudge of its own.
     const removeButton = row.querySelector("button.icon") as HTMLElement;
     expect(removeButton.style.position).toBe("");

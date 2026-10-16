@@ -254,7 +254,9 @@ const S: Record<string, CSSProperties> = {
     gap: "0.75rem",
     marginBottom: "0.5rem",
   },
-  title: { fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
+  // Indented as far as the rows' own padding, so the title starts where each
+  // row's kind does rather than at the box's edge.
+  title: { paddingLeft: "0.4rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
   // Enough room that neighboring rows' hover highlights never touch.
   list: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.25rem" },
   // The path is one line, so plain centering aligns the kind, the path and the X.
