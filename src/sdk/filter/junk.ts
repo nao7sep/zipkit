@@ -47,9 +47,15 @@ export const JUNK_RULES: readonly JunkRule[] = [
   junk("macos.junk", ".apdisk"),
   junk("macos.junk", ".com.apple.timemachine.donotpresent"),
   junk("macos.junk", ".VolumeIcon.icns"),
+  // The empty marker Finder leaves in a folder whose name it shows translated.
+  junk("macos.junk", ".localized"),
+  // An AFP file server's own databases at the root of a shared volume.
+  junk("macos.junk", ".AppleDB"),
+  junk("macos.junk", ".AppleDesktop"),
   // Windows
   junk("windows.junk", "Thumbs.db"),
   junk("windows.junk", "ehthumbs.db"),
+  junk("windows.junk", "ehthumbs_vista.db"),
   junk("windows.junk", "desktop.ini"),
   junk("windows.junk", "$RECYCLE.BIN/"),
   junk("windows.junk", "System Volume Information/"),
@@ -57,4 +63,6 @@ export const JUNK_RULES: readonly JunkRule[] = [
   junk("linux.junk", ".Trash-*/"),
   junk("linux.junk", ".directory"),
   junk("linux.junk", ".nfs*"),
+  // A FUSE filesystem's stand-in for a file deleted while still open.
+  junk("linux.junk", ".fuse_hidden*"),
 ];

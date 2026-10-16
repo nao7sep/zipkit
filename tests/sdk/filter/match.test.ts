@@ -152,6 +152,15 @@ describe("junk preset, ordering, and the inclusive default", () => {
     expect(m.match(".DS_Store", false)?.junkRule).toBe("macos.junk");
     expect(m.match("a/.DS_Store", false)?.junkRule).toBe("macos.junk");
     expect(m.match("Thumbs.db", false)?.junkRule).toBe("windows.junk");
+    expect(m.match("ehthumbs_vista.db", false)?.junkRule).toBe("windows.junk");
+  });
+
+  it("keeps files people sometimes want, which only look like leftovers", () => {
+    const m = matcher([], true);
+    for (const name of ["notes.txt~", "~$report.docx", "Shortcut.lnk", "Temporary Items", "Network Trash Folder"]) {
+      expect(m.match(name, false)).toBeNull();
+      expect(m.match(name, true)).toBeNull();
+    }
   });
 
   it("matches junk case-insensitively (OS names vary in case across filesystems)", () => {
@@ -170,6 +179,9 @@ describe("junk preset, ordering, and the inclusive default", () => {
       ".apdisk",
       ".com.apple.timemachine.donotpresent",
       ".VolumeIcon.icns",
+      ".localized",
+      ".AppleDB",
+      ".AppleDesktop",
     ]) {
       expect(m.match(name, false)?.junkRule).toBe("macos.junk");
     }
@@ -179,6 +191,7 @@ describe("junk preset, ordering, and the inclusive default", () => {
     const m = matcher([], true);
     expect(m.match(".directory", false)?.junkRule).toBe("linux.junk");
     expect(m.match(".nfs0000000000abcdef00000001", false)?.junkRule).toBe("linux.junk");
+    expect(m.match(".fuse_hidden0000000a00000001", false)?.junkRule).toBe("linux.junk");
     // `.Trash-<uid>` is a directory-only rule (trailing slash).
     expect(m.match(".Trash-1000", true)?.junkRule).toBe("linux.junk");
     expect(m.match(".Trash-1000", false)).toBeNull();
