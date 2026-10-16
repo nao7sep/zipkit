@@ -480,6 +480,52 @@ input[type="checkbox"] {
   font-family: inherit;
 }
 
+/* A command that reads as part of the text around it, such as "Show all":
+ * the accent's mark colour with no fill, on the line's own height. */
+button.text-button {
+  height: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+button.text-button:hover:not(:disabled),
+button.text-button:active:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+/* Work under way whose length is not known: a band that sweeps the track.
+ * Without motion it holds still, half filled. */
+.busy-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.busy-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--status-busy);
+  animation: busy-sweep 1.2s ease-in-out infinite;
+}
+@keyframes busy-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .busy-bar::before {
+    animation: none;
+    width: 50%;
+  }
+}
+
 /* Radix dropdown menu (hamburger). */
 /* Menu/popover layer sits above the app but BELOW the modal layer (backdrop 1000,
  * surface 1001), per the modal-dialog layering order — no accidental shared z. */

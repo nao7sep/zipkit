@@ -14,6 +14,10 @@ import {
   intentLabel,
   isCancelable,
   isTerminal,
+  detailsSections,
+  rowsByName,
+  rowsByPath,
+  rowsByReason,
   jobCommands,
   jobCounts,
   label,
@@ -526,7 +530,7 @@ describe("planReport", () => {
       {
         kind: "renamed",
         rows: [
-          { path: "Docs", from: "Docs.", changes: ["Trailing dots or spaces trimmed"] },
+          { path: "Docs", from: "Docs.", changes: ["Trailing dots or spaces trimmed"], dir: true },
           { path: "Docs/a_b.txt", from: "Docs./a:b.txt", changes: ["Invalid characters substituted"] },
         ],
       },
@@ -601,7 +605,7 @@ describe("planReport", () => {
       }),
     ]);
     expect(planReport(plan, en)).toEqual([
-      { kind: "warnings", rows: [{ path: "locked", changes: ["This folder could not be read, so its contents are not in the archive"] }] },
+      { kind: "warnings", rows: [{ path: "locked", dir: true, changes: ["This folder could not be read, so its contents are not in the archive"] }] },
       {
         kind: "excluded",
         rows: [{ path: "pipe", changes: ["Left out: a socket, pipe, device, or link that cannot be followed, which ZIP cannot hold"] }],
@@ -628,8 +632,8 @@ describe("planReport", () => {
       {
         kind: "excluded",
         rows: [
-          { path: "build/", changes: ["Excluded: exclude rule: build/"] },
-          { path: "empty/", changes: ["Empty directory pruned"] },
+          { path: "build/", changes: ["Excluded: exclude rule: build/"], dir: true },
+          { path: "empty/", changes: ["Empty directory pruned"], dir: true },
         ],
       },
     ]);
@@ -950,3 +954,39 @@ describe("jobCommands", () => {
   });
 });
 
+
+describe("Details pane sections and orders", () => {
+  const row = (path: string, changes: string[] = [], dir = false) => ({ path, changes, ...(dir ? { dir: true } : {}) });
+
+  it("puts a verification's findings first, then the plan's groups, each shown its own way", () => {
+    const groups = [
+      { kind: "blocking" as const, rows: [row("a")] },
+      { kind: "renamed" as const, rows: [row("b")] },
+      { kind: "excluded" as const, rows: [row("c")] },
+    ];
+    const sections = detailsSections(groups, { missing: ["m"], extra: [] }, en);
+    expect(sections.map((section) => [section.key, section.show, section.level])).toEqual([
+      ["missing", "rows", "error"],
+      ["blocking", "rows", "error"],
+      ["renamed", "count", "info"],
+      ["excluded", "reasons", "info"],
+    ]);
+    expect(sections[0]!.title).toBe("Missing from the archive (1)");
+  });
+
+  it("groups exclusions by reason, the largest group first", () => {
+    const grouped = rowsByReason([row("a", ["Empty"]), row("b", ["Junk"]), row("c", ["Junk"])]);
+    expect(grouped.map((group) => [group.reason, group.rows.length])).toEqual([["Junk", 2], ["Empty", 1]]);
+  });
+
+  it("orders by path, or by name with folders first and each group's rows by path", () => {
+    const rows = [row("z/.DS_Store"), row("a/.DS_Store"), row("m/Thumbs.db"), row("q/.Trashes", [], true), row("b/a.txt")];
+    expect(rowsByPath(rows).map((r) => r.path)).toEqual(["a/.DS_Store", "b/a.txt", "m/Thumbs.db", "q/.Trashes", "z/.DS_Store"]);
+    expect(rowsByName(rows).map((group) => [group.name, group.dir, group.rows.map((r) => r.path)])).toEqual([
+      [".Trashes", true, ["q/.Trashes"]],
+      [".DS_Store", false, ["a/.DS_Store", "z/.DS_Store"]],
+      ["a.txt", false, ["b/a.txt"]],
+      ["Thumbs.db", false, ["m/Thumbs.db"]],
+    ]);
+  });
+});

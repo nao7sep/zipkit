@@ -62,9 +62,8 @@ import { ShellNotice } from "./components/ShellNotice";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { DirectoryField } from "./components/DirectoryField";
 import { Pane } from "./components/Pane";
-import { ProgressLog } from "./components/ProgressLog";
 import { ReceiverResultNotice } from "./components/ReceiverResultNotice";
-import { Report } from "./components/Report";
+import { JobDetails } from "./components/JobDetails";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Splitter } from "./components/Splitter";
@@ -659,7 +658,7 @@ export function App() {
               <p style={S.muted}>{t.t("archive.empty")}</p>
             </Pane>
             {progressSplitter}
-            <Pane title={t.t("pane.progress")} rootStyle={GROW}>
+            <Pane title={t.t("pane.details")} rootStyle={GROW}>
               <p style={S.muted}>{t.t("progress.noJob")}</p>
             </Pane>
           </>
@@ -1165,14 +1164,8 @@ function JobView({
 
       {splitter}
 
-      <Pane title={t.t("pane.progress")} rootStyle={GROW} bodyStyle={S.progressBody}>
-        {/* The plan's lists, until this pane shows only what is needed when it
-            is needed: what will be renamed, flagged or left out, and what a
-            verification found. */}
-        <div style={S.lists}>
-          <Report plan={plan} verify={verify} />
-        </div>
-        <ProgressLog events={events} />
+      <Pane title={t.t("pane.details")} rootStyle={GROW}>
+        <JobDetails job={job} plan={plan} verify={verify} events={events} />
       </Pane>
     </>
   );
@@ -1191,10 +1184,6 @@ const S: Record<string, CSSProperties> = {
     gap: 0,
   },
   listBody: { display: "flex", flexDirection: "column", padding: "0.5rem", overflow: "hidden" },
-  progressBody: { display: "flex", flexDirection: "column", padding: "0.6rem", overflow: "hidden" },
-  // The lists take what they need up to most of the pane and scroll there; the
-  // Progress log keeps the rest.
-  lists: { flex: "0 1 auto", maxHeight: "65%", minHeight: 0, overflowY: "auto", position: "relative" },
   muted: { color: "var(--text-2)", margin: "0.4rem 0" },
   jobsReceiver: {
     flex: 1,

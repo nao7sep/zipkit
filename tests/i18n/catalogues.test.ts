@@ -25,6 +25,7 @@ const translations = LANGUAGES.filter((language) => language !== "en");
 const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
   de: [
     "messageDialog.ok",
+    "pane.details",
     "options.manifest",
     "log.debug",
     "log.info",

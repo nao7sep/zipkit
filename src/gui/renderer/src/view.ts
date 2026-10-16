@@ -437,6 +437,8 @@ export interface ReportRow {
   path: string;
   from?: string;
   changes: string[];
+  /** Whether the row is a folder; a finding with no entry counts as a file. */
+  dir?: boolean;
 }
 
 /** The kinds the Report groups its rows by, in the order they are shown. A row
@@ -497,7 +499,8 @@ export function planReport(plan: PlanReport, t: Translator): ReportGroup[] {
     const renamed = renamedItself(entry);
     if (changes.length === 0 && !renamed) continue;
     const kind = severityGroup(findings) ?? (entry.excluded ? "excluded" : renamed ? "renamed" : "notes");
-    rows[kind].push(renamed ? { path: entry.archivePath, from: entry.originalPath, changes } : { path: entry.archivePath, changes });
+    const dir = entry.type === "dir" ? { dir: true } : {};
+    rows[kind].push(renamed ? { path: entry.archivePath, from: entry.originalPath, changes, ...dir } : { path: entry.archivePath, changes, ...dir });
   }
   for (const f of plan.findings) {
     if (onEntries.has(findingId(f))) continue;
@@ -866,3 +869,83 @@ export function stateTint(state: Job["state"]): string {
   }
 }
 
+/** One part of the Details pane: a kind of row the user may need to look at,
+ *  how it is shown there, and the rows behind it. Errors and warnings list
+ *  their first rows at once; exclusions fold into one line per reason;
+ *  renames and notes, which ask nothing of the user, fold into one line. */
+export interface DetailsSection {
+  key: string;
+  title: string;
+  level: Severity;
+  rows: ReportRow[];
+  show: "rows" | "reasons" | "count";
+}
+
+/** How many rows a listed section shows before its "Show all". */
+export const DETAILS_INLINE_ROWS = 5;
+
+/** The plan's groups, then what a verification found, as the Details pane's
+ *  sections, the ones to act on first. */
+export function detailsSections(
+  groups: readonly ReportGroup[],
+  verify: { missing: readonly string[]; extra: readonly string[] } | null,
+  t: Translator,
+): DetailsSection[] {
+  const sections: DetailsSection[] = [];
+  const pathRows = (paths: readonly string[]): ReportRow[] => paths.map((path) => ({ path, changes: [] }));
+  if (verify && verify.missing.length > 0) {
+    sections.push({ key: "missing", title: t.t("report.missing", { count: verify.missing.length }), level: "error", rows: pathRows(verify.missing), show: "rows" });
+  }
+  if (verify && verify.extra.length > 0) {
+    sections.push({ key: "extra", title: t.t("report.extra", { count: verify.extra.length }), level: "warning", rows: pathRows(verify.extra), show: "rows" });
+  }
+  for (const group of groups) {
+    sections.push({
+      key: group.kind,
+      title: t.t(reportGroupTitle(group.kind), { count: group.rows.length }),
+      level: reportGroupLevel(group.kind),
+      rows: group.rows,
+      show: group.kind === "blocking" || group.kind === "warnings" ? "rows" : group.kind === "excluded" ? "reasons" : "count",
+    });
+  }
+  return sections;
+}
+
+/** Excluded rows by why they were left out, the largest group first, so a
+ *  stray reason among the expected junk stands out. */
+export function rowsByReason(rows: readonly ReportRow[]): Array<{ reason: string; rows: ReportRow[] }> {
+  const groups = new Map<string, ReportRow[]>();
+  for (const row of rows) {
+    const reason = row.changes.join(" · ");
+    groups.set(reason, [...(groups.get(reason) ?? []), row]);
+  }
+  return [...groups].map(([reason, grouped]) => ({ reason, rows: grouped }))
+    .sort((a, b) => b.rows.length - a.rows.length || compareText(a.reason, b.reason));
+}
+
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Every row by its path, so a folder's rows read together. */
+export function rowsByPath(rows: readonly ReportRow[]): ReportRow[] {
+  return [...rows].sort((a, b) => compareText(a.path, b.path));
+}
+
+/** Rows grouped by their name, folders first and then files, each group by
+ *  name and its rows by path: every `.DS_Store` under one heading, so a whole
+ *  group of expected junk is passed over at a glance. */
+export function rowsByName(rows: readonly ReportRow[]): Array<{ name: string; dir: boolean; rows: ReportRow[] }> {
+  const groups = new Map<string, { name: string; dir: boolean; rows: ReportRow[] }>();
+  for (const row of rows) {
+    const name = row.path.split("/").filter((segment) => segment !== "").pop() ?? row.path;
+    const dir = row.dir === true;
+    const key = `${dir ? "d" : "f"}\0${name}`;
+    const group = groups.get(key) ?? { name, dir, rows: [] };
+    group.rows.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map((group) => ({ ...group, rows: rowsByPath(group.rows) }))
+    .sort((a, b) => Number(b.dir) - Number(a.dir) || compareText(a.name.toLowerCase(), b.name.toLowerCase()) || compareText(a.name, b.name));
+}
