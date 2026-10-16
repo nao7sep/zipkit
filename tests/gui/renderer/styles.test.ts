@@ -123,3 +123,15 @@ describe("path line", () => {
     expect(shrink(".path-line__head")).toBeGreaterThan(100 * shrink(".path-line__tail"));
   });
 });
+
+// A row's icon action is compact, so a list's rows read as items rather than
+// stacked controls, yet never smaller than a pointer comfortably hits.
+describe("compact role", () => {
+  it("is smaller than a standard control and at least 22 px square", () => {
+    const compactRule = rule("button.icon.compact");
+    const size = (prop: string) => Number(compactRule.match(new RegExp(`(?:^|;)${prop}:(\\d+)px`))?.[1]);
+    expect(size("height")).toBeGreaterThanOrEqual(22);
+    expect(size("width")).toBeGreaterThanOrEqual(22);
+    expect(size("height")).toBeLessThan(Number(compact.match(/--control-h:(\d+)px/)?.[1]));
+  });
+});

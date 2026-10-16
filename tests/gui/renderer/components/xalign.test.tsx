@@ -74,6 +74,8 @@ describe("per-item X alignment: first line, not the wrapped block's middle", () 
     // The path never wraps, so the X needs no nudge of its own.
     const removeButton = row.querySelector("button.icon") as HTMLElement;
     expect(removeButton.style.position).toBe("");
+    // A row's own action is the compact role, so the rows sit close as one list.
+    expect(removeButton.classList.contains("compact")).toBe(true);
   });
 
   it("ReceiverResultNotice keeps the notice's own layout untouched; only the dismiss button gets a static nudge", () => {

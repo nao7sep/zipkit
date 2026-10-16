@@ -505,6 +505,16 @@ code {
   font-size: 0.9em;
 }
 
+/* The compact role: an icon action inside a list row. Small enough that the
+ * rows read as items of one list rather than a stack of controls, and still
+ * well above the smallest size a pointer must hit (interface-styling
+ * conventions, Comfortable size). */
+button.icon.compact {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
 /* Input-list rows: hover-highlight the whole row so on a wide window it stays
  * clear which input the far-right remove icon belongs to. */
 .input-row:hover {

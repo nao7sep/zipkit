@@ -68,7 +68,7 @@ function InputRow({
         <PathText path={path} />
       </span>
       <button
-        className="icon"
+        className="icon compact"
         onClick={() => onRemove(path)}
         disabled={!canRemove}
         title={t(canRemove ? "inputs.removeFromJob" : "inputs.needsOne")}
@@ -257,15 +257,16 @@ const S: Record<string, CSSProperties> = {
   // Indented as far as the rows' own padding, so the title starts where each
   // row's kind does rather than at the box's edge.
   title: { paddingLeft: "0.4rem", fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" },
-  // Enough room that neighboring rows' hover highlights never touch.
-  list: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.25rem" },
+  // Items of one list, close together; the gap only keeps neighboring rows'
+  // hover highlights from touching.
+  list: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "2px" },
   // The path is one line, so plain centering aligns the kind, the path and the X.
   row: {
     display: "flex",
     alignItems: "center",
     gap: "0.5rem",
     minWidth: 0,
-    padding: "0.2rem 0.4rem",
+    padding: "1px 0.4rem",
     borderRadius: 5,
   },
   // At least the column the English kinds need, and wider when a translation
