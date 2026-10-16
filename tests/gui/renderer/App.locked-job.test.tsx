@@ -21,7 +21,7 @@ class ResizeObserverStub {
   disconnect(): void {}
 }
 
-// Options that differ from the defaults, so the pane's "Use default parameters" is
+// Options that differ from the defaults, so the pane's "Use the parameters from Settings" is
 // off and the parameter controls are live.
 const CUSTOM_OPTIONS = { ...DEFAULT_OPTIONS, level: 3 };
 

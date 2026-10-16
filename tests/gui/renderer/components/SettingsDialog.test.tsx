@@ -2,8 +2,8 @@
 /**
  * Behavior tests for the Settings dialog's reset control. These pin the
  * config-sets contract this control has to hold: the button names its target
- * in the app's own vocabulary ("default parameters" — the same phrase the main
- * window's per-job toggle uses), it restores the built-in option defaults, and
+ * in the app's own vocabulary (the parameters, restored to their initial
+ * values), it restores the built-in option defaults, and
  * it leaves the UI font alone. The font is the user's personal cosmetic
  * preference, not a built-in that goes stale, so a reset must not drag it along;
  * that exclusion is the regression this file guards.
@@ -49,7 +49,7 @@ function renderDialog(settings: GuiSettings = CUSTOM) {
 
 const fontInput = () => screen.getByLabelText(/^UI font/) as HTMLInputElement;
 const levelInput = () => screen.getByLabelText("Compression level (1–9)") as HTMLInputElement;
-const reset = () => screen.getByText("Reset default parameters");
+const reset = () => screen.getByText("Reset parameters to initial values");
 
 describe("SettingsDialog theme", () => {
   it("offers System, Light, and Dark as one radio group, applied only by Save", () => {
@@ -144,8 +144,10 @@ describe("SettingsDialog reset", () => {
   it("labels the control for exactly what it resets", () => {
     renderDialog();
     expect(reset()).toBeTruthy();
-    // The old generic label is gone (the app calls these knobs "default parameters").
+    // The old labels are gone: neither a generic one nor one that says "default"
+    // for values the main window also calls the Settings' parameters.
     expect(screen.queryByText("Reset options")).toBeNull();
+    expect(screen.queryByText(/default parameters/i)).toBeNull();
   });
 
   it("restores the built-in option defaults in the draft", () => {
@@ -306,8 +308,8 @@ describe("SettingsDialog draft report", () => {
 describe("SettingsDialog default parameters section", () => {
   it("names the parameters under their own heading, with the reset that covers them beside it", () => {
     renderDialog();
-    const section = screen.getByRole("region", { name: "Default parameters" });
-    expect(within(section).getByRole("button", { name: "Reset default parameters" })).toBeTruthy();
+    const section = screen.getByRole("region", { name: "New job parameters" });
+    expect(within(section).getByRole("button", { name: "Reset parameters to initial values" })).toBeTruthy();
     expect(within(section).getByLabelText("Compression level (1–9)")).toBeTruthy();
     // Language, theme and font sit above it, outside what the reset covers.
     expect(within(section).queryByLabelText(/^UI font/)).toBeNull();

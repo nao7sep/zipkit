@@ -101,8 +101,8 @@ export function SettingsDialog({
     }
   }
 
-  // A draft action (config-sets conventions, Reset). "Default parameters" is the
-  // main window's own phrase for these knobs. The language, the theme and the UI
+  // A draft action (config-sets conventions, Reset): the parameters go back to
+  // the initial values ZipKit ships with. The language, the theme and the UI
   // font are the user's preferences, not tuned built-ins, so they stay as they are.
   function resetDefaultParameters() {
     setDraft({ ...draft, defaults: { ...DEFAULT_PARAMETERS } });
@@ -231,7 +231,7 @@ export function SettingsDialog({
           Reset: one control per group, named for it). */}
       <section aria-labelledby="settings-default-parameters">
         <div style={S.sectionHead}>
-          <h3 id="settings-default-parameters" style={S.sectionTitle}>{t("settings.defaultParameters")}</h3>
+          <h3 id="settings-default-parameters" style={S.sectionTitle}>{t("settings.newJobParameters")}</h3>
         </div>
         <p style={S.sectionHint}>{t("settings.defaultParametersHint")}</p>
         <OptionsPanel
@@ -241,7 +241,7 @@ export function SettingsDialog({
         />
         <div style={S.resetRow}>
           <button style={S.resetDefaultParameters} disabled={saving} onClick={resetDefaultParameters}>
-            {t("settings.resetDefaults")}
+            {t("settings.resetParameters")}
           </button>
         </div>
       </section>

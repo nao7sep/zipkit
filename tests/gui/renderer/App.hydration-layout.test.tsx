@@ -403,9 +403,9 @@ describe("mounted run consent across queue projection changes", () => {
       await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
-      // The job's own fields are editable while it uses the default parameters,
+      // The job's own fields are editable while it uses the Settings' parameters,
       // and editing them leaves it on the defaults.
-      const useDefaults = await screen.findByRole("checkbox", { name: "Use default parameters" });
+      const useDefaults = await screen.findByRole("checkbox", { name: "Use the parameters from Settings" });
       fireEvent.change(screen.getByRole("textbox", { name: "Comment" }), { target: { value: "last keystroke" } });
       fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "last-name" } });
       fireEvent.change(screen.getByRole("textbox", { name: /Output directory/ }), { target: { value: "/last-folder" } });
@@ -423,7 +423,7 @@ describe("mounted run consent across queue projection changes", () => {
     } finally { mounted?.unmount(); await engine.shutdown(); }
   });
 
-  it("restores only the parameters when Use default parameters is ticked again", async () => {
+  it("restores only the parameters when Use the parameters from Settings is ticked again", async () => {
     const { engine, bridge } = ownedQueue(SAVE);
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
@@ -431,7 +431,7 @@ describe("mounted run consent across queue projection changes", () => {
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
       fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "delivery" } });
-      const useDefaults = screen.getByRole("checkbox", { name: "Use default parameters" });
+      const useDefaults = screen.getByRole("checkbox", { name: "Use the parameters from Settings" });
       fireEvent.click(useDefaults);
       fireEvent.click(screen.getByRole("checkbox", { name: /Drop OS junk files/ }));
       expect(engine.snapshot()[0]?.options).toMatchObject({ junk: false, fileName: "delivery" });

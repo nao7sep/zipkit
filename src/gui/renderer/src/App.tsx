@@ -4,8 +4,8 @@
  * the job list (Add). Middle, the selected job's everything in
  * one scrollable pane, titled with the job's input inventory and a state label:
  * its Inputs (add/remove without rebuilding the job), its Parameters (the archive
- * knobs + an output-directory group, gated by a "use default parameters" toggle),
- * its Operation (file name, intent, the full output-path checkpoint, then the
+ * knobs, gated by a "use the parameters from Settings" toggle), its Operation
+ * (file name, output folder, overwrite, comment, intent, the full output-path checkpoint, then the
  * lifecycle buttons), and its Report. Right, this job's live Progress. Jobs are
  * planned in the background; each is created on demand and the engine runs them
  * one at a time. The view sequences queue commands and renders, it computes no
@@ -706,7 +706,7 @@ function JobView({
   // joined by the live ones as they arrive.
   const [events, setEvents] = useState<JobEvent[]>([]);
   const confirm = useConfirm();
-  // "Use default parameters" is DERIVED from whether the job's options still equal
+  // "Use the parameters from Settings" is DERIVED from whether the job's options still equal
   // the defaults — not a free-floating flag that could claim "defaults" while the
   // job is actually customized. Unchecking enables editing; re-checking restores
   // the defaults (see toggleUseDefaults).
@@ -806,7 +806,7 @@ function JobView({
     void persistOptions(next);
   }
   // Unchecking enables editing (options unchanged until the user edits); re-checking
-  // actually restores the default parameters, so the box can never claim "defaults"
+  // actually restores the Settings' parameters, so the box can never claim "defaults"
   // falsely. The job's own destination, name and comment stay as they are.
   function toggleUseDefaults(checked: boolean) {
     setUseDefaults(checked);
@@ -1016,7 +1016,7 @@ function JobView({
               disabled={!editable}
               onChange={(e) => toggleUseDefaults(e.target.checked)}
             />
-            <span>{t.t("params.useDefaults")}</span>
+            <span>{t.t("params.useSettings")}</span>
           </label>
         </div>
         <OptionsPanel options={opts} onChange={(parameters) => commitOptions({ ...opts, ...parameters })} disabled={useDefaults || !editable} />
