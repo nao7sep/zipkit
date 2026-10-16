@@ -1,17 +1,11 @@
 /**
- * The engine's archive look-up for tests that write real archives: the same
- * comparable string the SDK host returns (which file, its size and when it
- * last changed), or null when nothing is at the path.
+ * The engine's path look-up for tests that write real files: what the SDK host
+ * answers, on the real volume.
  */
 
-import { lstat } from "node:fs/promises";
+import { nodeFileSystem, Volume } from "../../src/sdk/internal/volume.js";
+import { pathState, type PathState } from "../../src/gui/main/path-state.js";
 
-export async function realArchiveState(output: string): Promise<string | null> {
-  try {
-    const st = await lstat(output, { bigint: true });
-    return `${st.dev}:${st.ino}:${st.size}:${st.mtimeNs}`;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
+export function realPathState(target: string): Promise<PathState> {
+  return pathState(target, new Volume(nodeFileSystem, 30_000));
 }

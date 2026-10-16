@@ -220,7 +220,7 @@ describe("jobCommands", () => {
     });
     expect(jobCommands(gone)).not.toContain("trash-originals");
   });
-  it("never offers trash-originals for archive-and-trash (it already trashed)", () => {
+  it("offers no trash-originals for archive-and-trash until its originals are found back", () => {
     expect(jobCommands(job({ state: "done", intent: TRASH }))).not.toContain(
       "trash-originals",
     );
@@ -406,6 +406,18 @@ describe("reportSummary", () => {
 });
 
 describe("jobAdvisories", () => {
+  it("says before a run that an input went or is out of reach, and leaves a finished job to its history", () => {
+    const entries = [
+      { path: "/a", kind: "nonexistent" as const },
+      { path: "/b", kind: "unavailable" as const },
+      { path: "/c", kind: "file" as const },
+    ];
+    expect(jobAdvisories(job({ inputs: ["/a", "/b", "/c"], entries }), en).map((line) => line.text)).toEqual([
+      "1 input is missing. Remove it from the job, or put it back.",
+      "1 input is out of reach. Its drive is not connected, or it cannot be read.",
+    ]);
+    expect(jobAdvisories(job({ state: "done", inputs: ["/a", "/b", "/c"], entries }), en)).toEqual([]);
+  });
   it("warns when the lone input is already a .zip file", () => {
     const j = job({ inputs: ["/x/foo.zip"], entries: [{ path: "/x/foo.zip", kind: "file" }] });
     const lines = jobAdvisories(j, en);
@@ -854,8 +866,14 @@ describe("jobCommands", () => {
     expect(done("verified")).not.toContain("verify");
     expect(done("verified")).toContain("reveal");
     expect(done("changed")).toContain("verify");
-    expect(done("verified", TRASH)).toEqual(["reveal"]);
-    expect(done("missing", TRASH)).toEqual([]);
+    const trashed = (archiveStatus: Job["archiveStatus"]) =>
+      jobCommands(job({ state: "done", intent: TRASH, archiveStatus, entries: [{ path: "/a", kind: "nonexistent" }] }));
+    expect(trashed("verified")).toEqual(["reveal"]);
+    expect(trashed("missing")).toEqual([]);
+    expect(trashed("unavailable")).toEqual([]);
+    // Put back from the Trash: the archive is redundant again, and the
+    // originals can be removed again.
+    expect(done("verified", TRASH)).toEqual(["reveal", "remove-archive", "trash-originals", "delete-originals"]);
   });
   it("offers create only when ready, and nothing when blocked", () => {
     expect(jobCommands(job({ state: "ready" }))).toEqual(["create"]);

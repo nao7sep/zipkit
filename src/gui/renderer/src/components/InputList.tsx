@@ -37,12 +37,13 @@ const KIND_LABEL: Record<PathKind, MessageKey> = {
   directory: "inputs.directory",
   file: "inputs.file",
   nonexistent: "inputs.missing",
+  unavailable: "inputs.unavailable",
   other: "inputs.other",
 };
 
 function kindColor(kind: PathKind): string {
   if (kind === "nonexistent") return COLOR.bad;
-  if (kind === "other") return COLOR.warn;
+  if (kind === "other" || kind === "unavailable") return COLOR.warn;
   return "var(--text-2)";
 }
 

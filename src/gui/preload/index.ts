@@ -104,7 +104,7 @@ const api = {
     };
   },
   verify: (jobId: string): Promise<VerifyResult | null> => ipcRenderer.invoke("zipkit:verify", jobId),
-  checkArchive: (jobId: string): Promise<void> => ipcRenderer.invoke("zipkit:checkArchive", jobId),
+  refreshJob: (jobId: string): Promise<void> => ipcRenderer.invoke("zipkit:refreshJob", jobId),
   reveal: (path: string): Promise<void> => ipcRenderer.invoke("zipkit:reveal", path),
   getJobEvents: (jobId: string): Promise<JobEvent[]> => ipcRenderer.invoke("zipkit:getJobEvents", jobId),
   onEvents: (callback: (events: JobEvent[]) => void): (() => void) => {

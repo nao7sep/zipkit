@@ -74,7 +74,7 @@ const engine = createQueueEngine({
   admission: appAdmission,
   effects: appArchiveEffects,
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
-  archiveState: (output, signal) => sdk.call("archiveState", [output], { signal }),
+  pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
   inspect: (output, signal, onProgress, checkMetadata) => sdk.call("inspect", [output, checkMetadata], { signal, onProgress }),
   plan: async (inputs, options, signal, onProgress) => {
     const { plan, internals } = await sdk.call("plan", [inputs, options], { signal, onProgress });
@@ -88,7 +88,7 @@ const engine = createQueueEngine({
     sdk.call("recheck", [output, inputs, options], { signal, onProgress }),
   classify: (paths) => sdk.call("classify", [paths]),
   trash: async (paths, signal) => {
-    const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };
+    const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
     const settlements: Promise<void>[] = [];
     for (const p of paths) {
       if (signal.aborted) {
@@ -101,7 +101,11 @@ const engine = createQueueEngine({
         if (moved.outcome === "moved") result.moved.push(p);
         else result.unconfirmed.push(p);
       } catch (err) {
-        result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
+        // A path something else moved or deleted first is gone, not kept.
+        let state;
+        try { state = await sdk.call("pathState", [p]); } catch { state = undefined; }
+        if (state?.kind === "gone") result.gone!.push(p);
+        else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }
     result.settlement = Promise.all(settlements).then(() => {});
@@ -111,7 +115,7 @@ const engine = createQueueEngine({
   // running when the job stops waiting may yet finish, so it is reported as
   // unconfirmed, never as kept.
   deleteOriginals: async (paths, signal) => {
-    const result: TrashResult = { moved: [], failed: [], unconfirmed: [] };
+    const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
     for (const p of paths) {
       if (signal.aborted) {
         result.failed.push({ path: p, message: "cancelled before deletion" });
@@ -122,7 +126,8 @@ const engine = createQueueEngine({
         if (outcome === "aborted") result.unconfirmed.push(p);
         else result.moved.push(p);
       } catch (err) {
-        result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
+        if ((err as { code?: unknown }).code === "ENOENT") result.gone!.push(p);
+        else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }
     return result;
@@ -245,7 +250,7 @@ export function registerQueueIpc(): void {
       return { ok: false, error: toGuiError(err) };
     }
   });
-  ipcMain.handle("zipkit:checkArchive", async (_e, id: string): Promise<void> => engine.checkArchive(id));
+  ipcMain.handle("zipkit:refreshJob", async (_e, id: string): Promise<void> => engine.refresh(id));
   ipcMain.handle("zipkit:addJobInputs", async (_e, id: string, paths: string[]) => engine.addInputs(id, paths));
   ipcMain.handle("zipkit:removeJobInput", async (_e, id: string, path: string): Promise<void> => engine.removeInput(id, path));
 

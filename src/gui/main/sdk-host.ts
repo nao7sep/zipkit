@@ -23,6 +23,7 @@ import { fileResources, type FileResource } from "./archive-effects.js";
 import { classifyPaths } from "./inputs.js";
 import { resolveOutputPath } from "./output.js";
 import { outputInsideInputs } from "./safety.js";
+import { pathState, type PathState } from "./path-state.js";
 
 /** A plan as it crosses between processes: the public plan and the internals
  *  the writer needs, which a plain copy would drop. */
@@ -33,7 +34,7 @@ export interface PlanTransfer {
 
 export interface SdkOps {
   resources(paths: string[]): FileResource[];
-  archiveState(path: string): string | null;
+  pathState(path: string): PathState;
   plan(inputs: string[], options: GuiOptions): PlanTransfer;
   write(transfer: PlanTransfer): number | null;
   verify(output: string, checkMetadata: boolean): boolean;
@@ -81,17 +82,9 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ne
   type Run = (signal: AbortSignal, onProgress: (event: LogEvent) => void, id: number) => Promise<unknown>;
   const ops: { [K in SdkOp]: (...args: never[]) => Run } = {
     resources: (paths: string[]) => (signal) => fileResources(paths, zip.volume(signal)),
-    // The archive as it stands: which file, how large and when it last
-    // changed, as one comparable string; null when nothing is there.
-    archiveState: (target: string) => async (signal) => {
-      try {
-        const st = await zip.volume(signal).lstat(target);
-        return `${st.dev}:${st.ino}:${st.size}:${st.mtimeNs}`;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-        throw error;
-      }
-    },
+    // What is at a path now: there with a comparable fingerprint, gone, or
+    // out of reach on a drive that is not connected.
+    pathState: (target: string) => (signal) => pathState(target, zip.volume(signal)),
     plan: (inputs: string[], options: GuiOptions) => async (signal, onProgress) => {
       const spec = buildSpec(inputs, options);
       const output = await resolveOutputPath(options.outputDir, options.fileName, inputs, zip.volume(signal));

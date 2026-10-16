@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
         trash(
           paths: string[],
           signal: AbortSignal,
-        ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[] }>;
+        ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }>;
       },
 }));
 
@@ -40,7 +40,7 @@ vi.mock("../../../src/gui/main/queue-engine.js", () => ({
     trash(
       paths: string[],
       signal: AbortSignal,
-    ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[] }>;
+    ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }>;
   }) => {
     mocks.deps = deps;
     return { restore: mocks.restore, snapshot: mocks.snapshot };
@@ -233,6 +233,16 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
     expect({ moved: result.moved, failed: result.failed, unconfirmed: result.unconfirmed }).toEqual({ moved: [], failed: [{ path: "/a", message: "permission denied" }], unconfirmed: [] });
   });
 
+  it("reports a path something else moved or deleted first as gone, not kept", async () => {
+    trashItem.mockRejectedValue(new Error("no such file"));
+    mocks.sdkCall.mockResolvedValueOnce({ kind: "gone" });
+
+    const result = await mocks.deps!.trash(["/a"], new AbortController().signal);
+
+    expect(mocks.sdkCall).toHaveBeenCalledWith("pathState", ["/a"]);
+    expect({ moved: result.moved, failed: result.failed, gone: result.gone }).toEqual({ moved: [], failed: [], gone: ["/a"] });
+  });
+
   it("moves every path that resolves before the signal aborts", async () => {
     trashItem.mockResolvedValue(undefined);
 
@@ -279,7 +289,7 @@ describe("the SDK host wiring", () => {
 });
 
 describe("the delete dependency", () => {
-  type Deleting = { deleteOriginals(paths: string[], signal: AbortSignal): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[] }> };
+  type Deleting = { deleteOriginals(paths: string[], signal: AbortSignal): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }> };
   const deleting = () => mocks.deps as unknown as Deleting;
   beforeEach(() => mocks.sdkCall.mockReset());
 
@@ -287,7 +297,13 @@ describe("the delete dependency", () => {
     mocks.sdkCall.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("EACCES"));
     const result = await deleting().deleteOriginals(["/a", "/b"], new AbortController().signal);
     expect(mocks.sdkCall.mock.calls).toEqual([["deletePath", ["/a"]], ["deletePath", ["/b"]]]);
-    expect(result).toEqual({ moved: ["/a"], failed: [{ path: "/b", message: "EACCES" }], unconfirmed: [] });
+    expect(result).toEqual({ moved: ["/a"], failed: [{ path: "/b", message: "EACCES" }], unconfirmed: [], gone: [] });
+  });
+
+  it("reports a path already gone when its deletion came as gone, not kept", async () => {
+    mocks.sdkCall.mockRejectedValueOnce(Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" }));
+    const result = await deleting().deleteOriginals(["/a"], new AbortController().signal);
+    expect(result).toEqual({ moved: [], failed: [], unconfirmed: [], gone: ["/a"] });
   });
 
   it("reports a deletion still running at cancel as unconfirmed, and the rest as kept", async () => {
@@ -296,6 +312,6 @@ describe("the delete dependency", () => {
     const pending = deleting().deleteOriginals(["/a", "/b"], controller.signal);
     await vi.waitFor(() => expect(mocks.sdkCall).toHaveBeenCalledOnce());
     controller.abort();
-    await expect(pending).resolves.toEqual({ moved: [], failed: [{ path: "/b", message: "cancelled before deletion" }], unconfirmed: ["/a"] });
+    await expect(pending).resolves.toEqual({ moved: [], failed: [{ path: "/b", message: "cancelled before deletion" }], unconfirmed: ["/a"], gone: [] });
   });
 });

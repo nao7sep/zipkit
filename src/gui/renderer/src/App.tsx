@@ -998,20 +998,19 @@ function JobView({
   // Advice about the inputs themselves, such as archiving a .zip again.
   const advisories = jobAdvisories(job, t);
 
-  // A finished job's archive is looked at again whenever the job is selected
-  // and the window comes back, so a change or deletion made outside ZipKit
-  // shows before any button is pressed.
+  // The job's originals, and a finished job's archive, are looked at again
+  // whenever the job is selected and the window comes back, so a change or
+  // deletion made outside ZipKit shows before any button is pressed.
   useEffect(() => {
-    if (!finished) return;
     const look = (): void => {
-      void window.zipkit.checkArchive(job.id).catch((error) => {
-        window.zipkit.reportError("check job archive", reportableError(error));
+      void window.zipkit.refreshJob(job.id).catch((error) => {
+        window.zipkit.reportError("refresh job", reportableError(error));
       });
     };
     look();
     window.addEventListener("focus", look);
     return () => window.removeEventListener("focus", look);
-  }, [finished, job.id]);
+  }, [job.id]);
 
   return (
     <>

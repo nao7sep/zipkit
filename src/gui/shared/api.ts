@@ -193,9 +193,10 @@ export interface ZipKitGuiApi {
    *  Null when there was nothing to verify, such as an archive found gone. The
    *  job id tags the verify's progress events to that job's Progress stream. */
   verify(jobId: string): Promise<VerifyResult | null>;
-  /** Look at a finished job's archive again: main notes a change since it was
-   *  written or verified, and a missing archive. */
-  checkArchive(jobId: string): Promise<void>;
+  /** Look at a job's originals again, and a finished job's archive: main notes
+   *  an original gone or out of reach, and an archive changed, replaced, gone
+   *  or out of reach. */
+  refreshJob(jobId: string): Promise<void>;
   /** Reveal a file in the OS file manager (Finder / Explorer). */
   reveal(path: string): Promise<void>;
   /** A job's recorded progress events, oldest first, from this and earlier

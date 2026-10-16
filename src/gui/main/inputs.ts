@@ -9,6 +9,7 @@
  */
 
 import { ZipKitError, type Volume } from "../../sdk/index.js";
+import { pathState } from "./path-state.js";
 import type { InputEntry, PathKind } from "../shared/queue.js";
 
 /** The part of a stat result the classifier reads. */
@@ -37,17 +38,19 @@ export async function classifyPathsWith(
   );
 }
 
-/** The real classifier: stat each path on disk, treating a stat failure as a
- *  missing path rather than throwing (a vanished input must still appear). A
- *  stalled volume is not a missing path: it rejects, and the caller keeps the
- *  previous classification. */
-export function classifyPaths(paths: string[], volume: Volume): Promise<InputEntry[]> {
-  return classifyPathsWith(paths, async (p) => {
-    try {
-      return await volume.stat(p);
-    } catch (err) {
+/** The real classifier: stat each path on disk. A path that is not there is
+ *  missing, unless the drive that holds it is not connected; one that cannot
+ *  be read is out of reach — neither is ever taken for a deletion, and a
+ *  vanished input still appears. A stalled volume rejects, and the caller
+ *  keeps the previous classification. */
+export async function classifyPaths(paths: string[], volume: Volume): Promise<InputEntry[]> {
+  return Promise.all(paths.map(async (path): Promise<InputEntry> => {
+    const state = await pathState(path, volume);
+    if (state.kind === "gone") return { path, kind: "nonexistent" };
+    if (state.kind === "unavailable") return { path, kind: "unavailable" };
+    return { path, kind: kindFromStat(await volume.stat(path).catch((err: unknown) => {
       if (err instanceof ZipKitError) throw err;
       return null;
-    }
-  });
+    })) };
+  }));
 }

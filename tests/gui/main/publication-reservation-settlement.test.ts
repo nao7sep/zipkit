@@ -10,7 +10,7 @@ import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { AbortError, StallError, ZipKit } from "../../../src/sdk/index.js";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/internal/volume.js";
 import { SAVE } from "../../helpers/intents.js";
-import { realArchiveState } from "../../helpers/archiveState.js";
+import { realPathState } from "../../helpers/archiveState.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -112,7 +112,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     classify: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
     trash: async () => { throw new Error("save jobs must never call Trash"); },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
-    archiveState: realArchiveState,
+    pathState: realPathState,
     inspect: async (archive, signal, onProgress, checkMetadata) => {
       const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };

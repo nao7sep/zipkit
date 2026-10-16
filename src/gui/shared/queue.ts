@@ -44,7 +44,9 @@ export function sameIntent(a: JobIntent, b: JobIntent): boolean {
  * how a job is assembled — not ZIP-codec concern, so it lives GUI-side, not in
  * the SDK. The union is intentionally open to extension (e.g. "symlink") later.
  */
-export type PathKind = "directory" | "file" | "nonexistent" | "other";
+/** What an input is on disk. `unavailable` is out of reach, never gone: its
+ *  drive is not connected or it cannot be read, so nothing is decided on it. */
+export type PathKind = "directory" | "file" | "nonexistent" | "other" | "unavailable";
 
 /** An input path classified by what it currently is on disk. */
 export interface InputEntry {
@@ -89,7 +91,12 @@ export function isEditable(job: Pick<Job, "state" | "archiveWritten">): boolean 
  *  there). Moving the archive to Trash is offered only then, since its
  *  confirmation promises the originals are kept; one rule for both sides. */
 export function originalsIntact(job: Pick<Job, "entries">): boolean {
-  return job.entries?.every((entry) => entry.kind !== "nonexistent") ?? true;
+  return job.entries?.every((entry) => entry.kind !== "nonexistent" && entry.kind !== "unavailable") ?? true;
+}
+
+/** Whether an input is on disk now, as last classified. */
+export function present(entry: InputEntry): boolean {
+  return entry.kind === "directory" || entry.kind === "file" || entry.kind === "other";
 }
 
 /** A job that removes its originals verifies the archive against its manifest
@@ -108,8 +115,9 @@ export function scanBlocksRemoval(job: Pick<Job, "intent" | "scanIncomplete">): 
 }
 
 /** What ZipKit last found of the archive a job wrote: as written, verified and
- *  unchanged since, changed since it was written or verified, or gone. */
-export type ArchiveStatus = "written" | "verified" | "changed" | "missing";
+ *  unchanged since, changed since it was written or verified, gone or replaced
+ *  by another file (missing), or out of reach on a drive that is not connected. */
+export type ArchiveStatus = "written" | "verified" | "changed" | "missing" | "unavailable";
 
 /** One thing that happened to a job, in the order it happened: a run's
  *  outcome, a verification, an archive found missing, the originals removed. */

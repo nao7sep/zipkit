@@ -12,7 +12,7 @@ import type { JobIntent } from "../../../src/gui/shared/queue.js";
 import { ZipKit } from "../../../src/sdk/index.js";
 import { createDirectoryLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 import { SAVE, TRASH } from "../../helpers/intents.js";
-import { realArchiveState } from "../../helpers/archiveState.js";
+import { realPathState } from "../../helpers/archiveState.js";
 
 const use = (location: string, mode: FileUse["mode"], identity: string | null = location): FileUse => ({ location, mode, identity });
 it("claims the whole conflicting path set atomically, permits shared reads and independent work", () => {
@@ -115,7 +115,7 @@ async function fixture() {
       return { moved: paths, failed: [], unconfirmed: [] };
     },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
-    archiveState: realArchiveState,
+    pathState: realPathState,
     inspect: async (archive, signal, onProgress, checkMetadata) => {
       const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
@@ -145,11 +145,16 @@ it("refuses an older job's archive removal after a real later job overwrites it 
     const b = await f.add(f.b, TRASH); run(f.engine, b); await terminal(f.engine, b, "done");
     const published = await readFile(f.output);
     f.engine.removeArchive(a);
-    await vi.waitFor(() => expect(f.engine.snapshot().find((job) => job.id === a)?.actionResult?.severity).toBe("error"));
+    // The file there is the later job's, so the older job leaves it alone, says
+    // so, and goes back to be created again; its originals stay untouched.
+    const older = () => f.engine.snapshot().find((job) => job.id === a)!;
+    await vi.waitFor(() => expect(older().history?.map((entry) => entry.message.key)).toContain("action.archiveReplaced"));
+    await terminal(f.engine, a, "ready");
     expect(await readFile(f.output)).toEqual(published);
     expect(await readFile(f.a, "utf8")).toBe("original A");
     f.engine.removeOriginals(a, "trash");
-    await vi.waitFor(() => expect(f.engine.snapshot().find((job) => job.id === a)?.trashing).toBe(false));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(older().state).toBe("ready");
     expect(await readFile(f.a, "utf8")).toBe("original A");
   } finally { await f.close(); }
 });

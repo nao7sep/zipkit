@@ -71,17 +71,17 @@ describe("the SDK host", () => {
     expect(await sdk.call("outputInsideInputs", [plan.output, [input]])).toBe(false);
   });
 
-  it("states an archive as one string that changes with its content, and as null once it is gone", async () => {
+  it("tells what is at a path: there with a fingerprint that changes with its content, or gone", async () => {
     const archive = path.join(root, "a.zip");
     await writeFile(archive, "first");
     const sdk = createSdkClient(inProcessHost);
-    const first = await sdk.call("archiveState", [archive]);
-    expect(first).toEqual(expect.any(String));
-    expect(await sdk.call("archiveState", [archive])).toBe(first);
+    const first = await sdk.call("pathState", [archive]);
+    expect(first).toEqual({ kind: "present", fingerprint: expect.any(String) });
+    expect(await sdk.call("pathState", [archive])).toEqual(first);
     await writeFile(archive, "a longer second version");
-    expect(await sdk.call("archiveState", [archive])).not.toBe(first);
+    expect(await sdk.call("pathState", [archive])).not.toEqual(first);
     await rm(archive);
-    expect(await sdk.call("archiveState", [archive])).toBeNull();
+    expect(await sdk.call("pathState", [archive])).toEqual({ kind: "gone" });
   });
 
   it("deletes an original for good: a folder with its contents, or a link itself rather than its target", async () => {

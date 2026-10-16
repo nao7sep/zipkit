@@ -29,20 +29,23 @@ import {
   scanBlocksRemoval,
   type InputEntry,
   type Job,
+  type ArchiveStatus,
   type JobHistoryEntry,
   type JobIntent,
   type OriginalsAction,
+  present,
   type SavedJob,
 } from "../shared/queue.js";
 import type { JobAction, LogEvent, PlanData, SourceComparison, VerifyReport } from "../shared/api.js";
 import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
-import { describeOriginalsRemoval, trashConfirmed, type TrashResult } from "./trash-outcome.js";
+import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type TrashResult } from "./trash-outcome.js";
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
 import { createArchiveEffects, type EffectClaim, type FileResource } from "./archive-effects.js";
+import { sameFile, type PathState } from "./path-state.js";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -50,9 +53,9 @@ export interface EngineDeps {
   admission: CommandAdmission;
   effects: ReturnType<typeof createArchiveEffects>;
   resources(paths: string[], signal: AbortSignal): Promise<FileResource[]>;
-  /** The archive as it stands — which file, its size and when it last changed —
-   *  as one comparable string, or null when nothing is at the path. */
-  archiveState(output: string, signal: AbortSignal): Promise<string | null>;
+  /** What is at a path now: there with a comparable fingerprint (which file,
+   *  its size and when it last changed), gone, or out of reach. */
+  pathState(target: string, signal: AbortSignal): Promise<PathState>;
   /** Dry-run plan for the given inputs/options; progress events go to `onProgress`. */
   plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count (or null if unknown). */
@@ -120,9 +123,9 @@ export interface QueueEngine {
   /** Verify a finished job's archive on request and record the outcome. Throws
    *  when it could not be verified at all; the job's history says why. */
   verify(id: string): Promise<VerifyReport | null>;
-  /** Look at a finished job's archive again: note a change since it was written
-   *  or verified, and handle it having gone. */
-  checkArchive(id: string): Promise<void>;
+  /** Look at a job's originals again, and a finished job's archive: note an
+   *  original gone or out of reach, an archive changed, replaced or gone. */
+  refresh(id: string): Promise<void>;
   getPlan(id: string): PlanData | null;
   restore(saved: SavedJob[]): void;
   /** True while a job is actually writing/verifying/trashing (not merely queued),
@@ -148,6 +151,8 @@ interface Rec {
   publication: FileResource | null;
   /** The archive's state when ZipKit last wrote or verified it. */
   fingerprint: string | null;
+  /** What the archive was known as before its drive went out of reach. */
+  statusBeforeUnavailable?: ArchiveStatus;
   /** A Create accepted for the current plan; only its completion consumes it. */
   runAfterPlan: boolean;
 }
@@ -206,9 +211,20 @@ type TrashRefusal =
   | { reason: "inside" }
   | { reason: "location-error"; err: unknown }
   | { reason: "verify-failed" }
+  /** Another file is at the archive's path: it is not the one ZipKit made. */
+  | { reason: "replaced" }
   | { reason: "verify-error"; err: unknown }
   | { reason: "changed"; comparison: SourceComparison }
   | { reason: "recheck-error"; err: unknown };
+
+/** Whether moving the archive to Trash cannot lose data: a done job whose
+ *  originals are all still there, or a `failed` job whose write succeeded but a
+ *  later step failed — unless that step deleted some originals for good, when
+ *  the archive is all that is left of them. */
+function archiveRemovable(job: Job): boolean {
+  if (job.state === "done") return originalsIntact(job);
+  return job.state === "failed" && (job.intent.originals !== "delete" || originalsIntact(job));
+}
 
 /** The message for a refused Trash; only the location sentence differs between
  *  a Move-to-Trash run and the command on a finished job. */
@@ -220,10 +236,23 @@ function refusalMessage(refusal: TrashRefusal, insideKey: MessageKey): Message {
       return failureMessage(refusal.err, "job.locationUnverified");
     case "verify-failed":
       return message("job.verifyFailed");
+    case "replaced":
+      return message("job.archiveReplaced");
     case "verify-error":
       return failureMessage(refusal.err, "job.verifyErrored");
-    case "changed":
-      return message("job.originalsChanged");
+    case "changed": {
+      // Says how the originals differ from the archive, each kind only when
+      // there is any, before what was done about it; the paths are in the
+      // session log.
+      const { missing, added, changed, unlisted } = refusal.comparison;
+      const counts = [
+        missing.length > 0 ? message("originals.missingFiles", { count: missing.length }) : null,
+        added.length > 0 ? message("originals.addedFiles", { count: added.length }) : null,
+        changed.length > 0 ? message("originals.changedFiles", { count: changed.length }) : null,
+        unlisted.length > 0 ? message("originals.unlistedFolders", { count: unlisted.length }) : null,
+      ].filter((part): part is Message => part !== null);
+      return sentences([...counts, message("job.originalsChanged")])!;
+    }
     case "recheck-error":
       return failureMessage(refusal.err, "job.recheckErrored");
   }
@@ -300,54 +329,85 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     }
     return null;
   }
-  /** The archive's state, or undefined when it could not be read: a failed
-   *  look never claims the archive is gone. */
-  async function lookAt(rec: Rec, output: string, signal: AbortSignal): Promise<string | null | undefined> {
-    try { return await deps.archiveState(output, signal); }
+  /** What is at a path, or undefined when it could not be looked at: a failed
+   *  look never claims anything is gone. */
+  async function lookAt(rec: Rec, target: string, signal: AbortSignal): Promise<PathState | undefined> {
+    try { return await deps.pathState(target, signal); }
     catch (error) {
-      deps.log.warn("archive state unavailable", { jobId: rec.job.id, output, error: errorInfo(error) });
+      deps.log.warn("path state unavailable", { jobId: rec.job.id, target, error: errorInfo(error) });
       return undefined;
     }
   }
-  /** Look at the archive this job wrote: note a change since ZipKit last wrote
-   *  or verified it, and handle it having gone. Resolves to whether it is still
-   *  there, true when that could not be told. */
+  /** Look at the archive this job wrote and record what is there: a change
+   *  since ZipKit last wrote or verified it, another file in its place, nothing
+   *  at all, or a drive that is not connected. Resolves to whether the archive
+   *  can be acted on now (true when that could not be told). */
   async function observeArchive(rec: Rec, signal: AbortSignal): Promise<boolean> {
     const output = rec.publishedOutput;
     if (!output) return false;
     const state = await lookAt(rec, output, signal);
     if (rec.publishedOutput !== output || state === undefined) return true;
-    if (state === null) {
-      archiveGone(rec, output);
+    const id = rec.job.id;
+    if (state.kind === "unavailable") {
+      if (rec.job.archiveStatus !== "unavailable") {
+        deps.log.warn("archive out of reach", { jobId: id, output });
+        rec.statusBeforeUnavailable = rec.job.archiveStatus;
+        set(rec, { archiveStatus: "unavailable", actionResult: { severity: "warning", message: message("action.archiveUnavailable") } });
+        emit();
+      }
       return false;
     }
-    if (state !== rec.fingerprint && rec.job.archiveStatus !== "changed") {
-      deps.log.info("archive changed since it was last checked", { jobId: rec.job.id, output });
+    if (state.kind === "gone") {
+      archiveGone(rec, output, "gone");
+      return false;
+    }
+    if (rec.job.archiveStatus === "unavailable") {
+      deps.log.info("archive within reach again", { jobId: id, output });
+      set(rec, {
+        archiveStatus: rec.statusBeforeUnavailable ?? "written",
+        actionResult: { severity: "info", message: message("action.archiveAvailableAgain") },
+      });
+      rec.statusBeforeUnavailable = undefined;
+      emit();
+    }
+    if (rec.fingerprint !== null && !sameFile(state.fingerprint, rec.fingerprint)) {
+      archiveGone(rec, output, "replaced");
+      return false;
+    }
+    if (state.fingerprint !== rec.fingerprint && rec.job.archiveStatus !== "changed") {
+      deps.log.info("archive changed since it was last checked", { jobId: id, output });
       set(rec, { archiveStatus: "changed", actionResult: { severity: "warning", message: message("report.archiveChanged") } });
       emit();
     }
     return true;
   }
-  /** The archive was moved or deleted outside ZipKit. While every original is
-   *  still there the job goes back to planning so it can be created again;
-   *  once the originals are gone it stays finished and says the archive is gone. */
-  function archiveGone(rec: Rec, output: string): void {
+  /** The archive ZipKit made is no longer at its path: moved or deleted, or
+   *  another file put there, outside ZipKit. A file in its place is left alone.
+   *  While every original is still there the job goes back to planning so it
+   *  can be created again; once some are gone it stays finished and says so. */
+  function archiveGone(rec: Rec, output: string, how: "gone" | "replaced"): void {
     const id = rec.job.id;
     rec.publishedOutput = null;
     rec.publication = null;
     rec.fingerprint = null;
-    const originalsGone = (rec.job.state === "done" && removesOriginals(rec.job.intent)) || !originalsIntact(rec.job);
-    deps.log.warn("archive missing", { jobId: id, output, originalsGone });
+    const entries = rec.job.entries;
+    const originalsGone = entries
+      ? entries.some((entry) => entry.kind === "nonexistent")
+      : rec.job.state === "done" && removesOriginals(rec.job.intent);
+    deps.log.warn(how === "gone" ? "archive missing" : "archive replaced", { jobId: id, output, originalsGone });
     if (originalsGone) {
       set(rec, {
         archiveWritten: false,
         archiveStatus: "missing",
-        actionResult: { severity: "error", message: message("action.archiveMissingOriginalsGone") },
+        actionResult: {
+          severity: "error",
+          message: message(how === "gone" ? "action.archiveMissingOriginalsGone" : "action.archiveReplacedOriginalsGone"),
+        },
       });
       emit();
       return;
     }
-    set(rec, { actionResult: { severity: "warning", message: message("action.archiveMissing") } });
+    set(rec, { actionResult: { severity: "warning", message: message(how === "gone" ? "action.archiveMissing" : "action.archiveReplaced") } });
     resetForRecreate(rec);
   }
   /** Back to an editable, re-planned job whose archive is gone, so options can
@@ -369,8 +429,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     void planJob(rec.job.id);
   }
   /** Record a verification that passed, against the archive as it stood when it began. */
-  function markVerified(rec: Rec, seen: string | null | undefined): void {
-    if (seen) rec.fingerprint = seen;
+  function markVerified(rec: Rec, seen: PathState | undefined): void {
+    if (seen?.kind === "present") rec.fingerprint = seen.fingerprint;
     set(rec, { archiveStatus: "verified" });
   }
   /** The commands on finished jobs that are still moving originals to Trash,
@@ -408,7 +468,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     moved: string[] = [],
   ): Promise<TrashRefusal | null> {
     const id = rec.job.id;
-    if (!(await publicationCurrent(rec, output, signal))) return { reason: "verify-failed" };
+    if (!(await publicationCurrent(rec, output, signal))) return { reason: "replaced" };
     try {
       if (await deps.outputInsideInputs(output, inputs, signal)) {
         deps.log.error("trash blocked: archive inside source", { jobId: id, output });
@@ -475,6 +535,19 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       emit();
     } catch (err) {
       deps.log.warn("input classification failed", { jobId: id, error: errorInfo(err) });
+    }
+  }
+
+  /** Classify the job's inputs now, for a decision that must not rest on an
+   *  older look. False when they could not be looked at. */
+  async function freshEntries(rec: Rec): Promise<boolean> {
+    try {
+      set(rec, { entries: await deps.classify(rec.job.inputs) });
+      emit();
+      return true;
+    } catch (err) {
+      deps.log.warn("input classification failed", { jobId: rec.job.id, error: errorInfo(err) });
+      return false;
     }
   }
 
@@ -602,7 +675,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return null;
     }
     rec.publishedOutput = plan.output;
-    rec.fingerprint = (await lookAt(rec, plan.output, signal)) ?? null;
+    const written = await lookAt(rec, plan.output, signal);
+    rec.fingerprint = written?.kind === "present" ? written.fingerprint : null;
     set(rec, { archiveWritten: true, archiveStatus: "written" });
     try { rec.publication = (await deps.resources([plan.output], signal))[0] ?? null; }
     catch (error) { deps.log.warn("archive publication identity unavailable", { jobId: id, error: errorInfo(error) }); }
@@ -686,12 +760,16 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         void classifyInputs(id);
         return;
       }
+      const goneNow = removed.gone?.length ?? 0;
       set(rec, {
         state: "done",
-        message: message(removal === "trash" ? "job.archivedAndTrashed" : "job.archivedAndDeleted", { count: inputs.length }),
+        message: goneNow === 0
+          ? message(removal === "trash" ? "job.archivedAndTrashed" : "job.archivedAndDeleted", { count: removed.moved.length })
+          : sentences([message("job.savedVerifiedShort"), describeRemovalDone(removed, removal, "trash")])!,
       });
-      deps.log.info(removal === "trash" ? "job archived and trashed" : "job archived and originals deleted", { jobId: id, output, count: inputs.length });
-      if (removal === "delete") void classifyInputs(id);
+      deps.log.info(removal === "trash" ? "job archived and trashed" : "job archived and originals deleted", { jobId: id, output, count: removed.moved.length, gone: goneNow });
+      // The originals now read as gone, so the job offers what is left to do.
+      void classifyInputs(id);
     } catch (error) {
       set(rec, { state: "failed", message: failureMessage(error, removal === "delete" ? "job.deleteFailed" : "job.trashFailed") });
       deps.log.error("job archive action failed", { jobId: id, error: errorInfo(error) });
@@ -713,7 +791,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return;
     }
     let verified: boolean;
-    const seen = rec.fingerprint;
+    const seen: PathState | undefined = rec.fingerprint === null ? undefined : { kind: "present", fingerprint: rec.fingerprint };
     try {
       verified = await deps.verify(output, signal, onProgress, rec.job.options.metadata);
     } catch (err) {
@@ -973,17 +1051,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       if (!deps.admission.accepting()) throw new Error("The app is shutting down");
       const rec = recs.get(id);
       if (!rec || !rec.publishedOutput) return;
-      // Removable only when trashing the .zip cannot lose data: a done job whose
-      // originals are all still there, or a `failed` job whose write succeeded
-      // but a later step failed — unless that step deleted some originals for
-      // good, when the archive is all that is left of them.
-      const removable = rec.job.state === "done"
-        ? !removesOriginals(rec.job.intent) && originalsIntact(rec.job)
-        : rec.job.state === "failed" && (rec.job.intent.originals !== "delete" || originalsIntact(rec.job));
       // One Trash action in flight per job, the same claim the originals take:
       // taken here, before the first await, so a second click, Retry, Move
       // originals or removing the job all wait for this one to end.
-      if (!removable || rec.job.trashing) return;
+      if (!archiveRemovable(rec.job) || rec.job.trashing) return;
       const output = rec.publishedOutput;
       const aborter = new AbortController();
       rec.aborter = aborter;
@@ -996,8 +1067,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         try {
           claim = await claimFiles([], [output], aborter.signal);
           if (!(await observeArchive(rec, aborter.signal))) return;
+          // The originals are looked at again: the archive may be all that is
+          // left of any that went since the job was last looked at.
+          if (!(await freshEntries(rec)) || !archiveRemovable(rec.job)) {
+            set(rec, { actionResult: { severity: "error", message: message("action.archiveKept") } });
+            deps.log.warn("archive removal refused: originals gone or out of reach", { jobId: id, output });
+            return;
+          }
           if (!(await publicationCurrent(rec, output, aborter.signal))) {
-            set(rec, { actionResult: { severity: "error", message: message("action.archiveTrashFailed") } });
+            set(rec, { actionResult: { severity: "error", message: message("job.archiveReplaced") } });
             deps.log.warn("archive removal refused: publication was replaced", { jobId: id, output });
             return;
           }
@@ -1051,8 +1129,9 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const rec = recs.get(id);
       const trash = method === "trash";
       // One in flight per job: the claim is taken here, before the first await.
-      // A job that already removed its originals on its run has none to remove.
-      if (!rec || rec.job.state !== "done" || removesOriginals(rec.job.intent) || rec.job.trashing) return;
+      // A job that removed its originals on its run offers this again only when
+      // some were put back, say from the Trash.
+      if (!rec || rec.job.state !== "done" || rec.job.trashing) return;
       // Offered only when the archive carries the manifest its verify needs,
       // and when the scan listed every folder, so nothing unarchived is removed.
       if (!rec.job.options.metadata) {
@@ -1063,13 +1142,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         deps.log.warn("removing originals refused: a folder could not be listed", { jobId: id, method });
         return;
       }
-      const inputs = rec.job.inputs;
       const output = rec.publishedOutput;
       const aborter = new AbortController();
       rec.aborter = aborter;
       set(rec, { trashing: true, actionResult: undefined });
       emit();
-      deps.log.info("removing originals requested", { jobId: id, method, count: inputs.length });
+      deps.log.info("removing originals requested", { jobId: id, method, count: rec.job.inputs.length });
       const work = (async () => {
         // Null when the archive turned out to be gone: that already says so.
         let result: NonNullable<Job["actionResult"]> | null;
@@ -1079,9 +1157,20 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             result = { severity: "error", message: message("action.noArchive") };
           } else if (!(await observeArchive(rec, aborter.signal))) {
             result = null;
+          } else if (!(await freshEntries(rec))) {
+            result = { severity: "error", message: message("originals.unreadable") };
+          } else if (rec.job.entries!.some((entry) => entry.kind === "unavailable")) {
+            result = { severity: "error", message: message("originals.unavailable") };
+          } else if (!rec.job.entries!.some(present)) {
+            result = { severity: "warning", message: message("action.noOriginals") };
           } else {
+            // Only the originals still there are removed. Any already gone are
+            // left out of the recheck as well, so what was archived from them
+            // is not read as missing; what remains must still match.
+            const inputs = rec.job.entries!.filter(present).map((entry) => entry.path);
+            const gone = rec.job.entries!.filter((entry) => entry.kind === "nonexistent").map((entry) => entry.path);
             claim = await claimFiles([output], inputs, aborter.signal);
-            const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id, method));
+            const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id, method), gone);
             if (aborter.signal.aborted) {
               result = { severity: "warning", message: message(trash ? "action.originalsTrashCancelled" : "action.originalsDeleteCancelled") };
               deps.log.info("removing originals cancelled", { jobId: id, method });
@@ -1091,8 +1180,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
               const removed = await (trash ? deps.trash : deps.deleteOriginals)(inputs, aborter.signal);
               retainTrash(claim, removed);
               if (trashConfirmed(removed)) {
-                result = { severity: "info", message: message(trash ? "action.originalsTrashed" : "originals.deleted", { count: inputs.length }) };
-                deps.log.info(trash ? "originals trashed" : "originals deleted", { jobId: id, count: inputs.length });
+                result = { severity: "info", message: describeRemovalDone(removed, method, "action", gone.length) };
+                deps.log.info(trash ? "originals trashed" : "originals deleted", { jobId: id, count: removed.moved.length, gone: gone.length + (removed.gone?.length ?? 0) });
               } else {
                 result = { severity: "error", message: describeOriginalsRemoval(removed, method) };
                 deps.log.error("removing originals not fully confirmed", { jobId: id, method, ...removed });
@@ -1153,11 +1242,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       void tracked.finally(() => actions.delete(tracked));
       return work;
     },
-    async checkArchive(id) {
+    async refresh(id) {
       const rec = recs.get(id);
-      if (!rec || !rec.publishedOutput || rec.job.trashing) return;
-      if (rec.job.state !== "done" && rec.job.state !== "failed") return;
-      await observeArchive(rec, new AbortController().signal);
+      if (!rec || rec.job.trashing) return;
+      const state = rec.job.state;
+      if (state === "running" || state === "queued" || state === "planning") return;
+      await classifyInputs(id);
+      if ((state === "done" || state === "failed") && rec.publishedOutput) await observeArchive(rec, new AbortController().signal);
     },
     getPlan(id) {
       return recs.get(id)?.plan ?? null;

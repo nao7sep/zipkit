@@ -15,7 +15,7 @@
 
 import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
-import { manifestRequiredButMissing, originalsIntact, removesOriginals, scanBlocksRemoval } from "../../shared/queue";
+import { manifestRequiredButMissing, originalsIntact, present, removesOriginals, scanBlocksRemoval } from "../../shared/queue";
 import type { Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
 import { renamedItself, type PlanReport } from "../../shared/plan-report";
 import type { MessageKey } from "../../shared/i18n/catalogues";
@@ -65,6 +65,7 @@ const COUNT_KEYS: Record<PathKind, MessageKey> = {
   directory: "jobs.countFolders",
   file: "jobs.countFiles",
   nonexistent: "jobs.countMissing",
+  unavailable: "jobs.countUnavailable",
   other: "jobs.countOther",
 };
 
@@ -82,7 +83,7 @@ export function jobCounts(job: Job, t: Translator): JobCount[] {
     if (summary.excluded > 0) counts.push({ text: t.t("jobs.countExcluded", { count: summary.excluded }) });
   }
   if (job.entries && job.entries.length > 0) {
-    for (const kind of ["directory", "file", "nonexistent", "other"] as const) {
+    for (const kind of ["directory", "file", "nonexistent", "unavailable", "other"] as const) {
       const count = job.entries.filter((entry) => entry.kind === kind).length;
       if (count > 0) counts.push({ text: t.t(COUNT_KEYS[kind], { count }) });
     }
@@ -97,13 +98,13 @@ export function jobCounts(job: Job, t: Translator): JobCount[] {
  *  present (the engine re-checks before it trashes anything). */
 export function originalsPresent(job: Job): boolean {
   if (!job.entries) return true;
-  return job.entries.some((e) => e.kind === "directory" || e.kind === "file");
+  return job.entries.some(present);
 }
 
 /** Display order for the input list: directories first, then files, then anything
  *  else (other / missing) last; within each group, full paths sorted alphabetically
  *  (case-insensitive). Pure, so the order is testable without a DOM. */
-const KIND_RANK: Record<PathKind, number> = { directory: 0, file: 1, other: 2, nonexistent: 3 };
+const KIND_RANK: Record<PathKind, number> = { directory: 0, file: 1, other: 2, nonexistent: 3, unavailable: 4 };
 export function orderedEntries(entries: InputEntry[]): InputEntry[] {
   return [...entries].sort((a, b) => {
     const byKind = KIND_RANK[a.kind] - KIND_RANK[b.kind];
@@ -238,18 +239,21 @@ export function jobCommands(job: Job): JobCommand[] {
       }
       return runnable ? ["retry"] : [];
     case "done": {
-      // An archive gone after the originals were removed leaves nothing to act on.
-      if (job.archiveStatus === "missing") return [];
+      // An archive gone after the originals were removed, or out of reach,
+      // leaves nothing to act on until it is back.
+      if (job.archiveStatus === "missing" || job.archiveStatus === "unavailable") return [];
       // Verify is offered until the archive verifies, and again once it changes.
       const verify: JobCommand[] = job.archiveStatus === "verified" ? [] : ["verify"];
-      // A job that removed its originals on its run has only its archive left.
-      if (removesOriginals(job.intent)) return [...verify, "reveal"];
-      // A kept job: verify/reveal it, move the archive to Trash while every
-      // original is still there (to edit and re-create), or — while some
-      // remain, and only when the archive carries the manifest the checks
-      // need — remove the originals. The destructive commands come last so
-      // the command bar seats them at the far-right end.
+      // Verify/reveal the archive, move it to Trash while every original is
+      // still there (to edit and re-create), or — while some are there, put
+      // back from the Trash after a run removed them included, and only when
+      // the archive carries the manifest the checks need — remove the
+      // originals. The destructive commands come last so the command bar
+      // seats them at the far-right end.
       const commands: JobCommand[] = [...verify, "reveal"];
+      // A run that removed the originals offers them again only once a fresh
+      // look finds some back: before that, nothing is known to be there.
+      if (removesOriginals(job.intent) && job.entries === undefined) return commands;
       if (originalsIntact(job)) commands.push("remove-archive");
       if (job.options.metadata && !job.scanIncomplete && originalsPresent(job)) commands.push("trash-originals", "delete-originals");
       return commands;
@@ -335,6 +339,14 @@ export function reportSummary(
  *  the user sees it before creating. */
 export function jobAdvisories(job: Job, t: Translator): ReportLine[] {
   const lines: ReportLine[] = [];
+  // Before a run, an input that went or is out of reach is worth saying at
+  // once; after one, the history says what happened to the originals.
+  if (job.state !== "done" && job.state !== "failed" && job.state !== "running") {
+    const missing = job.entries?.filter((entry) => entry.kind === "nonexistent").length ?? 0;
+    const unavailable = job.entries?.filter((entry) => entry.kind === "unavailable").length ?? 0;
+    if (missing > 0) lines.push({ level: "warning", text: t.t("report.inputMissing", { count: missing }) });
+    if (unavailable > 0) lines.push({ level: "warning", text: t.t("report.inputUnavailable", { count: unavailable }) });
+  }
   const onlyInput = job.inputs.length === 1 ? job.inputs[0] : undefined;
   const isFile = job.entries?.[0]?.kind === "file";
   if (onlyInput && isFile && /\.zip$/i.test(onlyInput)) {

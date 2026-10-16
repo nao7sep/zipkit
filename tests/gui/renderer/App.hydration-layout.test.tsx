@@ -61,7 +61,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     onQueue: vi.fn(() => () => {}),
     onQueueSaved: vi.fn(() => () => {}),
     verify: vi.fn(),
-    checkArchive: vi.fn(async () => {}),
+    refreshJob: vi.fn(async () => {}),
     reveal: vi.fn(),
     getJobEvents: vi.fn(async () => []),
     onEvents: vi.fn(() => () => {}),
@@ -372,7 +372,7 @@ describe("mounted run consent across queue projection changes", () => {
       trash: vi.fn(async (paths) => ({ moved: paths, failed: [], unconfirmed: [] })),
       deleteOriginals: vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] })),
       outputInsideInputs: vi.fn(async () => false),
-      archiveState: vi.fn(async (output: string) => `state:${output}`),
+      pathState: vi.fn(async (target: string) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` })),
       inspect: vi.fn(async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] })),
       emit: vi.fn((jobs) => { if (!withholdProjection) publish?.(jobs); }),
       progress: vi.fn(() => vi.fn()),
@@ -603,9 +603,9 @@ describe("a finished job's history and archive", () => {
     ]);
     // A verified archive offers no second Verify.
     expect(screen.queryByRole("button", { name: "Verify" })).toBeNull();
-    await waitFor(() => expect(bridge.checkArchive).toHaveBeenCalledWith("a"));
-    const before = vi.mocked(bridge.checkArchive).mock.calls.length;
+    await waitFor(() => expect(bridge.refreshJob).toHaveBeenCalledWith("a"));
+    const before = vi.mocked(bridge.refreshJob).mock.calls.length;
     fireEvent.focus(window);
-    expect(vi.mocked(bridge.checkArchive).mock.calls.length).toBe(before + 1);
+    expect(vi.mocked(bridge.refreshJob).mock.calls.length).toBe(before + 1);
   });
 });

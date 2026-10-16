@@ -55,7 +55,7 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
     admission: new CommandAdmission(),
     effects: createArchiveEffects(),
     resources: async (paths) => paths.map((location) => ({ location, identity: location })),
-    archiveState: async (output) => `state:${output}`,
+    pathState: async (target) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` }),
     inspect: async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] }),
     plan: async (inputs) => {
       calls.plan++;
@@ -1344,7 +1344,8 @@ describe("queue engine", () => {
     run(engine, id);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toBe(
-      "The originals changed after the archive was made, so the originals and the archive were kept. " +
+      "1 file was added to the originals. " +
+        "The originals changed after the archive was made, so the originals and the archive were kept. " +
         "To include the changes, move the archive to Trash and create it again.",
     );
     expect(calls.verify).toBe(1);
@@ -1608,10 +1609,19 @@ describe("the archive's recorded state and the job's history", () => {
   const VERIFY = { verify: true, originals: "keep" } as const;
   const keys = (engine: QueueEngine) => (engine.snapshot()[0]?.history ?? []).map((entry) => entry.message.key);
 
-  /** Deps whose archive state the test sets: a string while it is there, null once gone. */
+  /** Deps whose archive the test sets: its content while it is there under the
+   *  same file, another file's after `replace`, null once gone, or out of reach. */
   function withArchive(overrides: Partial<EngineDeps> = {}) {
-    const archive = { state: "first" as string | null };
-    const made = makeDeps({ archiveState: async () => archive.state, ...overrides });
+    const archive = { state: "first" as string | null | "unavailable", file: "1:1" };
+    const made = makeDeps({
+      pathState: async (target) => {
+        if (!target.endsWith(".zip")) return { kind: "present", fingerprint: `1:${target}:1:1` };
+        if (archive.state === null) return { kind: "gone" };
+        if (archive.state === "unavailable") return { kind: "unavailable" };
+        return { kind: "present", fingerprint: `${archive.file}:${archive.state}:1` };
+      },
+      ...overrides,
+    });
     return { ...made, archive };
   }
   async function finished(engine: QueueEngine, id: string): Promise<void> {
@@ -1642,10 +1652,10 @@ describe("the archive's recorded state and the job's history", () => {
       expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
       expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("Verified 1 entry. No problems were found.");
       // Looking again at the same archive changes nothing.
-      await engine.checkArchive(id);
+      await engine.refresh(id);
       expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
       archive.state = "rewritten";
-      await engine.checkArchive(id);
+      await engine.refresh(id);
       expect(engine.snapshot()[0]?.archiveStatus).toBe("changed");
       expect(keys(engine)).toEqual(["job.saved", "history.verified", "report.archiveChanged"]);
       // Verifying the changed archive records it as verified again.
@@ -1675,7 +1685,7 @@ describe("the archive's recorded state and the job's history", () => {
     try {
       await finished(engine, id);
       archive.state = null;
-      await engine.checkArchive(id);
+      await engine.refresh(id);
       await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       const job = engine.snapshot()[0]!;
       expect(job.archiveWritten).toBe(false);
@@ -1710,13 +1720,17 @@ describe("the archive's recorded state and the job's history", () => {
   });
 
   it("keeps a job whose originals are gone finished when its archive goes too, with nothing left to offer", async () => {
-    const { deps, archive } = withArchive();
+    let trashed = false;
+    const { deps, archive } = withArchive({
+      classify: async (paths) => paths.map((path) => ({ path, kind: trashed ? "nonexistent" as const : "file" as const })),
+      trash: async (paths) => { trashed = true; return { moved: paths, failed: [], unconfirmed: [] }; },
+    });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, TRASH);
     try {
       await finished(engine, id);
       archive.state = null;
-      await engine.checkArchive(id);
+      await engine.refresh(id);
       const job = engine.snapshot()[0]!;
       expect(job.state).toBe("done");
       expect(job.archiveStatus).toBe("missing");
@@ -1747,6 +1761,133 @@ describe("the archive's recorded state and the job's history", () => {
       engine.removeArchive(id);
       await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       expect(keys(engine)).toEqual(["job.saved", "action.archiveTrashed"]);
+    } finally { await engine.shutdown(); }
+  });
+});
+
+describe("changes made outside ZipKit to the originals and the archive", () => {
+  const keys = (engine: QueueEngine) => (engine.snapshot()[0]?.history ?? []).map((entry) => entry.message.key);
+  const archiveAt = (archive: { state: "there" | "replaced" | "gone" | "unavailable" }) =>
+    async (target: string) => {
+      if (!target.endsWith(".zip")) return { kind: "present" as const, fingerprint: `1:${target}:1:1` };
+      if (archive.state === "gone") return { kind: "gone" as const };
+      if (archive.state === "unavailable") return { kind: "unavailable" as const };
+      return { kind: "present" as const, fingerprint: archive.state === "there" ? "1:1:10:1" : "1:2:10:1" };
+    };
+  async function finished(engine: QueueEngine, id: string): Promise<void> {
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    run(engine, id);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+  }
+
+  it("says an original something else removed first was already gone, never kept", async () => {
+    const { deps } = makeDeps({ trash: async (paths) => ({ moved: paths.slice(1), failed: [], unconfirmed: [], gone: paths.slice(0, 1) }) });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, TRASH);
+    try {
+      await finished(engine, id);
+      expect(say(engine.snapshot()[0]?.message)).toBe("Saved and verified. 1 original was moved to recoverable Trash. 1 original was already gone.");
+    } finally { await engine.shutdown(); }
+  });
+
+  it("reads the originals again after a run moves them to Trash, and offers them again once they are put back", async () => {
+    let onDisk = true;
+    const { deps, calls } = makeDeps({
+      classify: async (paths) => paths.map((path) => ({ path, kind: onDisk ? "file" as const : "nonexistent" as const })),
+      trash: async (paths) => { onDisk = false; calls.trash.push(paths); return { moved: paths, failed: [], unconfirmed: [] }; },
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a"], DEFAULT_OPTIONS, TRASH);
+    try {
+      await finished(engine, id);
+      await until(() => expect(engine.snapshot()[0]?.entries?.[0]?.kind).toBe("nonexistent"));
+      // Put back from the Trash: a fresh look sees them, and they can be removed again.
+      onDisk = true;
+      await engine.refresh(id);
+      expect(engine.snapshot()[0]?.entries?.[0]?.kind).toBe("file");
+      engine.removeOriginals(id, "trash");
+      await until(() => expect(calls.trash).toHaveLength(2));
+      await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+      expect(keys(engine).at(-1)).toBe("action.originalsTrashed");
+    } finally { await engine.shutdown(); }
+  });
+
+  it("removes the originals still there when some were deleted outside ZipKit, saying how many were already gone", async () => {
+    const { deps, calls } = makeDeps({
+      classify: async (paths) => paths.map((path) => ({ path, kind: path === "/b" ? "nonexistent" as const : "file" as const })),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      engine.removeOriginals(id, "trash");
+      await until(() => expect(calls.trash).toEqual([["/a"]]));
+      await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+      expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("1 original was moved to Trash. 1 original was already gone.");
+    } finally { await engine.shutdown(); }
+  });
+
+  it("removes nothing while an original is out of reach", async () => {
+    const { deps, calls } = makeDeps({
+      classify: async (paths) => paths.map((path) => ({ path, kind: path === "/b" ? "unavailable" as const : "file" as const })),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      engine.removeOriginals(id, "delete");
+      await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+      expect(calls.deleted).toEqual([]);
+      expect(keys(engine).at(-1)).toBe("originals.unavailable");
+    } finally { await engine.shutdown(); }
+  });
+
+  it("leaves a file put in the archive's place alone, and lets the job create its archive again", async () => {
+    const archive = { state: "there" as "there" | "replaced" | "gone" | "unavailable" };
+    const { deps, calls } = makeDeps({ pathState: archiveAt(archive) });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await finished(engine, id);
+      archive.state = "replaced";
+      engine.removeArchive(id);
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      expect(calls.trash).toEqual([]);
+      expect(keys(engine)).toEqual(["job.saved", "action.archiveReplaced"]);
+    } finally { await engine.shutdown(); }
+  });
+
+  it("waits, changing nothing, while the archive's drive is not connected, then picks up where it was", async () => {
+    const archive = { state: "there" as "there" | "replaced" | "gone" | "unavailable" };
+    const { deps } = makeDeps({ pathState: archiveAt(archive) });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, { verify: true, originals: "keep" });
+    try {
+      await finished(engine, id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
+      archive.state = "unavailable";
+      await engine.refresh(id);
+      expect(engine.snapshot()[0]?.state).toBe("done");
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("unavailable");
+      // Looking again while it is still away says nothing new.
+      await engine.refresh(id);
+      archive.state = "there";
+      await engine.refresh(id);
+      expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
+      expect(keys(engine)).toEqual(["job.savedVerified", "action.archiveUnavailable", "action.archiveAvailableAgain"]);
+    } finally { await engine.shutdown(); }
+  });
+
+  it("reads a waiting job's inputs again, so one deleted outside ZipKit shows before Create", async () => {
+    let gone = false;
+    const { deps } = makeDeps({ classify: async (paths) => paths.map((path) => ({ path, kind: gone ? "nonexistent" as const : "file" as const })) });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    try {
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      gone = true;
+      await engine.refresh(id);
+      expect(engine.snapshot()[0]?.entries?.[0]?.kind).toBe("nonexistent");
     } finally { await engine.shutdown(); }
   });
 });
