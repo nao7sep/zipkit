@@ -298,7 +298,6 @@
   "options.emptyDirs": "Cartelle vuote",
   "options.emptyDirsKeep": "Mantieni",
   "options.emptyDirsPrune": "Escludi",
-  "options.output": "Destinazione",
   "options.outputDir": "Cartella di destinazione",
   "options.overwrite": "Sovrascrivi un file esistente",
   "options.comment": "Commento",

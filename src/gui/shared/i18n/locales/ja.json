@@ -298,7 +298,6 @@
   "options.emptyDirs": "空のフォルダ",
   "options.emptyDirsKeep": "残す",
   "options.emptyDirsPrune": "除外",
-  "options.output": "出力",
   "options.outputDir": "出力先フォルダ",
   "options.overwrite": "既存のファイルを上書き",
   "options.comment": "コメント",

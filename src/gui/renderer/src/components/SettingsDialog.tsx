@@ -21,7 +21,7 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
-import { changedSettings, DEFAULT_OPTIONS, displayZones, type GuiOptions, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import { changedSettings, DEFAULT_PARAMETERS, displayZones, type ArchiveParameters, type GuiSettings, type ThemePreference } from "../../../shared/spec";
 import type { SystemChoices } from "../../../shared/api";
 import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
@@ -51,7 +51,7 @@ function builtInFontStack(): string {
 }
 
 /** The only field that can be made invalid from the UI: the compression level. */
-function isValid(o: GuiOptions): boolean {
+function isValid(o: ArchiveParameters): boolean {
   return Number.isInteger(o.level) && o.level >= 1 && o.level <= 9;
 }
 
@@ -105,7 +105,7 @@ export function SettingsDialog({
   // main window's own phrase for these knobs. The language, the theme and the UI
   // font are the user's preferences, not tuned built-ins, so they stay as they are.
   function resetDefaultParameters() {
-    setDraft({ ...draft, defaults: { ...DEFAULT_OPTIONS } });
+    setDraft({ ...draft, defaults: { ...DEFAULT_PARAMETERS } });
   }
 
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):

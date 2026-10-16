@@ -298,7 +298,6 @@
   "options.emptyDirs": "Dossiers vides",
   "options.emptyDirsKeep": "Conserver",
   "options.emptyDirsPrune": "Écarter",
-  "options.output": "Sortie",
   "options.outputDir": "Dossier de sortie",
   "options.overwrite": "Remplacer un fichier existant",
   "options.comment": "Commentaire",

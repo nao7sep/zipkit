@@ -1,17 +1,15 @@
 /**
  * The archive-parameters editor, shared by two surfaces: the Settings dialog
  * (where it edits the defaults for new jobs) and a selected job's Parameters
- * pane. It is a controlled view over the GuiOptions *knobs* — cleaning, manifest,
- * compression, comment, and the output directory + overwrite group; it does NOT
- * own the file name (that is operation-level and lives with the Create action).
+ * pane. It is a controlled view over the archive parameters — cleaning, manifest
+ * and compression. Where the archive goes, its name, whether it may replace a
+ * file and its comment belong to one job and live with the Create action.
  * The SDK still owns all validation and every default not set here. Sections flow
  * into responsive columns so the whole set stays visible without a tall scroll.
  */
 
 import type { CSSProperties, ReactNode } from "react";
-import type { GuiOptions } from "../../../shared/spec";
-import { multiline } from "../../../shared/textCleanup";
-import { DirectoryField } from "./DirectoryField";
+import type { ArchiveParameters } from "../../../shared/spec";
 import { useI18n } from "../i18n/I18nContext";
 
 export function OptionsPanel({
@@ -19,13 +17,13 @@ export function OptionsPanel({
   onChange,
   disabled,
 }: {
-  options: GuiOptions;
+  options: ArchiveParameters;
   /** Every edit reaches the parent that owns its saving policy. */
-  onChange: (o: GuiOptions) => void;
+  onChange: (o: ArchiveParameters) => void;
   disabled: boolean;
 }) {
   const { t, rich } = useI18n();
-  const set = <K extends keyof GuiOptions>(key: K, value: GuiOptions[K]) =>
+  const set = <K extends keyof ArchiveParameters>(key: K, value: ArchiveParameters[K]) =>
     onChange({ ...options, [key]: value });
 
   return (
@@ -64,7 +62,7 @@ export function OptionsPanel({
           <select
             style={S.select}
             value={options.symlinks}
-            onChange={(e) => set("symlinks", e.target.value as GuiOptions["symlinks"])}
+            onChange={(e) => set("symlinks", e.target.value as ArchiveParameters["symlinks"])}
           >
             <option value="ignore">{t("options.symlinksIgnore")}</option>
             <option value="preserve">{t("options.symlinksPreserve")}</option>
@@ -75,7 +73,7 @@ export function OptionsPanel({
           <select
             style={S.select}
             value={options.emptyDirs}
-            onChange={(e) => set("emptyDirs", e.target.value as GuiOptions["emptyDirs"])}
+            onChange={(e) => set("emptyDirs", e.target.value as ArchiveParameters["emptyDirs"])}
           >
             <option value="keep">{t("options.emptyDirsKeep")}</option>
             <option value="prune">{t("options.emptyDirsPrune")}</option>
@@ -83,40 +81,13 @@ export function OptionsPanel({
         </Field>
       </Section>
 
-      {/* Where the archive is written. A normal column so it sits next to Archive
-          when the pane is wide. The output directory and the overwrite policy
-          belong together: both answer "where does the .zip land, and may it
-          clobber?". */}
-      <Section title={t("options.output")}>
-        <DirectoryField
-          label={t("options.outputDir")}
-          value={options.outputDir}
-          onChange={(v) => set("outputDir", v)}
-          placeholder={t("dest.besideInput")}
-        />
-        <Check checked={options.overwrite} onChange={(v) => set("overwrite", v)}>
-          {t("options.overwrite")}
-        </Check>
-      </Section>
-
-      {/* A ZIP comment may span lines, so this is a multiline field cleaned on blur
-          (commit-time, never mid-edit, IME-safe). Always its own full-width row. */}
-      <Section title={t("options.comment")} wide>
-        <textarea
-          value={options.comment}
-          rows={2}
-          onChange={(e) => set("comment", e.target.value)}
-          onBlur={(e) => set("comment", multiline(e.target.value))}
-          style={S.textarea}
-        />
-      </Section>
     </fieldset>
   );
 }
 
-function Section({ title, children, wide }: { title: string; children: ReactNode; wide?: boolean }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={wide ? S.sectionWide : S.section}>
+    <div style={S.section}>
       <div style={S.sectionTitle}>{title}</div>
       <div style={S.sectionBody}>{children}</div>
     </div>
@@ -161,7 +132,6 @@ const S: Record<string, CSSProperties> = {
   // (index.css).
   fieldset: { border: "none", margin: 0, padding: 0, minWidth: 0 },
   section: { display: "grid", gap: "0.4rem", minWidth: 0 },
-  sectionWide: { display: "grid", gap: "0.4rem", minWidth: 0, gridColumn: "1 / -1" },
   sectionTitle: {
     fontSize: "0.75rem",
     fontWeight: 700,
@@ -178,5 +148,4 @@ const S: Record<string, CSSProperties> = {
   fieldControl: { display: "flex", gap: "0.5rem", alignItems: "center", flex: "1 1 auto", minWidth: 0 },
   // A select can then shrink below its longest option instead of overflowing.
   select: { minWidth: 0, maxWidth: "100%" },
-  textarea: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3rem" },
 };

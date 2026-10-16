@@ -298,7 +298,6 @@
   "options.emptyDirs": "空文件夹",
   "options.emptyDirsKeep": "保留",
   "options.emptyDirsPrune": "排除",
-  "options.output": "输出",
   "options.outputDir": "输出文件夹",
   "options.overwrite": "覆盖已有文件",
   "options.comment": "注释",

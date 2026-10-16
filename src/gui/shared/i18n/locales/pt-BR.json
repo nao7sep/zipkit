@@ -298,7 +298,6 @@
   "options.emptyDirs": "Pastas vazias",
   "options.emptyDirsKeep": "Manter",
   "options.emptyDirsPrune": "Omitir",
-  "options.output": "Saída",
   "options.outputDir": "Pasta de saída",
   "options.overwrite": "Substituir um arquivo existente",
   "options.comment": "Comentário",

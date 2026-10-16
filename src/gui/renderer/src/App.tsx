@@ -19,7 +19,8 @@ import type { Job, JobEvent, JobIntent, PlanReport, SystemChoices, VerifyResult 
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable, removesOriginals, verifies, type OriginalsAction } from "../../shared/queue";
-import { DEFAULT_OPTIONS, optionsEqual, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
+import { multiline } from "../../shared/textCleanup";
+import { DEFAULT_PARAMETERS, newJobOptions, parametersEqual, parametersOf, type ArchiveParameters, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_MIN_HEIGHT,
@@ -59,6 +60,7 @@ import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
 import { ShellNotice } from "./components/ShellNotice";
 import { OptionsPanel } from "./components/OptionsPanel";
+import { DirectoryField } from "./components/DirectoryField";
 import { Pane } from "./components/Pane";
 import { ProgressLog } from "./components/ProgressLog";
 import { ReceiverResultNotice } from "./components/ReceiverResultNotice";
@@ -120,7 +122,7 @@ export function App() {
   const t = useI18n();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [defaults, setDefaults] = useState<GuiOptions>(DEFAULT_OPTIONS);
+  const [defaults, setDefaults] = useState<ArchiveParameters>(DEFAULT_PARAMETERS);
   // The UI (chrome) font family. Blank = the built-in default stack (the index.css --font-ui var).
   const [uiFontFamily, setUiFontFamily] = useState<string>("");
   // The saved theme, kept only to seed the Settings draft: the main process
@@ -336,7 +338,7 @@ export function App() {
     const admission = planInputAdmission([], inputs);
     if (admission.accepted.length === 0) return { changed: false, accepted: 0, result: null };
     try {
-      const id = await window.zipkit.addJob(admission.accepted, defaults);
+      const id = await window.zipkit.addJob(admission.accepted, newJobOptions(defaults));
       setSelectedId(id);
       setPullFocusId(id); // focus the new row once it renders (focus/selection policy)
       return {
@@ -685,7 +687,7 @@ function JobView({
   onOperationResult,
 }: {
   job: Job;
-  defaults: GuiOptions;
+  defaults: ArchiveParameters;
   splitter: ReactNode;
   inputResult: ReceiverResult | null;
   onInputResult: (outcome: ReceiverOutcome) => void;
@@ -708,7 +710,7 @@ function JobView({
   // the defaults — not a free-floating flag that could claim "defaults" while the
   // job is actually customized. Unchecking enables editing; re-checking restores
   // the defaults (see toggleUseDefaults).
-  const [useDefaults, setUseDefaults] = useState(() => optionsEqual(job.options, defaults));
+  const [useDefaults, setUseDefaults] = useState(() => parametersEqual(job.options, defaults));
   const operationAttempt = useRef(0);
   useEffect(() => () => { operationAttempt.current++; }, []);
 
@@ -719,7 +721,7 @@ function JobView({
   useEffect(() => {
     if (editable) return;
     setOpts(job.options);
-    setUseDefaults(optionsEqual(job.options, defaults));
+    setUseDefaults(parametersEqual(job.options, defaults));
   }, [editable, job.options, defaults]);
 
   useEffect(() => {
@@ -784,7 +786,7 @@ function JobView({
         error,
         () => {
           setOpts(job.options);
-          setUseDefaults(optionsEqual(job.options, defaults));
+          setUseDefaults(parametersEqual(job.options, defaults));
         },
       );
     }
@@ -804,10 +806,11 @@ function JobView({
     void persistOptions(next);
   }
   // Unchecking enables editing (options unchanged until the user edits); re-checking
-  // actually restores the defaults, so the box can never claim "defaults" falsely.
+  // actually restores the default parameters, so the box can never claim "defaults"
+  // falsely. The job's own destination, name and comment stay as they are.
   function toggleUseDefaults(checked: boolean) {
     setUseDefaults(checked);
-    if (checked) commitOptions({ ...defaults });
+    if (checked) commitOptions({ ...opts, ...parametersOf(defaults) });
   }
 
   // No confirmation here: choosing what happens after creating only edits the
@@ -1016,10 +1019,11 @@ function JobView({
             <span>{t.t("params.useDefaults")}</span>
           </label>
         </div>
-        <OptionsPanel options={opts} onChange={commitOptions} disabled={useDefaults || !editable} />
+        <OptionsPanel options={opts} onChange={(parameters) => commitOptions({ ...opts, ...parameters })} disabled={useDefaults || !editable} />
 
-        {/* Operation: the per-archive name and intent, then the output path as the
-            final checkpoint right above Create, then the lifecycle buttons. */}
+        {/* Operation: this archive's own name, folder, overwrite choice and
+            comment, then the run's choices, then the output path as the final
+            checkpoint right above Create, then the lifecycle buttons. */}
         <div style={S.sectionHead}>
           <span style={S.sectionTitle}>{t.t("section.operation")}</span>
         </div>
@@ -1034,7 +1038,36 @@ function JobView({
               onChange={(e) => commitOptions({ ...opts, fileName: e.target.value })}
             />
           </label>
+          <DirectoryField
+            label={t.t("options.outputDir")}
+            value={opts.outputDir}
+            disabled={!editable}
+            onChange={(outputDir) => commitOptions({ ...opts, outputDir })}
+            placeholder={t.t("dest.besideInput")}
+          />
         </div>
+        <label style={S.choiceToggle}>
+          <input
+            type="checkbox"
+            checked={opts.overwrite}
+            disabled={!editable}
+            onChange={(e) => commitOptions({ ...opts, overwrite: e.target.checked })}
+          />
+          {t.t("options.overwrite")}
+        </label>
+        {/* A ZIP comment may span lines, so this is a multiline field cleaned on
+            blur (commit-time, never mid-edit, IME-safe). */}
+        <label style={{ ...S.stack, marginTop: "0.75rem" }}>
+          <span style={S.stackLabel}>{t.t("options.comment")}</span>
+          <textarea
+            value={opts.comment}
+            rows={2}
+            disabled={!editable}
+            onChange={(e) => commitOptions({ ...opts, comment: e.target.value })}
+            onBlur={(e) => commitOptions({ ...opts, comment: multiline(e.target.value) })}
+            style={S.comment}
+          />
+        </label>
         {/* What happens once the archive is written: verify it, and keep, move to
             Trash or delete the originals. Both are this run's choice only, reset
             to the safest for every new or restored job. Removing the originals
@@ -1157,6 +1190,7 @@ const S: Record<string, CSSProperties> = {
     alignItems: "end",
   },
   stack: { display: "grid", gap: "0.25rem", minWidth: 0 },
+  comment: { width: "100%", resize: "vertical", fontFamily: "inherit", minHeight: "3rem" },
   // The run's choices below the file name: the verify box, then the originals.
   choiceToggle: { display: "flex", gap: "0.4rem", alignItems: "center", marginTop: "0.75rem", fontSize: "0.9rem" },
   choiceHint: { display: "block", margin: "0.2rem 0 0 1.4rem", color: "var(--text-2)", fontSize: "0.8rem" },

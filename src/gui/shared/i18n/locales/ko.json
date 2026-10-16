@@ -298,7 +298,6 @@
   "options.emptyDirs": "빈 폴더",
   "options.emptyDirsKeep": "유지",
   "options.emptyDirsPrune": "제외",
-  "options.output": "출력",
   "options.outputDir": "출력 폴더",
   "options.overwrite": "기존 파일 덮어쓰기",
   "options.comment": "주석",

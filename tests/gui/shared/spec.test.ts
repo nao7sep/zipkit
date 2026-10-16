@@ -8,7 +8,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpec,
   DEFAULT_OPTIONS,
+  DEFAULT_PARAMETERS,
+  newJobOptions,
   optionsEqual,
+  parametersEqual,
   planAffectingChanged,
 } from "../../../src/gui/shared/spec.js";
 
@@ -88,6 +91,21 @@ describe("optionsEqual", () => {
     expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, comment: "x" })).toBe(false);
     expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, outputDir: "/a" })).toBe(false);
     expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, junk: false })).toBe(false);
+  });
+});
+
+describe("parameters", () => {
+  it("compares only the parameters, not a job's own destination, name, overwrite choice or comment", () => {
+    const own = { ...DEFAULT_OPTIONS, comment: "x", outputDir: "/a", fileName: "a.zip", overwrite: true };
+    expect(parametersEqual(own, DEFAULT_PARAMETERS)).toBe(true);
+    expect(parametersEqual({ ...own, level: 1 }, DEFAULT_PARAMETERS)).toBe(false);
+  });
+
+  it("starts a new job on the given parameters with nothing of its own", () => {
+    const defaults = { ...DEFAULT_PARAMETERS, level: 9 };
+    expect(newJobOptions(defaults)).toEqual({ ...DEFAULT_OPTIONS, level: 9 });
+    // A stray field on the defaults never reaches the job.
+    expect(newJobOptions({ ...defaults, comment: "stray" } as typeof defaults)).toEqual({ ...DEFAULT_OPTIONS, level: 9 });
   });
 });
 

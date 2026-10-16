@@ -7,10 +7,10 @@
 
 import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
-import { changedSettings, DEFAULT_OPTIONS, DEFAULT_SETTINGS, SETTINGS_KEYS, THEME_PREFERENCES, type GuiOptions, type GuiSettings } from "../shared/spec.js";
+import { changedSettings, DEFAULT_OPTIONS, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, PARAMETER_KEYS, SETTINGS_KEYS, THEME_PREFERENCES, type ArchiveParameters, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
 import { isDisplayZone } from "../shared/spec.js";
-import { multiline, singleLine } from "../shared/textCleanup.js";
+import { singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
@@ -21,7 +21,7 @@ export function settingsFile(): string {
 }
 
 function freshSettings(): GuiSettings {
-  return { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS } };
+  return { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_PARAMETERS } };
 }
 
 const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
@@ -33,6 +33,8 @@ const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
   ["outputDir", (v) => typeof v === "string"], ["fileName", (v) => typeof v === "string"],
   ["overwrite", (v) => typeof v === "boolean"],
 ];
+
+const PARAMETER_CHECKS = OPTION_CHECKS.filter(([key]) => (PARAMETER_KEYS as readonly string[]).includes(key));
 
 /** Parse a queued job's options: fill absent members and reject wrong known shapes. */
 export function parseGuiOptions(raw: unknown, store: string): GuiOptions {
@@ -53,15 +55,17 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
     const value = root[key];
     switch (key) {
       case "defaults":
-        // Each job option is independent of the others, so an invalid one reverts alone
-        // and the authored comment, output folder and file name beside it survive.
+        // Each parameter is independent of the others, so an invalid one reverts
+        // alone. Settings holds only the parameters: an output folder, overwrite
+        // choice or comment an earlier build saved here belongs to each job now
+        // and is not read.
         if (isPlainObject(value)) {
           const reverted: string[] = [];
-          settings.defaults = Object.fromEntries(OPTION_CHECKS.map(([member, valid]) => {
+          settings.defaults = Object.fromEntries(PARAMETER_CHECKS.map(([member, valid]) => {
             if (valid(value[member])) return [member, value[member]];
             reverted.push(member);
-            return [member, DEFAULT_OPTIONS[member]];
-          })) as unknown as GuiOptions;
+            return [member, DEFAULT_PARAMETERS[member as keyof ArchiveParameters]];
+          })) as unknown as ArchiveParameters;
           if (reverted.length > 0) logger.warn("invalid default job options; using their built-ins", { key, members: reverted });
           continue;
         }
@@ -118,7 +122,6 @@ export function checkedSettings(settings: GuiSettings, logger: AppLog = nullLog)
   const effective: GuiSettings = {
     ...checked,
     uiFontFamily: singleLine(checked.uiFontFamily),
-    defaults: { ...checked.defaults, comment: multiline(checked.defaults.comment) },
   };
   return effective;
 }

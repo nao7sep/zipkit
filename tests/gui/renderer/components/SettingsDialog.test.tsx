@@ -17,7 +17,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { languageNameIn, SettingsDialog } from "../../../../src/gui/renderer/src/components/SettingsDialog";
 import { loadCatalogue } from "../../../../src/gui/shared/i18n/catalogues";
 import { createTranslator } from "../../../../src/gui/shared/i18n/translate";
-import { DEFAULT_OPTIONS, type GuiSettings } from "../../../../src/gui/shared/spec";
+import { DEFAULT_PARAMETERS, type GuiSettings } from "../../../../src/gui/shared/spec";
 import type { SystemChoices } from "../../../../src/gui/shared/api";
 
 afterEach(cleanup);
@@ -31,7 +31,7 @@ Object.defineProperty(window, "zipkit", {
  *  a chosen UI font, a chosen theme, and a chosen language — so a reset's reach
  *  is visible on each. */
 const CUSTOM: GuiSettings = {
-  defaults: { ...DEFAULT_OPTIONS, level: 9, junk: false, comment: "mine", fileName: "mine.zip" },
+  defaults: { ...DEFAULT_PARAMETERS, level: 9, junk: false },
   uiFontFamily: "Iosevka, monospace",
   theme: "dark",
   language: "fr",
@@ -70,7 +70,7 @@ describe("SettingsDialog theme", () => {
     const onSave = renderDialog();
     fireEvent.click(reset());
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_PARAMETERS });
   });
 });
 
@@ -99,7 +99,7 @@ describe("SettingsDialog UI font", () => {
 describe("SettingsDialog reset", () => {
   it("a reset that changes nothing leaves Save disabled and closes without asking", async () => {
     const onClose = vi.fn();
-    render(<SettingsDialog system={SYSTEM} settings={{ ...CUSTOM, defaults: DEFAULT_OPTIONS }} onSave={vi.fn()} onClose={onClose} />);
+    render(<SettingsDialog system={SYSTEM} settings={{ ...CUSTOM, defaults: DEFAULT_PARAMETERS }} onSave={vi.fn()} onClose={onClose} />);
     fireEvent.click(reset());
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText("Cancel"));
@@ -111,7 +111,7 @@ describe("SettingsDialog reset", () => {
     fireEvent.click(reset());
     fireEvent.change(levelInput(), { target: { value: "4" } });
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...DEFAULT_OPTIONS, level: 4 } });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...DEFAULT_PARAMETERS, level: 4 } });
   });
 
   it("saves a changed language independently", () => {
@@ -152,7 +152,7 @@ describe("SettingsDialog reset", () => {
     renderDialog();
     expect(levelInput().value).toBe("9");
     fireEvent.click(reset());
-    expect(levelInput().value).toBe(String(DEFAULT_OPTIONS.level));
+    expect(levelInput().value).toBe(String(DEFAULT_PARAMETERS.level));
   });
 
   it("leaves a custom UI font intact while restoring the defaults", () => {
@@ -167,7 +167,7 @@ describe("SettingsDialog reset", () => {
     // ...and in what Save hands over.
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_PARAMETERS });
   });
 
   it("keeps a font edited in the same session (the reset never blanks the field)", () => {
@@ -177,7 +177,7 @@ describe("SettingsDialog reset", () => {
 
     expect(fontInput().value).toBe("Menlo");
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_OPTIONS, uiFontFamily: "Menlo" });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_PARAMETERS, uiFontFamily: "Menlo" });
   });
 
   it("cleans the font field on blur", () => {

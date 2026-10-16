@@ -48,6 +48,33 @@ export const DEFAULT_OPTIONS: GuiOptions = {
 
 /** The app theme (app-chrome conventions, Theme): System follows the OS
  *  appearance; Light and Dark force a theme. */
+/**
+ * The archive parameters: how a job cleans, compresses and records what it
+ * archives. Settings holds them as every new job's defaults. The rest of
+ * GuiOptions (where the archive goes, its name, whether it may replace a file,
+ * its comment) belongs to one job and never comes from Settings.
+ */
+export const PARAMETER_KEYS = ["junk", "strict", "level", "symlinks", "emptyDirs", "metadata", "hash"] as const satisfies readonly (keyof GuiOptions)[];
+export type ArchiveParameters = Pick<GuiOptions, (typeof PARAMETER_KEYS)[number]>;
+
+/** Just the parameters of a job's options. */
+export function parametersOf(options: ArchiveParameters): ArchiveParameters {
+  return Object.fromEntries(PARAMETER_KEYS.map((key) => [key, options[key]])) as unknown as ArchiveParameters;
+}
+
+export const DEFAULT_PARAMETERS: ArchiveParameters = parametersOf(DEFAULT_OPTIONS);
+
+/** Whether two option states agree on every parameter, so a job still uses
+ *  the defaults whatever its own destination, name and comment. */
+export function parametersEqual(a: ArchiveParameters, b: ArchiveParameters): boolean {
+  return PARAMETER_KEYS.every((key) => a[key] === b[key]);
+}
+
+/** A new job's options: the default parameters, with nothing of its own yet. */
+export function newJobOptions(defaults: ArchiveParameters): GuiOptions {
+  return { ...DEFAULT_OPTIONS, ...parametersOf(defaults) };
+}
+
 export const THEME_PREFERENCES = ["system", "light", "dark"] as const;
 export type ThemePreference = (typeof THEME_PREFERENCES)[number];
 
@@ -75,8 +102,8 @@ export function isDisplayZone(value: unknown): value is string {
 
 /** The persisted GUI settings: the new-job option defaults plus app-level appearance. */
 export interface GuiSettings {
-  /** Defaults applied to every new job. */
-  defaults: GuiOptions;
+  /** The parameters every new job starts with. */
+  defaults: ArchiveParameters;
   /** UI (chrome) font family. Family only; blank = the built-in default stack (the renderer's
    *  `--font-ui` variable). System fonts only — the renderer CSP forbids web fonts (`font-src 'self'`),
    *  and a free-text family naming installed fonts needs no `@font-face`. */
@@ -96,12 +123,12 @@ export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "
 
 /** The sets the draft changed from the saved settings. */
 export function changedSettings(before: GuiSettings, draft: GuiSettings): Partial<GuiSettings> {
-  const changed = SETTINGS_KEYS.filter((key) => (key === "defaults" ? !optionsEqual(before.defaults, draft.defaults) : before[key] !== draft[key]));
+  const changed = SETTINGS_KEYS.filter((key) => (key === "defaults" ? !parametersEqual(before.defaults, draft.defaults) : before[key] !== draft[key]));
   return Object.fromEntries(changed.map((key) => [key, draft[key]])) as Partial<GuiSettings>;
 }
 
 export const DEFAULT_SETTINGS: GuiSettings = {
-  defaults: DEFAULT_OPTIONS,
+  defaults: DEFAULT_PARAMETERS,
   uiFontFamily: "",
   theme: "system",
   language: "system",

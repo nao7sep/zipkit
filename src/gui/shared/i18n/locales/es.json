@@ -298,7 +298,6 @@
   "options.emptyDirs": "Carpetas vacías",
   "options.emptyDirsKeep": "Conservar",
   "options.emptyDirsPrune": "Omitir",
-  "options.output": "Salida",
   "options.outputDir": "Carpeta de salida",
   "options.overwrite": "Sobrescribir un archivo existente",
   "options.comment": "Comentario",

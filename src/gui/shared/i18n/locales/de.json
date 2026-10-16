@@ -298,7 +298,6 @@
   "options.emptyDirs": "Leere Ordner",
   "options.emptyDirsKeep": "Behalten",
   "options.emptyDirsPrune": "Weglassen",
-  "options.output": "Ausgabe",
   "options.outputDir": "Ausgabeordner",
   "options.overwrite": "Vorhandene Datei überschreiben",
   "options.comment": "Kommentar",

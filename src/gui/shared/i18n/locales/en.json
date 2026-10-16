@@ -298,7 +298,6 @@
   "options.emptyDirs": "Empty directories",
   "options.emptyDirsKeep": "Keep",
   "options.emptyDirsPrune": "Prune",
-  "options.output": "Output",
   "options.outputDir": "Output directory",
   "options.overwrite": "Overwrite an existing file",
   "options.comment": "Comment",

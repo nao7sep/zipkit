@@ -403,10 +403,13 @@ describe("mounted run consent across queue projection changes", () => {
       await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
-      fireEvent.click(await screen.findByRole("checkbox", { name: "Use default parameters" }));
-      fireEvent.change(mounted.container.querySelector("textarea")!, { target: { value: "last keystroke" } });
+      // The job's own fields are editable while it uses the default parameters,
+      // and editing them leaves it on the defaults.
+      const useDefaults = await screen.findByRole("checkbox", { name: "Use default parameters" });
+      fireEvent.change(screen.getByRole("textbox", { name: "Comment" }), { target: { value: "last keystroke" } });
       fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "last-name" } });
       fireEvent.change(screen.getByRole("textbox", { name: /Output directory/ }), { target: { value: "/last-folder" } });
+      expect((useDefaults as HTMLInputElement).checked).toBe(true);
       // No blur, navigation, renderer timer or planning wait is required.
       const held = engine.snapshot()[0]!;
       expect(held.options).toMatchObject({ comment: "last keystroke", fileName: "last-name", outputDir: "/last-folder" });
@@ -417,6 +420,23 @@ describe("mounted run consent across queue projection changes", () => {
       expect(deps.plan).toHaveBeenCalledOnce(); // Quit retires deferred scanning only.
       expect(bridge.updateJob).toHaveBeenCalledTimes(3);
       expect(engine.snapshot()[0]?.id).toBe(id);
+    } finally { mounted?.unmount(); await engine.shutdown(); }
+  });
+
+  it("restores only the parameters when Use default parameters is ticked again", async () => {
+    const { engine, bridge } = ownedQueue(SAVE);
+    let mounted: ReturnType<typeof renderApp> | undefined;
+    try {
+      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      mounted = renderApp(bridge);
+      fireEvent.click(await screen.findByRole("option"));
+      fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "delivery" } });
+      const useDefaults = screen.getByRole("checkbox", { name: "Use default parameters" });
+      fireEvent.click(useDefaults);
+      fireEvent.click(screen.getByRole("checkbox", { name: /Drop OS junk files/ }));
+      expect(engine.snapshot()[0]?.options).toMatchObject({ junk: false, fileName: "delivery" });
+      fireEvent.click(useDefaults);
+      expect(engine.snapshot()[0]?.options).toEqual({ ...DEFAULT_OPTIONS, fileName: "delivery" });
     } finally { mounted?.unmount(); await engine.shutdown(); }
   });
 

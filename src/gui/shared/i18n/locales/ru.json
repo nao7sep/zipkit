@@ -298,7 +298,6 @@
   "options.emptyDirs": "Пустые папки",
   "options.emptyDirsKeep": "Сохранять",
   "options.emptyDirsPrune": "Пропускать",
-  "options.output": "Сохранение",
   "options.outputDir": "Папка для сохранения",
   "options.overwrite": "Перезаписывать существующий файл",
   "options.comment": "Комментарий",

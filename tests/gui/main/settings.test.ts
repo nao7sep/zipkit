@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AppLog } from "../../../src/gui/main/log.js";
 import { storageRoot } from "../../../src/sdk/storage.js";
-import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
-import { multiline, singleLine } from "../../../src/gui/shared/textCleanup";
+import { DEFAULT_PARAMETERS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
+import { singleLine } from "../../../src/gui/shared/textCleanup";
 import { managedEntries } from "../../helpers/managedEntries.js";
 
 import * as settings from "../../../src/gui/main/settings";
@@ -21,7 +21,7 @@ function warningLog() {
 }
 
 const CUSTOM = {
-  defaults: { ...DEFAULT_OPTIONS, level: 9, strict: true, comment: "hi", fileName: "custom.zip" },
+  defaults: { ...DEFAULT_PARAMETERS, level: 9, strict: true },
   uiFontFamily: "Iosevka, monospace",
   theme: "dark" as const,
   language: "pt-BR" as const,
@@ -54,24 +54,31 @@ describe("settings sets", () => {
   });
 
   it.each([
-    ["overwrite", "yes"],
+    ["hash", "yes"],
     ["level", 10],
     ["symlinks", "unknown"],
-  ] as const)("reverts only an invalid %s, keeping the authored comment, output folder and file name", (member, bad) => {
-    const authored = { ...CUSTOM.defaults, outputDir: "/Users/me/Archives" };
+  ] as const)("reverts only an invalid %s, keeping the authored parameters beside it", (member, bad) => {
+    const authored = CUSTOM.defaults;
     const logger = warningLog();
     expect(settings.parseSettings({ defaults: { ...authored, [member]: bad } }, logger).defaults)
-      .toEqual({ ...authored, [member]: DEFAULT_OPTIONS[member] });
+      .toEqual({ ...authored, [member]: DEFAULT_PARAMETERS[member] });
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(expect.any(String), { key: "defaults", members: [member] });
   });
 
   it("names every reverted member, absent ones included, in one warning", () => {
     const logger = warningLog();
-    expect(settings.parseSettings({ defaults: { level: 1, comment: "kept" } }, logger).defaults)
-      .toEqual({ ...DEFAULT_OPTIONS, level: 1, comment: "kept" });
+    expect(settings.parseSettings({ defaults: { level: 1 } }, logger).defaults)
+      .toEqual({ ...DEFAULT_PARAMETERS, level: 1 });
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(logger.warn).mock.calls[0]![1]?.members).toHaveLength(9);
+    expect(vi.mocked(logger.warn).mock.calls[0]![1]?.members).toHaveLength(6);
+  });
+
+  it("does not read an output folder, overwrite choice or comment an earlier build saved as a default", () => {
+    const logger = warningLog();
+    const earlier = { ...CUSTOM.defaults, comment: "for the client", outputDir: "/Users/me/Archives", fileName: "delivery.zip", overwrite: true };
+    expect(settings.parseSettings({ defaults: earlier }, logger).defaults).toEqual(CUSTOM.defaults);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it("invalid scalar sets warn independently without affecting valid defaults", () => {
@@ -117,7 +124,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("changing one defaults member writes exactly the whole defaults set", async () => {
-    const defaults = { ...DEFAULT_OPTIONS, level: 3 };
+    const defaults = { ...DEFAULT_PARAMETERS, level: 3 };
     expect(await settings.saveSettings({ ...DEFAULT_SETTINGS, defaults })).toEqual({ ...DEFAULT_SETTINGS, defaults });
     expect(readStored()).toEqual(stored({ defaults }));
     expect((await settings.loadSettings()).value).toEqual({ ...DEFAULT_SETTINGS, defaults });
@@ -145,12 +152,12 @@ describe("settings file location and persistence", () => {
 
   it("a reset removes defaults and keeps other stored sets", async () => {
     await settings.saveSettings(CUSTOM);
-    expect(await settings.saveSettings({ ...CUSTOM, defaults: DEFAULT_OPTIONS })).toEqual({ ...CUSTOM, defaults: DEFAULT_OPTIONS });
+    expect(await settings.saveSettings({ ...CUSTOM, defaults: DEFAULT_PARAMETERS })).toEqual({ ...CUSTOM, defaults: DEFAULT_PARAMETERS });
     expect(readStored()).toEqual(stored({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language, timeZone: CUSTOM.timeZone }));
   });
 
   it("removes a stored copy identical to the built-in and keeps the file with no sets", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ defaults: DEFAULT_OPTIONS }));
+    writeFileSync(settings.settingsFile(), JSON.stringify({ defaults: DEFAULT_PARAMETERS }));
     await settings.saveSettings(DEFAULT_SETTINGS);
     expect(readStored()).toEqual(stored({}));
   });
@@ -162,18 +169,16 @@ describe("settings file location and persistence", () => {
     expect(record).toHaveBeenCalledTimes(2); // Durable confirmation records exact bytes; history deduplicates them.
   });
 
-  it("compares and stores the font and the comment cleaned", async () => {
-    const blank = { ...DEFAULT_SETTINGS, uiFontFamily: " \n ", defaults: { ...DEFAULT_OPTIONS, comment: "\n  \n" } };
+  it("compares and stores the font cleaned", async () => {
+    const blank = { ...DEFAULT_SETTINGS, uiFontFamily: " \n " };
     expect(await settings.saveSettings(blank)).toEqual(DEFAULT_SETTINGS);
     expect(readdirSync(root)).toEqual([]);
-    const typed = { ...DEFAULT_SETTINGS, uiFontFamily: " Menlo\n", defaults: { ...DEFAULT_OPTIONS, comment: "\nhi  \n" } };
-    await settings.saveSettings(typed);
-    expect(readStored()).toEqual(stored({ uiFontFamily: "Menlo", defaults: { ...DEFAULT_OPTIONS, comment: "hi" } }));
+    await settings.saveSettings({ ...DEFAULT_SETTINGS, uiFontFamily: " Menlo\n" });
+    expect(readStored()).toEqual(stored({ uiFontFamily: "Menlo" }));
   });
 
   it("keeps the built-in texts in cleaned form", () => {
     expect(singleLine(DEFAULT_SETTINGS.uiFontFamily)).toBe(DEFAULT_SETTINGS.uiFontFamily);
-    expect(multiline(DEFAULT_OPTIONS.comment)).toBe(DEFAULT_OPTIONS.comment);
   });
 
   it("a malformed set remains in place and only falls back for that set", async () => {
@@ -186,7 +191,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("an invalid default reverts alone, and the next unrelated save keeps the authored ones", async () => {
-    const authored = { ...DEFAULT_OPTIONS, comment: "for the client", outputDir: "/Users/me/Archives", fileName: "delivery.zip" };
+    const authored = { ...DEFAULT_PARAMETERS, strict: true, symlinks: "follow" as const };
     writeFileSync(settings.settingsFile(), JSON.stringify({ defaults: { ...authored, level: 42 } }));
     const loaded = (await settings.loadSettings()).value;
     expect(loaded.defaults).toEqual(authored);
