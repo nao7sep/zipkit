@@ -37,7 +37,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     onWindowActivityChanged: vi.fn(() => () => {}),
     onSettingsChanged: vi.fn(() => () => {}),
     onOpenAbout: vi.fn(() => () => {}),
-    getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const, timeZone: "system" })),
+    getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const, timeZone: "system", confirmJobRemoval: false })),
     getLanguageEnvironment: vi.fn(async () => ({ language: "en" as const, locale: "en", timeZone: null })),
     onLanguageChanged: vi.fn(() => () => {}),
     getSystemChoices: vi.fn(async () => ({ appearance: "light" as const, language: "en" as const, timeZone: "UTC" })),
@@ -123,7 +123,7 @@ describe("required app hydration", () => {
     const getSettings = vi
       .fn<ZipKitGuiApi["getSettings"]>()
       .mockRejectedValueOnce(new Error("settings unavailable"))
-      .mockResolvedValueOnce({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system", language: "system", timeZone: "system" });
+      .mockResolvedValueOnce({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system", language: "system", timeZone: "system", confirmJobRemoval: false });
     const unsubscribes = [vi.fn(), vi.fn()];
     const onQueue = vi
       .fn<ZipKitGuiApi["onQueue"]>()
@@ -589,7 +589,7 @@ describe("a finished job's history and archive", () => {
       archiveWritten: true,
       archiveStatus: "verified",
       history: [
-        { at: 1, severity: "info", message: { key: "job.savedVerified", values: { count: 10 } } },
+        { at: 1, severity: "info", message: { key: "job.savedVerified", values: { size: { bytes: 10 } } } },
         { at: 2, severity: "warning", message: { key: "report.archiveChanged" } },
       ],
     };

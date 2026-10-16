@@ -116,10 +116,13 @@ export interface GuiSettings {
    *  computer's zone on every launch; otherwise an IANA zone name. ZipKit reads
    *  no times that carry no zone, so it has no interpretation zone. */
   timeZone: string;
+  /** Ask before a job leaves the list. On by default: a list item that goes on
+   *  one click is a surprise in the fleet's apps. */
+  confirmJobRemoval: boolean;
 }
 
 /** The config file's set keys. */
-export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
+export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "confirmJobRemoval", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
 
 /** The sets the draft changed from the saved settings. */
 export function changedSettings(before: GuiSettings, draft: GuiSettings): Partial<GuiSettings> {
@@ -133,6 +136,7 @@ export const DEFAULT_SETTINGS: GuiSettings = {
   theme: "system",
   language: "system",
   timeZone: "system",
+  confirmJobRemoval: true,
 };
 
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields

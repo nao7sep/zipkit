@@ -44,6 +44,7 @@ export function JobListbox({
   onFocusPulled,
   onSelect,
   onRemove,
+  confirmRemove,
   onCancel,
 }: {
   jobs: Job[];
@@ -54,6 +55,9 @@ export function JobListbox({
   onFocusPulled: () => void;
   onSelect: (id: string | null) => void;
   onRemove: (id: string) => void;
+  /** Asks before a job leaves the list, when the user wants to be asked;
+   *  false keeps it. */
+  confirmRemove?: (job: Job) => Promise<boolean>;
   onCancel: (id: string) => void;
 }) {
   const t = useI18n();
@@ -138,7 +142,8 @@ export function JobListbox({
     el?.scrollIntoView({ block: "nearest" });
   }
 
-  function remove(job: Job) {
+  async function remove(job: Job) {
+    if (confirmRemove && !(await confirmRemove(job))) return;
     // Move focus before the row unmounts (roving tabindex: removing the focused
     // element drops focus to the page body). When the removed row is the active
     // one, recover deterministically to a neighbor; otherwise just keep focus in
@@ -176,7 +181,7 @@ export function JobListbox({
       // Not while the job is running or moving files to Trash; the engine refuses both.
       if (active && active.state !== "running" && active.trashing !== true) {
         e.preventDefault();
-        remove(active);
+        void remove(active);
       }
       return;
     }
@@ -275,7 +280,7 @@ export function JobListbox({
                   aria-label={t.t("common.remove")}
                   onClick={(e) => {
                     e.stopPropagation();
-                    remove(job);
+                    void remove(job);
                   }}
                   style={S.rowAction}
                 >
@@ -316,17 +321,11 @@ function JobCounts({ job }: { job: Job }) {
 
 const COUNT_COLOR = { warning: COLOR.warn, error: COLOR.bad } as const;
 
+/** The row's last line beside its state: only what the job will do with its
+ *  originals. What happened, and why a job is blocked, is said in the control
+ *  panel, where it is never cut short. */
 function metaText(job: Job, t: Translator): string {
-  return [
-    intentLabel(job.intent, t),
-    job.actionResult
-      ? t.text(job.actionResult.message)
-      : job.message
-        ? t.text(job.message)
-        : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  return intentLabel(job.intent, t);
 }
 
 function optionEl(list: HTMLUListElement | null, id: string | null): HTMLElement | null {

@@ -45,13 +45,15 @@ const renderListbox = (props: Partial<Props> & Pick<Props, "jobs" | "selectedId"
   );
 
 describe("JobListbox", () => {
-  it("identifies a job on one-line rows: its name, what it holds, and a summary of its status", () => {
+  it("identifies a job on one-line rows: its name, what it holds, and its state with what it does with the originals", () => {
     const failed: Job = { ...job("a", "failed"), inputs: ["/a/very-long-folder-name-that-would-not-fit-the-jobs-pane"],
-      message: message("error.readFailed") };
+      intent: { verify: true, originals: "trash" }, message: message("error.readFailed") };
     renderListbox({ jobs: [failed], selectedId: "a" });
     const name = screen.getByText("very-long-folder-name-that-would-not-fit-the-jobs-pane");
     expect(name.className).toBe("text-line");
-    expect(screen.getByText(/could not be read/).className).toBe("text-line");
+    expect(screen.getByText("→ Trash").className).toBe("text-line");
+    // What happened is said in the control panel, where it is never cut short.
+    expect(screen.queryByText(/could not be read/)).toBeNull();
   });
 
   it("shows what a job holds on its own line, drawing errors in the error colour", () => {
@@ -119,6 +121,21 @@ describe("JobListbox", () => {
     fireEvent.click(a!);
     expect(document.activeElement).toBe(a);
     expect(a!.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("asks before a job leaves the list when the user wants to be asked, and keeps it on No", async () => {
+    const onRemove = vi.fn();
+    let answer = false;
+    const confirmRemove = vi.fn(async () => answer);
+    renderListbox({ jobs: [job("a"), job("b")], selectedId: "a", onRemove, confirmRemove });
+    rows()[0]!.focus();
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Delete" });
+    await vi.waitFor(() => expect(confirmRemove).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    expect(onRemove).not.toHaveBeenCalled();
+    answer = true;
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Delete" });
+    await vi.waitFor(() => expect(onRemove).toHaveBeenCalledWith("a"));
   });
 
   it("keeps the keyboard target on the same job through live updates and reordering", () => {
@@ -200,13 +217,6 @@ describe("JobListbox", () => {
     renderListbox({ jobs: [job("a", "planning")], selectedId: "a" });
     expect(screen.getByTitle("Cancel (Escape)").tabIndex).toBe(-1);
     expect(screen.getByTitle("Remove (Delete)").tabIndex).toBe(-1);
-  });
-
-  it("shows a job result in the interface language without changing the stored message", () => {
-    const saved = { ...job("a", "done"), message: message("job.saved", { count: 2048 }) };
-    renderListbox({ jobs: [saved], selectedId: "a" });
-    expect(screen.getByText("Saved (2,048 bytes).")).toBeTruthy();
-    expect(saved.message).toEqual({ key: "job.saved", values: { count: 2048 } });
   });
 
   it("announces only actionable job states assertively", () => {

@@ -82,6 +82,9 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
       case "language":
         if (value === "system" || isLanguage(value)) { settings.language = value; continue; }
         break;
+      case "confirmJobRemoval":
+        if (typeof value === "boolean") { settings.confirmJobRemoval = value; continue; }
+        break;
       case "timeZone":
         if (value === "system" || isDisplayZone(value)) { settings.timeZone = value as string; continue; }
         break;

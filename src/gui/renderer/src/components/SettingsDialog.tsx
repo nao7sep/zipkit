@@ -79,7 +79,7 @@ export function SettingsDialog({
   // A quit Retry can commit while this editor remains open. Clear the obsolete
   // failure message without replacing any newer, unsubmitted draft edits.
   useEffect(() => { setSaveError(false); },
-    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone]);
+    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone, settings.confirmJobRemoval]);
 
   const dirty = Object.keys(changedSettings(settings, draft)).length > 0;
   // Quit asks before discarding unsaved edits, so main follows whether there are any.
@@ -225,6 +225,15 @@ export function SettingsDialog({
         />
         <span style={S.fontHint}>{t("settings.uiFontHint")}</span>
       </label>
+      <label style={S.check}>
+        <input
+          type="checkbox"
+          checked={draft.confirmJobRemoval}
+          disabled={saving}
+          onChange={(e) => setDraft({ ...draft, confirmJobRemoval: e.target.checked })}
+        />
+        {t("settings.confirmJobRemoval")}
+      </label>
       {/* The defaults every new job starts with, under their own heading, with
           their reset closing the group as in the fleet's other Settings, so it
           plainly covers these and nothing above (config-sets conventions,
@@ -283,5 +292,6 @@ const S: Record<string, CSSProperties> = {
   // fixed width a translation would clip.
   languageSelect: { alignSelf: "flex-start", minWidth: "12rem" },
   fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
+  check: { display: "flex", alignItems: "center", gap: "0.45rem", marginBottom: "1rem" },
   error: { color: "var(--status-error)", marginBottom: 0 },
 };

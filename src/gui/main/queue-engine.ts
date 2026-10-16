@@ -786,7 +786,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   async function finishKept(rec: Rec, output: string, bytes: number | null, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<void> {
     const id = rec.job.id;
     if (!rec.job.intent.verify) {
-      set(rec, { state: "done", message: message("job.saved", { count: bytes ?? 0 }) });
+      set(rec, { state: "done", message: bytes === null ? message("job.savedShort") : message("job.saved", { size: { bytes } }) });
       deps.log.info("job saved", { jobId: id, output, bytes });
       return;
     }
@@ -805,7 +805,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return;
     }
     markVerified(rec, seen);
-    set(rec, { state: "done", message: message("job.savedVerified", { count: bytes ?? 0 }) });
+    set(rec, { state: "done", message: bytes === null ? message("job.savedVerifiedShort") : message("job.savedVerified", { size: { bytes } }) });
     deps.log.info("job saved and verified", { jobId: id, output, bytes });
   }
 

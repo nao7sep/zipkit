@@ -66,6 +66,15 @@ describe("CommandBar focus retention", () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
+  it("gives the destructive commands a row of their own, below the everyday ones", () => {
+    render(<CommandBar job={job("done", { entries: [{ path: "/a", kind: "file" }] })} onCommand={noop} />);
+    const verify = screen.getByText("Verify");
+    const trash = screen.getByText("Move archive to Trash");
+    expect(verify.parentElement).not.toBe(trash.parentElement);
+    expect(trash.parentElement!.textContent).not.toContain("Verify");
+    expect(verify.parentElement!.compareDocumentPosition(trash.parentElement!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("says nothing for a blocked job, whose digest already says why", () => {
     const { container } = render(<CommandBar job={job("needs-attention", { message: message("job.blocking", { count: 1 }) })} onCommand={noop} />);
     expect(container.textContent).toBe("");

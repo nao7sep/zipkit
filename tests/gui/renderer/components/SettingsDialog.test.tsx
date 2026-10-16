@@ -36,6 +36,7 @@ const CUSTOM: GuiSettings = {
   theme: "dark",
   language: "fr",
   timeZone: "Europe/Paris",
+  confirmJobRemoval: false,
 };
 
 /** What each System choice resolves to on the test's imaginary computer. */

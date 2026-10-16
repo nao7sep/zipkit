@@ -15,8 +15,20 @@ describe("createTranslator", () => {
 
   it("fills placeholders and formats numbers for the locale", () => {
     expect(createTranslator("en").t("about.version", { version: "1.2.0" })).toBe("Version 1.2.0");
-    expect(createTranslator("en", "en-US").t("job.saved", { count: 12345 })).toBe("Saved (12,345 bytes).");
-    expect(createTranslator("de").t("job.saved", { count: 12345 })).toContain("12.345");
+    expect(createTranslator("en", "en-US").t("jobs.countFiles", { count: 12345 })).toBe("12,345 files");
+    expect(createTranslator("de").t("jobs.countFiles", { count: 12345 })).toContain("12.345");
+  });
+
+  it("writes a size in bytes in the largest unit it reaches, counting in thousands as the Finder does", () => {
+    const en = createTranslator("en", "en-US");
+    expect(en.t("job.saved", { size: { bytes: 208_540_997 } })).toBe("Saved (208.5 MB).");
+    expect(en.size(999)).toBe("999 bytes");
+    expect(en.size(1)).toBe("1 byte");
+    expect(en.size(1500)).toBe("1.5 kB");
+    expect(en.size(999_960)).toBe("1 MB");
+    expect(en.size(3_000_000_000)).toBe("3 GB");
+    expect(createTranslator("ja").t("job.savedVerified", { size: { bytes: 208_540_997 } })).toBe("保存して検証しました（208.5 MB）。");
+    expect(createTranslator("de").size(208_540_997)).toBe("208,5 MB");
   });
 
   it("chooses the plural form by the language's own rules", () => {

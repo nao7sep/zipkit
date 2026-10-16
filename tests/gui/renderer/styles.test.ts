@@ -114,13 +114,15 @@ describe("truncation sites", () => {
 
 // The shared path line keeps the final segment: its head gives up width first.
 describe("path line", () => {
-  it("shrinks the head far ahead of the final segment", () => {
+  it("shrinks only the head while the final segment fits, so a path shows one marker", () => {
     // The last rule for each part is its own; the first is the one they share.
     const shrink = (selector: string) => {
       const start = compact.lastIndexOf(`}${selector}{`) + selector.length + 2;
       return Number(compact.slice(start, compact.indexOf("}", start)).match(/flex:0(\d+)auto/)?.[1]);
     };
-    expect(shrink(".path-line__head")).toBeGreaterThan(100 * shrink(".path-line__tail"));
+    expect(shrink(".path-line__head")).toBeGreaterThan(0);
+    expect(shrink(".path-line__tail")).toBe(0);
+    expect(compact).toMatch(/\.path-line__tail\{[^}]*max-width:100%/);
   });
 });
 

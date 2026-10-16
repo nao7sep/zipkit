@@ -36,10 +36,11 @@ const CLASS: Partial<Record<JobCommand, string>> = {
 export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCommand) => void }) {
   const { t } = useI18n();
   const commands = jobCommands(job);
-  // Seat the destructive group at the far-right end (an auto left-margin on the
-  // first danger button pushes it and the rest right), away from the everyday
-  // buttons, so a Trash/Remove click is deliberate, not a slip.
-  const firstDanger = commands.findIndex((c) => CLASS[c] === "danger");
+  // The destructive commands take a row of their own below the everyday ones,
+  // from its start, so a Trash or Delete click is deliberate, not a slip, and
+  // neither row wraps into the other.
+  const everyday = commands.filter((c) => CLASS[c] !== "danger");
+  const destructive = commands.filter((c) => CLASS[c] === "danger");
 
   // Focus follows the workflow (focus/selection policy). When a button the user was
   // on unmounts because the job advanced (Create -> running, Move archive to Trash -> back
@@ -79,27 +80,20 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
     // It draws no ring when it does: the focus is a place to stand, not a control,
     // and the key that led here would light one around the whole bar.
     <div ref={barRef} tabIndex={-1} style={{ ...(commands.length > 0 ? S.bar : null), outline: "none" }}>
-      {commands.map((c, i) => (
-        <button
-          key={c}
-          className={CLASS[c]}
-          style={i === firstDanger ? S.pushRight : undefined}
-          onClick={() => onCommand(c)}
-        >
-          {t(LABEL[c])}
-        </button>
+      {[everyday, destructive].filter((row) => row.length > 0).map((row, i) => (
+        <div key={i} style={S.row}>
+          {row.map((c) => (
+            <button key={c} className={CLASS[c]} onClick={() => onCommand(c)}>
+              {t(LABEL[c])}
+            </button>
+          ))}
+        </div>
       ))}
     </div>
   );
 }
 
 const S: Record<string, CSSProperties> = {
-  bar: {
-    display: "flex",
-    gap: "0.5rem",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: "0.85rem",
-  },
-  pushRight: { marginLeft: "auto" },
+  bar: { display: "grid", gap: "0.5rem", marginTop: "0.85rem" },
+  row: { display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" },
 };

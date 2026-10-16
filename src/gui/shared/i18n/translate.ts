@@ -1,9 +1,11 @@
 import { ENGLISH, loadedCatalogue, type Catalogue, type MessageKey } from "./catalogues.js";
 import type { Language } from "./languages.js";
 
-// A value filled into a placeholder: a number is formatted for the locale, and
-// a message is rendered in the same language (a reason inside a sentence).
-export type MessageValue = string | number | Message;
+// A value filled into a placeholder: a number is formatted for the locale, a
+// size in bytes as the locale writes it in the largest unit it reaches
+// ("208.5 MB"), and a message is rendered in the same language (a reason
+// inside a sentence).
+export type MessageValue = string | number | Message | { bytes: number };
 export type MessageValues = { [name: string]: MessageValue };
 
 // Text held in state (job results, action results, notices, error
@@ -38,6 +40,8 @@ export type Translator = {
   // placeholder names at odd ones, for a surface that fills them with markup.
   parts: (key: MessageKey) => string[];
   number: (value: number) => string;
+  // A size in bytes, in the largest unit it reaches ("208.5 MB").
+  size: (bytes: number) => string;
   /** The display zone the time formats use; undefined follows the computer's zone. */
   timeZone: string | undefined;
   // An instant, as a date and time.
@@ -80,7 +84,19 @@ export function createTranslator(language: Language, locale: string = language, 
   function format(value: MessageValue): string {
     if (typeof value === "number") return numberFormat.format(value);
     if (typeof value === "string") return value;
+    if ("bytes" in value) return size(value.bytes);
     return t(value.key, value.values);
+  }
+
+  // Sizes count in thousands, as the Finder does: 208,540,997 bytes is
+  // "208.5 MB", with one decimal at most and the unit in the locale's words.
+  function size(bytes: number): string {
+    const units = ["kilobyte", "megabyte", "gigabyte", "terabyte", "petabyte"] as const;
+    if (bytes < 1000) return new Intl.NumberFormat(locale, { style: "unit", unit: "byte", unitDisplay: "long" }).format(bytes);
+    let value = bytes / 1000;
+    let unit = 0;
+    while (value >= 999.95 && unit < units.length - 1) { value /= 1000; unit++; }
+    return new Intl.NumberFormat(locale, { style: "unit", unit: units[unit], unitDisplay: "short", maximumFractionDigits: 1 }).format(value);
   }
 
   function t(key: MessageKey, values?: MessageValues): string {
@@ -96,6 +112,7 @@ export function createTranslator(language: Language, locale: string = language, 
     text: (message) => t(message.key, message.values),
     parts: (key) => template(key, undefined).split(PLACEHOLDER),
     number: (value) => numberFormat.format(value),
+    size,
     timeZone,
     dateTime: (date) => dateTimeFormat.format(date),
     logTime: (date) => logTimeFormat.format(date),

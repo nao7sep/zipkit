@@ -136,6 +136,7 @@ export function App() {
   const [language, setLanguage] = useState<LanguagePreference>("system");
   // The saved display zone, likewise: main tells the window which zone to show.
   const [timeZone, setTimeZone] = useState("system");
+  const [confirmJobRemoval, setConfirmJobRemoval] = useState(true);
   const [systemChoices, setSystemChoices] = useState<SystemChoices | null>(null);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
@@ -208,6 +209,7 @@ export function App() {
       setTheme(settings.theme);
       setLanguage(settings.language);
       setTimeZone(settings.timeZone);
+      setConfirmJobRemoval(settings.confirmJobRemoval);
       // Persisted pane widths are the intent. Live-width clamping below affects
       // display only and never rewrites what the user dragged.
       setIntent(clampLayout(layout));
@@ -331,6 +333,7 @@ export function App() {
     setTheme(next.theme);
     setLanguage(next.language);
     setTimeZone(next.timeZone);
+    setConfirmJobRemoval(next.confirmJobRemoval);
   }
 
   async function saveSettings(draft: GuiSettings): Promise<void> {
@@ -613,6 +616,11 @@ export function App() {
               pullFocusId={pullFocusId}
               onFocusPulled={clearPullFocus}
               onSelect={setSelectedId}
+              confirmRemove={confirmJobRemoval ? () => confirm({
+                title: t.t("confirm.removeJobTitle"),
+                message: t.t("confirm.removeJobMessage"),
+                confirmLabel: t.t("confirm.removeJob"),
+              }) : undefined}
               onRemove={(id) => { void window.zipkit.removeJob(id).catch((error) => {
                 window.zipkit.reportError("remove job", reportableError(error));
                 setJobsResult({ operationKey: `remove:${id}`, message: message("result.removeJobFailed"), severity: "error" });
@@ -668,7 +676,7 @@ export function App() {
 
       {dialog === "settings" && systemChoices && (
         <SettingsDialog
-          settings={{ defaults, uiFontFamily, theme, language, timeZone }}
+          settings={{ defaults, uiFontFamily, theme, language, timeZone, confirmJobRemoval }}
           system={systemChoices}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
@@ -1062,8 +1070,10 @@ function JobView({
                 />
                 {t.t("op.verify")}
               </label>
-              {removesOriginals(job.intent) && <span style={S.choiceHint}>{t.t("op.verifyRequired")}</span>}
             </div>
+            {/* Its own line, so it never wraps under the boxes at some widths and
+                beside them at others. */}
+            {removesOriginals(job.intent) && <p className="control-grid__wide" style={S.choiceHint}>{t.t("op.verifyRequired")}</p>}
             <span id={`originals-label-${job.id}`} className="control-grid__label">{t.t("op.originals")}</span>
             <div role="radiogroup" aria-labelledby={`originals-label-${job.id}`} style={S.choiceOptions}>
               {ORIGINALS_CHOICES.map(({ value, label }) => (
@@ -1202,7 +1212,8 @@ const S: Record<string, CSSProperties> = {
   // Overwrite and Verify share one row, wrapping under each other when narrow.
   checks: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.35rem 1.25rem" },
   check: { display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.9rem" },
-  choiceHint: { color: "var(--text-2)", fontSize: "0.8rem" },
+  // A note, not a warning: the status-info colour, quieter than the controls.
+  choiceHint: { margin: "-0.25rem 0 0", color: "var(--status-info)", fontSize: "0.8rem" },
   choiceOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem", minWidth: 0 },
   caution: { color: "var(--status-warning)", margin: "0.6rem 0 0" },
   // The Parameters heading is its own fold control: no button chrome, the

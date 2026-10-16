@@ -423,8 +423,10 @@ input[type="checkbox"] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A path keeps its final segment: the head gives up its width first and loses
- * the path's middle, then a final segment longer than the line loses its end. */
+/* A path keeps its final segment and shows one marker: the head gives up its
+ * width and loses the path's middle while the final segment fits whole; only
+ * a final segment longer than the whole line loses its end, the head then
+ * gone entirely. */
 .path-line {
   display: flex;
   min-width: 0;
@@ -440,7 +442,8 @@ input[type="checkbox"] {
   flex: 0 1000 auto;
 }
 .path-line__tail {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 /* The Archive pane's control grid: each label beside its control, the label

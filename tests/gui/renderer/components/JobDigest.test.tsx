@@ -18,7 +18,7 @@ afterEach(cleanup);
 
 const job = (over: Partial<Job> = {}): Job => ({ id: "job", inputs: ["/input"], options: DEFAULT_OPTIONS, intent: SAVE, state: "done", ...over });
 const live = (kind: "assertive" | "polite") => document.querySelector<HTMLElement>(`[aria-live='${kind}']`)!;
-const saved = { at: 1, severity: "info" as const, message: message("job.saved", { count: 12 }) };
+const saved = { at: 1, severity: "info" as const, message: message("job.saved", { size: { bytes: 12 } }) };
 
 describe("JobDigest", () => {
   it("lists the history in order and keeps what was there on selection quiet", () => {

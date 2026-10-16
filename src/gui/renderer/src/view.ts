@@ -248,8 +248,8 @@ export function jobCommands(job: Job): JobCommand[] {
       // still there (to edit and re-create), or — while some are there, put
       // back from the Trash after a run removed them included, and only when
       // the archive carries the manifest the checks need — remove the
-      // originals. The destructive commands come last so the command bar
-      // seats them at the far-right end.
+      // originals. The destructive commands come last; the command bar gives
+      // them a row of their own.
       const commands: JobCommand[] = [...verify, "reveal"];
       // A run that removed the originals offers them again only once a fresh
       // look finds some back: before that, nothing is known to be there.
@@ -775,7 +775,7 @@ export function progressMessage(event: LogEvent, t: Translator, dryRun = false):
     case "entry.written":
       return t.t("event.written", { path: event.path });
     case "write.done":
-      return t.t(event.zip64 ? "event.writeDoneZip64" : "event.writeDone", { count: event.bytes });
+      return t.t(event.zip64 ? "event.writeDoneZip64" : "event.writeDone", { size: { bytes: event.bytes } });
     case "extract.start":
       return t.t(event.write ? "event.extractStart" : "event.verifyStart", { count: event.entries });
     case "entry.verified":
