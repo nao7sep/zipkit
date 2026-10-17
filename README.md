@@ -26,17 +26,34 @@ Ordinary quit captures the latest job edits before saving the queue. Settings an
 
 ## Use the SDK
 
-Drive the SDK with a `plan → inspect → write` flow:
+The SDK is the library the app is built on, for any other app: ESM for Node.js 22.12+, built to JavaScript with type declarations.
 
 ```ts
 import { ZipKit } from "zipkit";
 
 const zip = new ZipKit();
-const plan = await zip.plan({ inputs: ["./my-project"], output: "out.zip" });
-if (plan.writable) await zip.write(plan); // or: zip.create({ inputs, output })
+const plan = await zip.plan({ inputs: ["./my-project"] });
+for (const f of plan.findings) console.log(f.severity, f.rule, f.path);
+if (plan.writable) await zip.write(plan); // or zip.create(spec) in one call
+
+const check = await zip.extract({ archive: plan.output, dryRun: true, checkMetadata: true });
+console.log(check.reportOk);
 ```
 
-The SDK is ESM and consumed directly from TypeScript source. Run the script with [`tsx`](https://github.com/privatenumber/tsx), for example `npx tsx your-script.ts`; there is no SDK build to keep in sync.
+- [SDK guide and reference](docs/sdk.md): making and reading archives, checking before the originals are removed, progress and cancellation, errors.
+- [Rules, exclusion codes and error codes](docs/rules.md): every identifier a result carries.
+
+`npm run build:sdk` builds it into `dist/`.
+
+## Use the command line
+
+```sh
+zipkit plan ./my-project
+zipkit create ./my-project -o my-project.zip
+zipkit verify my-project.zip
+```
+
+[The `zipkit` command](docs/cli.md) lists its options and exit codes. From a checkout, run it as `node dist/cli/zipkit.js` after `npm run build:sdk`.
 
 ## License
 
