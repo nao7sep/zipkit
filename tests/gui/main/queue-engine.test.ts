@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
-import { createArchiveEffects } from "../../../src/gui/main/archive-effects.js";
+import { createPathClaims } from "../../../src/sdk/index.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
@@ -62,7 +62,7 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
   let idN = 0;
   const deps: EngineDeps = {
     admission: new CommandAdmission(),
-    effects: createArchiveEffects(),
+    effects: createPathClaims(),
     resources: async (paths) => paths.map((location) => ({ location, identity: location })),
     pathState: async (target) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` }),
     inspect: async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] }),

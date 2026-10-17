@@ -1,24 +1,39 @@
-/** Cooperating archive operations reserve only the paths they use. Claims are
- * taken as one set, without waiting while holding another claim. An unresolved
+/** Path claims, for an app that runs several archive operations at once:
+ * each reserves only the paths it uses, so two never change, or one change
+ * while another reads, the same file, folder or alias of one. Claims are taken
+ * as one set, without waiting while holding another claim. An unresolved
  * external effect retains its claim through physical settlement. */
 import path from "node:path";
-import type { Volume } from "../../sdk/internal/volume.js";
-import { aliasUnprovable, foldedName } from "../../sdk/internal/name-equivalence.js";
+import type { Volume } from "./internal/volume.js";
+import { aliasUnprovable, foldedName } from "./internal/name-equivalence.js";
 
-export interface FileResource {
+/** A path as a claim compares it (see `ZipKit.pathResources`). */
+export interface PathResource {
+  /** The canonical location, its existing folders resolved. */
   location: string;
+  /** The physical file it is, or null when nothing is there yet. */
   identity: string | null;
   /** Canonical existing prefix; only names beyond it lack physical evidence. */
   existingPrefix?: string;
 }
-export interface FileUse extends FileResource { mode: "read" | "change" }
-export interface EffectClaim { release(settlement?: Promise<void> | null): void }
+/** A path an operation reads or changes. */
+export interface PathUse extends PathResource { mode: "read" | "change" }
+/** A held claim. Release it with the settlement of an effect that may still
+ *  land, to hold the paths until it does, or with null when that cannot be
+ *  known, to hold them for good. */
+export interface PathClaim { release(settlement?: Promise<void> | null): void }
+/** The claims one app holds. */
+export interface PathClaims {
+  /** Take every use at once, or none (null) when any overlaps a held claim:
+   *  two reads never conflict. */
+  claim(uses: PathUse[]): PathClaim | null;
+}
 
 function contains(a: string, b: string): boolean {
   const relative = path.relative(a, b);
   return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
 }
-function possibleNamespaceOverlap(a: FileUse, b: FileUse): boolean {
+function possibleNamespaceOverlap(a: PathUse, b: PathUse): boolean {
   const segments = (file: string) => file.split(path.sep).filter(Boolean);
   const left = segments(a.location), right = segments(b.location);
   const leftKnown = segments(a.existingPrefix ?? path.parse(a.location).root).length;
@@ -33,7 +48,7 @@ function possibleNamespaceOverlap(a: FileUse, b: FileUse): boolean {
   }
   return true;
 }
-function overlaps(a: FileUse, b: FileUse): boolean {
+function overlaps(a: PathUse, b: PathUse): boolean {
   if (a.mode === "read" && b.mode === "read") return false;
   if (a.identity !== null && a.identity === b.identity) return true;
   if (contains(a.location, b.location) || contains(b.location, a.location)) return true;
@@ -43,10 +58,10 @@ function overlaps(a: FileUse, b: FileUse): boolean {
   }
   return false;
 }
-export function createArchiveEffects() {
-  const held = new Set<FileUse[]>();
+export function createPathClaims(): PathClaims {
+  const held = new Set<PathUse[]>();
   return {
-    claim(uses: FileUse[]): EffectClaim | null {
+    claim(uses: PathUse[]): PathClaim | null {
       if ([...held].some((other) => uses.some((use) => other.some((item) => overlaps(use, item))))) return null;
       held.add(uses);
       let retiring = false;
@@ -60,7 +75,6 @@ export function createArchiveEffects() {
     },
   };
 }
-export const appArchiveEffects = createArchiveEffects();
 
 async function canonicalPrefix(file: string, volume: Volume): Promise<{ location: string; existing: string }> {
   try { const location = await volume.realpath(file); return { location, existing: location }; }
@@ -74,8 +88,8 @@ async function canonicalPrefix(file: string, volume: Volume): Promise<{ location
 }
 /** Namespace identity protects replacement; resolved identity also covers
  * directory aliases and hard links. All lookups use bounded SDK volume I/O. */
-export async function fileResources(files: string[], volume: Volume): Promise<FileResource[]> {
-  const resources: FileResource[] = [];
+export async function pathResources(files: readonly string[], volume: Volume): Promise<PathResource[]> {
+  const resources: PathResource[] = [];
   for (const file of files) {
     const prefix = await canonicalPrefix(path.dirname(file), volume);
     const location = path.join(prefix.location, path.basename(file));

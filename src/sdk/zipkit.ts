@@ -43,6 +43,7 @@ import { extractArchive, readManifest } from "./extract/extract.js";
 import { readInternals } from "./internal/carrier.js";
 import { classifyPaths, pathState } from "./paths.js";
 import { checkRemoval, outputInsideInputs } from "./removal.js";
+import { pathResources, type PathResource } from "./claims.js";
 import { nodeFileSystem, Volume } from "./internal/volume.js";
 import { planArchive } from "./plan/plan.js";
 import { METADATA_DEFAULTS, resolvePolicy } from "./policy.js";
@@ -303,6 +304,13 @@ export class ZipKit {
    */
   pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
     return pathState(target, this.volume(options.signal));
+  }
+
+  /** Each path as a path claim compares it (see `createPathClaims`), resolved
+   *  through links and folder aliases; a path that is a link to a file also
+   *  yields the file it points to. Bounded like every look at a user volume. */
+  pathResources(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathResource[]> {
+    return pathResources(paths, this.volume(options.signal));
   }
 
   /** What each path is on disk now, in order (see `PathKind`). */

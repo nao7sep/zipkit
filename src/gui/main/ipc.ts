@@ -24,11 +24,11 @@ import { currentSettings } from "./settings.js";
 import { submitSettings, discardSettingsSubmission, reportSettingsDraft } from "./settings-save.js";
 import { languageEnvironment, mainTranslator, systemLanguageNow } from "./i18n.js";
 import { systemAppearance } from "./theme.js";
-import { machineTimeZone } from "../../sdk/internal/timeZone.js";
 import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
 import { appAdmission } from "./command-admission.js";
+import { machineTimeZone } from "../../sdk/index.js";
 
 export function registerIpc(): void {
   ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {

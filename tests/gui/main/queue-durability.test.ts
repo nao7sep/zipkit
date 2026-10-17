@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { createQueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { nullLog } from "../../../src/gui/main/log.js";
-import { createArchiveEffects, fileResources } from "../../../src/gui/main/archive-effects.js";
+import { createPathClaims } from "../../../src/sdk/index.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
@@ -26,8 +26,8 @@ it("presents a real publication flush failure safely and keeps originals out of 
   const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }));
   const logged = vi.fn();
   const engine = createQueueEngine({
-    admission: new CommandAdmission(), effects: createArchiveEffects(),
-    resources: (paths, signal) => fileResources(paths, zip.volume(signal)),
+    admission: new CommandAdmission(), effects: createPathClaims(),
+    resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
     write: async (plan, signal, onProgress, onPhysicalSettlement) =>
       (await zip.write(plan, { signal, onProgress, onPhysicalSettlement })).bytes,

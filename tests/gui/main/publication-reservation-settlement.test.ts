@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { createArchiveEffects, fileResources } from "../../../src/gui/main/archive-effects.js";
+import { createPathClaims } from "../../../src/sdk/index.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
@@ -79,8 +79,8 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
   };
   const volume = vi.spyOn(zip, "volume");
   const deps: EngineDeps = {
-    admission: new CommandAdmission(), effects: createArchiveEffects(),
-    resources: (files, signal) => fileResources(files, zip.volume(signal)),
+    admission: new CommandAdmission(), effects: createPathClaims(),
+    resources: (files, signal) => zip.pathResources(files, { signal: signal }),
     plan: (inputs, options, signal, onProgress) =>
       zip.plan({ ...buildSpec(inputs, options), output }, { signal, onProgress }),
     write: async (plan, signal, onProgress, onPhysicalSettlement) => {

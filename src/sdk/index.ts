@@ -7,6 +7,9 @@ export { ZipKit } from "./zipkit.js";
 export type { PlanData, WriteData } from "./zipkit.js";
 export { exportPlan, importPlan } from "./transfer.js";
 export { sameFile } from "./paths.js";
+export { createPathClaims } from "./claims.js";
+export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.js";
+export { machineTimeZone } from "./internal/timeZone.js";
 export type { PlanTransfer } from "./transfer.js";
 
 export { RULE_REGISTRY } from "./registry.js";

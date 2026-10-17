@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { createArchiveEffects, fileResources, type FileUse } from "../../../src/gui/main/archive-effects.js";
+import { createPathClaims, type PathUse } from "../../../src/sdk/index.js";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
@@ -13,9 +13,9 @@ import { createDirectoryLink, fileSymlinksSupported } from "../../helpers/symlin
 import { SAVE, TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
 
-const use = (location: string, mode: FileUse["mode"], identity: string | null = location): FileUse => ({ location, mode, identity });
+const use = (location: string, mode: PathUse["mode"], identity: string | null = location): PathUse => ({ location, mode, identity });
 it("claims the whole conflicting path set atomically, permits shared reads and independent work", () => {
-  const owner = createArchiveEffects();
+  const owner = createPathClaims();
   const read = owner.claim([use("/source", "read")])!;
   expect(owner.claim([use("/source/file.zip", "read")])).not.toBeNull();
   expect(owner.claim([use("/unrelated", "change"), use("/source/file.zip", "change")])).toBeNull();
@@ -25,7 +25,7 @@ it("claims the whole conflicting path set atomically, permits shared reads and i
 });
 
 it("retains an unknown effect through settlement despite a second finally release", async () => {
-  const owner = createArchiveEffects();
+  const owner = createPathClaims();
   let settle!: () => void;
   const physical = new Promise<void>((resolve) => { settle = resolve; });
   const claim = owner.claim([use("/missing/Archive.zip", "change", null)])!;
@@ -43,7 +43,7 @@ it.each([
   const claimBoth = (platform: NodeJS.Platform) => {
     Object.defineProperty(process, "platform", { ...descriptor, value: platform });
     try {
-      const owner = createArchiveEffects();
+      const owner = createPathClaims();
       owner.claim([{ ...use(first, "change", null), existingPrefix: "/" }]);
       return owner.claim([{ ...use(second, "change", null), existingPrefix: "/" }]);
     } finally { Object.defineProperty(process, "platform", descriptor); }
@@ -56,21 +56,21 @@ it.each([["σ.zip", "ς.zip"], ["ß.zip", "ss.zip"], ["café.zip", "café.zip".n
   "retains a missing %s reservation across physical publication through %s", async (name, alias) => {
     const root = await mkdtemp(path.join(tmpdir(), "zipkit-missing-alias-"));
     const zip = new ZipKit();
-    const owner = createArchiveEffects();
+    const owner = createPathClaims();
     const file = path.join(root, name), alternate = path.join(root, alias);
     let settle!: () => void;
     const physical = new Promise<void>((resolve) => { settle = resolve; });
     try {
-      const resources = await fileResources([file], zip.volume());
+      const resources = await zip.pathResources([file]);
       expect(resources[0]?.identity).toBeNull();
       const held = owner.claim(resources.map((resource) => ({ ...resource, mode: "change" as const })))!;
       held.release(physical);
       // A later job can resolve its resources before the abandoned native open
       // creates the first file. Both spellings then have no physical identity.
-      const absent = (await fileResources([alternate], zip.volume())).map((resource) => ({ ...resource, mode: "change" as const }));
+      const absent = (await zip.pathResources([alternate])).map((resource) => ({ ...resource, mode: "change" as const }));
       expect(owner.claim(absent)).toBeNull();
       await writeFile(file, "pending claim");
-      const later = (await fileResources([alternate], zip.volume())).map((resource) => ({ ...resource, mode: "change" as const }));
+      const later = (await zip.pathResources([alternate])).map((resource) => ({ ...resource, mode: "change" as const }));
       expect(owner.claim(later)).toBeNull();
       settle(); await physical;
       expect(owner.claim(later)).not.toBeNull();
@@ -85,15 +85,15 @@ it("permits missing outputs in physically distinct Unicode directories", async (
   try {
     const a = path.join(root, "α"), b = path.join(root, "β");
     await mkdir(a); await mkdir(b);
-    const owner = createArchiveEffects();
-    const claims = await Promise.all([a, b].map((parent) => fileResources([path.join(parent, "archive.zip")], zip.volume())));
+    const owner = createPathClaims();
+    const claims = await Promise.all([a, b].map((parent) => zip.pathResources([path.join(parent, "archive.zip")])));
     expect(owner.claim(claims[0]!.map((resource) => ({ ...resource, mode: "change" as const })))).not.toBeNull();
     expect(owner.claim(claims[1]!.map((resource) => ({ ...resource, mode: "change" as const })))).not.toBeNull();
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 async function fixture() {
-  const root = await mkdtemp(path.join(tmpdir(), "zipkit-archive-effects-"));
+  const root = await mkdtemp(path.join(tmpdir(), "zipkit-path-claims-"));
   const trashDir = path.join(root, "trash");
   await mkdir(trashDir);
   const a = path.join(root, "a.txt"), b = path.join(root, "b.txt");
@@ -101,8 +101,8 @@ async function fixture() {
   const zip = new ZipKit();
   let ids = 0, moves = 0;
   const deps: EngineDeps = {
-    admission: new CommandAdmission(), effects: createArchiveEffects(),
-    resources: (paths, signal) => fileResources(paths, zip.volume(signal)),
+    admission: new CommandAdmission(), effects: createPathClaims(),
+    resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
     write: async (plan, signal, onProgress, onPhysicalSettlement) =>
       (await zip.write(plan, { signal, onProgress, onPhysicalSettlement })).bytes,
@@ -188,10 +188,10 @@ it.runIf(fileSymlinksSupported)("canonicalizes parent aliases for path claims an
     await f.zip.create({ inputs: [f.a], output: f.output });
     const alias = path.join(f.root, "alias");
     await createDirectoryLink(f.root, alias);
-    const direct = await fileResources([f.output], f.zip.volume());
-    const aliased = await fileResources([path.join(alias, "same.zip")], f.zip.volume());
+    const direct = await f.zip.pathResources([f.output]);
+    const aliased = await f.zip.pathResources([path.join(alias, "same.zip")]);
     expect(aliased[0]).toEqual(direct[0]);
-    const owner = createArchiveEffects();
+    const owner = createPathClaims();
     owner.claim(direct.map((resource) => ({ ...resource, mode: "change" })));
     expect(owner.claim(aliased.map((resource) => ({ ...resource, mode: "read" })))).toBeNull();
   } finally { await f.close(); }

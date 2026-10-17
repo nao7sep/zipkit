@@ -44,15 +44,14 @@ import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type Tra
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
-import { createArchiveEffects, type EffectClaim, type FileResource } from "./archive-effects.js";
-import { sameFile, type PathState, type RemovalCheck, type RemovalRefusal } from "../../sdk/index.js";
+import { sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal } from "../../sdk/index.js";
 
 export type { TrashResult } from "./trash-outcome.js";
 
 export interface EngineDeps {
   admission: CommandAdmission;
-  effects: ReturnType<typeof createArchiveEffects>;
-  resources(paths: string[], signal: AbortSignal): Promise<FileResource[]>;
+  effects: PathClaims;
+  resources(paths: string[], signal: AbortSignal): Promise<PathResource[]>;
   /** What is at a path now: there with a comparable fingerprint (which file,
    *  its size and when it last changed), gone, or out of reach. */
   pathState(target: string, signal: AbortSignal): Promise<PathState>;
@@ -148,7 +147,7 @@ interface Rec {
   planTimer?: ReturnType<typeof setTimeout>;
   /** The archive path from the most recent write that actually committed. */
   publishedOutput: string | null;
-  publication: FileResource | null;
+  publication: PathResource | null;
   /** The archive's state when ZipKit last wrote or verified it. */
   fingerprint: string | null;
   /** What the archive was known as before its drive went out of reach. */
@@ -402,7 +401,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   /** The commands on finished jobs that are still moving originals to Trash,
    *  so quit can wait for them as it waits for a run. */
   const actions = new Set<Promise<void>>();
-  async function claimFiles(read: string[], change: string[], signal: AbortSignal): Promise<EffectClaim> {
+  async function claimFiles(read: string[], change: string[], signal: AbortSignal): Promise<PathClaim> {
     const [reads, changes] = await Promise.all([deps.resources(read, signal), deps.resources(change, signal)]);
     signal.throwIfAborted();
     if (!deps.admission.accepting()) throw new Error("The app is shutting down");
@@ -418,7 +417,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     return rec.publication?.identity !== null && rec.publication !== null &&
       current?.identity === rec.publication.identity;
   }
-  function retainTrash(claim: EffectClaim, result: TrashResult): void {
+  function retainTrash(claim: PathClaim, result: TrashResult): void {
     if (result.unconfirmed.length > 0) claim.release(result.settlement ?? null);
   }
 
@@ -574,7 +573,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec: Rec,
     signal: AbortSignal,
     onProgress: (e: LogEvent) => void,
-  ): Promise<{ output: string; bytes: number | null; claim: EffectClaim } | null> {
+  ): Promise<{ output: string; bytes: number | null; claim: PathClaim } | null> {
     const id = rec.job.id;
     // Re-plan fresh: the world may have changed since this job was enqueued.
     const reviewed = rec.plan;
@@ -613,7 +612,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
 
     let bytes: number | null;
     let settlement: Promise<void> | undefined;
-    let claim: EffectClaim;
+    let claim: PathClaim;
     const removing = removesOriginals(rec.job.intent);
     try { claim = await claimFiles(removing ? [] : rec.job.inputs,
       removing ? [plan.output, ...rec.job.inputs] : [plan.output], signal); }
@@ -661,7 +660,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       verify: intent.verify,
       originals: intent.originals,
     });
-    let claim: EffectClaim | undefined;
+    let claim: PathClaim | undefined;
     try {
       let output: string;
       let inputs = rec.job.inputs;
@@ -1022,7 +1021,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.info("remove archive requested", { jobId: id, output });
       const work = (async () => {
         let removed = false;
-        let claim: EffectClaim | undefined;
+        let claim: PathClaim | undefined;
         try {
           claim = await claimFiles([], [output], aborter.signal);
           if (!(await observeArchive(rec, aborter.signal))) return;
@@ -1110,7 +1109,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const work = (async () => {
         // Null when the archive turned out to be gone: that already says so.
         let result: NonNullable<Job["actionResult"]> | null;
-        let claim: EffectClaim | undefined;
+        let claim: PathClaim | undefined;
         try {
           if (!output) {
             result = { severity: "error", message: message("action.noArchive") };
@@ -1168,7 +1167,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.info("verify requested", { jobId: id, output });
       const signal = new AbortController().signal;
       const work = (async (): Promise<VerifyReport | null> => {
-        let claim: EffectClaim | undefined;
+        let claim: PathClaim | undefined;
         try {
           if (!(await observeArchive(rec, signal))) return null;
           claim = await claimFiles([output], [], signal);

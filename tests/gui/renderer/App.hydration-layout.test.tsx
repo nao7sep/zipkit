@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
 import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-engine.js";
-import { createArchiveEffects } from "../../../src/gui/main/archive-effects.js";
+import { createPathClaims } from "../../../src/sdk/index.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { Job, JobIntent, PlanData, ZipKitGuiApi } from "../../../src/gui/shared/api";
@@ -354,7 +354,7 @@ describe("mounted run consent across queue projection changes", () => {
     let withholdProjection = false;
     const deps: EngineDeps = {
       admission: new CommandAdmission(),
-      effects: createArchiveEffects(),
+      effects: createPathClaims(),
       resources: vi.fn(async (paths: string[]) => paths.map((location) => ({ location, identity: location }))),
       plan: vi.fn(async (): Promise<PlanData> => ({
         mode: "plan",

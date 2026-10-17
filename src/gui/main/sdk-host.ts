@@ -11,17 +11,16 @@
  */
 
 import { rm } from "node:fs/promises";
-import { exportPlan, importPlan, ZipKit, type PathState, type PlanTransfer, type RemovalCheck } from "../../sdk/index.js";
+import { exportPlan, importPlan, ZipKit, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "../../sdk/index.js";
 import type { LogEvent } from "../../sdk/types.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
-import { fileResources, type FileResource } from "./archive-effects.js";
 import { outputRequest } from "./output.js";
 import { storageRoot } from "./storage.js";
 
 export interface SdkOps {
-  resources(paths: string[]): FileResource[];
+  resources(paths: string[]): PathResource[];
   pathState(path: string): PathState;
   plan(inputs: string[], options: GuiOptions): PlanTransfer;
   write(transfer: PlanTransfer): number | null;
@@ -80,7 +79,7 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
 
   type Run = (signal: AbortSignal, onProgress: (event: LogEvent) => void, id: number) => Promise<unknown>;
   const ops: { [K in SdkOp]: (...args: never[]) => Run } = {
-    resources: (paths: string[]) => (signal) => fileResources(paths, zip.volume(signal)),
+    resources: (paths: string[]) => (signal) => zip.pathResources(paths, { signal }),
     // What is at a path now: there with a comparable fingerprint, gone, or
     // out of reach on a drive that is not connected.
     pathState: (target: string) => (signal) => zip.pathState(target, { signal }),

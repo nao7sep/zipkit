@@ -31,3 +31,16 @@ describe("the SDK boundary", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("the app's side of the boundary", () => {
+  it("uses the SDK only through its public entry", () => {
+    const GUI = path.resolve("src/gui");
+    const offenders = (readdirSync(GUI, { recursive: true, encoding: "utf8" }) as string[])
+      .filter((file) => /\.tsx?$/.test(file))
+      .flatMap((file) => [...stripComments(readFileSync(path.join(GUI, file), "utf8")).matchAll(/from\s+["']((?:\.\.\/)+sdk\/[^"']+)["']/g)]
+        .map((match) => match[1]!)
+        .filter((spec) => !/\/sdk\/(index|types)\.(js|ts)$/.test(spec))
+        .map((spec) => `${file}: ${spec}`));
+    expect(offenders).toEqual([]);
+  });
+});

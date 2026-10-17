@@ -15,12 +15,11 @@ import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
 import { SdkHostError } from "./sdk-client.js";
-import { exportPlan, importPlan } from "../../sdk/index.js";
+import { createPathClaims, exportPlan, importPlan } from "../../sdk/index.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
 import { appAdmission } from "./command-admission.js";
-import { appArchiveEffects } from "./archive-effects.js";
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingJobs: SavedJob[] | undefined;
@@ -71,9 +70,12 @@ function untilAborted<T>(call: Promise<T>, signal: AbortSignal): Promise<T | "ab
   });
 }
 
+/** The app's one set of path claims, shared by every job and command. */
+const appPathClaims = createPathClaims();
+
 const engine = createQueueEngine({
   admission: appAdmission,
-  effects: appArchiveEffects,
+  effects: appPathClaims,
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
   inspect: (output, signal, onProgress, checkMetadata) => sdk.call("inspect", [output, checkMetadata], { signal, onProgress }),

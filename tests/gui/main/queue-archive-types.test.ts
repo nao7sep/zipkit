@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { createQueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { nullLog } from "../../../src/gui/main/log.js";
-import { createArchiveEffects, fileResources } from "../../../src/gui/main/archive-effects.js";
+import { createPathClaims } from "../../../src/sdk/index.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { ZipKit } from "../../../src/sdk/index.js";
@@ -19,8 +19,8 @@ it("keeps originals when a real archive's file type changes after publication", 
   const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }));
   const engine = createQueueEngine({
     admission: new CommandAdmission(),
-    effects: createArchiveEffects(),
-    resources: (paths, signal) => fileResources(paths, zip.volume(signal)),
+    effects: createPathClaims(),
+    resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
     write: async (plan, signal, onProgress, onPhysicalSettlement) => {
       const result = await zip.write(plan, { signal, onProgress, onPhysicalSettlement });

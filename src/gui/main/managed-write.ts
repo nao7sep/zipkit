@@ -12,7 +12,7 @@ import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from "
 import { nanoid } from "nanoid";
 import { parseJsonObject } from "./managed-json-envelope.ts";
 import { StepTimeout } from "./step-timeout.ts";
-import { syncDirectory } from "../../sdk/internal/sync-directory.ts";
+import { syncDirectory } from "./sync-directory.ts";
 
 export interface ManagedWriteOptions {
   /** Authored Settings request file and supported directory synchronization.
