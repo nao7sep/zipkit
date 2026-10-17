@@ -1,7 +1,7 @@
 /**
  * Details of one Status card: what this kind of thing is and what ZipKit does
- * about it, what every item has in common said once, then every item by its
- * full path, for a user who wants to see each one before trusting ZipKit with
+ * about it, what every item has in common said once, then every item by where
+ * it is on disk, for a user who wants to see each one before trusting ZipKit with
  * the originals. The card itself groups by name; here every path stands
  * alone. The list is virtualized (volume-handling conventions, Item count):
  * only the rows in or near the view are drawn, however many there are.

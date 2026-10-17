@@ -4,7 +4,7 @@
  * each coloured by how much it matters. While the job works, the step it is on
  * leads. A card lists names only, each once with how many items carry it,
  * while it has no more than the user's limit, and its count past it; its
- * Details list every item by its full path, for a user who wants to see each
+ * Details list every item where it is on disk, for a user who wants to see each
  * one before trusting ZipKit with the originals. What happened to the job is said once, in the Archive pane's
  * history.
  */

@@ -909,6 +909,40 @@ const KIND_INFO: Record<string, MessageKey> = {
 };
 
 const JUNK_RULES = new Set(["macos.junk", "windows.junk", "linux.junk"]);
+
+/** The separator a path written by the computer uses: a Windows path has a
+ *  drive or a backslash and no forward slash. */
+function separatorOf(p: string): "/" | "\\" {
+  return /^[A-Za-z]:\\/.test(p) || (p.includes("\\") && !p.includes("/")) ? "\\" : "/";
+}
+
+/** A planned item's row in Details: where it is on disk, and for a rename,
+ *  where it is with the name the archive gives it, changing only the folders
+ *  and file the rename changed. */
+function entryRow(entry: PlannedEntry, renamed: boolean): Pick<ReportRow, "path" | "from"> {
+  if (!renamed) return { path: entry.diskPath };
+  const before = entry.originalPath.split("/");
+  const after = entry.archivePath.split("/");
+  const sep = separatorOf(entry.diskPath);
+  const disk = entry.diskPath.split(sep);
+  // Only a rename that keeps every segment can be laid on the disk path.
+  if (before.length !== after.length || disk.length < after.length) return { path: entry.archivePath, from: entry.originalPath };
+  const offset = disk.length - after.length;
+  const shown = disk.map((segment, i) => i >= offset && before[i - offset] !== after[i - offset] ? after[i - offset]! : segment);
+  return { path: shown.join(sep), from: entry.diskPath };
+}
+
+/** Where a path the archive's manifest traces to (an input's own name, then
+ *  the path inside it) is on disk, from the job's inputs; the traced path
+ *  itself when no input has that name. */
+export function sourceOnDisk(source: string, inputs: readonly string[]): string {
+  const [first = "", ...rest] = source.split("/");
+  const input = inputs.find((p) => nameOf(p) === first);
+  if (input === undefined) return source;
+  const sep = separatorOf(input);
+  return [input.replace(/[\\/]+$/, ""), ...rest].join(sep);
+}
+
 const LEVEL_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
 
 /** The Details pane's cards for a job: one per kind of finding, one per reason
@@ -940,10 +974,11 @@ export function detailsCards(
       const dir = entry.type === "dir" ? { dir: true } : {};
       for (const f of entry.findings) {
         onEntries.add(findingId(f));
-        const renamed = f.fix?.kind === "rename" ? { from: entry.originalPath } : {};
         const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, KIND_INFO[f.rule]);
-        c.rows.push({ path: entry.archivePath, changes: [findingText(f, t, entry.excluded)], ...renamed, ...dir });
-        if (entry.excluded && EXCLUDING_RULES.has(f.rule)) {
+        c.rows.push({ ...entryRow(entry, f.fix?.kind === "rename"), changes: [findingText(f, t, entry.excluded)], ...dir });
+        // A duplicate is archived through another input, so it is not lost
+        // with the originals (the SDK's `unarchived`).
+        if (entry.excluded && entry.excludeCode !== "duplicate" && EXCLUDING_RULES.has(f.rule)) {
           c.excluded = true;
           c.junk = JUNK_RULES.has(f.rule);
         }
@@ -951,8 +986,8 @@ export function detailsCards(
       if (entry.excluded && !entry.findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
         const reason = excludedText(entry, t);
         const c = card(`excluded:${reason}`, reason, "info", entry.excludeCode === "empty-dir" ? "kindInfo.emptyDirs" : undefined);
-        c.rows.push({ path: entry.archivePath, changes: [reason], ...dir });
-        c.excluded = true;
+        c.rows.push({ path: entry.diskPath, changes: [reason], ...dir });
+        c.excluded = entry.excludeCode !== "duplicate";
       }
     }
     for (const f of plan.findings) {
@@ -960,18 +995,19 @@ export function detailsCards(
       card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, KIND_INFO[f.rule]).rows.push({ path: f.path, changes: [findingText(f, t)] });
     }
   }
-  const pathRows = (paths: readonly string[], change = ""): ReportRow[] =>
-    paths.map((path) => ({ path, changes: change ? [change] : [] }));
+  const pathRows = (paths: readonly string[]): ReportRow[] => paths.map((path) => ({ path, changes: [] }));
+  // The originals by where they are, or were, on disk.
+  const sourceRows = (paths: readonly string[]): ReportRow[] => pathRows(paths.map((p) => sourceOnDisk(p, job.inputs)));
   if (verify && verify.missing.length > 0) card("verify:missing", t.t("report.missing"), "error").rows.push(...pathRows(verify.missing));
   if (verify && verify.extra.length > 0) card("verify:extra", t.t("report.extra"), "warning").rows.push(...pathRows(verify.extra));
   // How the originals differ from the archive, a card per way, so each lists
   // names alone like every other card.
   const changes = job.originalsChanges;
   if (changes) {
-    card("originals:missing", t.t("details.originalsMissing"), "error").rows.push(...pathRows(changes.missing));
-    card("originals:added", t.t("details.originalsAdded"), "error").rows.push(...pathRows(changes.added));
-    card("originals:changed", t.t("details.originalsModified"), "error").rows.push(...pathRows(changes.changed));
-    card("originals:unlisted", t.t("details.originalsUnreadable"), "error").rows.push(...pathRows(changes.unlisted));
+    card("originals:missing", t.t("details.originalsMissing"), "error").rows.push(...sourceRows(changes.missing));
+    card("originals:added", t.t("details.originalsAdded"), "error").rows.push(...sourceRows(changes.added));
+    card("originals:changed", t.t("details.originalsModified"), "error").rows.push(...sourceRows(changes.changed));
+    card("originals:unlisted", t.t("details.originalsUnreadable"), "error").rows.push(...sourceRows(changes.unlisted));
   }
 
   // What is left out leaves with the originals when they are removed.

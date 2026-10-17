@@ -81,7 +81,7 @@ describe("JobDetails", () => {
     fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (3)" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/^System clutter from macOS, Windows and Linux/)).toBeTruthy();
-    expect(within(dialog).getAllByText(/\//).map((path) => path.textContent)).toEqual(["w/Thumbs.db", "x/.DS_Store", "y/.DS_Store"]);
+    expect(within(dialog).getAllByText(/\//).map((path) => path.textContent)).toEqual(["/in/w/Thumbs.db", "/in/x/.DS_Store", "/in/y/.DS_Store"]);
     // Every item was left out for the same reason, so no row repeats it.
     expect(within(dialog).queryByText("Excluded by the junk preset")).toBeNull();
     expect(within(dialog).queryByRole("checkbox")).toBeNull();
@@ -100,13 +100,16 @@ describe("JobDetails", () => {
   it("marks each change of a rename on the full path in Details", () => {
     show(plan([entry("a/x_0.txt", {
       originalPath: "a/x:0.txt",
+      diskPath: "/Users/me/a/x:0.txt",
       findings: [{ rule: "name.invalid-char", severity: "info", path: "a/x:0.txt", message: "substituted", fix: { kind: "rename", to: "a/x_0.txt" } }],
     })]));
     fireEvent.click(screen.getByRole("button", { name: /\(1\)$/ }));
     const dialog = screen.getByRole("dialog");
     expect(dialog.querySelector("del")!.textContent).toBe(":");
     expect(dialog.querySelector("ins")!.textContent).toBe("_");
-    expect(within(dialog).getByText("Renamed from a/x:0.txt")).toBeTruthy();
+    // Where it is on disk, with the name the archive gives it.
+    expect(within(dialog).getByText("/Users/me/a/x_0.txt")).toBeTruthy();
+    expect(within(dialog).getByText("Renamed from /Users/me/a/x:0.txt")).toBeTruthy();
   });
 
   it("lists by name what a verification found missing or unexpected, and each way the originals changed", () => {
@@ -161,7 +164,7 @@ describe("JobDetails", () => {
   it("draws only the rows near the view of a list with thousands of rows", () => {
     show(plan(Array.from({ length: 5000 }, (_, i) => junk(`photos/${i}/.DS_Store`))));
     fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (5,000)" }));
-    const drawn = within(screen.getByRole("dialog")).getAllByText(/^photos\//).length;
+    const drawn = within(screen.getByRole("dialog")).getAllByText(/^\/in\/photos\//).length;
     expect(drawn).toBeGreaterThan(0);
     expect(drawn).toBeLessThan(100);
   });

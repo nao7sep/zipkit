@@ -17,6 +17,7 @@ import {
   detailsCards,
   namesOf,
   rowsByPath,
+  sourceOnDisk,
   jobCommands,
   jobCounts,
   label,
@@ -960,7 +961,7 @@ describe("Details pane sections and orders", () => {
 
   it("makes one card per kind, the ones that block first, and the archive first among the rest", () => {
     const entry = (archivePath: string, rule: string, severity: Severity, excluded = false) => ({
-      archivePath, originalPath: archivePath, type: "file" as const, method: "deflate" as const, excluded,
+      archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file" as const, method: "deflate" as const, excluded,
       findings: [{ rule, severity, path: archivePath, message: rule }],
     });
     const plan = { writable: false, summary: { total: 3, included: 2, excluded: 1, renamed: 0, warnings: 1, errors: 1, zip64: false, sourceBytes: 0 }, findings: [],
@@ -978,6 +979,34 @@ describe("Details pane sections and orders", () => {
     const many = { ...plan, entries: Array.from({ length: 6 }, (_, i) => entry(`d${i}`, "collision.case", "error")) };
     expect(detailsCards(job(), many as never, null, en, 5)[0]!.open).toBe(false);
     expect(detailsCards(job(), many as never, null, en, 6)[0]!.open).toBe(true);
+  });
+
+  it("lists each item where it is on disk, a rename with only what it changed, and notes no duplicate as lost", () => {
+    const planned = (archivePath: string, over: Record<string, unknown>) => ({
+      archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file" as const, method: "deflate" as const,
+      excluded: false, findings: [], ...over,
+    });
+    const rename = (from: string, to: string) => [{ rule: "name.invalid-char", severity: "info" as const, path: from, message: "", fix: { kind: "rename" as const, to } }];
+    const plan = { writable: true, summary: { total: 4, included: 2, excluded: 2, renamed: 2, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 }, findings: [], entries: [
+      // The folder was renamed too, but this row's rule renamed the file; both show.
+      planned("a_b/c_d.txt", { originalPath: "a:b/c:d.txt", diskPath: "C:\\Users\\me\\proj\\a:b\\c:d.txt", findings: rename("a:b/c:d.txt", "a_b/c_d.txt") }),
+      planned("dup.txt", { excluded: true, excludeCode: "duplicate", excludeReason: "duplicate", findings: [{ rule: "entry.duplicate", severity: "info", path: "dup.txt", message: "" }] }),
+      planned("skip.tmp", { excluded: true, excludeCode: "filter", excludeReason: "excluded by *.tmp" }),
+    ] };
+    const cards = detailsCards(job({ intent: TRASH }), plan as never, null, en, 5);
+    const rows = Object.fromEntries(cards.map((card) => [card.key, card.rows]));
+    expect(rows["rule:name.invalid-char"]).toEqual([expect.objectContaining({ path: "C:\\Users\\me\\proj\\a_b\\c_d.txt", from: "C:\\Users\\me\\proj\\a:b\\c:d.txt" })]);
+    const filtered = cards.find((card) => card.key.startsWith("excluded:"))!;
+    expect(filtered.rows[0]?.path).toBe("/in/skip.tmp");
+    const notes = Object.fromEntries(cards.map((card) => [card.key, card.note]));
+    expect(filtered.note).toBe("These go to the Trash with the originals, without being archived.");
+    expect(notes["rule:entry.duplicate"]).toBeUndefined();
+  });
+
+  it("finds where an original traced by the manifest is on disk from the job's inputs", () => {
+    expect(sourceOnDisk("proj/a/b.txt", ["/Users/me/other", "/Users/me/proj"])).toBe("/Users/me/proj/a/b.txt");
+    expect(sourceOnDisk("proj/a.txt", ["C:\\data\\proj\\"])).toBe("C:\\data\\proj\\a.txt");
+    expect(sourceOnDisk("gone/a.txt", ["/Users/me/proj"])).toBe("gone/a.txt");
   });
 
   it("lists a card's names once each, with how many rows carry them, and orders paths as the locale does", () => {
