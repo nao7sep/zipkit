@@ -240,11 +240,11 @@ export interface ZipKitOptions {
  */
 export interface ZipKitCallOptions {
   onEvent?: (event: LogEvent) => void;
-  /** How far `write`/`create` and `extract` have got, for a progress bar, as
-   *  counts rather than events: at
-   *  the start, at most every 100 ms while entries stream, and once at the end
-   *  of a run that finishes. Other verbs ignore this hook, and like
-   *  `onEvent` it cannot break the verb. */
+  /** How far `write`/`create`, `extract` and the verify inside
+   *  `checkRemoval` have got, for a progress bar, as counts rather than
+   *  events: at the start, at most every 100 ms while entries stream, when the
+   *  entries are done, and at the end of a run that finishes. Other verbs
+   *  ignore this hook, and like `onEvent` it cannot break the verb. */
   onProgress?: (counts: ProgressCounts) => void;
   signal?: AbortSignal;
   /** `write`/`create` deliver this after their logical outcome. The promise
@@ -624,6 +624,10 @@ export interface SourceComparison {
   changed: string[];
   /** Folders the fresh scan could not list, so their contents went unchecked. */
   unlisted: string[];
+  /** Where each listed path is, or for a missing one was, on disk: the input
+   *  with that name joined with the rest of the path. A missing path no
+   *  present input has the name of is left out. */
+  onDisk: Record<string, string>;
 }
 
 /** One entry of an archive as its central directory records it. */
@@ -662,7 +666,8 @@ export interface Unarchived {
 /** Why the originals may not be removed: the first check of
  *  `ZipKit.checkRemoval` that refused. */
 export type RemovalRefusal =
-  /** Another file is at the archive's path: not the one expected. */
+  /** The archive at its path is not the one expected, or is gone: another
+   *  file, or none, when the checks began, or once they had passed. */
   | { reason: "replaced" }
   /** The archive sits at or inside an input, so removing it would take the archive along. */
   | { reason: "inside" }
@@ -672,7 +677,12 @@ export type RemovalRefusal =
   | { reason: "changed"; comparison: SourceComparison }
   /** A check could not finish, such as on a stalled drive or when cancelled:
    *  the error it ended with, and which check it was. */
-  | { reason: "error"; step: "location" | "verify" | "recheck"; error: unknown };
+  | { reason: "error"; step: RemovalStep; error: unknown };
+
+/** The checks of `ZipKit.checkRemoval` that can fail to finish: looking at
+ *  the archive (before the checks and after), its location, its verify, and
+ *  the fresh scan of the inputs. */
+export type RemovalStep = "state" | "location" | "verify" | "recheck";
 
 /** The answer of `ZipKit.checkRemoval`. */
 export interface RemovalCheck {

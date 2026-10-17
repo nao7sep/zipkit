@@ -112,7 +112,7 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
   const fakes: RemovalFakes = {
     recheck: async () => {
       calls.recheck++;
-      return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+      return { matches: true, added: [], missing: [], changed: [], unlisted: [], onDisk: {} };
     },
     outputInsideInputs: async () => false,
     ...overrides,
@@ -392,7 +392,7 @@ describe("queue engine", () => {
       verify: async (_output, _signal, onEvent) => (seen.push(`verify:${sinks.get(onEvent)}`), true),
       recheck: async (_output, _inputs, _options, _signal, onEvent) => {
         seen.push(`recheck:${sinks.get(onEvent)}`);
-        return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+        return { matches: true, added: [], missing: [], changed: [], unlisted: [], onDisk: {} };
       },
     });
     const engine = createQueueEngine(deps);
@@ -851,7 +851,7 @@ describe("queue engine", () => {
   });
 
   it("delete: deletes nothing when the originals changed since archiving", async () => {
-    const { deps, calls } = makeDeps({ recheck: async () => ({ matches: false, added: ["new.txt"], missing: [], changed: [], unlisted: [] }) });
+    const { deps, calls } = makeDeps({ recheck: async () => ({ matches: false, added: ["new.txt"], missing: [], changed: [], unlisted: [], onDisk: {} }) });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, DELETE);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
@@ -1358,9 +1358,31 @@ describe("queue engine", () => {
     expect(engine.snapshot()[0]?.state).toBe("done"); // archive kept; job stays done
   });
 
+  it("archive-and-trash: says a cancel during the checks cancelled the move, not that a check failed", async () => {
+    let started = false;
+    const { deps, calls } = makeDeps({
+      verify: (_output, signal) => new Promise<boolean>((_resolve, reject) => {
+        started = true;
+        signal.addEventListener("abort", () => reject(new Error("aborted")));
+      }),
+    });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/data"], DEFAULT_OPTIONS, TRASH);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    run(engine, id);
+    await until(() => expect(started).toBe(true));
+    engine.cancel(id);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    expect(say(engine.snapshot()[0]?.message)).toBe("Moving the originals to Trash was cancelled. The originals were kept.");
+    expect(calls.trash).toEqual([]);
+  });
+
   it("archive-and-trash: keeps the originals and the archive when they changed after archiving", async () => {
     const { deps, calls } = makeDeps({
-      recheck: async () => ({ matches: false, added: ["data/new.txt"], missing: [], changed: [], unlisted: [] }),
+      recheck: async () => ({
+        matches: false, added: ["data/new.txt"], missing: ["data/old.txt"], changed: [], unlisted: [],
+        onDisk: { "data/new.txt": "/data/new.txt" },
+      }),
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, TRASH);
@@ -1368,11 +1390,12 @@ describe("queue engine", () => {
     run(engine, id);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(say(engine.snapshot()[0]?.message)).toBe(
-      "1 file was added to the originals. " +
+      "1 file is missing from the originals. 1 file was added to the originals. " +
         "The originals changed after the archive was made, so the originals and the archive were kept. " +
         "To include the changes, move the archive to Trash and create it again.",
     );
-    expect(engine.snapshot()[0]?.originalsChanges).toEqual({ missing: [], added: ["data/new.txt"], changed: [], unlisted: [] });
+    // Where the SDK placed each on disk; one it could not place keeps its trace.
+    expect(engine.snapshot()[0]?.originalsChanges).toEqual({ missing: ["data/old.txt"], added: ["/data/new.txt"], changed: [], unlisted: [] });
     expect(engine.snapshot()[0]?.archiveBytes).toBe(123);
     expect(calls.verify).toBe(1);
     expect(calls.trash).toEqual([]);
@@ -1393,7 +1416,7 @@ describe("queue engine", () => {
       verify: async () => (order.push("verify"), true),
       recheck: async (output, inputs) => {
         order.push(`recheck ${output} ${inputs.join(",")}`);
-        return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+        return { matches: true, added: [], missing: [], changed: [], unlisted: [], onDisk: {} };
       },
     });
     const { engine, id } = await doneSave(deps);
@@ -1408,7 +1431,7 @@ describe("queue engine", () => {
     let matches = true;
     const { deps, calls } = makeDeps({
       verify: async () => verifyOk,
-      recheck: async () => ({ matches, added: [], missing: [], changed: matches ? [] : ["data/a"], unlisted: [] }),
+      recheck: async () => ({ matches, added: [], missing: [], changed: matches ? [] : ["data/a"], unlisted: [], onDisk: {} }),
     });
     const { engine, id } = await doneSave(deps);
     engine.removeOriginals(id, "trash");

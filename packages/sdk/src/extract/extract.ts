@@ -584,6 +584,8 @@ export async function extractArchive(
     const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
     const failure = failures.find((f) => f instanceof StallError) ?? failures[0];
     if (failure !== undefined) throw failure;
+    // Every entry is read; what remains (links, folder times) reads nothing.
+    meter.flush();
     if (deferredLinks) {
       for (const [index, entry] of parsed.entries.entries()) {
         if (abort.entry) break;

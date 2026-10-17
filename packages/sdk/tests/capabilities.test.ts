@@ -5,7 +5,7 @@
  * archive holds without verifying it.
  */
 
-import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -50,8 +50,10 @@ describe("planned entries", () => {
     expect(plan.summary.sourceBytes).toBe("alpha".length + "bravo!".length);
     const counts: ProgressCounts[] = [];
     const written = await zip.write(plan, { onProgress: (c) => counts.push(c) });
-    expect(counts[0]).toEqual({ stage: "write", entriesDone: 0, entriesTotal: 3, bytesDone: 0, bytesTotal: 11 });
-    expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 3, entriesTotal: 3, bytesDone: 11, bytesTotal: 11 });
+    // Every entry the archive holds, its manifest included, as a read counts them.
+    expect(counts[0]).toEqual({ stage: "write", entriesDone: 0, entriesTotal: 4, bytesDone: 0, bytesTotal: 11 });
+    expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 4, entriesTotal: 4, bytesDone: 11, bytesTotal: 11 });
+    expect((await zip.list(written.output)).entries).toHaveLength(4);
     expect(written.metadata?.summary.sourceBytes).toBe(11);
   });
 });
@@ -77,8 +79,9 @@ describe("onProgress", () => {
     now = 50; meter.bytes(10);
     now = 120; meter.entry();
     now = 130; meter.bytes(10);
+    meter.flush(); // the entries are done: reported at once, though too soon
     meter.finish();
-    expect(seen).toEqual([0, 20, 30]);
+    expect(seen).toEqual([0, 20, 30, 30]);
     // With no observer it does nothing at all.
     expect(() => new Meter("extract", { entries: 1, bytes: 1 }, undefined).finish()).not.toThrow();
   });
@@ -136,5 +139,60 @@ describe("list and readManifest", () => {
     await writeFile(text, "x".repeat(100));
     await expect(zip.list(text)).rejects.toBeInstanceOf(ReadError);
     expect((await stat(text)).size).toBe(100);
+  });
+});
+
+describe("hooks", () => {
+  it("survive an async onEvent, onProgress or onPhysicalSettlement that rejects", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => { unhandled.push(reason); };
+    process.on("unhandledRejection", record);
+    try {
+      const rejects = async () => { throw new Error("hook"); };
+      const written = await new ZipKit().create(
+        { inputs: [proj], output: path.join(root, "o.zip") },
+        { onEvent: rejects, onProgress: rejects, onPhysicalSettlement: rejects },
+      );
+      expect(written.written).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally { process.off("unhandledRejection", record); }
+  });
+});
+
+describe("argument checks", () => {
+  it("refuse a mistaken call with a PolicyError, before touching the disk", async () => {
+    const zip = new ZipKit();
+    const archive = path.join(root, "o.zip");
+    await zip.create({ inputs: [proj], output: archive });
+    const policy = { name: "PolicyError" };
+    await expect(zip.list(archive, { timeZone: "Bogus/Zone" })).rejects.toMatchObject({ ...policy, code: "options.invalid" });
+    await expect(zip.list("")).rejects.toMatchObject({ ...policy, code: "spec.invalid" });
+    await expect(zip.readManifest(archive, { name: "../x.json" })).rejects.toMatchObject({ ...policy, code: "options.invalid" });
+    await expect(zip.checkRemoval({ inputs: [proj] }, archive, { fingerprint: 5 as never })).rejects.toMatchObject({ ...policy, code: "options.invalid" });
+    await expect(zip.checkRemoval({ inputs: [proj] }, archive, { removed: "x" as never })).rejects.toMatchObject({ ...policy, code: "spec.invalid" });
+    await expect(zip.checkRemoval({ inputs: [] }, archive)).rejects.toMatchObject({ ...policy, code: "spec.invalid" });
+    await expect(zip.pathState(7 as never)).rejects.toMatchObject(policy);
+    await expect(zip.classify(["ok", ""])).rejects.toMatchObject(policy);
+    await expect(zip.pathResources("x" as never)).rejects.toMatchObject(policy);
+  });
+});
+
+describe("readManifest of a damaged manifest", () => {
+  it("refuses a manifest whose bytes do not match the CRC-32 the archive records for it", async () => {
+    const zip = new ZipKit();
+    const archive = path.join(root, "o.zip");
+    await zip.create({ inputs: [proj], output: archive });
+    const bytes = await readFile(archive);
+    // The central directory record naming zipkit.json: its CRC-32 is at +16.
+    const name = Buffer.from("zipkit.json");
+    let at = -1;
+    for (let i = bytes.indexOf(0x50); i !== -1; i = bytes.indexOf(0x50, i + 1)) {
+      if (bytes.readUInt32LE(i) === 0x02014b50 && bytes.subarray(i + 46, i + 46 + name.length).equals(name)) { at = i; break; }
+    }
+    expect(at).toBeGreaterThan(-1);
+    bytes.writeUInt32LE((bytes.readUInt32LE(at + 16) ^ 1) >>> 0, at + 16);
+    await writeFile(archive, bytes);
+    await expect(zip.readManifest(archive)).rejects.toMatchObject({ code: "read.manifest-invalid" });
   });
 });

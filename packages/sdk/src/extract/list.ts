@@ -65,8 +65,11 @@ export async function readArchiveManifest(volume: Volume, archivePath: string, n
   return withArchive(volume, archivePath, async (archive, parsed) => {
     const inside = parsed.entries.find((entry) => entry.archivePath === name);
     if (!inside) throw new ReadError("read.manifest-missing", `no manifest '${name}' is embedded in the archive`);
+    if (inside.type !== "file") throw new ReadError("read.manifest-invalid", `manifest ${name} is not a file`);
     const chunks: Buffer[] = [];
-    await readEntryData(archive, inside, async (chunk) => { chunks.push(chunk); }, 65536);
+    const { crc32 } = await readEntryData(archive, inside, async (chunk) => { chunks.push(chunk); }, 65536);
+    // A damaged manifest that still parses must not pass for a sound one.
+    if (crc32 !== inside.crc32 >>> 0) throw new ReadError("read.manifest-invalid", `manifest ${name} is damaged: its CRC-32 does not match`);
     let document: unknown;
     try {
       document = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));

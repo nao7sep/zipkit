@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { checkRemoval, explainRemoved, outputInsideInputs as check, type RemovalSteps } from "../src/removal.js";
-import { ZipKit } from "../src/index.js";
+import { ZipKit, type PathState } from "../src/index.js";
 import { realVolume } from "./helpers/volume.js";
 
 const outputInsideInputs = (output: string, inputs: string[]): Promise<boolean> =>
@@ -73,7 +73,7 @@ describe("outputInsideInputs", () => {
 });
 
 describe("checkRemoval", () => {
-  const same = { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+  const same = { matches: true, added: [], missing: [], changed: [], unlisted: [], onDisk: {} };
   const steps = (over: Partial<RemovalSteps> = {}, ran: string[] = []): RemovalSteps => ({
     state: async () => (ran.push("state"), { kind: "present", fingerprint: "f1" }),
     inside: async () => (ran.push("inside"), false),
@@ -85,7 +85,31 @@ describe("checkRemoval", () => {
   it("runs every check in order and passes with the fingerprint that verified", async () => {
     const ran: string[] = [];
     expect(await checkRemoval(steps({}, ran), ["/in"], [])).toEqual({ refusal: null, verified: { fingerprint: "f1" } });
-    expect(ran).toEqual(["state", "inside", "verify", "compare"]);
+    // The archive is looked at again once the slow scan has passed.
+    expect(ran).toEqual(["state", "inside", "verify", "compare", "state"]);
+  });
+
+  it("refuses an archive moved, deleted or replaced while the inputs were being rescanned", async () => {
+    const after = (state: PathState) => {
+      let calls = 0;
+      return async (): Promise<PathState> => (++calls === 1 ? { kind: "present", fingerprint: "1:2:3:4" } : state);
+    };
+    expect((await checkRemoval(steps({ state: after({ kind: "gone" }) }), ["/in"], [])).refusal).toEqual({ reason: "replaced" });
+    expect((await checkRemoval(steps({ state: after({ kind: "present", fingerprint: "1:9:3:4" }) }), ["/in"], [])).refusal)
+      .toEqual({ reason: "replaced" });
+    // The same file, which the verify read, passes; it still reports what verified.
+    expect(await checkRemoval(steps({ state: after({ kind: "present", fingerprint: "1:2:3:5" }) }), ["/in"], []))
+      .toEqual({ refusal: null, verified: { fingerprint: "1:2:3:4" } });
+    expect((await checkRemoval(steps({ state: after({ kind: "unavailable" }) }), ["/in"], [])).refusal)
+      .toMatchObject({ reason: "error", step: "state" });
+  });
+
+  it("refuses with the state step, not as replaced, when the archive cannot be looked at", async () => {
+    const stalled = new Error("stalled");
+    expect(await checkRemoval(steps({ state: async () => { throw stalled; } }), ["/in"], [], "1:2:3:4"))
+      .toEqual({ refusal: { reason: "error", step: "state", error: stalled }, verified: null });
+    expect((await checkRemoval(steps({ state: async () => ({ kind: "unavailable" }) }), ["/in"], [], "1:2:3:4")).refusal)
+      .toMatchObject({ reason: "error", step: "state", error: { code: "read.open-failed" } });
   });
 
   it("stops at the first refusal, and refuses rather than throws when a check cannot finish", async () => {
@@ -112,7 +136,7 @@ describe("checkRemoval", () => {
   });
 
   it("does not count as missing what came from an input already removed, unless another input shares its name", () => {
-    const comparison = { matches: false, added: [], missing: ["b/x.txt", "a/y.txt"], changed: [], unlisted: [] };
+    const comparison = { matches: false, added: [], missing: ["b/x.txt", "a/y.txt"], changed: [], unlisted: [], onDisk: {} };
     expect(explainRemoved(comparison, ["/one/a"], ["/two/b"])).toEqual({ ...comparison, missing: ["a/y.txt"], matches: false });
     expect(explainRemoved({ ...comparison, missing: ["b/x.txt"] }, ["/one/a"], ["/two/b"]).matches).toBe(true);
     expect(explainRemoved({ ...comparison, missing: ["a/x.txt"] }, ["/one/a"], ["/two/a"]).matches).toBe(false);

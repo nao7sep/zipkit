@@ -54,6 +54,7 @@ export type {
   RemovalCheck,
   RemovalOptions,
   RemovalRefusal,
+  RemovalStep,
   Severity,
   SourceComparison,
   Transformation,

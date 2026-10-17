@@ -38,11 +38,12 @@ import {
   sessionLogName,
   type SessionLog,
 } from "./log/session.js";
-import { compareWithManifest } from "./compare/sources.js";
+import { compareWithManifest, placeOnDisk } from "./compare/sources.js";
 import { extractArchive, readManifest } from "./extract/extract.js";
 import { readInternals } from "./internal/carrier.js";
 import { classifyPaths, pathState } from "./paths.js";
 import { checkRemoval, outputInsideInputs } from "./removal.js";
+import { observe } from "./internal/observe.js";
 import { pathResources, type PathResource } from "./claims.js";
 import { listArchive, readArchiveManifest } from "./extract/list.js";
 import { nodeFileSystem, Volume } from "./internal/volume.js";
@@ -57,8 +58,13 @@ import {
   validatePolicy,
   validateDebug,
   validateLogDir,
+  validateFingerprint,
+  validateManifestName,
+  validatePath,
+  validatePaths,
   validateSkipPaths,
   validateSpec,
+  validateTimeZone,
 } from "./validate.js";
 import { writeArchive, type WriteDeps } from "./write/write.js";
 import { VERSION } from "./version.js";
@@ -194,8 +200,8 @@ export class ZipKit {
   #notifySettlement(options: ZipKitCallOptions, volume: Volume): void {
     // Capture after logical cleanup: an earlier empty set could report idle
     // before the first write, or omit continuations spawned by late calls.
-    try { options.onPhysicalSettlement?.(volume.whenSettled()); }
-    catch { /* Like an event sink, the observer cannot break the verb. */ }
+    const notify = options.onPhysicalSettlement;
+    if (notify) observe(() => notify(volume.whenSettled()));
   }
 
   /**
@@ -258,7 +264,9 @@ export class ZipKit {
         const unlisted = scanned.entries
           .filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath))
           .map((e) => e.sourcePath);
-        return compareWithManifest(readInternals(plan)?.writeEntries ?? [], unlisted, records);
+        const found = new Map(scanned.entries.map((e) => [e.sourcePath, e.diskPath]));
+        const inputs = validated.inputs.map((input) => path.resolve(input));
+        return placeOnDisk(compareWithManifest(readInternals(plan)?.writeEntries ?? [], unlisted, records), found, inputs);
       } catch (err) {
         this.#reportError(logger, err);
         throw err;
@@ -274,8 +282,9 @@ export class ZipKit {
    * stored only in the DOS field, which carries no zone, is read in
    * `timeZone` (the host's by default). Bounded like every look at a user volume.
    */
-  list(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { timeZone?: string } = {}): Promise<ArchiveListing> {
-    return listArchive(this.volume(options.signal), archive, options.timeZone);
+  async list(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { timeZone?: string } = {}): Promise<ArchiveListing> {
+    const timeZone = validateTimeZone(options.timeZone);
+    return listArchive(this.volume(options.signal), validatePath(archive, "archive"), timeZone);
   }
 
   /**
@@ -286,8 +295,9 @@ export class ZipKit {
    * to check a very large archive against its manifest use `extract` with
    * `checkMetadata`, which streams it.
    */
-  readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { name?: string } = {}): Promise<Metadata> {
-    return readArchiveManifest(this.volume(options.signal), archive, options.name);
+  async readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { name?: string } = {}): Promise<Metadata> {
+    const name = validateManifestName(options.name);
+    return readArchiveManifest(this.volume(options.signal), validatePath(archive, "archive"), name);
   }
 
   /**
@@ -300,10 +310,14 @@ export class ZipKit {
    * cannot finish refuses, naming its step, rather than throwing.
    */
   async checkRemoval(spec: ArchiveSpec, archive: string, options: RemovalOptions = {}): Promise<RemovalCheck> {
-    const { removed = [], fingerprint, ...call } = options;
+    const { removed: given = [], fingerprint: expected, ...call } = options;
+    // A mistaken call is the caller's to fix, so it throws, never refuses.
+    validatePath(archive, "archive");
+    const removed = validatePaths(given, "removed");
+    const fingerprint = validateFingerprint(expected);
     // The archive is the output, so the fresh scan never counts the archive
     // itself when it sits beside the inputs.
-    const { outputDir: _dir, outputName: _name, ...rest } = spec;
+    const { outputDir: _dir, outputName: _name, ...rest } = validateSpec(spec);
     const rescan: ArchiveSpec = { ...rest, output: archive };
     return checkRemoval({
       state: () => this.pathState(archive, call),
@@ -314,10 +328,12 @@ export class ZipKit {
   }
 
   /**
-   * The SDK's bounded file access, for a caller that must touch the same user
-   * volumes outside a verb (checking an input or an output location). Each call
-   * is bounded by this instance's `ioTimeoutMs` and answers to `signal`, and
-   * fails with a `StallError` naming the path when the volume stops responding.
+   * The bounded file access every verb runs on, one per call: each operation
+   * is bounded by this instance's `ioTimeoutMs`, answers to `signal`, and fails
+   * with a `StallError` naming the path when the volume stops responding. An
+   * app looks at the disk through `pathState`, `classify` and `pathResources`;
+   * this is the seam a test overrides, with a `Volume` from `zipkit/testing`
+   * over a port whose calls it controls, to make the SDK meet a failing disk.
    */
   volume(signal?: AbortSignal): Volume {
     return new Volume(nodeFileSystem, this.#ioTimeoutMs, signal);
@@ -329,20 +345,20 @@ export class ZipKit {
    * fingerprints with `sameFile` to tell a file rewritten in place from another
    * file put in its place. Bounded like every look at a user volume.
    */
-  pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
-    return pathState(target, this.volume(options.signal));
+  async pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
+    return pathState(validatePath(target, "target"), this.volume(options.signal));
   }
 
   /** Each path as a path claim compares it (see `createPathClaims`), resolved
    *  through links and folder aliases; a path that is a link to a file also
    *  yields the file it points to. Bounded like every look at a user volume. */
-  pathResources(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathResource[]> {
-    return pathResources(paths, this.volume(options.signal));
+  async pathResources(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathResource[]> {
+    return pathResources(validatePaths(paths, "paths"), this.volume(options.signal));
   }
 
   /** What each path is on disk now, in order (see `PathKind`). */
-  classify(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
-    return classifyPaths(paths, this.volume(options.signal));
+  async classify(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
+    return classifyPaths(validatePaths(paths, "paths"), this.volume(options.signal));
   }
 
   /** The instance's session log, opened lazily on first use so an instance that

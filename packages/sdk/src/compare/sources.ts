@@ -10,6 +10,7 @@
  * records, which the manifest load has already checked.
  */
 
+import path from "node:path";
 import type { WriteEntry } from "../internal/types.js";
 import type { SourceComparison } from "../types.js";
 import type { ManifestRecord } from "../extract/extract.js";
@@ -28,6 +29,35 @@ function add(map: Map<string, string[]>, key: string, value: string): void {
 function recordSignature(record: ManifestRecord): { sourcePath: string; signature: string } | null {
   if (record.type === "dir") return null;
   return { sourcePath: record.sourcePath, signature: signature(record.type, record.size, record.mtime.ns) };
+}
+
+/**
+ * Where the comparison's paths are on disk: what the fresh scan found is
+ * where it found it; a missing path was in the input whose name leads it (a
+ * root input, which has no name, holds every path that no named input does).
+ */
+export function placeOnDisk(
+  comparison: SourceComparison,
+  found: ReadonlyMap<string, string>,
+  inputs: readonly string[],
+): SourceComparison {
+  const onDisk: Record<string, string> = {};
+  const named = new Map<string, string>();
+  let root: string | undefined;
+  for (const input of inputs) {
+    const name = path.basename(input);
+    if (name === "") root ??= input;
+    else if (!named.has(name)) named.set(name, input);
+  }
+  for (const source of [...comparison.added, ...comparison.changed, ...comparison.unlisted, ...comparison.missing]) {
+    const disk = found.get(source);
+    if (disk !== undefined) { onDisk[source] = disk; continue; }
+    const [first = "", ...rest] = source.split("/");
+    const input = named.get(first);
+    if (input !== undefined) onDisk[source] = path.join(input, ...rest);
+    else if (root !== undefined) onDisk[source] = path.join(root, ...source.split("/"));
+  }
+  return { ...comparison, onDisk };
 }
 
 export function compareWithManifest(
@@ -63,5 +93,6 @@ export function compareWithManifest(
     missing: sort(missing),
     changed: sort(changed),
     unlisted: sort([...unlisted]),
+    onDisk: {},
   };
 }

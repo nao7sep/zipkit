@@ -16,6 +16,7 @@
  * and no open session file is silent and free.
  */
 
+import { observe } from "../internal/observe.js";
 import { messageFor } from "./messages.js";
 import type { LogEvent, LogEventBody, LogMeta } from "../types.js";
 
@@ -39,13 +40,9 @@ export function createLogger(sinks: LogSink[] = [], debug = false): Logger {
         message: messageFor(event),
         ...event,
       };
-      for (const sink of sinks) {
-        try {
-          sink(stamped);
-        } catch {
-          /* best-effort: one sink's failure is not the run's, nor the next sink's */
-        }
-      }
+      // One sink's failure, thrown or a rejected promise, is not the run's,
+      // nor the next sink's.
+      for (const sink of sinks) observe(() => sink(stamped));
     },
   };
 }

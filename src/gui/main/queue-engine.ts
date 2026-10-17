@@ -44,7 +44,7 @@ import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type Tra
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
-import { sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal } from "zipkit";
+import { sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal, type RemovalStep } from "zipkit";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -204,7 +204,9 @@ function writeFailureMessage(err: unknown, output: string): Message {
   return failureMessage(err, "job.writeFailed");
 }
 
-const ERRORED_KEYS: Record<Extract<RemovalRefusal, { reason: "error" }>["step"], MessageKey> = {
+const ERRORED_KEYS: Record<RemovalStep, MessageKey> = {
+  // The archive could not be looked at, before the checks or after them.
+  state: "job.verifyErrored",
   location: "job.locationUnverified",
   verify: "job.verifyErrored",
   recheck: "job.recheckErrored",
@@ -457,7 +459,9 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         deps.log.error("trash blocked: originals changed since archiving", {
           jobId: id, added: added.length, missing: missing.length, changed: changed.length, unlisted: unlisted.length,
         });
-        set(rec, { originalsChanges: { missing, added, changed, unlisted } });
+        // By where each is, or was, on disk, as the SDK places them.
+        const onDisk = (paths: string[]) => paths.map((p) => refusal.comparison.onDisk[p] ?? p);
+        set(rec, { originalsChanges: { missing: onDisk(missing), added: onDisk(added), changed: onDisk(changed), unlisted: onDisk(unlisted) } });
         break;
       }
       case "error":
@@ -694,9 +698,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       const refusal = await checkBeforeTrash(rec, output, inputs, signal, onEvent, gone);
       if (refusal) {
         const again = resumeFrom !== null && refusal.reason === "verify-failed";
+        // A check cancelled by the user is not a check that failed.
+        const cancelled = signal.aborted
+          ? message(removal === "trash" ? "action.originalsTrashCancelled" : "action.originalsDeleteCancelled")
+          : null;
         set(rec, {
           state: "failed",
-          message: again ? message("job.verifyFailedAgain") : refusalMessage(refusal, "job.insideSource"),
+          message: cancelled ?? (again ? message("job.verifyFailedAgain") : refusalMessage(refusal, "job.insideSource")),
         });
         return;
       }

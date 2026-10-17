@@ -132,3 +132,10 @@ describe("restoreTimes source selection", () => {
     expect(t.mtimeNs).toBe(ns(Date.UTC(2003, 3, 5, 6, 7, 8) - 9 * 3600 * 1000));
   });
 });
+
+describe("restoreTimes on a DOS date of 0", () => {
+  it("reads a date of 0, which some writers store for an unknown time, as 1 January 1980", () => {
+    const t = restoreTimes(entryWith(Buffer.alloc(0), { dosDate: 0, dosTime: 0 }), "UTC");
+    expect(t.mtimeNs).toBe(ns(Date.UTC(1980, 0, 1)));
+  });
+});

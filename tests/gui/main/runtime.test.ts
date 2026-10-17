@@ -88,7 +88,7 @@ describe("SDK events", () => {
     expect(a?.[3]).not.toBe(b?.[3]);
   });
 
-  it("records each event at once and sends the window one batch of them", () => {
+  it("records each event at once, sends the window one batch of them, and clears the last run's counts", () => {
     {
       const win = fakeWindow();
       setMainWindow(win as never);
@@ -102,7 +102,10 @@ describe("SDK events", () => {
       expect(win.webContents.send).not.toHaveBeenCalled();
       vi.advanceTimersByTime(EVENT_BATCH_MS);
       const recorded = { jobId: "job-1", session: "s", seq: 1, action: "verify", run, event };
-      expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith("zipkit:events", [recorded, recorded]);
+      expect(win.webContents.send).toHaveBeenCalledTimes(2);
+      expect(win.webContents.send).toHaveBeenCalledWith("zipkit:events", [recorded, recorded]);
+      // A new run shows none of the last run's counts.
+      expect(win.webContents.send).toHaveBeenCalledWith("zipkit:counts", [{ jobId: "job-1", counts: null }]);
     }
   });
 

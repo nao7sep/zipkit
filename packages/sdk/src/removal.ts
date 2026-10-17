@@ -7,6 +7,7 @@
  */
 
 import path from "node:path";
+import { ReadError } from "./errors.js";
 import { sameFile } from "./paths.js";
 import type { Volume } from "./internal/volume.js";
 import type { PathState, PlannedEntry, RemovalCheck, SourceComparison, Unarchived } from "./types.js";
@@ -66,7 +67,9 @@ export interface RemovalSteps {
  * Run the checks in order and stop at the first that refuses. A check that
  * cannot finish refuses too, naming its step, so this never throws for one.
  * `fingerprint`, when given, is the archive as it was made or last verified:
- * another file at its path refuses with `replaced`.
+ * another file at its path, or none, refuses with `replaced`. Once every check
+ * passed, the archive is looked at again, since the fresh scan can take
+ * minutes: a file moved, deleted or replaced meanwhile refuses with `replaced`.
  */
 export async function checkRemoval(
   steps: RemovalSteps,
@@ -76,9 +79,12 @@ export async function checkRemoval(
 ): Promise<RemovalCheck> {
   const refuse = (refusal: NonNullable<RemovalCheck["refusal"]>, verified: RemovalCheck["verified"] = null): RemovalCheck =>
     ({ refusal, verified });
-  let seen: PathState | null = null;
-  try { seen = await steps.state(); } catch { /* unknown: verify says whether the archive is there */ }
-  if (fingerprint !== undefined && (seen?.kind !== "present" || !sameFile(seen.fingerprint, fingerprint))) return refuse({ reason: "replaced" });
+  let seen: PathState;
+  try { seen = await steps.state(); } catch (error) { return refuse({ reason: "error", step: "state", error }); }
+  if (fingerprint !== undefined) {
+    if (seen.kind === "unavailable") return refuse({ reason: "error", step: "state", error: unreachable() });
+    if (seen.kind !== "present" || !sameFile(seen.fingerprint, fingerprint)) return refuse({ reason: "replaced" });
+  }
   try {
     if (await steps.inside()) return refuse({ reason: "inside" });
   } catch (error) {
@@ -89,14 +95,26 @@ export async function checkRemoval(
   } catch (error) {
     return refuse({ reason: "error", step: "verify", error });
   }
-  const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
+  // What verified is the file seen before verify; a file that is not there
+  // cannot verify, so it is.
+  const before = seen.kind === "present" ? seen.fingerprint : null;
+  const verified = { fingerprint: before };
   try {
     const comparison = explainRemoved(await steps.compare(), inputs, removed);
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
   } catch (error) {
     return refuse({ reason: "error", step: "recheck", error }, verified);
   }
+  let after: PathState;
+  try { after = await steps.state(); } catch (error) { return refuse({ reason: "error", step: "state", error }, verified); }
+  if (after.kind === "unavailable") return refuse({ reason: "error", step: "state", error: unreachable() }, verified);
+  if (after.kind !== "present" || before === null || !sameFile(after.fingerprint, before)) return refuse({ reason: "replaced" }, verified);
   return { refusal: null, verified };
+}
+
+/** The error a lookup that found the archive's drive out of reach refuses with. */
+function unreachable(): ReadError {
+  return new ReadError("read.open-failed", "the archive is out of reach: its drive is not connected or cannot be read");
 }
 
 /** What removing the originals `plan` was made from would take without a

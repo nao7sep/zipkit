@@ -73,6 +73,37 @@ An excluded `PlannedEntry` carries one `excludeCode`:
 | `symlink` | A link under `symlinks: "ignore"` (`entry.symlink`) |
 | `unsupported` | Something a ZIP cannot hold (`entry.unsupported`) |
 
+## Removal refusals
+
+`checkRemoval` answers with a `refusal`, null when the originals can go:
+
+| `reason` | Why the originals may not be removed |
+| --- | --- |
+| `replaced` | The archive at its path is not the one expected, or is gone: when the checks began (given a `fingerprint`), or once they had passed |
+| `inside` | The archive sits at or inside an input, so removing that input would take the archive with it |
+| `verify-failed` | The archive does not verify against its manifest |
+| `changed` | The inputs no longer match the manifest; `comparison` says how and where |
+| `error` | A check could not finish; `step` says which and `error` with what |
+
+| `step` | The check that could not finish |
+| --- | --- |
+| `state` | Looking at the archive, before the checks or after them |
+| `location` | Whether the archive sits inside an input |
+| `verify` | Verifying the archive against its manifest |
+| `recheck` | The fresh scan of the inputs |
+
+## Path kinds
+
+`classify` says what each path is (`PathKind`):
+
+| Kind | |
+| --- | --- |
+| `directory` | A folder |
+| `file` | A file |
+| `other` | Something else: a socket, a device, a link whose target is gone |
+| `missing` | Nothing is there |
+| `unavailable` | Out of reach: a drive that is not connected, or a path that cannot be read |
+
 ## Error codes
 
 Each error's `errorType` says which class it is; its `code` says what happened.

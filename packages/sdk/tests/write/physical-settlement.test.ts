@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { ZipKit } from "../../src/zipkit.js";
-import { nodeFileSystem, Volume, volumeWorkPending, type FileSystemPort } from "../../src/internal/volume.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.js";
+import { settledNow } from "../helpers/volume.js";
 
 function gate() {
   let release!: () => void;
@@ -85,7 +86,7 @@ it("write delivers its settlement observer before rejection and retains a late c
     expect(settlement).toBeDefined();
     expect(settled).toBe(false);
     expect(existsSync(output)).toBe(false);
-    expect(volumeWorkPending()).toBe(true);
+    expect(await settledNow(volumes)).toBe(false);
 
     open.release();
     await closing.promise;
@@ -94,14 +95,14 @@ it("write delivers its settlement observer before rejection and retains a late c
     await vi.advanceTimersByTimeAsync(50);
     expect(settled).toBe(false);
     expect(removed).toBe(false);
-    expect(volumeWorkPending()).toBe(true);
+    expect(await settledNow(volumes)).toBe(false);
 
     close.release();
     vi.useRealTimers();
     await settlement;
     expect(settled).toBe(true);
     expect(removed).toBe(true);
-    expect(volumeWorkPending()).toBe(false);
+    expect(await settledNow(volumes)).toBe(true);
     expect(existsSync(output)).toBe(false);
     expect(await readFile(input, "utf8")).toBe("complete source");
   } finally {
@@ -132,7 +133,6 @@ it("create delivers a settled observer before returning a successful archive", a
     await settlement;
     expect(result.output).toBe(output);
     expect(existsSync(output)).toBe(true);
-    expect(volumeWorkPending()).toBe(false);
     expect((await zip.extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
   } finally {
     await settlement;

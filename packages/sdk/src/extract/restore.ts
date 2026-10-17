@@ -75,11 +75,14 @@ export function restoreTimes(entry: ReadEntry, timeZone: string): RestoreTimes {
   }
 
   // DOS field: local wall-clock, no zone — interpret it in the configured zone.
+  // Some writers store a date of 0 for a file with no known time; a month or
+  // day of 0 reads as the first, so it means 1 January 1980, the field's
+  // earliest, rather than rolling back into 1979.
   const ms = instantFromWallClockInZone(
     {
       year: ((entry.dosDate >> 9) & 0x7f) + 1980,
-      month: (entry.dosDate >> 5) & 0x0f,
-      day: entry.dosDate & 0x1f,
+      month: Math.max(1, (entry.dosDate >> 5) & 0x0f),
+      day: Math.max(1, entry.dosDate & 0x1f),
       hour: (entry.dosTime >> 11) & 0x1f,
       minute: (entry.dosTime >> 5) & 0x3f,
       second: (entry.dosTime & 0x1f) * 2,

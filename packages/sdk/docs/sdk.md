@@ -50,7 +50,7 @@ Give the full path as `output`, or a folder and a name as `outputDir` and `outpu
 | `{ inputs: ["/a/site"], outputName: "delivery" }` | `/a/delivery.zip` |
 | `{ inputs: ["/a/site"], output: "/out/x.zip" }` | `/out/x.zip` |
 
-`.zip` is added once when the name lacks it, and an input already named `foo.zip` gives `foo.zip.zip`, never itself. Inputs in different folders need an `output`, an `outputDir` or an `outputName` (`output.ambiguous`). An existing archive blocks the plan with `output.exists` unless `overwrite: true`.
+`.zip` is added once when the name lacks it. An inferred name never lands on an input: one an input already has beside it, as a case-insensitive file system sees it, gains another `.zip` (`foo.zip` gives `foo.zip.zip`), and a root such as `/` or `D:\`, which has no name, gives `archive.zip`. On Windows, an `outputName` it cannot create as written (`:`, `?`, `CON` and the like) is refused with `spec.invalid`. Inputs in different folders need an `output`, an `outputDir` or an `outputName` (`output.ambiguous`). An existing archive blocks the plan with `output.exists` unless `overwrite: true`.
 
 ### What goes in
 
@@ -132,7 +132,7 @@ if (check.refusal === null) {
 }
 ```
 
-It checks in order that the archive is the one you made (when you pass its `fingerprint` from `pathState`), that it does not sit inside an input, that it verifies against its manifest, and that a fresh scan of the inputs still matches the manifest (`changed` carries the `comparison`: what was added, is missing, changed or could not be read). A check that cannot finish, on a stalled drive say, refuses with its `step` and `error` rather than throwing. Pass inputs an earlier partial removal already took as `removed`, so what the archive holds from them is not counted as missing. ZipKit removes nothing itself; the Trash and permanent deletion are the app's.
+It checks in order that the archive is the one you made (when you pass its `fingerprint` from `pathState`), that it does not sit inside an input, that it verifies against its manifest, and that a fresh scan of the inputs still matches the manifest (`changed` carries the `comparison`: what was added, is missing, changed or could not be read, and in `onDisk` where each is or was). The scan can take minutes, so once every check has passed the archive is looked at again: a file moved, deleted or replaced meanwhile refuses with `replaced`. A check that cannot finish, on a stalled drive say, refuses with its `step` (`state`, the look at the archive; `location`; `verify`; `recheck`) and `error` rather than throwing; a mistaken call (a spec, `removed` or `fingerprint` that is not valid) throws a `PolicyError`. Pass inputs an earlier partial removal already took as `removed`, so what the archive holds from them is not counted as missing. ZipKit removes nothing itself; the Trash and permanent deletion are the app's.
 
 `unarchived(plan)` says what the removal would take without a copy in the archive: the items left out (`excluded`, each with its `diskPath`; a duplicate is not one) and the folders that could not be read (`unlisted`). Show it before asking the user to confirm.
 
@@ -154,10 +154,10 @@ await zip.create(spec, {
 ```
 
 - `onEvent` receives the structured event stream: `scan.start`, `plan.done`, `entry.flagged`, `write.done`, `extract.done`, `fault` and the rest, each with `stage`, `level`, `time` and `message`. `debug` events (one per entry) arrive only when the instance is built with `debug: true`.
-- `onProgress` receives counts during `write`, `create` and `extract`: at the start, at most every 100 ms, and at the end.
+- `onProgress` receives counts during `write`, `create`, `extract` and the verify inside `checkRemoval`: at the start, at most every 100 ms, when the entries are done, and at the end. A write and a read count every entry the archive holds, the manifest included; a write counts the content's bytes as on disk, a read the uncompressed bytes of every entry.
 - `signal` cancels at the next boundary and rejects with `AbortError`; a cancelled write leaves no archive behind.
 
-Neither hook can break the verb: what it throws is ignored. With `logDir` the instance also keeps a session log, one JSON Lines file per instance, and each result's `log` names it.
+Neither hook can break the verb: what it throws, or the promise an `async` hook returns rejects with, is ignored. With `logDir` the instance also keeps a session log, one JSON Lines file per instance, and each result's `log` names it.
 
 ## Errors
 
@@ -216,7 +216,7 @@ Claims compare physical files, so a link, a folder alias or a name that differs 
 | `pathState(path, { signal? })` | `PathState` |
 | `classify(paths, { signal? })` | `PathEntry[]` |
 | `pathResources(paths, { signal? })` | `PathResource[]` |
-| `volume(signal?)` | the SDK's bounded file access, for a caller that must look at the same volumes |
+| `volume(signal?)` | the bounded file access each call runs on: the seam a test overrides (see `zipkit/testing`) |
 
 ### Entries
 
@@ -224,7 +224,7 @@ Claims compare physical files, so a link, a folder alias or a name that differs 
 | --- | --- |
 | `zipkit` | Everything on this page |
 | `zipkit/types` | The types alone, for code that must not load Node modules, such as a browser window showing results |
-| `zipkit/testing` | `Volume`, `nodeFileSystem` and `FileSystemPort`, for tests that make the SDK meet a failing disk: build a `Volume` over a port whose calls fail or never answer, and return it from an overridden `ZipKit.volume` |
+| `zipkit/testing` | `Volume`, `nodeFileSystem`, `FileSystemPort`, `FileHandlePort` and `DirEntry`, for tests that make the SDK meet a failing disk: build a `Volume` over a port whose calls fail or never answer, and return it from an overridden `ZipKit.volume` |
 
 ### Functions and constants
 

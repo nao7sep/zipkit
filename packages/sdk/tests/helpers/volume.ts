@@ -108,3 +108,12 @@ export function fileSystemWith(path: string, wrap: (handle: PortHandle) => PortH
     },
   };
 }
+
+/** Whether every volume's physical work has settled, as of the next turn: the
+ *  calls a run abandoned, and their late cleanup, are still running until then. */
+export async function settledNow(volumes: readonly Volume[]): Promise<boolean> {
+  let done = false;
+  void Promise.all(volumes.map((volume) => volume.whenSettled())).then(() => { done = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  return done;
+}

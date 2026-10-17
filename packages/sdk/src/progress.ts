@@ -5,6 +5,7 @@
  * chunk. The observer cannot break the verb.
  */
 
+import { observe } from "./internal/observe.js";
 import type { ProgressCounts } from "./types.js";
 
 /** How often a running count is reported, at most. */
@@ -42,6 +43,12 @@ export class Meter {
     if (this.#now() - this.#last >= INTERVAL_MS) this.#report();
   }
 
+  /** The entries are done, though the run is not: report now, unthrottled,
+   *  rather than leave the bar short through the last steps. */
+  flush(): void {
+    this.#report();
+  }
+
   /** The run finished: report where it ended. */
   finish(): void {
     this.#report();
@@ -50,7 +57,8 @@ export class Meter {
   #report(): void {
     if (this.#sink === undefined) return;
     this.#last = this.#now();
-    try { this.#sink({ ...this.#counts }); }
-    catch { /* Like an event sink, the observer cannot break the verb. */ }
+    const sink = this.#sink;
+    const counts = { ...this.#counts };
+    observe(() => sink(counts));
   }
 }
