@@ -4,13 +4,13 @@
  * is out of reach and never taken for a deletion.
  */
 
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mountPointOf, pathState, sameFile } from "../../../src/gui/main/path-state.js";
-import { classifyPaths } from "../../../src/gui/main/inputs.js";
-import { nodeFileSystem, Volume } from "../../../src/sdk/internal/volume.js";
+import { classifyPaths, mountPointOf, pathState, sameFile } from "../../src/sdk/paths.js";
+import { ZipKit } from "../../src/sdk/index.js";
+import { nodeFileSystem, Volume } from "../../src/sdk/internal/volume.js";
 
 const volume = new Volume(nodeFileSystem, 30_000);
 let root: string;
@@ -65,15 +65,24 @@ describe("pathState", () => {
 });
 
 describe("classifyPaths", () => {
-  it("classifies an input on a drive that is not connected as out of reach, and a deleted one as missing", async () => {
+  it("classifies each path in order: a folder, a file, a link whose target is gone, a missing path, and one on a drive that is not connected", async () => {
     const file = path.join(root, "a.txt");
     await writeFile(file, "x");
-    const gone = path.join(root, "gone.txt");
-    const entries = await classifyPaths([file, gone, "/Volumes/ZipKitNoSuchDrive/a.txt"], volume);
-    expect(entries.map((entry) => entry.kind)).toEqual([
-      "file",
-      "nonexistent",
-      process.platform === "darwin" ? "unavailable" : "nonexistent",
-    ]);
+    const folder = path.join(root, "folder");
+    await mkdir(folder);
+    const link = path.join(root, "dangling");
+    await symlink(path.join(root, "nowhere"), link);
+    const entries = await classifyPaths([folder, file, link, path.join(root, "gone.txt"), "/Volumes/ZipKitNoSuchDrive/a.txt"], volume, "darwin");
+    expect(entries.map((entry) => entry.kind)).toEqual(["directory", "file", "other", "missing", "unavailable"]);
+    expect(await classifyPaths([], volume)).toEqual([]);
+  });
+
+  it("is what ZipKit.classify and ZipKit.pathState answer", async () => {
+    const file = path.join(root, "a.txt");
+    await writeFile(file, "x");
+    const zip = new ZipKit();
+    expect(await zip.classify([file])).toEqual([{ path: file, kind: "file" }]);
+    expect((await zip.pathState(file)).kind).toBe("present");
+    expect(await zip.pathState(path.join(root, "gone"))).toEqual({ kind: "gone" });
   });
 });

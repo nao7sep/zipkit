@@ -61,7 +61,7 @@ describe("the SDK host", () => {
     expect(await sdk.call("recheck", [plan.output, [input], { ...DEFAULT_OPTIONS }])).toMatchObject({ matches: false });
     expect(await sdk.call("classify", [[input, path.join(root, "gone")]])).toEqual([
       { path: input, kind: "directory" },
-      { path: path.join(root, "gone"), kind: "nonexistent" },
+      { path: path.join(root, "gone"), kind: "missing" },
     ]);
     const [resource] = await sdk.call("resources", [[plan.output]]);
     expect(resource).toMatchObject({ location: expect.stringContaining("docs.zip"), identity: expect.any(String) });

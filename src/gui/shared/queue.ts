@@ -5,7 +5,7 @@
  * renderer fetches for the selected job via `getPlan`.
  */
 
-import type { PlanSummary, Severity } from "../../sdk/types.js";
+import type { PathEntry, PathKind as SdkPathKind, PlanSummary, Severity } from "../../sdk/types.js";
 import type { GuiOptions } from "./spec.js";
 import type { Message } from "./i18n/translate.js";
 
@@ -38,21 +38,12 @@ export function sameIntent(a: JobIntent, b: JobIntent): boolean {
   return a.verify === b.verify && a.originals === b.originals;
 }
 
-/**
- * What an input path is on disk, for the GUI's job-management UX (the label, the
- * input list, gating "move originals to Trash"). This is filesystem plumbing —
- * how a job is assembled — not ZIP-codec concern, so it lives GUI-side, not in
- * the SDK. The union is intentionally open to extension (e.g. "symlink") later.
- */
-/** What an input is on disk. `unavailable` is out of reach, never gone: its
- *  drive is not connected or it cannot be read, so nothing is decided on it. */
-export type PathKind = "directory" | "file" | "nonexistent" | "other" | "unavailable";
-
-/** An input path classified by what it currently is on disk. */
-export interface InputEntry {
-  path: string;
-  kind: PathKind;
-}
+/** What an input is on disk, and an input with it: the SDK's own `PathKind`
+ *  and `PathEntry` (see `ZipKit.classify`). `unavailable` is out of reach, never
+ *  gone: its drive is not connected or it cannot be read, so nothing is decided
+ *  on it. */
+export type PathKind = SdkPathKind;
+export type InputEntry = PathEntry;
 
 /**
  * - `planning` — being (re)planned.
@@ -91,7 +82,7 @@ export function isEditable(job: Pick<Job, "state" | "archiveWritten">): boolean 
  *  there). Moving the archive to Trash is offered only then, since its
  *  confirmation promises the originals are kept; one rule for both sides. */
 export function originalsIntact(job: Pick<Job, "entries">): boolean {
-  return job.entries?.every((entry) => entry.kind !== "nonexistent" && entry.kind !== "unavailable") ?? true;
+  return job.entries?.every((entry) => entry.kind !== "missing" && entry.kind !== "unavailable") ?? true;
 }
 
 /** Whether an input is on disk now, as last classified. */
@@ -130,7 +121,7 @@ export interface JobHistoryEntry {
 export interface Job {
   id: string;
   inputs: string[];
-  /** `inputs` classified on disk (dir/file/nonexistent), kept in step with
+  /** `inputs` classified on disk (dir/file/missing), kept in step with
    *  `inputs` by the engine. Absent only in the brief window before the first
    *  classification resolves. */
   entries?: InputEntry[];

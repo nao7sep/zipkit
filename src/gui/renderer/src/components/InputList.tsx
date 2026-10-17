@@ -36,13 +36,13 @@ import { message } from "../../../shared/i18n/translate";
 const KIND_LABEL: Record<PathKind, MessageKey> = {
   directory: "inputs.directory",
   file: "inputs.file",
-  nonexistent: "inputs.missing",
+  missing: "inputs.missing",
   unavailable: "inputs.unavailable",
   other: "inputs.other",
 };
 
 function kindColor(kind: PathKind): string {
-  if (kind === "nonexistent") return COLOR.bad;
+  if (kind === "missing") return COLOR.bad;
   if (kind === "other" || kind === "unavailable") return COLOR.warn;
   return "var(--text-2)";
 }

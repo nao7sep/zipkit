@@ -64,7 +64,7 @@ export type JobCount = { text: string; severity?: "warning" | "error" };
 const COUNT_KEYS: Record<PathKind, MessageKey> = {
   directory: "jobs.countFolders",
   file: "jobs.countFiles",
-  nonexistent: "jobs.countMissing",
+  missing: "jobs.countMissing",
   unavailable: "jobs.countUnavailable",
   other: "jobs.countOther",
 };
@@ -83,7 +83,7 @@ export function jobCounts(job: Job, t: Translator): JobCount[] {
     if (summary.excluded > 0) counts.push({ text: t.t("jobs.countExcluded", { count: summary.excluded }) });
   }
   if (job.entries && job.entries.length > 0) {
-    for (const kind of ["directory", "file", "nonexistent", "unavailable", "other"] as const) {
+    for (const kind of ["directory", "file", "missing", "unavailable", "other"] as const) {
       const count = job.entries.filter((entry) => entry.kind === kind).length;
       if (count > 0) counts.push({ text: t.t(COUNT_KEYS[kind], { count }) });
     }
@@ -104,7 +104,7 @@ export function originalsPresent(job: Job): boolean {
 /** Display order for the input list: directories first, then files, then anything
  *  else (other / missing) last; within each group, full paths sorted alphabetically
  *  (case-insensitive). Pure, so the order is testable without a DOM. */
-const KIND_RANK: Record<PathKind, number> = { directory: 0, file: 1, other: 2, nonexistent: 3, unavailable: 4 };
+const KIND_RANK: Record<PathKind, number> = { directory: 0, file: 1, other: 2, missing: 3, unavailable: 4 };
 export function orderedEntries(entries: InputEntry[]): InputEntry[] {
   return [...entries].sort((a, b) => {
     const byKind = KIND_RANK[a.kind] - KIND_RANK[b.kind];
@@ -342,7 +342,7 @@ export function jobAdvisories(job: Job, t: Translator): ReportLine[] {
   // Before a run, an input that went or is out of reach is worth saying at
   // once; after one, the history says what happened to the originals.
   if (job.state !== "done" && job.state !== "failed" && job.state !== "running") {
-    const missing = job.entries?.filter((entry) => entry.kind === "nonexistent").length ?? 0;
+    const missing = job.entries?.filter((entry) => entry.kind === "missing").length ?? 0;
     const unavailable = job.entries?.filter((entry) => entry.kind === "unavailable").length ?? 0;
     if (missing > 0) lines.push({ level: "warning", text: t.t("report.inputMissing", { count: missing }) });
     if (unavailable > 0) lines.push({ level: "warning", text: t.t("report.inputUnavailable", { count: unavailable }) });

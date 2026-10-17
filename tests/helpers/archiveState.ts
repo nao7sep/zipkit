@@ -3,9 +3,8 @@
  * answers, on the real volume.
  */
 
-import { nodeFileSystem, Volume } from "../../src/sdk/internal/volume.js";
-import { pathState, type PathState } from "../../src/gui/main/path-state.js";
+import { ZipKit, type PathState } from "../../src/sdk/index.js";
 
 export function realPathState(target: string): Promise<PathState> {
-  return pathState(target, new Volume(nodeFileSystem, 30_000));
+  return new ZipKit().pathState(target);
 }

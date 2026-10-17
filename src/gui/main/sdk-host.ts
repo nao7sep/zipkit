@@ -11,16 +11,14 @@
  */
 
 import { rm } from "node:fs/promises";
-import { exportPlan, importPlan, ZipKit, type PlanTransfer } from "../../sdk/index.js";
+import { exportPlan, importPlan, ZipKit, type PathState, type PlanTransfer } from "../../sdk/index.js";
 import type { LogEvent, SourceComparison } from "../../sdk/types.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
 import { fileResources, type FileResource } from "./archive-effects.js";
-import { classifyPaths } from "./inputs.js";
 import { resolveOutputPath } from "./output.js";
 import { outputInsideInputs } from "./safety.js";
-import { pathState, type PathState } from "./path-state.js";
 import { storageRoot } from "./storage.js";
 
 export interface SdkOps {
@@ -82,7 +80,7 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     resources: (paths: string[]) => (signal) => fileResources(paths, zip.volume(signal)),
     // What is at a path now: there with a comparable fingerprint, gone, or
     // out of reach on a drive that is not connected.
-    pathState: (target: string) => (signal) => pathState(target, zip.volume(signal)),
+    pathState: (target: string) => (signal) => zip.pathState(target, { signal }),
     plan: (inputs: string[], options: GuiOptions) => async (signal, onProgress) => {
       const spec = buildSpec(inputs, options);
       const output = await resolveOutputPath(options.outputDir, options.fileName, inputs, zip.volume(signal));
@@ -122,7 +120,7 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       spec.output = output;
       return zip.compareSources(spec, output, { signal, onProgress });
     },
-    classify: (paths: string[]) => (signal) => classifyPaths(paths, zip.volume(signal)),
+    classify: (paths: string[]) => (signal) => zip.classify(paths, { signal }),
     outputInsideInputs: (output: string, inputs: string[]) => (signal) =>
       outputInsideInputs(output, inputs, zip.volume(signal)),
   };

@@ -41,6 +41,7 @@ import {
 import { compareWithManifest } from "./compare/sources.js";
 import { extractArchive, readManifest } from "./extract/extract.js";
 import { readInternals } from "./internal/carrier.js";
+import { classifyPaths, pathState } from "./paths.js";
 import { nodeFileSystem, Volume } from "./internal/volume.js";
 import { planArchive } from "./plan/plan.js";
 import { METADATA_DEFAULTS, resolvePolicy } from "./policy.js";
@@ -68,6 +69,8 @@ import type {
   ExtractSpec,
   LogStage,
   SourceComparison,
+  PathEntry,
+  PathState,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.js";
@@ -264,6 +267,21 @@ export class ZipKit {
    */
   volume(signal?: AbortSignal): Volume {
     return new Volume(nodeFileSystem, this.#ioTimeoutMs, signal);
+  }
+
+  /**
+   * What is at a path now: there with a fingerprint, gone, or out of reach on a
+   * drive that is not connected or a path that cannot be read. Compare two
+   * fingerprints with `sameFile` to tell a file rewritten in place from another
+   * file put in its place. Bounded like every look at a user volume.
+   */
+  pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
+    return pathState(target, this.volume(options.signal));
+  }
+
+  /** What each path is on disk now, in order (see `PathKind`). */
+  classify(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
+    return classifyPaths(paths, this.volume(options.signal));
   }
 
   /** The instance's session log, opened lazily on first use so an instance that

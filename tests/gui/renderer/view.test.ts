@@ -87,7 +87,7 @@ describe("label", () => {
     expect(label(j, en)).toBe("docs");
     expect(label(job({ inputs: ["/x/report.pdf", "/x/gone.txt"], entries: [
       { path: "/x/report.pdf", kind: "file" },
-      { path: "/x/gone.txt", kind: "nonexistent" },
+      { path: "/x/gone.txt", kind: "missing" },
     ] }), en)).toBe("report.pdf");
   });
   it("uses the order the inputs were added before they are classified", () => {
@@ -110,7 +110,7 @@ describe("jobCounts", () => {
         { path: "/f", kind: "file" },
         { path: "/s", kind: "other" },
         { path: "/d", kind: "directory" },
-        { path: "/g", kind: "nonexistent" },
+        { path: "/g", kind: "missing" },
         { path: "/e", kind: "directory" },
       ],
     }))).toEqual(["2 folders", "1 file", "1 missing", "1 other"]);
@@ -146,7 +146,7 @@ describe("orderedEntries", () => {
     const entries = [
       { path: "/z/file-b.txt", kind: "file" as const },
       { path: "/a/dir-b", kind: "directory" as const },
-      { path: "/gone", kind: "nonexistent" as const },
+      { path: "/gone", kind: "missing" as const },
       { path: "/a/dir-a", kind: "directory" as const },
       { path: "/a/file-a.txt", kind: "file" as const },
     ];
@@ -197,10 +197,10 @@ describe("outputPreview", () => {
 describe("originalsPresent", () => {
   it("is true when any input still exists, false when all are gone", () => {
     expect(
-      originalsPresent(job({ entries: [{ path: "/a", kind: "nonexistent" }, { path: "/b", kind: "file" }] })),
+      originalsPresent(job({ entries: [{ path: "/a", kind: "missing" }, { path: "/b", kind: "file" }] })),
     ).toBe(true);
     expect(
-      originalsPresent(job({ entries: [{ path: "/a", kind: "nonexistent" }] })),
+      originalsPresent(job({ entries: [{ path: "/a", kind: "missing" }] })),
     ).toBe(false);
   });
   it("assumes present when not yet classified", () => {
@@ -219,7 +219,7 @@ describe("jobCommands", () => {
     const gone = job({
       state: "done",
       intent: SAVE,
-      entries: [{ path: "/a", kind: "nonexistent" }],
+      entries: [{ path: "/a", kind: "missing" }],
     });
     expect(jobCommands(gone)).not.toContain("trash-originals");
   });
@@ -411,7 +411,7 @@ describe("reportSummary", () => {
 describe("jobAdvisories", () => {
   it("says before a run that an input went or is out of reach, and leaves a finished job to its history", () => {
     const entries = [
-      { path: "/a", kind: "nonexistent" as const },
+      { path: "/a", kind: "missing" as const },
       { path: "/b", kind: "unavailable" as const },
       { path: "/c", kind: "file" as const },
     ];
@@ -870,7 +870,7 @@ describe("jobCommands", () => {
     expect(done("verified")).toContain("reveal");
     expect(done("changed")).toContain("verify");
     const trashed = (archiveStatus: Job["archiveStatus"]) =>
-      jobCommands(job({ state: "done", intent: TRASH, archiveStatus, entries: [{ path: "/a", kind: "nonexistent" }] }));
+      jobCommands(job({ state: "done", intent: TRASH, archiveStatus, entries: [{ path: "/a", kind: "missing" }] }));
     expect(trashed("verified")).toEqual(["reveal"]);
     expect(trashed("missing")).toEqual([]);
     expect(trashed("unavailable")).toEqual([]);
@@ -938,17 +938,17 @@ describe("jobCommands", () => {
     ).toEqual(["verify", "reveal", "remove-archive", "trash-originals", "delete-originals"]);
     // Once an original is gone the archive is no longer redundant, so it is not offered to Trash.
     expect(
-      jobCommands(job({ state: "done", intent: SAVE, entries: [{ path: "/a", kind: "file" }, { path: "/b", kind: "nonexistent" }] })),
+      jobCommands(job({ state: "done", intent: SAVE, entries: [{ path: "/a", kind: "file" }, { path: "/b", kind: "missing" }] })),
     ).toEqual(["verify", "reveal", "trash-originals", "delete-originals"]);
-    expect(jobCommands(job({ state: "done", intent: SAVE, entries: [{ path: "/a", kind: "nonexistent" }] }))).toEqual(["verify", "reveal"]);
+    expect(jobCommands(job({ state: "done", intent: SAVE, entries: [{ path: "/a", kind: "missing" }] }))).toEqual(["verify", "reveal"]);
     expect(jobCommands(job({ state: "done", intent: TRASH }))).toEqual(["verify", "reveal"]);
     expect(jobCommands(job({ state: "done", intent: DELETE }))).toEqual(["verify", "reveal"]);
   });
 
   it("on a failed run with its archive written, keeps the archive when the run deleted some originals", () => {
     const failed = { state: "failed" as const, archiveWritten: true };
-    expect(jobCommands(job({ ...failed, intent: TRASH, entries: [{ path: "/a", kind: "nonexistent" }] }))).toEqual(["retry", "reveal", "remove-archive"]);
-    expect(jobCommands(job({ ...failed, intent: DELETE, entries: [{ path: "/a", kind: "nonexistent" }] }))).toEqual(["retry", "reveal"]);
+    expect(jobCommands(job({ ...failed, intent: TRASH, entries: [{ path: "/a", kind: "missing" }] }))).toEqual(["retry", "reveal", "remove-archive"]);
+    expect(jobCommands(job({ ...failed, intent: DELETE, entries: [{ path: "/a", kind: "missing" }] }))).toEqual(["retry", "reveal"]);
     expect(jobCommands(job({ ...failed, intent: DELETE, entries: [{ path: "/a", kind: "file" }] }))).toEqual(["retry", "reveal", "remove-archive"]);
   });
 });

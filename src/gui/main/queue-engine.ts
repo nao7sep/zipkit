@@ -45,7 +45,7 @@ import { message, sentences, type Message, type MessageValues } from "../shared/
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
 import { createArchiveEffects, type EffectClaim, type FileResource } from "./archive-effects.js";
-import { sameFile, type PathState } from "./path-state.js";
+import { sameFile, type PathState } from "../../sdk/index.js";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -76,7 +76,7 @@ export interface EngineDeps {
     signal: AbortSignal,
     onProgress: (e: LogEvent) => void,
   ): Promise<SourceComparison>;
-  /** Classify input paths on disk (dir/file/nonexistent) for the job's `entries`. */
+  /** Classify input paths on disk (dir/file/missing) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
   /** Move each path independently to the OS Trash and report the exact outcome.
    *  Bounded and cancellable like `plan`/`write`/`verify`: a path not yet started
@@ -392,7 +392,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.fingerprint = null;
     const entries = rec.job.entries;
     const originalsGone = entries
-      ? entries.some((entry) => entry.kind === "nonexistent")
+      ? entries.some((entry) => entry.kind === "missing")
       : rec.job.state === "done" && removesOriginals(rec.job.intent);
     deps.log.warn(how === "gone" ? "archive missing" : "archive replaced", { jobId: id, output, originalsGone });
     if (originalsGone) {
@@ -723,7 +723,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           return;
         }
         set(rec, { entries });
-        inputs = entries.filter((e) => e.kind !== "nonexistent").map((e) => e.path);
+        inputs = entries.filter((e) => e.kind !== "missing").map((e) => e.path);
       } else {
         const written = await writeStage(rec, signal, onProgress);
         if (!written) return;
@@ -1173,7 +1173,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             // left out of the recheck as well, so what was archived from them
             // is not read as missing; what remains must still match.
             const inputs = rec.job.entries!.filter(present).map((entry) => entry.path);
-            const gone = rec.job.entries!.filter((entry) => entry.kind === "nonexistent").map((entry) => entry.path);
+            const gone = rec.job.entries!.filter((entry) => entry.kind === "missing").map((entry) => entry.path);
             claim = await claimFiles([output], inputs, aborter.signal);
             const refusal = await checkBeforeTrash(rec, output, inputs, aborter.signal, progressFor(id, method), gone);
             if (aborter.signal.aborted) {

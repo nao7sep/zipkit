@@ -1,20 +1,17 @@
 /**
- * What is at a path, as ZipKit must tell it apart: there (with a comparable
- * fingerprint), gone, or out of reach. A path is out of reach, never gone,
- * when the drive that holds it is not connected or the path cannot be read, so
- * an ejected drive or a permission change is never taken for a deletion. The
- * drive rule is pure given the platform, so it unit-tests without one; the
- * look-ups use the SDK's bounded volume.
+ * What is at a path, as an app must tell it apart before acting on it: there
+ * (with a comparable fingerprint), gone, or out of reach. A path is out of
+ * reach, never gone, when the drive that holds it is not connected or the path
+ * cannot be read, so an ejected drive or a permission change is never taken for
+ * a deletion. Inputs are classified the same way. The drive rule is pure given
+ * the platform, so it unit-tests without one; every look-up uses the bounded
+ * `Volume`, so a stalled drive rejects rather than hangs.
  */
 
 import path from "node:path";
-import type { Volume } from "../../sdk/index.js";
-import { ZipKitError } from "../../sdk/index.js";
-
-export type PathState =
-  | { kind: "present"; fingerprint: string }
-  | { kind: "gone" }
-  | { kind: "unavailable" };
+import { ZipKitError } from "./errors.js";
+import type { Volume } from "./internal/volume.js";
+import type { PathEntry, PathKind, PathState } from "./types.js";
 
 /** The folder a removable or network drive is mounted at, for a path on one,
  *  or the drive root on Windows; null for a path on the system drive. A path
@@ -64,4 +61,24 @@ export async function pathState(target: string, volume: Volume, platform: NodeJS
 /** Whether two fingerprints name the same file, whatever its content. */
 export function sameFile(a: string, b: string): boolean {
   return a.split(":").slice(0, 2).join(":") === b.split(":").slice(0, 2).join(":");
+}
+
+/** What each path is on disk now, in order: a folder, a file, something else,
+ *  missing, or out of reach. A vanished path is reported, never dropped. */
+export async function classifyPaths(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform): Promise<PathEntry[]> {
+  return Promise.all(paths.map(async (target): Promise<PathEntry> => {
+    const state = await pathState(target, volume, platform);
+    if (state.kind === "gone") return { path: target, kind: "missing" };
+    if (state.kind === "unavailable") return { path: target, kind: "unavailable" };
+    let kind: PathKind = "missing";
+    try {
+      const st = await volume.stat(target);
+      kind = st.isDirectory() ? "directory" : st.isFile() ? "file" : "other";
+    } catch (err) {
+      if (err instanceof ZipKitError) throw err;
+      // There, but what it points at is not: a link whose target is gone.
+      kind = "other";
+    }
+    return { path: target, kind };
+  }));
 }

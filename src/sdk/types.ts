@@ -284,6 +284,25 @@ export type ExtractRuleId =
 /** Every rule a finding can carry. */
 export type FindingRule = RuleId | ExtractRuleId;
 
+/** What is at a path now: there, with a fingerprint that changes with its
+ *  content and tells one file from another (`sameFile`); gone; or out of reach,
+ *  on a drive that is not connected or a path that cannot be read — never taken
+ *  for gone. */
+export type PathState =
+  | { kind: "present"; fingerprint: string }
+  | { kind: "gone" }
+  | { kind: "unavailable" };
+
+/** What a path is on disk: a folder, a file, something else (a socket, a
+ *  device, a link whose target is gone), missing, or out of reach. */
+export type PathKind = "directory" | "file" | "other" | "missing" | "unavailable";
+
+/** A path and what it is on disk. */
+export interface PathEntry {
+  path: string;
+  kind: PathKind;
+}
+
 /**
  * Why an entry was left out of the archive, as a stable code an app can key on;
  * `excludeReason` beside it is the same in English words, which may change.
