@@ -142,6 +142,22 @@ describe("JobDetails", () => {
     expect(screen.queryByText("Nothing here needs a look.")).toBeNull();
   });
 
+  it("measures a write that reports how far it has got, by bytes, and sweeps a step that does not", () => {
+    render(<JobDetails job={job({ state: "running" })} plan={plan()} verify={null} events={[]} rowLimit={5}
+      counts={{ stage: "write", entriesDone: 3, entriesTotal: 12, bytesDone: 2_500_000, bytesTotal: 10_000_000 }} />);
+    const bar = screen.getByRole("progressbar", { name: "Working" });
+    expect(bar.getAttribute("aria-valuenow")).toBe("25");
+    expect(screen.getByText("Items 3 of 12 · 2.5 MB of 10 MB")).toBeTruthy();
+    cleanup();
+    render(<JobDetails job={job({ state: "running" })} plan={plan()} verify={null} events={[]} rowLimit={5} counts={null} />);
+    expect(screen.getByRole("progressbar", { name: "Working" }).hasAttribute("aria-valuenow")).toBe(false);
+    cleanup();
+    // Nothing is measured once the job is no longer working.
+    render(<JobDetails job={job({ state: "done" })} plan={plan()} verify={null} events={[]} rowLimit={5}
+      counts={{ stage: "extract", entriesDone: 1, entriesTotal: 1, bytesDone: 0, bytesTotal: 0 }} />);
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
   it("draws only the rows near the view of a list with thousands of rows", () => {
     show(plan(Array.from({ length: 5000 }, (_, i) => junk(`photos/${i}/.DS_Store`))));
     fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (5,000)" }));

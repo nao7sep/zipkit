@@ -7,7 +7,7 @@
  * settlement is over, and the next call starts a fresh process.
  */
 
-import type { LogEvent } from "../shared/api.js";
+import type { LogEvent, ProgressCounts } from "../shared/api.js";
 import type { HostReply, HostRequest, RemoteFailure, SdkOp, SdkOps } from "./sdk-host.js";
 
 /** The utility process as the client sees it, so tests can supply their own. */
@@ -35,6 +35,7 @@ export class SdkHostError extends Error {
 export interface CallOptions {
   signal?: AbortSignal;
   onProgress?: (event: LogEvent) => void;
+  onCounts?: (counts: ProgressCounts) => void;
   onPhysicalSettlement?: (settlement: Promise<void>) => void;
 }
 
@@ -63,6 +64,9 @@ export function createSdkClient(spawn: () => HostProcess) {
     switch (reply.type) {
       case "event":
         calls.get(reply.id)?.options.onProgress?.(reply.event);
+        return;
+      case "counts":
+        calls.get(reply.id)?.options.onCounts?.(reply.counts);
         return;
       case "done":
         finish(reply.id)?.resolve(reply.value);

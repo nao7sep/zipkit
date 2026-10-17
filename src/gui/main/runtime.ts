@@ -6,7 +6,7 @@
  */
 
 import { BrowserWindow } from "electron";
-import type { GuiError, Job, JobAction, JobEvent, LogEvent } from "../shared/api.js";
+import type { GuiError, Job, JobAction, JobCounts, JobEvent, LogEvent, ProgressCounts } from "../shared/api.js";
 import { message, type Message } from "../shared/i18n/translate.js";
 import { createAppLog } from "./log.js";
 
@@ -50,9 +50,16 @@ let lastRun = 0;
  *  Progress pane. The record is made whether or not a window is open: these
  *  records are the only durable copy of the SDK's events. Run ids count up in
  *  the launch, and a record's session tells launches apart. */
+/** The steps that begin without counts or with their own: the counts of the
+ *  step before stop showing when one of them starts. */
+const STEP_STARTS = new Set(["scan.start", "write.start", "extract.start"]);
+
 export function startProgressRun(jobId: string, action: JobAction): (event: LogEvent) => void {
   const run = String(++lastRun);
-  return (event) => sendEvent(log.jobEvent(jobId, event, action, run));
+  return (event) => {
+    sendEvent(log.jobEvent(jobId, event, action, run));
+    if (STEP_STARTS.has(event.event)) sendCounts(jobId, null);
+  };
 }
 
 // Progress reaches the window in batches, one message and one render however
@@ -60,16 +67,32 @@ export function startProgressRun(jobId: string, action: JobAction): (event: LogE
 // conventions, Item count). Short enough to read as live.
 export const EVENT_BATCH_MS = 50;
 let pendingEvents: JobEvent[] = [];
+// Only each job's latest counts are worth sending.
+const pendingCounts = new Map<string, ProgressCounts | null>();
 let eventsTimer: ReturnType<typeof setTimeout> | undefined;
 
-function sendEvent(recorded: JobEvent): void {
-  pendingEvents.push(recorded);
+function scheduleFlush(): void {
   eventsTimer ??= setTimeout(() => {
     eventsTimer = undefined;
     const batch = pendingEvents;
     pendingEvents = [];
-    liveWindow()?.webContents.send("zipkit:events", batch);
+    const counts: JobCounts[] = [...pendingCounts].map(([jobId, counts]) => ({ jobId, counts }));
+    pendingCounts.clear();
+    if (batch.length > 0) liveWindow()?.webContents.send("zipkit:events", batch);
+    if (counts.length > 0) liveWindow()?.webContents.send("zipkit:counts", counts);
   }, EVENT_BATCH_MS);
+}
+
+function sendEvent(recorded: JobEvent): void {
+  pendingEvents.push(recorded);
+  scheduleFlush();
+}
+
+/** How far a job's write or verification has got, to the window only: counts
+ *  are live, never recorded. */
+export function sendCounts(jobId: string, counts: ProgressCounts | null): void {
+  pendingCounts.set(jobId, counts);
+  scheduleFlush();
 }
 
 export function sendQueue(jobs: Job[]): void {

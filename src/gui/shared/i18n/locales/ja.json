@@ -183,6 +183,8 @@
   "pane.details": "状況",
   "details.nothing": "確認が必要な項目はありません。",
   "details.working": "処理中",
+  "details.progressCounts": "項目 {entriesDone} / {entriesTotal} · {bytesDone} / {bytesTotal}",
+  "details.progressItems": "項目 {entriesDone} / {entriesTotal}",
   "details.showList": "詳細",
   "details.counted": "{name}（{count}）",
   "kindInfo.nfd": "macOS の方式（分解形、NFD）で保存された名前を、Windows が想定する合成形（NFC）に変換します。アクセント付きの名前や日本語の名前が、どちらでも同じように表示されます。",

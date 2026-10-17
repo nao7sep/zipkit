@@ -183,6 +183,8 @@
   "pane.details": "Estado",
   "details.nothing": "Aquí no hay nada que revisar.",
   "details.working": "En curso",
+  "details.progressCounts": "Elementos {entriesDone} de {entriesTotal} · {bytesDone} de {bytesTotal}",
+  "details.progressItems": "Elementos {entriesDone} de {entriesTotal}",
   "details.showList": "Detalles",
   "details.counted": "{name} ({count})",
   "kindInfo.nfd": "Los nombres guardados al estilo de macOS (descompuestos, NFD) se convierten a la forma compuesta (NFC) que espera Windows, para que los nombres con tildes o en japonés se vean igual en ambos.",

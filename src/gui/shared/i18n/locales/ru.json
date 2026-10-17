@@ -183,6 +183,8 @@
   "pane.details": "Состояние",
   "details.nothing": "Здесь нечего проверять.",
   "details.working": "Выполняется",
+  "details.progressCounts": "Элементы: {entriesDone} из {entriesTotal} · {bytesDone} из {bytesTotal}",
+  "details.progressItems": "Элементы: {entriesDone} из {entriesTotal}",
   "details.showList": "Подробности",
   "details.counted": "{name} ({count})",
   "kindInfo.nfd": "Имена в форме macOS (разложенной, NFD) переводятся в составную форму (NFC), которую ожидает Windows, поэтому имена с диакритикой или на японском выглядят одинаково в обеих системах.",

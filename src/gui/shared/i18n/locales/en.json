@@ -183,6 +183,8 @@
   "pane.details": "Status",
   "details.nothing": "Nothing here needs a look.",
   "details.working": "Working",
+  "details.progressCounts": "Items {entriesDone} of {entriesTotal} · {bytesDone} of {bytesTotal}",
+  "details.progressItems": "Items {entriesDone} of {entriesTotal}",
   "details.showList": "Details",
   "details.counted": "{name} ({count})",
   "kindInfo.nfd": "Names stored the macOS way (decomposed, NFD) are converted to the composed form (NFC) Windows expects, so accented and Japanese names look the same on both.",

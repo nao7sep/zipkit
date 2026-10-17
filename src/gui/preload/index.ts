@@ -10,7 +10,7 @@ import { createJobEditSubmissions } from "./job-edits.js";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "../shared/records.js";
-import { LANGUAGE_CHANGED_CHANNEL, OPEN_ABOUT_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type SystemChoices, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanReport, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
+import { LANGUAGE_CHANGED_CHANNEL, OPEN_ABOUT_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type SystemChoices, type JobCounts, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanReport, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
 
 const jobEdits = createJobEditSubmissions((id, patch) => ipcRenderer.invoke("zipkit:updateJob", id, patch));
 // Preload has a browser document but keeps Node types out of renderer compilation.
@@ -112,6 +112,13 @@ const api = {
     ipcRenderer.on("zipkit:events", handler);
     return () => {
       ipcRenderer.removeListener("zipkit:events", handler);
+    };
+  },
+  onCounts: (callback: (counts: JobCounts[]) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, counts: JobCounts[]): void => callback(counts);
+    ipcRenderer.on("zipkit:counts", handler);
+    return () => {
+      ipcRenderer.removeListener("zipkit:counts", handler);
     };
   },
   openRecordsWindow: (): Promise<void> => ipcRenderer.invoke("zipkit:openRecordsWindow"),

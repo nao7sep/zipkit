@@ -15,7 +15,7 @@
  */
 
 import type { InputAdmission } from "./input-admission.js";
-import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, Severity, SourceComparison } from "../../sdk/types.js";
+import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "../../sdk/types.js";
 import type { PlanReport } from "./plan-report.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
@@ -42,7 +42,7 @@ export type GuiPlatform =
   | "cygwin"
   | "netbsd";
 
-export type { ArchiveSpec, ExtractData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, Severity, SourceComparison };
+export type { ArchiveSpec, ExtractData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, SourceComparison };
 export type { LanguageEnvironment, Message, PaneLayout };
 
 /** The action that started a Progress run: a background plan, Create (its
@@ -62,6 +62,13 @@ export interface JobEvent {
   action: JobAction;
   run: string;
   event: LogEvent;
+}
+
+/** How far a job's current write or verification has got; null once a step
+ *  that reports no counts begins. Live only, never recorded. */
+export interface JobCounts {
+  jobId: string;
+  counts: ProgressCounts | null;
 }
 
 /** How many of a job's newest events its Progress pane holds. */
@@ -204,6 +211,8 @@ export interface ZipKitGuiApi {
   getJobEvents(jobId: string): Promise<JobEvent[]>;
   /** Subscribe to the live progress events of every job; returns an unsubscribe fn. */
   onEvents(callback: (events: JobEvent[]) => void): () => void;
+  /** Subscribe to how far each job's write or verification has got. */
+  onCounts(callback: (counts: JobCounts[]) => void): () => void;
 
   /** Open the Records window, or bring it forward when it is open. */
   openRecordsWindow(): Promise<void>;

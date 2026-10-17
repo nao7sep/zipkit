@@ -518,6 +518,19 @@ button.text-button:active:not(:disabled) {
   background: var(--status-busy);
   animation: busy-sweep 1.2s ease-in-out infinite;
 }
+/* A step that counts shows how far it has got instead of the sweep. */
+.busy-bar.measured::before {
+  display: none;
+}
+.busy-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--status-busy);
+  transition: width 0.2s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .busy-fill { transition: none; }
+}
 @keyframes busy-sweep {
   from { transform: translateX(-100%); }
   to { transform: translateX(250%); }

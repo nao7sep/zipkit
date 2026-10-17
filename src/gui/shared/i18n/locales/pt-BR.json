@@ -183,6 +183,8 @@
   "pane.details": "Estado",
   "details.nothing": "Não há nada para conferir aqui.",
   "details.working": "Em andamento",
+  "details.progressCounts": "Itens {entriesDone} de {entriesTotal} · {bytesDone} de {bytesTotal}",
+  "details.progressItems": "Itens {entriesDone} de {entriesTotal}",
   "details.showList": "Detalhes",
   "details.counted": "{name} ({count})",
   "kindInfo.nfd": "Nomes gravados à maneira do macOS (decompostos, NFD) são convertidos para a forma composta (NFC) que o Windows espera, para que nomes com acentos ou em japonês apareçam iguais nos dois.",

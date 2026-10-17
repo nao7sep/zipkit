@@ -12,7 +12,7 @@
 
 import { rm } from "node:fs/promises";
 import { exportPlan, importPlan, ZipKit, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "../../sdk/index.js";
-import type { LogEvent } from "../../sdk/types.js";
+import type { LogEvent, ProgressCounts } from "../../sdk/types.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
@@ -52,6 +52,7 @@ export type RemoteRemovalCheck = Omit<RemovalCheck, "refusal"> & {
 
 export type HostReply =
   | { type: "event"; id: number; event: LogEvent }
+  | { type: "counts"; id: number; counts: ProgressCounts }
   | { type: "done"; id: number; value: unknown }
   | { type: "failed"; id: number; error: RemoteFailure }
   | { type: "physical"; id: number }
@@ -77,7 +78,12 @@ export function appZipKit(): ZipKit {
 export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = appZipKit()) {
   const running = new Map<number, AbortController>();
 
-  type Run = (signal: AbortSignal, onProgress: (event: LogEvent) => void, id: number) => Promise<unknown>;
+  type Run = (
+    signal: AbortSignal,
+    onProgress: (event: LogEvent) => void,
+    id: number,
+    onCounts: (counts: ProgressCounts) => void,
+  ) => Promise<unknown>;
   const ops: { [K in SdkOp]: (...args: never[]) => Run } = {
     resources: (paths: string[]) => (signal) => zip.pathResources(paths, { signal }),
     // What is at a path now: there with a comparable fingerprint, gone, or
@@ -89,10 +95,11 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       const plan = await zip.plan(spec, { signal, onProgress });
       return exportPlan(plan);
     },
-    write: (transfer: PlanTransfer) => async (signal, onProgress, id) => {
+    write: (transfer: PlanTransfer) => async (signal, onProgress, id, onCounts) => {
       const written = await zip.write(importPlan(transfer), {
         signal,
         onProgress,
+        onCounts,
         onPhysicalSettlement: (settlement) => {
           post({ type: "physical", id });
           const settled = (): void => post({ type: "physical-settled", id });
@@ -101,8 +108,8 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       });
       return written.bytes;
     },
-    verify: (output: string, checkMetadata: boolean) => async (signal, onProgress) =>
-      (await zip.extract({ archive: output, dryRun: true, checkMetadata }, { signal, onProgress })).reportOk,
+    verify: (output: string, checkMetadata: boolean) => async (signal, onProgress, _id, onCounts) =>
+      (await zip.extract({ archive: output, dryRun: true, checkMetadata }, { signal, onProgress, onCounts })).reportOk,
     // Deletes one original for good: a folder with everything in it, a file, or
     // a link itself, never what a link points to. Only after the job's checks.
     deletePath: (target: string) => async () => {
@@ -110,12 +117,12 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     },
     // The report needs the verdict, the counts and the paths that disagree,
     // never every entry's result.
-    inspect: (archive: string, checkMetadata: boolean) => async (signal, onProgress) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
+    inspect: (archive: string, checkMetadata: boolean) => async (signal, onProgress, _id, onCounts) => {
+      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress, onCounts });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra } satisfies VerifyReport;
     },
-    checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions) => async (signal, onProgress) => {
-      const check = await zip.checkRemoval(buildSpec(inputs, options), output, { removed, signal, onProgress });
+    checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions) => async (signal, onProgress, _id, onCounts) => {
+      const check = await zip.checkRemoval(buildSpec(inputs, options), output, { removed, signal, onProgress, onCounts });
       const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: failure(check.refusal.error) } : check.refusal;
       return { ...check, refusal } satisfies RemoteRemovalCheck;
     },
@@ -132,7 +139,7 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       const aborter = new AbortController();
       running.set(id, aborter);
       const run = (ops[op] as (...a: unknown[]) => Run)(...args);
-      void run(aborter.signal, (event) => post({ type: "event", id, event }), id).then(
+      void run(aborter.signal, (event) => post({ type: "event", id, event }), id, (counts) => post({ type: "counts", id, counts })).then(
         (value) => post({ type: "done", id, value }),
         (err: unknown) => post({ type: "failed", id, error: failure(err) }),
       ).finally(() => running.delete(id));

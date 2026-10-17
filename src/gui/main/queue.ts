@@ -10,9 +10,9 @@ import { ipcMain, shell } from "electron";
 import { nanoid } from "nanoid";
 import type { GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
-import type { PlanReport, VerifyResult } from "../shared/api.js";
+import type { JobAction, LogEvent, PlanReport, ProgressCounts, VerifyResult } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
-import { log, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
+import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
 import { SdkHostError } from "./sdk-client.js";
 import { createPathClaims, exportPlan, importPlan } from "../../sdk/index.js";
@@ -73,18 +73,33 @@ function untilAborted<T>(call: Promise<T>, signal: AbortSignal): Promise<T | "ab
 /** The app's one set of path claims, shared by every job and command. */
 const appPathClaims = createPathClaims();
 
+// Each Progress sink belongs to one job; a call made with it sends that job's
+// counts to the window, so the engine handles a run's sink and nothing more.
+const sinkJobs = new WeakMap<(event: LogEvent) => void, string>();
+function progressRun(jobId: string, action: JobAction): (event: LogEvent) => void {
+  const sink = startProgressRun(jobId, action);
+  sinkJobs.set(sink, jobId);
+  return sink;
+}
+function countsFor(onProgress: (event: LogEvent) => void): ((counts: ProgressCounts) => void) | undefined {
+  const jobId = sinkJobs.get(onProgress);
+  return jobId === undefined ? undefined : (counts) => sendCounts(jobId, counts);
+}
+
 const engine = createQueueEngine({
   admission: appAdmission,
   effects: appPathClaims,
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
-  inspect: (output, signal, onProgress, checkMetadata) => sdk.call("inspect", [output, checkMetadata], { signal, onProgress }),
+  inspect: (output, signal, onProgress, checkMetadata) =>
+    sdk.call("inspect", [output, checkMetadata], { signal, onProgress, onCounts: countsFor(onProgress) }),
   plan: async (inputs, options, signal, onProgress) => importPlan(await sdk.call("plan", [inputs, options], { signal, onProgress })),
   write: (plan, signal, onProgress, onPhysicalSettlement) =>
-    sdk.call("write", [exportPlan(plan)], { signal, onProgress, onPhysicalSettlement }),
-  verify: (output, signal, onProgress, checkMetadata) => sdk.call("verify", [output, checkMetadata], { signal, onProgress }),
+    sdk.call("write", [exportPlan(plan)], { signal, onProgress, onPhysicalSettlement, onCounts: countsFor(onProgress) }),
+  verify: (output, signal, onProgress, checkMetadata) =>
+    sdk.call("verify", [output, checkMetadata], { signal, onProgress, onCounts: countsFor(onProgress) }),
   checkRemoval: async (output, inputs, removed, options, signal, onProgress) => {
-    const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onProgress });
+    const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onProgress, onCounts: countsFor(onProgress) });
     const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: new SdkHostError(check.refusal.error) } : check.refusal;
     return { ...check, refusal };
   },
@@ -150,7 +165,7 @@ const engine = createQueueEngine({
     }, 500);
     sendQueue(jobs);
   },
-  progress: startProgressRun,
+  progress: progressRun,
   newId: () => nanoid(),
   log,
 });

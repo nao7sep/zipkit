@@ -16,7 +16,7 @@
 import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
 import { manifestRequiredButMissing, originalsIntact, present, removesOriginals, scanBlocksRemoval } from "../../shared/queue";
-import type { Finding, InputEntry, Job, PlannedEntry, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
+import type { Finding, InputEntry, Job, PlannedEntry, JobAction, JobEvent, JobIntent, LogEvent, PathKind, ProgressCounts, Severity } from "../../shared/api";
 import { renamedItself, type PlanReport } from "../../shared/plan-report";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
@@ -574,6 +574,22 @@ const RUN_HEADINGS: Record<JobAction, MessageKey> = {
   trash: "progress.runTrash",
   delete: "progress.runDelete",
 };
+
+/** How far a write or a verification has got: the share done, by bytes when
+ *  there are any and else by items, and the line that says both. */
+export function countsView(counts: ProgressCounts, t: Translator): { fraction: number; text: string } {
+  const items = { entriesDone: counts.entriesDone, entriesTotal: counts.entriesTotal };
+  if (counts.bytesTotal > 0) {
+    return {
+      fraction: Math.min(1, counts.bytesDone / counts.bytesTotal),
+      text: t.t("details.progressCounts", { ...items, bytesDone: { bytes: counts.bytesDone }, bytesTotal: { bytes: counts.bytesTotal } }),
+    };
+  }
+  return {
+    fraction: counts.entriesTotal > 0 ? Math.min(1, counts.entriesDone / counts.entriesTotal) : 0,
+    text: t.t("details.progressItems", items),
+  };
+}
 
 /** A Progress run's heading: the action that started it and its start time,
  *  in local form. */

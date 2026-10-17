@@ -64,6 +64,7 @@ describe("App file-drop receivers", () => {
         refreshJob: async () => {},
         getJobEvents: async () => [],
         onEvents: () => () => {},
+        onCounts: () => () => {},
         pathForFile: () => "/tmp/ZIPKIT-DRAG-ME",
         chooseInputs,
         addJob,

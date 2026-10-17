@@ -183,6 +183,8 @@
   "pane.details": "Status",
   "details.nothing": "Hier muss nichts geprüft werden.",
   "details.working": "In Arbeit",
+  "details.progressCounts": "Objekte {entriesDone} von {entriesTotal} · {bytesDone} von {bytesTotal}",
+  "details.progressItems": "Objekte {entriesDone} von {entriesTotal}",
   "details.showList": "Details",
   "details.counted": "{name} ({count})",
   "kindInfo.nfd": "Namen in der macOS-Schreibweise (zerlegt, NFD) werden in die zusammengesetzte Form (NFC) umgewandelt, die Windows erwartet, damit Namen mit Akzenten oder japanischen Zeichen auf beiden gleich aussehen.",

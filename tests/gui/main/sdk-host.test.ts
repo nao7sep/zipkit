@@ -6,7 +6,7 @@ import { createSdkClient, type HostProcess } from "../../../src/gui/main/sdk-cli
 import { createSdkHost, type HostReply, type HostRequest } from "../../../src/gui/main/sdk-host.js";
 import { exportPlan, importPlan } from "../../../src/sdk/index.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
-import type { LogEvent } from "../../../src/gui/shared/api.js";
+import type { LogEvent, ProgressCounts } from "../../../src/gui/shared/api.js";
 
 /** The host served over a channel that copies every message as a process
  *  boundary does, so what survives the copy is what the app relies on. */
@@ -36,8 +36,14 @@ describe("the SDK host", () => {
     const plan = importPlan(await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onProgress: (e) => events.push(e) }));
     expect(plan.writable).toBe(true);
     const settlements: Promise<void>[] = [];
-    const bytes = await sdk.call("write", [exportPlan(plan)], { onPhysicalSettlement: (p) => settlements.push(p) });
+    const counts: ProgressCounts[] = [];
+    const bytes = await sdk.call("write", [exportPlan(plan)], {
+      onPhysicalSettlement: (p) => settlements.push(p),
+      onCounts: (c) => counts.push(c),
+    });
     expect(bytes).toBeGreaterThan(0);
+    // How far the write got crosses too, to its last byte.
+    expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 1, entriesTotal: 1, bytesDone: 5, bytesTotal: 5 });
     await Promise.all(settlements);
     expect(await sdk.call("verify", [plan.output, true])).toBe(true);
     const report = await sdk.call("inspect", [plan.output, true]);

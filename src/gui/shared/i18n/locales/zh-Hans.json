@@ -183,6 +183,8 @@
   "pane.details": "状态",
   "details.nothing": "没有需要查看的项目。",
   "details.working": "正在处理",
+  "details.progressCounts": "项目 {entriesDone}/{entriesTotal} · {bytesDone}/{bytesTotal}",
+  "details.progressItems": "项目 {entriesDone}/{entriesTotal}",
   "details.showList": "详细信息",
   "details.counted": "{name}（{count}）",
   "kindInfo.nfd": "以 macOS 方式（分解形式 NFD）存储的名称会转换为 Windows 期望的合成形式（NFC），带重音或日文的名称在两边显示一致。",

@@ -11,10 +11,11 @@
 
 import { memo, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { Job, JobEvent, PlanReport, VerifyResult } from "../../../shared/api";
+import type { Job, JobEvent, PlanReport, ProgressCounts, VerifyResult } from "../../../shared/api";
 import { useI18n } from "../i18n/I18nContext";
 import { ItemListDialog } from "./ItemListDialog";
 import {
+  countsView,
   detailsCards,
   progressHeading,
   progressLineText,
@@ -31,12 +32,15 @@ export const JobDetails = memo(function JobDetails({
   plan,
   verify,
   events,
+  counts = null,
   rowLimit,
 }: {
   job: Job;
   plan: PlanReport | null;
   verify: VerifyResult | null;
   events: readonly JobEvent[];
+  /** How far the current write or verification has got, when it reports. */
+  counts?: ProgressCounts | null;
   /** A card with more rows than this shows its count; Details lists them. */
   rowLimit: number;
 }) {
@@ -46,13 +50,31 @@ export const JobDetails = memo(function JobDetails({
   const [open, setOpen] = useState<DetailsCard | null>(null);
   const busy = job.state === "planning" || job.state === "running" || job.trashing === true;
   const run = busy ? progressRuns(events).at(-1) : undefined;
+  const measured = busy && counts ? countsView(counts, t) : null;
 
   return (
     <div style={S.root}>
       {busy && (
         <section style={S.card} aria-label={t.t("details.working")}>
           {run && <div style={S.runHeading}>{progressHeading(run, t)}</div>}
-          <div className="busy-bar" role="progressbar" aria-label={t.t("details.working")} />
+          {measured ? (
+            <>
+              <div
+                className="busy-bar measured"
+                role="progressbar"
+                aria-label={t.t("details.working")}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(measured.fraction * 100)}
+                aria-valuetext={measured.text}
+              >
+                <div className="busy-fill" style={{ width: `${measured.fraction * 100}%` }} />
+              </div>
+              <div style={S.runLine}>{measured.text}</div>
+            </>
+          ) : (
+            <div className="busy-bar" role="progressbar" aria-label={t.t("details.working")} />
+          )}
           {run?.lines.slice(-3).map((line, i) => (
             <div key={i} style={S.runLine}>{progressLineText(line, t)}</div>
           ))}

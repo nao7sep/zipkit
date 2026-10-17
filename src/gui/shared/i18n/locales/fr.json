@@ -183,6 +183,8 @@
   "pane.details": "État",
   "details.nothing": "Rien à vérifier ici.",
   "details.working": "En cours",
+  "details.progressCounts": "Éléments {entriesDone} sur {entriesTotal} · {bytesDone} sur {bytesTotal}",
+  "details.progressItems": "Éléments {entriesDone} sur {entriesTotal}",
   "details.showList": "Détails",
   "details.counted": "{name} ({count})",
   "kindInfo.nfd": "Les noms enregistrés à la manière de macOS (décomposés, NFD) sont convertis dans la forme composée (NFC) attendue par Windows, pour que les noms accentués ou japonais s’affichent de la même façon sur les deux.",

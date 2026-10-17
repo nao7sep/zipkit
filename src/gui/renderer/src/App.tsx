@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Job, JobEvent, JobIntent, PlanReport, SystemChoices, VerifyResult } from "../../shared/api";
+import type { Job, JobEvent, JobIntent, PlanReport, ProgressCounts, SystemChoices, VerifyResult } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable, removesOriginals, verifies, type OriginalsAction } from "../../shared/queue";
@@ -722,6 +722,8 @@ function JobView({
   // The job's progress: its recorded events, from this and earlier launches,
   // joined by the live ones as they arrive.
   const [events, setEvents] = useState<JobEvent[]>([]);
+  // How far its current write or verification has got, live only.
+  const [counts, setCounts] = useState<ProgressCounts | null>(null);
   const confirm = useConfirm();
   // "Use the parameters from Settings" is DERIVED from whether the job's options still equal
   // the defaults — not a free-floating flag that could claim "defaults" while the
@@ -774,6 +776,11 @@ function JobView({
       unsubscribe();
     };
   }, [job.id]);
+
+  useEffect(() => window.zipkit.onCounts((batch) => {
+    const mine = batch.filter((item) => item.jobId === job.id).at(-1);
+    if (mine) setCounts(mine.counts);
+  }), [job.id]);
 
   function beginOperation(): number {
     const attempt = ++operationAttempt.current;
@@ -1181,7 +1188,7 @@ function JobView({
       {splitter}
 
       <Pane title={t.t("pane.details")} rootStyle={GROW}>
-        <JobDetails job={job} plan={plan} verify={verify} events={events} rowLimit={cardRowLimit} />
+        <JobDetails job={job} plan={plan} verify={verify} events={events} counts={counts} rowLimit={cardRowLimit} />
       </Pane>
     </>
   );
