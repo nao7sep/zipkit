@@ -2,10 +2,10 @@
  * The Details pane: the state of the selected job, its inputs and its archive,
  * as it is now, one card per kind of thing, the ones that block first and
  * each coloured by how much it matters. While the job works, the step it is on
- * leads. A card shows its first rows at once when it matters or is short; a
- * longer one unfolds in place, and every list opens in full, by path or by
- * name, for a user who wants to see each item before trusting ZipKit with the
- * originals. What happened to the job is said once, in the Archive pane's
+ * leads. A card lists names only, each once with how many items carry it,
+ * while it has no more than the user's limit, and its count past it; its
+ * Details list every item by its full path, for a user who wants to see each
+ * one before trusting ZipKit with the originals. What happened to the job is said once, in the Archive pane's
  * history.
  */
 
@@ -14,7 +14,6 @@ import type { CSSProperties } from "react";
 import type { Job, JobEvent, PlanReport, VerifyResult } from "../../../shared/api";
 import { useI18n } from "../i18n/I18nContext";
 import { ItemListDialog } from "./ItemListDialog";
-import { ReportRowView } from "./ReportRowView";
 import {
   detailsCards,
   progressHeading,
@@ -77,13 +76,13 @@ function Card({ card, onOpen }: { card: DetailsCard; onOpen: (card: DetailsCard)
       <div style={S.head}>
         <h3 style={S.heading}>
           <span style={{ ...S.title, color }}>{card.title}</span>
-          {count > 0 && <span style={S.count}> {t.number(count)}</span>}
+          {count > 0 && !card.countless && <span style={S.count}> {t.number(count)}</span>}
         </h3>
         {count > 0 && (
           <button
             type="button"
             className="text-button"
-            aria-label={t.t("details.counted", { name: card.title, count: t.number(count) })}
+            aria-label={card.countless ? card.title : t.t("details.counted", { name: card.title, count: t.number(count) })}
             onClick={() => onOpen(card)}
           >
             {t.t("details.showList")}
@@ -101,11 +100,15 @@ function Card({ card, onOpen }: { card: DetailsCard; onOpen: (card: DetailsCard)
           ))}
         </dl>
       )}
-      {card.open && count > 0 && (
+      {/* Names only, each once: a name is cut at its end, never its middle, and
+          the paths are Details' to show. */}
+      {card.open && card.names.length > 0 && (
         <ul style={S.list}>
-          {card.rows.map((row, i) => (
-            <li key={i} style={S.item}>
-              <ReportRowView row={row} variant="line" showChanges={card.rowDetail} />
+          {card.names.map(({ name, count: times }) => (
+            <li key={name} style={S.item}>
+              <span className="text-line" style={S.name} title={name}>
+                {times > 1 ? t.t("details.counted", { name, count: t.number(times) }) : name}
+              </span>
             </li>
           ))}
         </ul>
@@ -140,4 +143,5 @@ const S: Record<string, CSSProperties> = {
   // Each item a bulleted line, so even a card of one reads as a list.
   list: { margin: 0, paddingInlineStart: "1.1rem", display: "grid", gap: "0.35rem" },
   item: { minWidth: 0 },
+  name: { display: "block", fontSize: "0.85rem" },
 };

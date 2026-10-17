@@ -15,7 +15,7 @@ import {
   isCancelable,
   isTerminal,
   detailsCards,
-  rowsByName,
+  namesOf,
   rowsByPath,
   jobCommands,
   jobCounts,
@@ -979,14 +979,17 @@ describe("Details pane sections and orders", () => {
     expect(detailsCards(job(), many as never, null, en, 6)[0]!.open).toBe(true);
   });
 
-  it("orders by path, or by name: repeated names grouped first, folders first, then each name that occurs once", () => {
-    const rows = [row("z/.DS_Store"), row("a/.DS_Store"), row("m/Thumbs.db"), row("q/.Trashes", [], true), row("p/.Trashes", [], true), row("b/a.txt"), row("c/x", [], true)];
-    expect(rowsByPath(rows).map((r) => r.path)).toEqual(["a/.DS_Store", "b/a.txt", "c/x", "m/Thumbs.db", "p/.Trashes", "q/.Trashes", "z/.DS_Store"]);
-    const { repeated, single } = rowsByName(rows);
-    expect(repeated.map((group) => [group.name, group.dir, group.rows.map((r) => r.path)])).toEqual([
-      [".Trashes", true, ["p/.Trashes", "q/.Trashes"]],
-      [".DS_Store", false, ["a/.DS_Store", "z/.DS_Store"]],
+  it("lists a card's names once each, with how many rows carry them, and orders paths as the locale does", () => {
+    const rows = [row("z/.DS_Store"), row("a/.DS_Store"), row("m/Thumbs.db"), row("q/.Trashes/"), row("b/file 10.txt"), row("b/file 9.txt")];
+    expect(namesOf(rows, "en")).toEqual([
+      { name: ".DS_Store", count: 2 },
+      { name: ".Trashes", count: 1 },
+      { name: "file 9.txt", count: 1 },
+      { name: "file 10.txt", count: 1 },
+      { name: "Thumbs.db", count: 1 },
     ]);
-    expect(single.map((r) => r.path)).toEqual(["c/x", "b/a.txt", "m/Thumbs.db"]);
+    expect(namesOf([row("/Users/me/Desktop/Desktop.zip")], "en")).toEqual([{ name: "Desktop.zip", count: 1 }]);
+    expect(rowsByPath(rows, "en").map((r) => r.path)).toEqual(["a/.DS_Store", "b/file 9.txt", "b/file 10.txt", "m/Thumbs.db", "q/.Trashes/", "z/.DS_Store"]);
   });
+
 });

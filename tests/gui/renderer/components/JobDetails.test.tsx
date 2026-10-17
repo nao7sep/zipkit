@@ -53,48 +53,38 @@ const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = 
   render(<JobDetails job={job(over)} plan={p} verify={null} events={events} rowLimit={5} />);
 
 describe("JobDetails", () => {
-  it("lists a card's items as bullets while it has no more than the limit, and only its count past it", () => {
-    show(plan([junk("a/.DS_Store")]));
-    const one = screen.getByRole("heading", { name: /^Junk files excluded\s*1$/ }).closest("section")!;
-    expect(within(one).getAllByRole("listitem")).toHaveLength(1);
+  it("lists names only in a card, each once with its count, and only its count past the limit", () => {
+    show(plan([junk("a/.DS_Store"), junk("b/.DS_Store"), junk("c/Thumbs.db")]));
+    const card = screen.getByRole("heading", { name: /^Junk files excluded\s*3$/ }).closest("section")!;
+    expect(within(card).getAllByRole("listitem").map((item) => item.textContent)).toEqual([".DS_Store (2)", "Thumbs.db"]);
     cleanup();
     show(plan(Array.from({ length: 6 }, (_, i) => blocking(`a/${i}.txt`))));
     const six = screen.getByRole("heading", { name: /^x\.test\s*6$/ }).closest("section")!;
     expect(within(six).queryAllByRole("listitem")).toHaveLength(0);
   });
 
-  it("opens a card's details: what the kind is, then every item", () => {
-    show(plan(Array.from({ length: 7 }, (_, i) => blocking(`a/${i}.txt`))));
-    fireEvent.click(screen.getByRole("button", { name: "x.test (7)" }));
-    const dialog = screen.getByRole("dialog", { name: "x.test (7)" });
-    expect(within(dialog).getAllByText(/^\d\.txt$/)).toHaveLength(7);
-    // Path order only: nothing to group a list of different names by.
-    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+  it("shows the existing archive by its name with no count, and leaves what to do to Details", () => {
+    const exists = plan();
+    exists.findings = [{ rule: "output.exists", severity: "error", path: "/Users/me/Desktop/Desktop.zip", message: "exists" }];
+    show(exists);
+    const card = screen.getByRole("heading", { name: "Existing output archive" }).closest("section")!;
+    expect(within(card).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Desktop.zip"]);
+    expect(within(card).queryByText(/Overwrite/)).toBeNull();
+    fireEvent.click(within(card).getByRole("button", { name: "Existing output archive" }));
+    const dialog = screen.getByRole("dialog", { name: "Existing output archive" });
+    expect(within(dialog).getByText(/Turn on “Overwrite an existing file”/)).toBeTruthy();
+    expect(within(dialog).getByText("/Users/me/Desktop/Desktop.zip")).toBeTruthy();
   });
 
-  it("explains the kind in the details, and groups excluded items by name unless unticked, remembering it", () => {
-    show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("z/.Trashes", "dir"), junk("v/.Trashes", "dir"), junk("w/Thumbs.db"), junk("u/desktop.ini")]));
-    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (6)" }));
+  it("lists every item by its full path in Details, saying what they share once", () => {
+    show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("w/Thumbs.db")]));
+    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (3)" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/^System clutter from macOS, Windows and Linux/)).toBeTruthy();
-    const group = within(dialog).getByRole("checkbox", { name: "Group by name" }) as HTMLInputElement;
-    expect(group.checked).toBe(true);
-    expect(within(dialog).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([".Trashes (2)", ".DS_Store (2)"]);
-    // A name that occurs once is a plain row: its name, then its folder.
-    expect(within(dialog).getByText("Thumbs.db")).toBeTruthy();
-    expect(within(dialog).getByText("w")).toBeTruthy();
-    fireEvent.click(group);
-    expect(within(dialog).queryAllByRole("heading", { level: 3 })).toHaveLength(0);
-    expect(localStorage.getItem("zipkit.groupByName")).toBe("off");
-    fireEvent.click(within(dialog).getByText("Close", { selector: "button" }));
-    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (6)" }));
-    expect((within(screen.getByRole("dialog")).getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
-  });
-
-  it("offers no grouping for excluded items whose names are all different", () => {
-    show(plan([junk("w/Thumbs.db"), junk("u/desktop.ini")]));
-    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (2)" }));
-    expect(within(screen.getByRole("dialog")).queryByRole("checkbox")).toBeNull();
+    expect(within(dialog).getAllByText(/\//).map((path) => path.textContent)).toEqual(["w/Thumbs.db", "x/.DS_Store", "y/.DS_Store"]);
+    // Every item was left out for the same reason, so no row repeats it.
+    expect(within(dialog).queryByText("Excluded by the junk preset")).toBeNull();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
   });
 
   it("says what is left out goes with the originals when they are to be removed, and raises anything but junk", () => {
@@ -107,28 +97,28 @@ describe("JobDetails", () => {
     expect(titles[1]).toMatch(/^Junk files excluded/);
   });
 
-  it("marks each change of a rename in the details", () => {
-    show(plan([entry("a_0.txt", {
-      originalPath: "a:0.txt",
-      findings: [{ rule: "name.invalid-char", severity: "info", path: "a:0.txt", message: "substituted", fix: { kind: "rename", to: "a_0.txt" } }],
+  it("marks each change of a rename on the full path in Details", () => {
+    show(plan([entry("a/x_0.txt", {
+      originalPath: "a/x:0.txt",
+      findings: [{ rule: "name.invalid-char", severity: "info", path: "a/x:0.txt", message: "substituted", fix: { kind: "rename", to: "a/x_0.txt" } }],
     })]));
     fireEvent.click(screen.getByRole("button", { name: /\(1\)$/ }));
     const dialog = screen.getByRole("dialog");
     expect(dialog.querySelector("del")!.textContent).toBe(":");
     expect(dialog.querySelector("ins")!.textContent).toBe("_");
-    expect(within(dialog).getByText("Renamed from a:0.txt")).toBeTruthy();
+    expect(within(dialog).getByText("Renamed from a/x:0.txt")).toBeTruthy();
   });
 
-  it("lists each path a verification found missing or unexpected, and how the originals changed", () => {
-    const missing = ["a/one.txt", "a/two.txt"];
-    render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["gone.txt"], added: [], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
+  it("lists by name what a verification found missing or unexpected, and each way the originals changed", () => {
+    render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["a/gone.txt"], added: ["a/new.txt"], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
       ok: true,
-      data: { reportOk: false, missing, extra: ["stray.bin"], summary: { total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } } as never,
+      data: { reportOk: false, missing: ["a/one.txt", "b/two.txt"], extra: ["stray.bin"], summary: { total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } } as never,
     }} />);
     expect(screen.getByRole("heading", { name: /^Missing from the archive\s*2$/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /^Unexpected extra entries\s*1$/ })).toBeTruthy();
-    for (const path of [...missing, "stray.bin", "gone.txt"]) expect(screen.getByTitle(path)).toBeTruthy();
-    expect(screen.getByText("No longer there")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Gone from the originals since archiving\s*1$/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Added to the originals since archiving\s*1$/ })).toBeTruthy();
+    for (const name of ["one.txt", "two.txt", "stray.bin", "gone.txt", "new.txt"]) expect(screen.getByText(name)).toBeTruthy();
   });
 
   it("states the archive once there is one", () => {

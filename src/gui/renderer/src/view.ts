@@ -855,16 +855,16 @@ export interface DetailsCard {
   title: string;
   level: Severity;
   rows: ReportRow[];
-  /** Whether each row shows its own line of detail; a card whose title says
-   *  it all leaves its rows to their paths. */
-  rowDetail: boolean;
-  /** Whether its rows show in the pane: a card with no more rows than the
-   *  user's limit lists them; a longer one shows its count, and Details lists
-   *  them all. */
+  /** The names the card lists, each once with how many rows carry it. */
+  names: Array<{ name: string; count: number }>;
+  /** Whether it lists its names: a card with no more names than the user's
+   *  limit does; a longer one shows its count, and Details lists every path. */
   open: boolean;
-  /** Whether its rows are worth grouping by name, as excluded junk is: every
-   *  `.DS_Store` under one heading. */
-  groupable: boolean;
+  /** Whether the count is left out: a card about the one archive a job makes
+   *  is not a list of them. */
+  countless?: boolean;
+  /** What every row says alike, said once in Details rather than per row. */
+  common?: string;
   /** What this kind of thing is and what ZipKit does about it, for Details. */
   about?: string;
   /** One line under the title, such as where excluded items go. */
@@ -915,10 +915,10 @@ export function detailsCards(
   rowLimit: number,
 ): DetailsCard[] {
   const cards = new Map<string, DetailsCard & { excluded: boolean; junk: boolean }>();
-  const card = (key: string, title: string, level: Severity, rowDetail: boolean, about?: MessageKey) => {
+  const card = (key: string, title: string, level: Severity, about?: MessageKey) => {
     let found = cards.get(key);
     if (!found) {
-      found = { key, title, level, rows: [], rowDetail, open: false, groupable: false, excluded: false, junk: false, ...(about ? { about: t.t(about) } : {}) };
+      found = { key, title, level, rows: [], names: [], open: false, excluded: false, junk: false, ...(about ? { about: t.t(about) } : {}) };
       cards.set(key, found);
     }
     return found;
@@ -931,7 +931,7 @@ export function detailsCards(
       for (const f of entry.findings) {
         onEntries.add(findingId(f));
         const renamed = f.fix?.kind === "rename" ? { from: entry.originalPath } : {};
-        const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, f.severity !== "info", KIND_INFO[f.rule]);
+        const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, KIND_INFO[f.rule]);
         c.rows.push({ path: entry.archivePath, changes: [findingText(f, t, entry.excluded)], ...renamed, ...dir });
         if (entry.excluded && EXCLUDING_RULES.has(f.rule)) {
           c.excluded = true;
@@ -940,28 +940,28 @@ export function detailsCards(
       }
       if (entry.excluded && !entry.findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
         const reason = excludedText(entry.excludeReason, t);
-        const c = card(`excluded:${reason}`, reason, "info", false, entry.excludeReason === "empty directory pruned" ? "kindInfo.emptyDirs" : undefined);
+        const c = card(`excluded:${reason}`, reason, "info", entry.excludeReason === "empty directory pruned" ? "kindInfo.emptyDirs" : undefined);
         c.rows.push({ path: entry.archivePath, changes: [reason], ...dir });
         c.excluded = true;
       }
     }
     for (const f of plan.findings) {
       if (onEntries.has(findingId(f))) continue;
-      card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, true, KIND_INFO[f.rule]).rows.push({ path: f.path, changes: [findingText(f, t)] });
+      card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, KIND_INFO[f.rule]).rows.push({ path: f.path, changes: [findingText(f, t)] });
     }
   }
   const pathRows = (paths: readonly string[], change = ""): ReportRow[] =>
     paths.map((path) => ({ path, changes: change ? [change] : [] }));
-  if (verify && verify.missing.length > 0) card("verify:missing", t.t("report.missing"), "error", false).rows.push(...pathRows(verify.missing));
-  if (verify && verify.extra.length > 0) card("verify:extra", t.t("report.extra"), "warning", false).rows.push(...pathRows(verify.extra));
+  if (verify && verify.missing.length > 0) card("verify:missing", t.t("report.missing"), "error").rows.push(...pathRows(verify.missing));
+  if (verify && verify.extra.length > 0) card("verify:extra", t.t("report.extra"), "warning").rows.push(...pathRows(verify.extra));
+  // How the originals differ from the archive, a card per way, so each lists
+  // names alone like every other card.
   const changes = job.originalsChanges;
   if (changes) {
-    card("originals:changed", t.t("details.originalsChanged"), "error", true).rows.push(
-      ...pathRows(changes.missing, t.t("details.changeMissing")),
-      ...pathRows(changes.added, t.t("details.changeAdded")),
-      ...pathRows(changes.changed, t.t("details.changeChanged")),
-      ...pathRows(changes.unlisted, t.t("details.changeUnlisted")),
-    );
+    card("originals:missing", t.t("details.originalsMissing"), "error").rows.push(...pathRows(changes.missing));
+    card("originals:added", t.t("details.originalsAdded"), "error").rows.push(...pathRows(changes.added));
+    card("originals:changed", t.t("details.originalsModified"), "error").rows.push(...pathRows(changes.changed));
+    card("originals:unlisted", t.t("details.originalsUnreadable"), "error").rows.push(...pathRows(changes.unlisted));
   }
 
   // What is left out leaves with the originals when they are removed.
@@ -969,12 +969,16 @@ export function detailsCards(
   const result: DetailsCard[] = [];
   for (const { excluded, junk, ...c } of cards.values()) {
     if (c.rows.length === 0) continue;
-    const shown: DetailsCard = { ...c, groupable: excluded };
+    const shown: DetailsCard = { ...c, names: namesOf(c.rows, t.locale) };
+    const texts = new Set(c.rows.map((row) => row.changes.join(" ")));
+    const [only] = texts;
+    if (texts.size === 1 && only) shown.common = only;
+    if (c.key === "rule:output.exists") shown.countless = true;
     if (excluded && removing) {
       shown.note = t.t(job.intent.originals === "delete" ? "details.deletedUnarchived" : "details.trashedUnarchived");
       if (!junk && shown.level === "info") shown.level = "warning";
     }
-    shown.open = shown.rows.length <= rowLimit;
+    shown.open = shown.names.length <= rowLimit;
     result.push(shown);
   }
 
@@ -1013,46 +1017,36 @@ function archiveCard(job: Job, t: Translator): DetailsCard | null {
   const level: Severity = job.archiveStatus === "missing"
     ? "error"
     : job.archiveStatus === "changed" || job.archiveStatus === "unavailable" ? "warning" : "info";
-  return { key: "archive", title: t.t("details.archive"), level, rows: [], rowDetail: false, open: true, groupable: false, facts };
+  return { key: "archive", title: t.t("details.archive"), level, rows: [], names: [], open: true, countless: true, facts };
 }
 
-function compareText(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+/** A path's last segment: the name a card shows for it. */
+export function nameOf(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  return trimmed.slice(Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\")) + 1);
 }
 
-/** A path's last segment, and the folder it is in ("" at the top). */
-export function splitName(path: string): { name: string; folder: string } {
-  const trimmed = path.replace(/\/+$/, "");
-  const cut = trimmed.lastIndexOf("/");
-  return cut < 0 ? { name: trimmed, folder: "" } : { name: trimmed.slice(cut + 1), folder: trimmed.slice(0, cut) };
+function collator(locale: string): Intl.Collator {
+  return new Intl.Collator(locale, { numeric: true, sensitivity: "base" });
 }
 
-/** Every row by its path, so a folder's rows read together. */
-export function rowsByPath(rows: readonly ReportRow[]): ReportRow[] {
-  return [...rows].sort((a, b) => compareText(a.path, b.path));
-}
-
-/** Rows by name, folders first and then files: each name that occurs more than
- *  once as one counted group (every `.DS_Store` under one heading, passed over
- *  at a glance), then every name that occurs once, as a plain row. */
-export function rowsByName(rows: readonly ReportRow[]): {
-  repeated: Array<{ name: string; dir: boolean; rows: ReportRow[] }>;
-  single: ReportRow[];
-} {
-  const groups = new Map<string, { name: string; dir: boolean; rows: ReportRow[] }>();
+/** The names of a card's rows, each once with how many rows carry it, in the
+ *  order the locale sorts names: a card shows names only, so every
+ *  `.DS_Store` reads as one line however many folders held one. */
+export function namesOf(rows: readonly ReportRow[], locale: string): Array<{ name: string; count: number }> {
+  const counts = new Map<string, number>();
   for (const row of rows) {
-    const name = splitName(row.path).name;
-    const dir = row.dir === true;
-    const key = `${dir ? "d" : "f"}\0${name}`;
-    const group = groups.get(key) ?? { name, dir, rows: [] };
-    group.rows.push(row);
-    groups.set(key, group);
+    const name = nameOf(row.path);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
   }
-  const byName = (a: { name: string; dir: boolean }, b: { name: string; dir: boolean }): number =>
-    Number(b.dir) - Number(a.dir) || compareText(a.name.toLowerCase(), b.name.toLowerCase()) || compareText(a.name, b.name);
-  const all = [...groups.values()];
-  return {
-    repeated: all.filter((group) => group.rows.length > 1).sort(byName).map((group) => ({ ...group, rows: rowsByPath(group.rows) })),
-    single: all.filter((group) => group.rows.length === 1).sort(byName).map((group) => group.rows[0]!),
-  };
+  const order = collator(locale);
+  return [...counts].map(([name, count]) => ({ name, count }))
+    .sort((a, b) => order.compare(a.name, b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/** Every row by its full path, in the order the locale sorts them, so a
+ *  folder's rows read together. */
+export function rowsByPath(rows: readonly ReportRow[], locale: string): ReportRow[] {
+  const order = collator(locale);
+  return [...rows].sort((a, b) => order.compare(a.path, b.path) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
