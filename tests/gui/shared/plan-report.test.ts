@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toPlanReport } from "../../../src/gui/shared/plan-report";
-import type { PlanData, PlannedEntry } from "../../../src/gui/shared/api";
+import type { Finding, PlanData, PlannedEntry } from "../../../src/gui/shared/api";
 
 const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEntry =>
   ({ archivePath, originalPath: archivePath, type: "file", method: "deflate", excluded: false, findings: [], ...over });
@@ -8,7 +8,7 @@ const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEn
 describe("toPlanReport", () => {
   it("sends the window only the entries the report shows, with the summary and every finding", () => {
     // An untouched file, and one renamed only because its folder was, add no row.
-    const flagged = { rule: "name.nfd", severity: "info" as const, path: "b", message: "m" };
+    const flagged: Finding = { rule: "name.nfd", severity: "info" as const, path: "b", message: "m" };
     const plan = {
       mode: "plan", output: "/out.zip", log: null, writable: true,
       summary: { total: 5, included: 4, excluded: 1, renamed: 1, warnings: 0, errors: 0, zip64: false },

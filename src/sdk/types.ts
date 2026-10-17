@@ -8,6 +8,7 @@
  * their own types elsewhere; nothing here depends on them.
  */
 
+
 export type Severity = "error" | "warning" | "info";
 
 /**
@@ -240,8 +241,63 @@ export interface ZipKitCallOptions {
 // Findings and plan
 // ---------------------------------------------------------------------------
 
+/** The rules a plan reports, in pipeline order; each one's severity and
+ *  default disposition are in the registry (`RULE_REGISTRY`). */
+export type RuleId =
+  | "path.absolute"
+  | "path.traversal"
+  | "path.too-long"
+  | "macos.junk"
+  | "windows.junk"
+  | "linux.junk"
+  | "entry.symlink"
+  | "entry.unsupported"
+  | "entry.unlisted"
+  | "name.nfd"
+  | "name.invalid-char"
+  | "name.control-char"
+  | "name.trailing-dot-space"
+  | "name.reserved"
+  | "name.suspicious"
+  | "entry.duplicate"
+  | "collision.case"
+  | "collision.post-fix"
+  | "time.pre-1980"
+  | "time.post-2107"
+  | "output.exists";
+
+/** The findings extract and verify report: an entry that fails its CRC-32, its
+ *  manifest hash or its manifest record, an unsafe path, and entries missing
+ *  from or extra to the archive against its manifest. */
+export type ExtractRuleId =
+  | "extract.crc-fail"
+  | "extract.sha-mismatch"
+  | "extract.manifest-mismatch"
+  | "extract.unsafe-path"
+  | "extract.missing"
+  | "extract.extra";
+
+/** Every rule a finding can carry. */
+export type FindingRule = RuleId | ExtractRuleId;
+
+/**
+ * Why an entry was left out of the archive, as a stable code an app can key on;
+ * `excludeReason` beside it is the same in English words, which may change.
+ *
+ * - `junk`: the built-in OS-junk preset (its finding names the OS);
+ * - `filter`: one of the caller's own filter rules;
+ * - `empty-dir` / `empty-file`: pruned or skipped as empty, by policy;
+ * - `duplicate`: the same source reached through more than one input;
+ * - `path-traversal`: its path would point outside the archive;
+ * - `symlink`: a symbolic link, ignored by policy;
+ * - `unsupported`: a socket, pipe, device or link that cannot be followed.
+ */
+export type ExcludeCode = "junk" | "filter" | "empty-dir" | "empty-file" | "duplicate" | "path-traversal" | "symlink" | "unsupported";
+
 export interface Finding {
-  rule: string; // identity
+  /** What was found: a plan rule (`RuleId`) or, from extract and verify, an
+   *  `ExtractRuleId`. Both are listed in the registry and stable. */
+  rule: FindingRule; // identity
   severity: Severity; // classification (sourced from the registry)
   path: string; // locator
   message: string;
@@ -254,6 +310,9 @@ export interface PlannedEntry {
   type: "file" | "dir"; // classification
   method: "store" | "deflate";
   excluded: boolean; // state
+  /** Why it was left out, as a stable code; present exactly when `excluded`. */
+  excludeCode?: ExcludeCode;
+  /** The same, in English words that may change: for display, never to key on. */
   excludeReason?: string;
   findings: Finding[]; // nested detail
 }

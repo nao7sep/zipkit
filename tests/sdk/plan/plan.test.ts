@@ -46,6 +46,8 @@ describe("selection", () => {
     expect(p.writable).toBe(true);
     const ds = p.entries.find((e) => e.archivePath === ".DS_Store");
     expect(ds?.excluded).toBe(true);
+    expect(ds?.excludeCode).toBe("junk");
+    expect(p.entries.find((e) => e.archivePath === "a.txt")?.excludeCode).toBeUndefined();
     expect(rules(p.findings)).toContain("macos.junk");
   });
 
@@ -54,7 +56,7 @@ describe("selection", () => {
       [scanEntry({ archivePath: "empty.txt", size: 0 }), scanEntry({ archivePath: "a.txt" })],
       { emptyFiles: "skip" },
     );
-    expect(p.entries.find((e) => e.archivePath === "empty.txt")?.excluded).toBe(true);
+    expect(p.entries.find((e) => e.archivePath === "empty.txt")).toMatchObject({ excluded: true, excludeCode: "empty-file" });
     expect(written(p)).toEqual(["a.txt"]);
   });
 });
@@ -69,7 +71,7 @@ describe("objects the walk could not archive", () => {
     });
     expect(p.writable).toBe(true);
     const pipe = p.entries.find((e) => e.archivePath === "pipe");
-    expect(pipe).toMatchObject({ excluded: true, type: "file" });
+    expect(pipe).toMatchObject({ excluded: true, type: "file", excludeCode: "unsupported" });
     expect(pipe?.findings).toEqual([expect.objectContaining({ rule: "entry.unsupported", severity: "info" })]);
     expect(pipe?.excludeReason).toMatch(/FIFO/);
     expect(p.entries.find((e) => e.archivePath === "dangling")?.excludeReason).toMatch(/does not exist/);
@@ -335,7 +337,7 @@ describe("timestamps", () => {
 describe("symlinks", () => {
   it("excludes a symlink under ignore with a warning", () => {
     const p = plan([scanEntry({ archivePath: "link", type: "symlink", linkTarget: "t" })]);
-    expect(p.entries[0]?.excluded).toBe(true);
+    expect(p.entries[0]).toMatchObject({ excluded: true, excludeCode: "path-traversal" });
     expect(rules(p.findings)).toContain("entry.symlink");
   });
 
@@ -354,7 +356,7 @@ describe("traversal", () => {
     const p = plan([scanEntry({ archivePath: "../escape.txt" })]);
     expect(p.writable).toBe(false);
     expect(rules(p.findings)).toContain("path.traversal");
-    expect(p.entries[0]?.excluded).toBe(true);
+    expect(p.entries[0]).toMatchObject({ excluded: true, excludeCode: "path-traversal" });
   });
 });
 
@@ -381,5 +383,25 @@ describe("output gate", () => {
   it("raises no output.exists finding once overwrite is authorized", () => {
     const p = plan([scanEntry({ archivePath: "a.txt" })], {}, { outputExists: true, overwrite: true });
     expect(p.findings.some((x) => x.rule === "output.exists")).toBe(false);
+  });
+});
+
+describe("exclusion codes", () => {
+  it("gives every excluded entry a stable code, and none to an included one", () => {
+    const p = plan(
+      [
+        scanEntry({ archivePath: "a.txt" }),
+        scanEntry({ archivePath: ".DS_Store" }),
+        scanEntry({ archivePath: "build.log" }),
+        scanEntry({ archivePath: "empty", type: "dir" }),
+      ],
+      { emptyDirs: "prune", filters: [{ pattern: "*.log", match: "glob", target: "both" }] },
+    );
+    const code = (path: string) => p.entries.find((e) => e.archivePath === path)?.excludeCode;
+    expect(code(".DS_Store")).toBe("junk");
+    expect(code("build.log")).toBe("filter");
+    expect(code("empty")).toBe("empty-dir");
+    expect(code("a.txt")).toBeUndefined();
+    for (const entry of p.entries) expect(entry.excluded).toBe(entry.excludeCode !== undefined);
   });
 });

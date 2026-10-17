@@ -23,6 +23,7 @@ describe("applyDedup", () => {
     expect(items[1]!.excluded).toBe(true);
     expect(items[1]!.emitExplicit).toBe(false);
     expect(items[1]!.excludeReason).toMatch(/duplicate of the same source/);
+    expect(items[1]!.excludeCode).toBe("duplicate");
     expect(items[1]!.findings.map((f) => f.rule)).toEqual(["entry.duplicate"]);
   });
 

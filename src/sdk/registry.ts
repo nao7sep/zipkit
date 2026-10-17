@@ -14,30 +14,11 @@
  * fixing, deduplication, collision detection, and timestamp resolution.
  */
 
-import type { Finding, Severity } from "./types.js";
+import type { ExtractRuleId, Finding, FindingRule, RuleId, Severity } from "./types.js";
 
-export type RuleId =
-  | "path.absolute"
-  | "path.traversal"
-  | "path.too-long"
-  | "macos.junk"
-  | "windows.junk"
-  | "linux.junk"
-  | "entry.symlink"
-  | "entry.unsupported"
-  | "entry.unlisted"
-  | "name.nfd"
-  | "name.invalid-char"
-  | "name.control-char"
-  | "name.trailing-dot-space"
-  | "name.reserved"
-  | "name.suspicious"
-  | "entry.duplicate"
-  | "collision.case"
-  | "collision.post-fix"
-  | "time.pre-1980"
-  | "time.post-2107"
-  | "output.exists";
+export type { RuleId };
+
+export type { ExtractRuleId, FindingRule };
 
 export interface RuleSpec {
   /** The rule's severity, which alone decides blocking (`error` blocks). For
@@ -93,10 +74,8 @@ export function isKnownRule(rule: string): rule is RuleId {
  * - a registry `RuleId`, whose severity defaults to the registry tier (a caller
  *   passes an explicit `severity` only for the configurable name rules, whose
  *   tier is chosen per run from the policy action); or
- * - an arbitrary `rule` string with an explicit `severity`, which is how an
- *   operational fault rides as a finding (its fault code in `rule`,
- *   `severity:"error"`, the OS cause folded into `message`) and how the extract
- *   pass records its CRC/SHA/path findings.
+ * - an `ExtractRuleId` with an explicit `severity`, which is how the extract
+ *   pass records its CRC/SHA/manifest/path findings.
  */
 export function finding(
   rule: RuleId,
@@ -105,13 +84,13 @@ export function finding(
   opts?: { fix?: Finding["fix"]; severity?: Severity },
 ): Finding;
 export function finding(
-  rule: string,
+  rule: ExtractRuleId,
   path: string,
   message: string,
   opts: { fix?: Finding["fix"]; severity: Severity },
 ): Finding;
 export function finding(
-  rule: string,
+  rule: FindingRule,
   path: string,
   message: string,
   opts?: { fix?: Finding["fix"]; severity?: Severity },

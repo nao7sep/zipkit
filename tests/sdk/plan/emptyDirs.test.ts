@@ -28,6 +28,7 @@ describe("applyEmptyDirs", () => {
     expect(dir.excluded).toBe(true);
     expect(dir.emitExplicit).toBe(false);
     expect(dir.excludeReason).toMatch(/empty directory pruned/);
+    expect(dir.excludeCode).toBe("empty-dir");
   });
 
   it("emits a standalone empty directory under keep", () => {

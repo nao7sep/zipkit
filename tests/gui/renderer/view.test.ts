@@ -39,7 +39,7 @@ import {
   stateColor,
   stateLabel,
 } from "../../../src/gui/renderer/src/view";
-import { JOB_EVENT_LIMIT, type Job, type JobEvent, type LogEvent, type PlanData, type Severity } from "../../../src/gui/shared/api";
+import { JOB_EVENT_LIMIT, type Finding, type Job, type JobEvent, type LogEvent, type PlanData, type Severity } from "../../../src/gui/shared/api";
 import { RULE_ORDER } from "../../../src/sdk/registry";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
@@ -612,7 +612,7 @@ describe("planReport", () => {
     ]);
   });
   it("shows a rule the GUI does not know as the SDK wrote it", () => {
-    const plan = planOf([entry({ archivePath: "x", findings: [{ rule: "future.rule", severity: "warning", path: "x", message: "something new" }] })]);
+    const plan = planOf([entry({ archivePath: "x", findings: [{ rule: "future.rule" as Finding["rule"], severity: "warning", path: "x", message: "something new" }] })]);
     expect(planReport(plan, en)[0]?.rows[0]?.changes).toEqual(["Something new"]);
   });
   it("gives a finding no entry carries a row of its own", () => {
@@ -624,8 +624,8 @@ describe("planReport", () => {
   it("surfaces an excluded entry that has no finding (custom exclude, pruned empty dir)", () => {
     const plan = planOf([
       entry({ archivePath: "keep.txt" }),
-      entry({ archivePath: "build/", type: "dir", excluded: true, excludeReason: "exclude rule: build/" }),
-      entry({ archivePath: "empty/", type: "dir", excluded: true, excludeReason: "empty directory pruned" }),
+      entry({ archivePath: "build/", type: "dir", excluded: true, excludeCode: "filter", excludeReason: "exclude rule: build/" }),
+      entry({ archivePath: "empty/", type: "dir", excluded: true, excludeCode: "empty-dir", excludeReason: "empty directory pruned" }),
     ]);
     expect(planReport(plan, en)).toEqual([
       {

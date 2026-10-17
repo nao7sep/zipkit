@@ -73,11 +73,11 @@ import type {
 
 /** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns and
  *  `write()` consumes (it also carries the writer's instructions out of band). */
-type PlanData = Extract<CreateData, { mode: "plan" }>;
+export type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 /** The `mode:"write"` member of {@link CreateData}: what `write()`/`create()`
  *  return on success. */
-type WriteData = Extract<CreateData, { mode: "write" }>;
+export type WriteData = Extract<CreateData, { mode: "write" }>;
 
 /**
  * The default concurrency tracks the host's available parallelism (which

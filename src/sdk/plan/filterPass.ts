@@ -19,6 +19,7 @@ export function applyFilter(items: WorkItem[], matcher: FilterMatcher): void {
     if (!rule) continue;
 
     item.excluded = true;
+    item.excludeCode = rule.junkRule ? "junk" : "filter";
     item.excludeReason = rule.describe;
     item.emitExplicit = false;
     if (rule.junkRule) {

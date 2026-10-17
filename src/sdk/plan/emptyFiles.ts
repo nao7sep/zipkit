@@ -14,6 +14,7 @@ export function applyEmptyFiles(items: WorkItem[], policy: ArchivePolicy): void 
     if (item.excluded || item.type !== "file") continue;
     if (item.scan.size === 0) {
       item.excluded = true;
+      item.excludeCode = "empty-file";
       item.excludeReason = "empty file skipped";
       item.emitExplicit = false;
     }

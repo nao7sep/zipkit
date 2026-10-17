@@ -9,7 +9,7 @@
 
 import { finding } from "../registry.js";
 import type { ScanEntry, ScanResult, SkipKind, Transformation, WriteEntry } from "../internal/types.js";
-import type { Finding, PlannedEntry } from "../types.js";
+import type { ExcludeCode, Finding, PlannedEntry } from "../types.js";
 
 export interface WorkItem {
   scan: ScanEntry;
@@ -17,6 +17,7 @@ export interface WorkItem {
   originalPath: string; // the pre-fix archive path
   type: "file" | "dir" | "symlink";
   excluded: boolean;
+  excludeCode?: ExcludeCode;
   excludeReason?: string;
   method: "store" | "deflate";
   /** Whether the writer emits an explicit ZIP entry (files, preserved
@@ -64,6 +65,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       originalPath: dir.archivePath,
       type: "dir",
       excluded: true,
+      excludeCode: dir.rule ? "junk" : "filter",
       excludeReason: dir.reason,
       method: "store",
       emitExplicit: false,
@@ -85,6 +87,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       originalPath: skipped.archivePath,
       type,
       excluded: true,
+      excludeCode: "unsupported",
       excludeReason: message,
       method: "store",
       emitExplicit: false,
@@ -132,6 +135,7 @@ export function toPlannedEntry(item: WorkItem): PlannedEntry {
       type,
       method: item.method,
       excluded: item.excluded,
+      ...(item.excludeCode ? { excludeCode: item.excludeCode } : {}),
       excludeReason: item.excludeReason,
       findings: item.findings,
     };

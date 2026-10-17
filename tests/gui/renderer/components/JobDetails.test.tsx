@@ -17,7 +17,7 @@ vi.mock("../../../../src/gui/renderer/src/view", async (original) => {
   const real = await original<typeof import("../../../../src/gui/renderer/src/view")>();
   return { ...real, detailsCards: vi.fn(real.detailsCards) };
 });
-import type { Job, JobEvent, PlanData, PlannedEntry } from "../../../../src/gui/shared/api";
+import type { Finding, Job, JobEvent, PlanData, PlannedEntry } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { SAVE } from "../../../helpers/intents.js";
 
@@ -48,7 +48,7 @@ const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEn
 });
 const junk = (path: string, type: "file" | "dir" = "file") =>
   entry(path, { type, excluded: true, findings: [{ rule: "macos.junk", severity: "info", path, message: "junk" }] });
-const blocking = (path: string) => entry(path, { findings: [{ rule: "x.test", severity: "error", path, message: "Blocks the archive" }] });
+const blocking = (path: string) => entry(path, { findings: [{ rule: "x.test" as Finding["rule"], severity: "error", path, message: "Blocks the archive" }] });
 const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = []) =>
   render(<JobDetails job={job(over)} plan={p} verify={null} events={events} rowLimit={5} />);
 

@@ -28,6 +28,7 @@ describe("applySymlinks", () => {
     expect(items[0]!.excluded).toBe(true);
     expect(items[0]!.emitExplicit).toBe(false);
     expect(items[0]!.excludeReason).toMatch(/symlink ignored/);
+    expect(items[0]!.excludeCode).toBe("symlink");
     expect(items[0]!.findings.map((f) => f.rule)).toEqual(["entry.symlink"]);
   });
 

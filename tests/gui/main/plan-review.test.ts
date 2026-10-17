@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { reportChanged } from "../../../src/gui/main/plan-review.js";
-import type { PlanData } from "../../../src/gui/shared/api.js";
+import type { Finding, PlanData } from "../../../src/gui/shared/api.js";
 
 type Entry = PlanData["entries"][number];
 const entry = (archivePath: string, over: Partial<Entry> = {}): Entry => ({
@@ -30,7 +30,7 @@ const plan = (entries: Entry[], over: Partial<PlanData> = {}): PlanData =>
     ...over,
   }) as PlanData;
 
-const nfd = { rule: "name.nfd", severity: "info" as const, path: "café", message: "name normalized from NFD to NFC" };
+const nfd: Finding = { rule: "name.nfd", severity: "info" as const, path: "café", message: "name normalized from NFD to NFC" };
 
 describe("reportChanged", () => {
   it("is false for the same Report in another order", () => {

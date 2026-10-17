@@ -32,6 +32,7 @@ export function applyEmptyDirs(items: WorkItem[], policy: ArchivePolicy): void {
 
     if (policy.emptyDirs === "prune" && !occupied.has(item.archivePath)) {
       item.excluded = true;
+      item.excludeCode = "empty-dir";
       item.excludeReason = "empty directory pruned";
       item.emitExplicit = false;
     } else {

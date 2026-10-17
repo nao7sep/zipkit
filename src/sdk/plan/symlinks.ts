@@ -28,6 +28,7 @@ export function applySymlinks(items: WorkItem[], policy: ArchivePolicy): void {
       );
     } else {
       item.excluded = true;
+      item.excludeCode = "symlink";
       item.excludeReason = "symlink ignored";
       item.emitExplicit = false;
       item.findings.push(finding("entry.symlink", item.archivePath, "symlink ignored"));

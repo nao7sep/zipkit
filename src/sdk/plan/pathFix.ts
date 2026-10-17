@@ -72,6 +72,7 @@ export function applyPathFix(items: WorkItem[]): void {
         }),
       );
       item.excluded = true;
+      item.excludeCode = "path-traversal";
       item.excludeReason = "path traversal";
       continue;
     }

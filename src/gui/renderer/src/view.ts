@@ -16,7 +16,7 @@
 import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
 import { manifestRequiredButMissing, originalsIntact, present, removesOriginals, scanBlocksRemoval } from "../../shared/queue";
-import type { Finding, InputEntry, Job, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
+import type { Finding, InputEntry, Job, PlannedEntry, JobAction, JobEvent, JobIntent, LogEvent, PathKind, Severity } from "../../shared/api";
 import { renamedItself, type PlanReport } from "../../shared/plan-report";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
@@ -405,18 +405,12 @@ function findingText(f: Finding, t: Translator, excluded = false): string {
   return key ? t.t(key) : humanSentence(f.message);
 }
 
-/** The SDK's reasons for an exclusion no finding explains. The SDK writes them
- *  as fixed English phrases rather than codes, so these phrases are the key;
- *  one the table does not know is shown as the SDK wrote it. */
-const EXCLUDE_REASONS: Record<string, MessageKey> = {
-  "empty directory pruned": "report.excludedEmptyDir",
-  "empty file skipped": "report.excludedEmptyFile",
-};
-
-function excludedText(reason: string | undefined, t: Translator): string {
-  if (reason === undefined) return t.t("report.excludedFiltered");
-  const key = EXCLUDE_REASONS[reason];
-  return key ? t.t(key) : t.t("report.excludedReason", { reason });
+/** Why an entry no finding explains was left out, keyed on the SDK's stable
+ *  exclusion code; a filter rule is named as the SDK describes it. */
+function excludedText(entry: Pick<PlannedEntry, "excludeCode" | "excludeReason">, t: Translator): string {
+  if (entry.excludeCode === "empty-dir") return t.t("report.excludedEmptyDir");
+  if (entry.excludeCode === "empty-file") return t.t("report.excludedEmptyFile");
+  return entry.excludeReason === undefined ? t.t("report.excludedFiltered") : t.t("report.excludedReason", { reason: entry.excludeReason });
 }
 
 /** The rules whose finding already says why its entry was left out. */
@@ -473,7 +467,7 @@ export function planReport(plan: PlanReport, t: Translator): ReportGroup[] {
     for (const f of findings) onEntries.add(findingId(f));
     const changes = [...new Set(findings.map((f) => findingText(f, t, entry.excluded)))];
     if (entry.excluded && !findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
-      changes.push(excludedText(entry.excludeReason, t));
+      changes.push(excludedText(entry, t));
     }
     const renamed = renamedItself(entry);
     if (changes.length === 0 && !renamed) continue;
@@ -939,8 +933,8 @@ export function detailsCards(
         }
       }
       if (entry.excluded && !entry.findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
-        const reason = excludedText(entry.excludeReason, t);
-        const c = card(`excluded:${reason}`, reason, "info", entry.excludeReason === "empty directory pruned" ? "kindInfo.emptyDirs" : undefined);
+        const reason = excludedText(entry, t);
+        const c = card(`excluded:${reason}`, reason, "info", entry.excludeCode === "empty-dir" ? "kindInfo.emptyDirs" : undefined);
         c.rows.push({ path: entry.archivePath, changes: [reason], ...dir });
         c.excluded = true;
       }

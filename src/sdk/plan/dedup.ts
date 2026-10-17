@@ -16,6 +16,7 @@ export function applyDedup(items: WorkItem[]): void {
     const key = `${item.archivePath}\0${item.scan.absolutePath}`;
     if (seen.has(key)) {
       item.excluded = true;
+      item.excludeCode = "duplicate";
       item.excludeReason = "duplicate of the same source";
       item.emitExplicit = false;
       item.findings.push(

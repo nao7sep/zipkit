@@ -4,6 +4,10 @@
  */
 
 export { ZipKit } from "./zipkit.js";
+export type { PlanData, WriteData } from "./zipkit.js";
+
+export { RULE_REGISTRY } from "./registry.js";
+export type { ExtractRuleId, FindingRule, RuleId, RuleSpec } from "./registry.js";
 
 export type {
   ArchiveInput,
@@ -11,6 +15,8 @@ export type {
   ArchiveSpec,
   CompressionPolicy,
   CreateData,
+  DeepPartial,
+  ExcludeCode,
   ExtractData,
   ExtractEntryResult,
   ExtractSpec,
@@ -21,6 +27,8 @@ export type {
   NameAction,
   NameRules,
   LogEvent,
+  LogEventBody,
+  LogMeta,
   LogLevel,
   LogStage,
   Metadata,
