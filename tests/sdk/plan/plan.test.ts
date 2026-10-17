@@ -337,7 +337,7 @@ describe("timestamps", () => {
 describe("symlinks", () => {
   it("excludes a symlink under ignore with a warning", () => {
     const p = plan([scanEntry({ archivePath: "link", type: "symlink", linkTarget: "t" })]);
-    expect(p.entries[0]).toMatchObject({ excluded: true, excludeCode: "path-traversal" });
+    expect(p.entries[0]).toMatchObject({ excluded: true, excludeCode: "symlink" });
     expect(rules(p.findings)).toContain("entry.symlink");
   });
 
