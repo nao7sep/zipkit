@@ -5,6 +5,8 @@
 
 export { ZipKit } from "./zipkit.js";
 export type { PlanData, WriteData } from "./zipkit.js";
+export { exportPlan, importPlan } from "./transfer.js";
+export type { PlanTransfer } from "./transfer.js";
 
 export { RULE_REGISTRY } from "./registry.js";
 export type { ExtractRuleId, FindingRule, RuleId, RuleSpec } from "./registry.js";

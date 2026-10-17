@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSdkClient, type HostProcess } from "../../../src/gui/main/sdk-client.js";
 import { createSdkHost, type HostReply, type HostRequest } from "../../../src/gui/main/sdk-host.js";
-import { attachInternals, readInternals } from "../../../src/sdk/internal/carrier.js";
+import { exportPlan, importPlan } from "../../../src/sdk/index.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { LogEvent } from "../../../src/gui/shared/api.js";
 
@@ -32,13 +32,11 @@ describe("the SDK host", () => {
     await writeFile(path.join(input, "a.txt"), "hello");
     const sdk = createSdkClient(inProcessHost);
     const events: LogEvent[] = [];
-    const { plan, internals } = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onProgress: (e) => events.push(e) });
+    // The plan crosses packaged by exportPlan; importPlan makes it writable again.
+    const plan = importPlan(await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onProgress: (e) => events.push(e) }));
     expect(plan.writable).toBe(true);
-    // The internals cross as a plain field; the writer gets them back the same way.
-    expect(readInternals(plan)).toBeUndefined();
-    attachInternals(plan, internals);
     const settlements: Promise<void>[] = [];
-    const bytes = await sdk.call("write", [{ plan, internals: readInternals(plan)! }], { onPhysicalSettlement: (p) => settlements.push(p) });
+    const bytes = await sdk.call("write", [exportPlan(plan)], { onPhysicalSettlement: (p) => settlements.push(p) });
     expect(bytes).toBeGreaterThan(0);
     await Promise.all(settlements);
     expect(await sdk.call("verify", [plan.output, true])).toBe(true);
@@ -54,8 +52,9 @@ describe("the SDK host", () => {
     await mkdir(input);
     await writeFile(path.join(input, "note.txt"), "hello");
     const sdk = createSdkClient(inProcessHost);
-    const { plan, internals } = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }]);
-    await sdk.call("write", [{ plan, internals }]);
+    const transfer = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }]);
+    const plan = transfer.plan;
+    await sdk.call("write", [transfer]);
     const comparison = await sdk.call("recheck", [plan.output, [input], { ...DEFAULT_OPTIONS }]);
     expect(comparison).toMatchObject({ matches: true });
     await writeFile(path.join(input, "late.txt"), "added after the archive");

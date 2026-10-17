@@ -14,7 +14,7 @@ import type { PlanReport, VerifyResult } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
-import { attachInternals, readInternals } from "../../sdk/internal/carrier.js";
+import { exportPlan, importPlan } from "../../sdk/index.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
@@ -58,8 +58,8 @@ function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved
 
 // Every look at the user's files runs in the SDK host's utility process
 // (./sdk-host); the engine supplies a job-tagging `onProgress`, so progress
-// reaches the right job's Progress stream. The plan comes back with the
-// internals the writer needs and goes back with them to be written.
+// reaches the right job's Progress stream. A plan crosses each way packaged by
+// the SDK's exportPlan, so it can still be written on the other side.
 /** The call's own outcome, or "aborted" once `signal` aborts first. The call
  *  itself goes on; only the wait ends. */
 function untilAborted<T>(call: Promise<T>, signal: AbortSignal): Promise<T | "aborted"> {
@@ -76,13 +76,9 @@ const engine = createQueueEngine({
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
   inspect: (output, signal, onProgress, checkMetadata) => sdk.call("inspect", [output, checkMetadata], { signal, onProgress }),
-  plan: async (inputs, options, signal, onProgress) => {
-    const { plan, internals } = await sdk.call("plan", [inputs, options], { signal, onProgress });
-    attachInternals(plan, internals);
-    return plan;
-  },
+  plan: async (inputs, options, signal, onProgress) => importPlan(await sdk.call("plan", [inputs, options], { signal, onProgress })),
   write: (plan, signal, onProgress, onPhysicalSettlement) =>
-    sdk.call("write", [{ plan, internals: readInternals(plan)! }], { signal, onProgress, onPhysicalSettlement }),
+    sdk.call("write", [exportPlan(plan)], { signal, onProgress, onPhysicalSettlement }),
   verify: (output, signal, onProgress, checkMetadata) => sdk.call("verify", [output, checkMetadata], { signal, onProgress }),
   recheck: (output, inputs, options, signal, onProgress) =>
     sdk.call("recheck", [output, inputs, options], { signal, onProgress }),

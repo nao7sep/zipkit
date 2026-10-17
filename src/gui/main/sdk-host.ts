@@ -11,11 +11,8 @@
  */
 
 import { rm } from "node:fs/promises";
-import { readInternals, attachInternals } from "../../sdk/internal/carrier.js";
-import type { PlanInternals } from "../../sdk/internal/carrier.js";
-import { ZipKit } from "../../sdk/index.js";
+import { exportPlan, importPlan, ZipKit, type PlanTransfer } from "../../sdk/index.js";
 import type { LogEvent, SourceComparison } from "../../sdk/types.js";
-import type { PlanData } from "../shared/api.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
@@ -25,13 +22,6 @@ import { resolveOutputPath } from "./output.js";
 import { outputInsideInputs } from "./safety.js";
 import { pathState, type PathState } from "./path-state.js";
 import { storageRoot } from "./storage.js";
-
-/** A plan as it crosses between processes: the public plan and the internals
- *  the writer needs, which a plain copy would drop. */
-export interface PlanTransfer {
-  plan: PlanData;
-  internals: PlanInternals;
-}
 
 export interface SdkOps {
   resources(paths: string[]): FileResource[];
@@ -98,11 +88,10 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       const output = await resolveOutputPath(options.outputDir, options.fileName, inputs, zip.volume(signal));
       if (output) spec.output = output;
       const plan = await zip.plan(spec, { signal, onProgress });
-      return { plan, internals: readInternals(plan)! } satisfies PlanTransfer;
+      return exportPlan(plan);
     },
     write: (transfer: PlanTransfer) => async (signal, onProgress, id) => {
-      attachInternals(transfer.plan, transfer.internals);
-      const written = await zip.write(transfer.plan, {
+      const written = await zip.write(importPlan(transfer), {
         signal,
         onProgress,
         onPhysicalSettlement: (settlement) => {
