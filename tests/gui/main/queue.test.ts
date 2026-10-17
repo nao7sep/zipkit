@@ -48,7 +48,7 @@ vi.mock("../../../src/gui/main/queue-engine.js", () => ({
 }));
 
 import { shell } from "electron";
-import { exportPlan, type PlanData } from "../../../src/sdk/index.js";
+import { exportPlan, type PlanData } from "zipkit";
 import { flushQueue, restoreQueue, saveQueueBeforeSessionEnd } from "../../../src/gui/main/queue.js";
 import type { SavedJob } from "../../../src/gui/shared/queue.js";
 import { SAVE } from "../../helpers/intents.js";

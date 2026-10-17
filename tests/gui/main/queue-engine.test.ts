@@ -9,15 +9,12 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
-import { createPathClaims } from "../../../src/sdk/index.js";
+import { createPathClaims, StallError, WriteError, type RemovalCheck, type SourceComparison } from "zipkit";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator, type Message } from "../../../src/gui/shared/i18n/translate.js";
-import { StallError, WriteError } from "../../../src/sdk/errors.js";
-import { checkRemoval } from "../../../src/sdk/removal.js";
-import type { SourceComparison } from "../../../src/sdk/types.js";
 import { DELETE, SAVE, TRASH } from "../../helpers/intents.js";
 
 const en = createTranslator("en");
@@ -50,7 +47,8 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
 }
 
 /** The SDK's removal check's own steps, faked one by one: the engine's fake
- *  `checkRemoval` runs them through the SDK's real sequence. */
+ *  `checkRemoval` runs them in the SDK's order, and like it, refuses at the
+ *  first check that refuses or cannot finish. */
 interface RemovalFakes {
   recheck(output: string, inputs: string[], options: typeof DEFAULT_OPTIONS, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<SourceComparison>;
   outputInsideInputs(output: string, inputs: string[], signal: AbortSignal): Promise<boolean>;
@@ -95,12 +93,20 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
     progress: () => () => {},
     newId: () => `job-${++idN}`,
     log: nullLog,
-    checkRemoval: (output, inputs, removed, options, signal, onEvent) => checkRemoval({
-      state: () => deps.pathState(output, signal),
-      inside: () => fakes.outputInsideInputs(output, inputs, signal),
-      verify: () => deps.verify(output, signal, onEvent, true),
-      compare: () => fakes.recheck(output, inputs, options, signal, onEvent),
-    }, inputs, removed),
+    checkRemoval: async (output, inputs, _removed, options, signal, onEvent): Promise<RemovalCheck> => {
+      const seen = await deps.pathState(output, signal).catch(() => null);
+      try {
+        if (await fakes.outputInsideInputs(output, inputs, signal)) return { refusal: { reason: "inside" }, verified: null };
+      } catch (error) { return { refusal: { reason: "error", step: "location", error }, verified: null }; }
+      try {
+        if (!(await deps.verify(output, signal, onEvent, true))) return { refusal: { reason: "verify-failed" }, verified: null };
+      } catch (error) { return { refusal: { reason: "error", step: "verify", error }, verified: null }; }
+      const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
+      try {
+        const comparison = await fakes.recheck(output, inputs, options, signal, onEvent);
+        return { refusal: comparison.matches ? null : { reason: "changed", comparison }, verified };
+      } catch (error) { return { refusal: { reason: "error", step: "recheck", error }, verified }; }
+    },
     ...overrides,
   };
   const fakes: RemovalFakes = {
@@ -1190,9 +1196,9 @@ describe("queue engine", () => {
     expect(calls.trash).toEqual([["/data"]]);
   });
 
-  it("Retry after a partial Trash moves only the inputs still present, forgiving what moved", async () => {
+  it("Retry after a partial Trash checks and moves only the inputs still present, naming those already moved", async () => {
     let trashCall = 0;
-    let recheckedInputs: string[] = [];
+    let checked: { inputs: string[]; removed: string[] } | undefined;
     const { deps, calls } = makeDeps({
       trash: async (paths) => {
         calls.trash.push(paths);
@@ -1202,11 +1208,10 @@ describe("queue engine", () => {
           : { moved: paths, failed: [], unconfirmed: [] };
       },
       classify: async (paths) => paths.map((path) => ({ path, kind: trashCall > 0 && path === "/x/a" ? "missing" as const : "file" as const })),
-      recheck: async (_output, inputs) => {
-        recheckedInputs = inputs;
-        calls.recheck++;
-        // The moved input's entries are missing from disk, as they should be.
-        return { matches: inputs.length === 2, added: [], missing: inputs.length === 2 ? [] : ["a/f.txt"], changed: [], unlisted: [] };
+      // What the archive holds from a moved input is the SDK's to forgive.
+      checkRemoval: async (_output, inputs, removed) => {
+        checked = { inputs, removed };
+        return { refusal: null, verified: { fingerprint: null } };
       },
     });
     const engine = createQueueEngine(deps);
@@ -1216,7 +1221,7 @@ describe("queue engine", () => {
     await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     run(engine, id);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
-    expect(recheckedInputs).toEqual(["/x/b"]);
+    expect(checked).toEqual({ inputs: ["/x/b"], removed: ["/x/a"] });
     expect(calls.trash).toEqual([["/x/a", "/x/b"], ["/x/b"]]);
     expect(calls.write).toBe(1);
   });

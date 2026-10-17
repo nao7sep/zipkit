@@ -12,14 +12,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import pLimit from "p-limit";
-import { matcherFor } from "../../../src/sdk/filter/match.js";
-import { createLogger } from "../../../src/sdk/log/logger.js";
-import { resolvePolicy } from "../../../src/sdk/policy.js";
-import { scan } from "../../../src/sdk/scan/scan.js";
-import type { ArchivePolicy, ArchiveSpec } from "../../../src/sdk/types.js";
-import { realVolume } from "../../helpers/volume.js";
-import { nodeFileSystem, Volume, type FileSystemPort } from "../../../src/sdk/internal/volume.js";
-import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../../helpers/symlink.js";
+import { matcherFor } from "../../src/filter/match.js";
+import { createLogger } from "../../src/log/logger.js";
+import { resolvePolicy } from "../../src/policy.js";
+import { scan } from "../../src/scan/scan.js";
+import type { ArchivePolicy, ArchiveSpec } from "../../src/types.js";
+import { realVolume } from "../helpers/volume.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.js";
+import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../helpers/symlink.js";
 
 let dir: string;
 

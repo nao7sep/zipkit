@@ -18,15 +18,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AbortError, PolicyError, StallError, ZipKit } from "../../src/sdk/index.js";
-import { extractArchive } from "../../src/sdk/extract/extract.js";
-import { matcherFor } from "../../src/sdk/filter/match.js";
-import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/sdk/internal/volume.js";
-import { createLogger } from "../../src/sdk/log/logger.js";
-import { resolvePolicy } from "../../src/sdk/policy.js";
-import { scan } from "../../src/sdk/scan/scan.js";
-import { writeArchive } from "../../src/sdk/write/write.js";
-import { stallingFileSystem, type StallingFileSystem } from "../helpers/volume.js";
+import { AbortError, PolicyError, StallError, ZipKit } from "../src/index.js";
+import { extractArchive } from "../src/extract/extract.js";
+import { matcherFor } from "../src/filter/match.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.js";
+import { createLogger } from "../src/log/logger.js";
+import { resolvePolicy } from "../src/policy.js";
+import { scan } from "../src/scan/scan.js";
+import { writeArchive } from "../src/write/write.js";
+import { stallingFileSystem, type StallingFileSystem } from "./helpers/volume.js";
 
 const BUDGET = 150;
 

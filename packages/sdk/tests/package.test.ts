@@ -8,18 +8,20 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import * as source from "../src/sdk/index.js";
+import * as source from "../src/index.js";
 
 const run = promisify(execFile);
-// Inside the repository, so the built files resolve its dependencies.
-const built = path.resolve("out", `.package-test-${process.pid}`);
+// Inside the package, so the built files resolve its dependencies.
+const built = path.resolve(`.package-test-${process.pid}`);
 let work: string;
 
 beforeAll(async () => {
-  const tsc = path.resolve("node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc");
-  await run(tsc, ["-p", "tsconfig.sdk.json", "--outDir", built], { shell: process.platform === "win32" });
+  // TypeScript exports no path to its command; it sits beside its package.json.
+  const tsc = path.join(path.dirname(createRequire(import.meta.url).resolve("typescript/package.json")), "bin", "tsc");
+  await run(process.execPath, [tsc, "-p", "tsconfig.json", "--outDir", built]);
   work = await mkdtemp(path.join(tmpdir(), "zipkit-package-"));
 }, 60_000);
 afterAll(async () => {
@@ -28,9 +30,12 @@ afterAll(async () => {
 });
 
 it("exports from the built entry what the source entry exports, with declarations", async () => {
-  const entry = await import(path.join(built, "sdk", "index.js"));
+  const entry = await import(path.join(built, "index.js"));
   expect(Object.keys(entry).sort()).toEqual(Object.keys(source).sort());
-  expect(await readFile(path.join(built, "sdk", "index.d.ts"), "utf8")).toContain("ZipKit");
+  expect(await readFile(path.join(built, "index.d.ts"), "utf8")).toContain("ZipKit");
+  // The other entries the package exports.
+  expect(Object.keys(await import(path.join(built, "testing.js"))).sort()).toEqual(["Volume", "nodeFileSystem"]);
+  expect(await readFile(path.join(built, "types.d.ts"), "utf8")).toContain("export interface ArchiveSpec");
 });
 
 it("runs the built CLI with Node: create, then verify", async () => {
@@ -48,6 +53,6 @@ it("runs the built CLI with Node: create, then verify", async () => {
 
 it("points the package's entry, types and command at the build", async () => {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
-  expect(pkg.exports["."]).toEqual({ types: "./dist/sdk/index.d.ts", import: "./dist/sdk/index.js" });
+  expect(pkg.exports["."]).toMatchObject({ types: "./dist/index.d.ts", import: "./dist/index.js" });
   expect(pkg.bin).toEqual({ zipkit: "./dist/cli/zipkit.js" });
 });

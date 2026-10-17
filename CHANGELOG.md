@@ -8,18 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The SDK is built to JavaScript with type declarations (`npm run build:sdk`, into `dist/`), and the package exports the build instead of TypeScript source. [docs/sdk.md](docs/sdk.md) is its guide and reference, and [docs/rules.md](docs/rules.md) lists every rule, exclusion code and error code.
-- A `zipkit` command: `plan`, `create`, `verify` and `list`, with `--json` and exit codes for scripts ([docs/cli.md](docs/cli.md)).
-- SDK: `checkRemoval` checks whether the originals an archive was made from can be removed without losing data; `unarchived(plan)` names what that removal would take without a copy.
-- SDK: `onProgress` reports entries and bytes done during a write or a read; `PlanSummary.sourceBytes` is the size of what is archived; each planned entry's `diskPath` says where it is on disk.
-- SDK: `list` reads an archive's entries and `readManifest` its embedded manifest; `pathState`, `classify` and `sameFile` tell what is at a path; `exportPlan`/`importPlan` hand a plan to another process; `createPathClaims` and `pathResources` keep concurrent operations off the same files.
-- SDK: an archive spec takes `outputDir` and `outputName` beside `output`.
-- SDK: every excluded planned entry carries a stable `excludeCode` beside its English reason, and every type the public signatures use is exported, with `VERSION` and `machineTimeZone`.
+- The SDK and the `zipkit` command are a package of their own, [packages/sdk](packages/sdk), which the app bundles from source; its changes are in [its changelog](packages/sdk/CHANGELOG.md).
 
 ### Changed
 
-- SDK: the per-call event hook is `onEvent` (was `onProgress`); `onProgress` now carries progress counts.
-- SDK: the SDK reads no environment variables and keeps no log of its own: an instance writes a session log only into a given `logDir` (the `sessionLog` option and `ZIPKIT_LOG_DIR` are gone), `debug` is an instance option, and folders to leave out of every scan are passed as `skipPaths`. ZipKit's data folder stays out of the app's scans that way.
 
 - The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `app`, `version`, `repository`, `createdAtUtc` and `formatVersion`, replacing `tool` and `createdUtc`. Verify looks for `zipkit.json` only. A 0.1.0 manifest (`_metadata.json`) carries no `formatVersion`, so checking an archive against it fails with `read.manifest-invalid`; the CRC-32 check without `checkMetadata` still verifies such an archive.
 - The environment variable that moves ZipKit's data folder is now `ZIPKIT_DATA_DIR` (was `ZIPKIT_HOME`). `ZIPKIT_HOME` is no longer read: a ZipKit started with only it set uses `~/.zipkit`, and the folder it named is left as it is.

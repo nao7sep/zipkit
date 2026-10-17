@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT, formatBytes, run } from "../../src/cli/run.js";
-import { VERSION, ZipKit } from "../../src/sdk/index.js";
+import { VERSION, ZipKit } from "../../src/index.js";
 
 let root: string;
 let proj: string;

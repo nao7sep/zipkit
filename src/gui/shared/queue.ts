@@ -5,7 +5,7 @@
  * renderer fetches for the selected job via `getPlan`.
  */
 
-import type { PathEntry, PathKind as SdkPathKind, PlanSummary, Severity } from "../../sdk/types.js";
+import type { PathEntry, PathKind as SdkPathKind, PlanSummary, Severity } from "zipkit/types";
 import type { GuiOptions } from "./spec.js";
 import type { Message } from "./i18n/translate.js";
 

@@ -9,8 +9,8 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PolicyError, ZipKit } from "../../src/sdk/index.js";
-import type { LogEvent } from "../../src/sdk/index.js";
+import { PolicyError, ZipKit } from "../src/index.js";
+import type { LogEvent } from "../src/index.js";
 
 let root: string;
 let logDir: string;

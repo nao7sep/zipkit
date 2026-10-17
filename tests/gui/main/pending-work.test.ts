@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { nativeWorkPending } from "../../../src/gui/main/pending-work.js";
 import { managedIO } from "../../../src/gui/main/managed-io.js";
 import { finishStartupHalt } from "../../../src/gui/main/quit.js";
-import { nodeFileSystem, Volume } from "../../../src/sdk/internal/volume.js";
+import { nodeFileSystem, Volume } from "zipkit/testing";
 
 it("leaves main's exit unheld by SDK volume work, which runs in the SDK host's own process", async () => {
   let release!: () => void;

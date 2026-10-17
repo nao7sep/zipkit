@@ -1,5 +1,6 @@
 {
-  "name": "zipkit",
+  "name": "zipkit-app",
+  "productName": "ZipKit",
   "version": "0.1.0",
   "private": true,
   "packageManager": "npm@12.0.2",
@@ -15,32 +16,17 @@
     "url": "git+https://github.com/nao7sep/zipkit.git"
   },
   "type": "module",
+  "workspaces": [
+    "packages/sdk"
+  ],
   "engines": {
     "node": ">=22.12.0"
   },
-  "main": "./dist/sdk/index.js",
-  "types": "./dist/sdk/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/sdk/index.d.ts",
-      "import": "./dist/sdk/index.js"
-    }
-  },
-  "bin": {
-    "zipkit": "./dist/cli/zipkit.js"
-  },
-  "files": [
-    "dist/sdk",
-    "dist/cli",
-    "docs",
-    "README.md",
-    "LICENSE"
-  ],
+  "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite --entry ./out/main/index.js",
     "build:gui": "npm run typecheck:node && npm run typecheck:web && electron-vite build",
-    "build:sdk": "node scripts/build-sdk.mjs",
-    "prepack": "npm run build:sdk",
+    "build:sdk": "npm run build -w zipkit",
     "dist": "npm run build:gui && npm run prepare:electron && electron-builder --publish never",
     "prepare:electron": "node node_modules/electron/install.js",
     "preview": "electron-vite preview --entry ./out/main/index.js",
@@ -50,7 +36,7 @@
     "typecheck:web": "tsc --noEmit --composite false -p tsconfig.web.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:test",
-    "test": "npm run typecheck && vitest run",
+    "test": "npm run typecheck && vitest run && npm test -w zipkit",
     "check:release-tag": "node scripts/check-release-tag.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -66,6 +52,7 @@
     "picomatch": "^4.0.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "stream-chain": "^4.2.6",
     "stream-json": "^3.7.0",
     "zod": "^4.6.7"
   },
@@ -87,7 +74,8 @@
     "typescript": "^7.0.2",
     "vite": "^7.3.7",
     "vitest": "^5.0.4",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "zipkit": "0.1.0"
   },
   "allowScripts": {
     "electron-winstaller@5.4.0": true,

@@ -26,7 +26,7 @@ Ordinary quit captures the latest job edits before saving the queue. Settings an
 
 ## Use the SDK
 
-The SDK is the library the app is built on, for any other app: ESM for Node.js 22.12+, built to JavaScript with type declarations.
+The SDK is the library the app is built on, for any other app. It is a package of its own, [`packages/sdk`](packages/sdk) (named `zipkit`), with its own dependencies, tests and build; the app bundles it from source.
 
 ```ts
 import { ZipKit } from "zipkit";
@@ -35,25 +35,13 @@ const zip = new ZipKit();
 const plan = await zip.plan({ inputs: ["./my-project"] });
 for (const f of plan.findings) console.log(f.severity, f.rule, f.path);
 if (plan.writable) await zip.write(plan); // or zip.create(spec) in one call
-
-const check = await zip.extract({ archive: plan.output, dryRun: true, checkMetadata: true });
-console.log(check.reportOk);
 ```
 
-- [SDK guide and reference](docs/sdk.md): making and reading archives, checking before the originals are removed, progress and cancellation, errors.
-- [Rules, exclusion codes and error codes](docs/rules.md): every identifier a result carries.
+- [SDK guide and reference](packages/sdk/docs/sdk.md): making and reading archives, checking before the originals are removed, progress and cancellation, errors.
+- [Rules, exclusion codes and error codes](packages/sdk/docs/rules.md): every identifier a result carries.
+- [The `zipkit` command](packages/sdk/docs/cli.md): `plan`, `create`, `verify` and `list` from a shell.
 
-`npm run build:sdk` builds it into `dist/`.
-
-## Use the command line
-
-```sh
-zipkit plan ./my-project
-zipkit create ./my-project -o my-project.zip
-zipkit verify my-project.zip
-```
-
-[The `zipkit` command](docs/cli.md) lists its options and exit codes. From a checkout, run it as `node dist/cli/zipkit.js` after `npm run build:sdk`.
+`npm test` runs the app's tests and then the SDK's; `npm run build:sdk` builds the package into `packages/sdk/dist/`, where the command is `node packages/sdk/dist/cli/zipkit.js`.
 
 ## License
 

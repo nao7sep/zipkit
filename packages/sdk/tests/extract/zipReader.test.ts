@@ -9,9 +9,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseZip, readEntryData, type ReadEntry } from "../../../src/sdk/extract/zipReader.js";
-import type { VolumeFile } from "../../../src/sdk/internal/volume.js";
-import { openRead } from "../../helpers/volume.js";
+import { parseZip, readEntryData, type ReadEntry } from "../../src/extract/zipReader.js";
+import type { VolumeFile } from "../../src/internal/volume.js";
+import { openRead } from "../helpers/volume.js";
 
 let dir: string;
 beforeEach(async () => {

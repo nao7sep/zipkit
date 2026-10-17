@@ -12,7 +12,7 @@
 
 import { homedir } from "node:os";
 import path from "node:path";
-import type { ArchiveSpec } from "../../sdk/index.js";
+import type { ArchiveSpec } from "zipkit";
 
 /** Expand a leading `~`/`~/` to the home directory; leave any other string unchanged. */
 function expandHome(p: string): string {

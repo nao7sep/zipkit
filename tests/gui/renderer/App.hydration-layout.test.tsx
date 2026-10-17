@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
 import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-engine.js";
-import { createPathClaims } from "../../../src/sdk/index.js";
+import { createPathClaims } from "zipkit";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { Job, JobIntent, PlanData, ZipKitGuiApi } from "../../../src/gui/shared/api";

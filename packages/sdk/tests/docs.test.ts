@@ -7,12 +7,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { RULE_REGISTRY, ZipKit } from "../src/sdk/index.js";
-import * as sdk from "../src/sdk/index.js";
+import { RULE_REGISTRY, ZipKit } from "../src/index.js";
+import * as sdk from "../src/index.js";
 
 const doc = (name: string) => readFileSync(path.join("docs", name), "utf8");
 const missing = (text: string, ids: Iterable<string>) => [...ids].filter((id) => !text.includes(`\`${id}\``));
-const types = readFileSync("src/sdk/types.ts", "utf8");
+const types = readFileSync("src/types.ts", "utf8");
 /** The members of a string-literal union type declared in types.ts. */
 function union(name: string): string[] {
   const body = new RegExp(`export type ${name} =([^;]+);`).exec(types)?.[1] ?? "";
@@ -29,9 +29,9 @@ describe("docs/rules.md", () => {
   });
 
   it("lists every error code the SDK throws", () => {
-    const source = (readdirSync("src/sdk", { recursive: true, encoding: "utf8" }) as string[])
+    const source = (readdirSync("src", { recursive: true, encoding: "utf8" }) as string[])
       .filter((file) => file.endsWith(".ts"))
-      .map((file) => readFileSync(path.join("src/sdk", file), "utf8"))
+      .map((file) => readFileSync(path.join("src", file), "utf8"))
       .join("\n");
     const codes = new Set([...source.matchAll(/\w+Error\(\s*"([a-z0-9]+\.[a-z0-9.-]+)"/g)].map((m) => m[1]!));
     codes.add("aborted").add("io.stalled");

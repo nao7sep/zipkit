@@ -41,7 +41,9 @@ import {
   stateLabel,
 } from "../../../src/gui/renderer/src/view";
 import { JOB_EVENT_LIMIT, type Finding, type Job, type JobEvent, type LogEvent, type PlanData, type Severity } from "../../../src/gui/shared/api";
-import { RULE_ORDER } from "../../../src/sdk/registry";
+import { RULE_REGISTRY } from "zipkit";
+
+const RULE_ORDER = Object.keys(RULE_REGISTRY);
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec";
 import { loadCatalogue } from "../../../src/gui/shared/i18n/catalogues";
 import { createTranslator, message } from "../../../src/gui/shared/i18n/translate";

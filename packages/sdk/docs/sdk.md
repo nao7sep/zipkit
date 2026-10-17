@@ -218,6 +218,14 @@ Claims compare physical files, so a link, a folder alias or a name that differs 
 | `pathResources(paths, { signal? })` | `PathResource[]` |
 | `volume(signal?)` | the SDK's bounded file access, for a caller that must look at the same volumes |
 
+### Entries
+
+| Entry | |
+| --- | --- |
+| `zipkit` | Everything on this page |
+| `zipkit/types` | The types alone, for code that must not load Node modules, such as a browser window showing results |
+| `zipkit/testing` | `Volume`, `nodeFileSystem` and `FileSystemPort`, for tests that make the SDK meet a failing disk: build a `Volume` over a port whose calls fail or never answer, and return it from an overridden `ZipKit.volume` |
+
 ### Functions and constants
 
 `exportPlan`, `importPlan`, `unarchived`, `sameFile`, `createPathClaims`, `machineTimeZone`, `RULE_REGISTRY` (every plan rule with its severity and default disposition), `VERSION`.

@@ -8,9 +8,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { fullFixSegment, processSegment } from "../../../src/sdk/plan/nameFix.js";
-import type { RuleId } from "../../../src/sdk/registry.js";
-import type { NameRules } from "../../../src/sdk/types.js";
+import { fullFixSegment, processSegment } from "../../src/plan/nameFix.js";
+import type { RuleId } from "../../src/registry.js";
+import type { NameRules } from "../../src/types.js";
 
 const COMBINING_ACUTE = String.fromCodePoint(0x0301);
 const NFD_E = `e${COMBINING_ACUTE}`;
@@ -257,7 +257,7 @@ describe("invalid-character styles", () => {
   });
 
   it("tidies by default", async () => {
-    const { NAME_DEFAULTS } = await import("../../../src/sdk/policy.js");
+    const { NAME_DEFAULTS } = await import("../../src/policy.js");
     expect(NAME_DEFAULTS.invalidCharStyle).toBe("tidy");
   });
 });

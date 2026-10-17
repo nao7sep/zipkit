@@ -8,9 +8,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CompiledRule, FilterMatcher } from "../../../src/sdk/filter/match.js";
-import { applyFilter } from "../../../src/sdk/plan/filterPass.js";
-import { workItem } from "../../helpers/synthetic.js";
+import type { CompiledRule, FilterMatcher } from "../../src/filter/match.js";
+import { applyFilter } from "../../src/plan/filterPass.js";
+import { workItem } from "../helpers/synthetic.js";
 
 /** A matcher that returns the given rule for an exact path, null otherwise. */
 function matcherFor(path: string, rule: CompiledRule): FilterMatcher {

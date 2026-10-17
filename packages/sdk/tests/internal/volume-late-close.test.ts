@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { nodeFileSystem, Volume } from "../../../src/sdk/internal/volume.js";
+import { nodeFileSystem, Volume } from "../../src/internal/volume.js";
 
 it("a late temp open retains cleanup ownership until physical close settles", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-late-close-"));

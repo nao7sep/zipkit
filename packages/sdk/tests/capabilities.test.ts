@@ -9,10 +9,10 @@ import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ReadError, unarchived, ZipKit } from "../../src/sdk/index.js";
-import type { PlannedEntry, ProgressCounts } from "../../src/sdk/index.js";
-import { Meter } from "../../src/sdk/progress.js";
-import { createDirectoryLink } from "../helpers/symlink.js";
+import { ReadError, unarchived, ZipKit } from "../src/index.js";
+import type { PlannedEntry, ProgressCounts } from "../src/index.js";
+import { Meter } from "../src/progress.js";
+import { createDirectoryLink } from "./helpers/symlink.js";
 
 let root: string;
 let proj: string;

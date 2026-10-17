@@ -4,7 +4,7 @@
  * An explicit interface in `shared` — not `typeof api` from preload — so the
  * renderer references the type without importing preload (whose `electron` import
  * would drag Node types into the renderer program). Preload implements it via
- * `satisfies ZipKitGuiApi`. SDK types come from `src/sdk/types` (pure data, no
+ * `satisfies ZipKitGuiApi`. SDK types come from `zipkit/types` (pure data, no
  * runtime, no Node) via `import type`.
  *
  * The renderer never plans or writes directly: it manages a queue of jobs (the
@@ -15,7 +15,7 @@
  */
 
 import type { InputAdmission } from "./input-admission.js";
-import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "../../sdk/types.js";
+import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "zipkit/types";
 import type { PlanReport } from "./plan-report.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";

@@ -11,16 +11,16 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AbortError, ZipKit } from "../../src/sdk/index.js";
-import { ZipWriter } from "../../src/sdk/write/zipWriter.js";
-import { parseZip, readEntryData } from "../../src/sdk/extract/zipReader.js";
+import { AbortError, ZipKit } from "../src/index.js";
+import { ZipWriter } from "../src/write/zipWriter.js";
+import { parseZip, readEntryData } from "../src/extract/zipReader.js";
 import pLimit from "p-limit";
-import { extractArchive } from "../../src/sdk/extract/extract.js";
-import { writeArchive } from "../../src/sdk/write/write.js";
-import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/sdk/internal/volume.js";
-import { createLogger } from "../../src/sdk/log/logger.js";
-import { buildZipFile } from "../helpers/writeZip.js";
-import { openRead, realVolume } from "../helpers/volume.js";
+import { extractArchive } from "../src/extract/extract.js";
+import { writeArchive } from "../src/write/write.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.js";
+import { createLogger } from "../src/log/logger.js";
+import { buildZipFile } from "./helpers/writeZip.js";
+import { openRead, realVolume } from "./helpers/volume.js";
 
 let dir: string;
 

@@ -18,7 +18,7 @@ import {
   type NameAction,
   type PlanData,
   type ProgressCounts,
-} from "../sdk/index.js";
+} from "../index.js";
 
 /** Where the command writes, and whether its error stream is a terminal that
  *  can show a progress line. */

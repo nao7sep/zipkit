@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { applyCollision } from "../../../src/sdk/plan/collision.js";
-import { workItem } from "../../helpers/synthetic.js";
+import { applyCollision } from "../../src/plan/collision.js";
+import { workItem } from "../helpers/synthetic.js";
 
 function rules(item: ReturnType<typeof workItem>): string[] {
   return item.findings.map((f) => f.rule);

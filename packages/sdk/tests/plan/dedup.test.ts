@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { applyDedup } from "../../../src/sdk/plan/dedup.js";
-import { workItem } from "../../helpers/synthetic.js";
+import { applyDedup } from "../../src/plan/dedup.js";
+import { workItem } from "../helpers/synthetic.js";
 
 describe("applyDedup", () => {
   it("collapses the second of two entries sharing path and source", () => {

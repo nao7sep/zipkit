@@ -7,9 +7,9 @@
 
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { PolicyError } from "../../../src/sdk/errors.js";
-import { resolveOutputPath } from "../../../src/sdk/scan/output.js";
-import type { ResolvedInput } from "../../../src/sdk/plan/arcname.js";
+import { PolicyError } from "../../src/errors.js";
+import { resolveOutputPath } from "../../src/scan/output.js";
+import type { ResolvedInput } from "../../src/plan/arcname.js";
 
 const cwd = path.resolve("/work");
 const input = (p: string): ResolvedInput => ({ path: path.resolve(cwd, p) });

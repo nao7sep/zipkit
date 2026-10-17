@@ -5,7 +5,7 @@
  * (no Electron, no Node, no SDK runtime), so it is unit-tested directly.
  */
 
-import type { ArchivePolicy, ArchiveSpec, DeepPartial, InvalidCharStyle, NameAction } from "../../sdk/types.js";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial, InvalidCharStyle, NameAction } from "zipkit/types";
 import type { LanguagePreference } from "./i18n/languages.js";
 
 /** The visible option state for one job. Defaults mirror the SDK's own defaults. */

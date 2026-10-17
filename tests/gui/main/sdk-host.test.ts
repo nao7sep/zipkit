@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSdkClient, type HostProcess } from "../../../src/gui/main/sdk-client.js";
 import { createSdkHost, type HostReply, type HostRequest } from "../../../src/gui/main/sdk-host.js";
-import { exportPlan, importPlan } from "../../../src/sdk/index.js";
+import { exportPlan, importPlan } from "zipkit";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { LogEvent, ProgressCounts } from "../../../src/gui/shared/api.js";
 

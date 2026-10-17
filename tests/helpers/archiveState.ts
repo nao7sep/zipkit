@@ -3,7 +3,7 @@
  * answers, on the real volume.
  */
 
-import { ZipKit, type PathState } from "../../src/sdk/index.js";
+import { ZipKit, type PathState } from "zipkit";
 
 export function realPathState(target: string): Promise<PathState> {
   return new ZipKit().pathState(target);

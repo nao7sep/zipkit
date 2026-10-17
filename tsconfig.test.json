@@ -7,6 +7,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // The SDK package resolves to its TypeScript source, through its exports
+    // map, so the app is checked against what it bundles and never reaches
+    // past the entries the package exports.
+    "customConditions": ["zipkit-source"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -31,5 +35,5 @@
   // component test renders components that reach for the bridge (the settings
   // dialog's output-directory picker); without it the test program would see a
   // bare `Window` and fail on code the web program checks fine.
-  "include": ["tests/**/*", "vitest.config.ts", "src/gui/renderer/src/env.d.ts"]
+  "include": ["tests/**/*", "vitest.config.ts", "sdk-source.config.ts", "src/gui/renderer/src/env.d.ts"]
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { instantFromWallClockInZone, machineTimeZone } from "../../../src/sdk/internal/timeZone.js";
+import { instantFromWallClockInZone, machineTimeZone } from "../../src/internal/timeZone.js";
 
 afterEach(() => vi.restoreAllMocks());
 

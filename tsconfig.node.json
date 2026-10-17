@@ -1,5 +1,5 @@
 {
-  // Node-side program: the SDK engine and the GUI's main + preload + shared.
+  // Node-side program: the GUI's main + preload + shared.
   // `lib: ["ES2022"]` (no DOM) statically catches a node-side file reaching for a
   // browser global; `types: ["node"]` keeps it to Node. Preload sits here because
   // its `electron` import pulls in @types/node, which would otherwise leak Node
@@ -8,6 +8,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // The SDK package resolves to its TypeScript source, through its exports
+    // map, so the app is checked against what it bundles and never reaches
+    // past the entries the package exports.
+    "customConditions": ["zipkit-source"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -31,12 +35,11 @@
     "types": ["node"]
   },
   "include": [
-    "src/sdk/**/*",
-    "src/cli/**/*",
     "src/gui/main/**/*",
     "src/gui/preload/**/*",
     "src/gui/shared/**/*",
     "src/gui/shared/i18n/locales/*.json",
-    "electron.vite.config.ts"
+    "electron.vite.config.ts",
+    "sdk-source.config.ts"
   ]
 }

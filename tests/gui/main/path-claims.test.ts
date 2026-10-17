@@ -2,13 +2,13 @@ import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { createPathClaims, type PathUse } from "../../../src/sdk/index.js";
+import { createPathClaims, type PathUse } from "zipkit";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { JobIntent } from "../../../src/gui/shared/queue.js";
-import { ZipKit } from "../../../src/sdk/index.js";
+import { ZipKit } from "zipkit";
 import { createDirectoryLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 import { SAVE, TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";

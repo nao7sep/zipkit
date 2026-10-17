@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { applyTimestamps } from "../../../src/sdk/plan/timestamps.js";
-import { workItem, Y2020_NS } from "../../helpers/synthetic.js";
+import { applyTimestamps } from "../../src/plan/timestamps.js";
+import { workItem, Y2020_NS } from "../helpers/synthetic.js";
 
 function rules(item: ReturnType<typeof workItem>): string[] {
   return item.findings.map((f) => f.rule);

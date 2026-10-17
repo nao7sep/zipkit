@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { findTargetCollision } from "../../../src/sdk/extract/targetCollision.js";
-import type { ReadEntry } from "../../../src/sdk/extract/zipReader.js";
+import { findTargetCollision } from "../../src/extract/targetCollision.js";
+import type { ReadEntry } from "../../src/extract/zipReader.js";
 
 function entry(archivePath: string, type: ReadEntry["type"] = "file"): ReadEntry {
   return {

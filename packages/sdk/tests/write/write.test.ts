@@ -10,11 +10,11 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WriteError, ZipKit } from "../../../src/sdk/index.js";
-import { Volume } from "../../../src/sdk/internal/volume.js";
-import { createLogger } from "../../../src/sdk/log/logger.js";
-import { writeArchive } from "../../../src/sdk/write/write.js";
-import { fileSystemWith } from "../../helpers/volume.js";
+import { WriteError, ZipKit } from "../../src/index.js";
+import { Volume } from "../../src/internal/volume.js";
+import { createLogger } from "../../src/log/logger.js";
+import { writeArchive } from "../../src/write/write.js";
+import { fileSystemWith } from "../helpers/volume.js";
 
 let dir: string;
 let proj: string;

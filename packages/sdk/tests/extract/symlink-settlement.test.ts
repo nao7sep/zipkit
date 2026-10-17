@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
 import { expect, it, vi, onTestFinished } from "vitest";
-import { extractArchive } from "../../../src/sdk/extract/extract.js";
-import { nodeFileSystem, Volume, volumeWorkPending } from "../../../src/sdk/internal/volume.js";
-import { createLogger } from "../../../src/sdk/log/logger.js";
-import { buildZipFile } from "../../helpers/writeZip.js";
-import { fileSymlinksSupported } from "../../helpers/symlink.js";
+import { extractArchive } from "../../src/extract/extract.js";
+import { nodeFileSystem, Volume, volumeWorkPending } from "../../src/internal/volume.js";
+import { createLogger } from "../../src/log/logger.js";
+import { buildZipFile } from "../helpers/writeZip.js";
+import { fileSymlinksSupported } from "../helpers/symlink.js";
 
 it.runIf(fileSymlinksSupported).each([
   { overwrite: false, cancel: true }, { overwrite: false, cancel: false },

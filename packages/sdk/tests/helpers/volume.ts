@@ -4,7 +4,7 @@
  * shape of a network share or removable drive that stopped responding.
  */
 
-import { nodeFileSystem, Volume, type FileSystemPort, type VolumeFile } from "../../src/sdk/internal/volume.js";
+import { nodeFileSystem, Volume, type FileSystemPort, type VolumeFile } from "../../src/internal/volume.js";
 
 /** The real filesystem with the default budget. */
 export function realVolume(signal?: AbortSignal): Volume {

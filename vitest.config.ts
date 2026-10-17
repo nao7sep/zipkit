@@ -2,6 +2,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 import { readFileSync } from "node:fs";
+import { sdkSource } from "./sdk-source.config";
 
 // __APP_VERSION__ is injected from package.json by electron.vite.config.ts for the
 // build; mirrored here so the tests run against the same value.
@@ -13,7 +14,10 @@ export default defineConfig({
   // (.tsx) compile with the automatic JSX runtime rather than classic
   // `React.createElement`. Node-side tests have no JSX and are unaffected.
   plugins: [react()],
+  resolve: { alias: sdkSource },
   test: {
+    // The SDK's own tests run in its package (npm test -w zipkit).
+    include: ["tests/**/*.test.{ts,tsx}"],
     // Redirect every test's storage root and log directory off the real
     // `~/.zipkit` (see tests/setup.ts), so the suite never writes into the
     // developer's home directory.
@@ -36,8 +40,6 @@ export default defineConfig({
       // Excluded because there is no decision to cover, only framework wiring —
       // measuring them would bury the real gaps under permanent 0%s:
       exclude: [
-        "src/sdk/index.ts", // public barrel: re-exports only
-        "src/sdk/types.ts", // type declarations only, no runtime code
         "src/gui/main/index.ts", // Electron main entry: storage-root guard + dynamic import
         "src/gui/main/bootstrap.ts", // window creation + app lifecycle wiring
         "src/gui/main/sdk-host-entry.ts", // the utility process's parent-port wiring
