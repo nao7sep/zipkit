@@ -13,22 +13,17 @@ import { memo, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Job, JobEvent, PlanReport, VerifyResult } from "../../../shared/api";
 import { useI18n } from "../i18n/I18nContext";
-import { ChevronIcon } from "./Icon";
 import { ItemListDialog } from "./ItemListDialog";
 import { ReportRowView } from "./ReportRowView";
 import {
-  CARD_EXPAND_LIMIT,
-  CARD_INLINE_ROWS,
   detailsCards,
   progressHeading,
   progressLineText,
   progressRuns,
   severityColor,
   type DetailsCard,
-  type ReportRow,
 } from "../view";
 
-interface OpenList { title: string; rows: readonly ReportRow[] }
 
 /** Memoized: the window re-renders on every Progress batch, and the cards
  *  depend only on the job, the plan and the verification. */
@@ -37,16 +32,19 @@ export const JobDetails = memo(function JobDetails({
   plan,
   verify,
   events,
+  rowLimit,
 }: {
   job: Job;
   plan: PlanReport | null;
   verify: VerifyResult | null;
   events: readonly JobEvent[];
+  /** A card with more rows than this shows its count; Details lists them. */
+  rowLimit: number;
 }) {
   const t = useI18n();
   const verifyData = verify?.ok ? verify.data : null;
-  const cards = useMemo(() => detailsCards(job, plan, verifyData, t), [job, plan, verifyData, t]);
-  const [open, setOpen] = useState<OpenList | null>(null);
+  const cards = useMemo(() => detailsCards(job, plan, verifyData, t, rowLimit), [job, plan, verifyData, t, rowLimit]);
+  const [open, setOpen] = useState<DetailsCard | null>(null);
   const busy = job.state === "planning" || job.state === "running" || job.trashing === true;
   const run = busy ? progressRuns(events).at(-1) : undefined;
 
@@ -65,35 +63,29 @@ export const JobDetails = memo(function JobDetails({
       {cards.map((card) => (
         <Card key={card.key} card={card} onOpen={setOpen} />
       ))}
-      {open && <ItemListDialog title={open.title} rows={open.rows} onClose={() => setOpen(null)} />}
+      {open && <ItemListDialog card={open} onClose={() => setOpen(null)} />}
     </div>
   );
 });
 
-function Card({ card, onOpen }: { card: DetailsCard; onOpen: (list: OpenList) => void }) {
+function Card({ card, onOpen }: { card: DetailsCard; onOpen: (card: DetailsCard) => void }) {
   const t = useI18n();
-  const [shown, setShown] = useState(card.open);
-  const [expanded, setExpanded] = useState(false);
   const color = card.level === "info" ? undefined : severityColor(card.level);
   const count = card.rows.length;
-  const listTitle = t.t("details.counted", { name: card.title, count: t.number(count) });
-  const foldable = count > 0;
-  const more = count > CARD_INLINE_ROWS;
-  const visible = !shown ? [] : expanded ? card.rows : card.rows.slice(0, CARD_INLINE_ROWS);
   return (
     <section style={{ ...S.card, ...(color ? { borderColor: `color-mix(in srgb, ${color} 45%, var(--border))` } : null) }}>
       <div style={S.head}>
-        {foldable ? (
-          <button type="button" style={S.fold} aria-expanded={shown} onClick={() => setShown((value) => !value)}>
-            <ChevronIcon open={shown} />
-            <span style={{ ...S.title, color }}>{card.title}</span>
-            <span style={S.count}>{t.number(count)}</span>
-          </button>
-        ) : (
+        <h3 style={S.heading}>
           <span style={{ ...S.title, color }}>{card.title}</span>
-        )}
-        {more && (
-          <button type="button" className="text-button" aria-label={listTitle} onClick={() => onOpen({ title: listTitle, rows: card.rows })}>
+          {count > 0 && <span style={S.count}> {t.number(count)}</span>}
+        </h3>
+        {count > 0 && (
+          <button
+            type="button"
+            className="text-button"
+            aria-label={t.t("details.counted", { name: card.title, count: t.number(count) })}
+            onClick={() => onOpen(card)}
+          >
             {t.t("details.showList")}
           </button>
         )}
@@ -109,17 +101,14 @@ function Card({ card, onOpen }: { card: DetailsCard; onOpen: (list: OpenList) =>
           ))}
         </dl>
       )}
-      {visible.length > 0 && (
-        <div style={S.rows}>
-          {visible.map((row, i) => (
-            <ReportRowView key={i} row={row} variant="line" showChanges={card.rowDetail} />
+      {card.open && count > 0 && (
+        <ul style={S.list}>
+          {card.rows.map((row, i) => (
+            <li key={i} style={S.item}>
+              <ReportRowView row={row} variant="line" showChanges={card.rowDetail} />
+            </li>
           ))}
-        </div>
-      )}
-      {shown && more && count <= CARD_EXPAND_LIMIT && (
-        <button type="button" className="text-button" style={S.toggle} onClick={() => setExpanded((value) => !value)}>
-          {expanded ? t.t("details.showFewer") : t.t("details.showMore", { count: count - CARD_INLINE_ROWS })}
-        </button>
+        </ul>
       )}
     </section>
   );
@@ -139,28 +128,16 @@ const S: Record<string, CSSProperties> = {
   runHeading: { color: "var(--text-2)", fontSize: "0.85rem" },
   runLine: { fontSize: "0.8rem", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
   nothing: { margin: 0, color: "var(--text-2)", fontSize: "0.85rem" },
-  head: { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.15rem 0.75rem", minWidth: 0 },
-  // The heading is its own fold control: no button chrome, the heading's look.
-  fold: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.35rem",
-    height: "auto",
-    padding: 0,
-    minWidth: 0,
-    background: "transparent",
-    border: "none",
-    color: "var(--text-2)",
-    textAlign: "start",
-    cursor: "pointer",
-  },
-  title: { fontSize: "0.85rem", fontWeight: 600, color: "var(--text)", minWidth: 0 },
-  count: { fontSize: "0.85rem", color: "var(--text-2)" },
+  head: { display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: "0.15rem 0.75rem", minWidth: 0 },
+  heading: { margin: 0, fontSize: "0.85rem", minWidth: 0 },
+  title: { fontWeight: 600, color: "var(--text)" },
+  count: { fontWeight: 400, color: "var(--text-2)" },
   note: { margin: 0, fontSize: "0.8rem", color: "var(--text-2)" },
   facts: { margin: 0, display: "grid", gap: "0.3rem" },
   fact: { display: "grid", gridTemplateColumns: "fit-content(40%) minmax(0, 1fr)", gap: "0.6rem", alignItems: "baseline" },
   factLabel: { fontSize: "0.8rem", color: "var(--text-2)" },
   factValue: { margin: 0, fontSize: "0.85rem", overflowWrap: "anywhere" },
-  rows: { display: "grid", gap: "0.45rem" },
-  toggle: { justifySelf: "start" },
+  // Each item a bulleted line, so even a card of one reads as a list.
+  list: { margin: 0, paddingInlineStart: "1.1rem", display: "grid", gap: "0.35rem" },
+  item: { minWidth: 0 },
 };

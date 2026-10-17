@@ -50,70 +50,63 @@ const junk = (path: string, type: "file" | "dir" = "file") =>
   entry(path, { type, excluded: true, findings: [{ rule: "macos.junk", severity: "info", path, message: "junk" }] });
 const blocking = (path: string) => entry(path, { findings: [{ rule: "x.test", severity: "error", path, message: "Blocks the archive" }] });
 const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = []) =>
-  render(<JobDetails job={job(over)} plan={p} verify={null} events={events} />);
+  render(<JobDetails job={job(over)} plan={p} verify={null} events={events} rowLimit={5} />);
 
 describe("JobDetails", () => {
-  it("shows a blocking card's first rows, unfolds the rest in place, and opens all of them in the list", () => {
+  it("lists a card's items as bullets while it has no more than the limit, and only its count past it", () => {
+    show(plan([junk("a/.DS_Store")]));
+    const one = screen.getByRole("heading", { name: /^Junk files excluded\s*1$/ }).closest("section")!;
+    expect(within(one).getAllByRole("listitem")).toHaveLength(1);
+    cleanup();
+    show(plan(Array.from({ length: 6 }, (_, i) => blocking(`a/${i}.txt`))));
+    const six = screen.getByRole("heading", { name: /^x\.test\s*6$/ }).closest("section")!;
+    expect(within(six).queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("opens a card's details: what the kind is, then every item", () => {
     show(plan(Array.from({ length: 7 }, (_, i) => blocking(`a/${i}.txt`))));
-    const fold = screen.getByRole("button", { name: /^x\.test\s*7$/ });
-    expect(fold.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getAllByTitle(/^a\/\d\.txt$/)).toHaveLength(5);
-    fireEvent.click(screen.getByRole("button", { name: "Show 2 more" }));
-    expect(screen.getAllByTitle(/^a\/\d\.txt$/)).toHaveLength(7);
-    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
-    expect(screen.getAllByTitle(/^a\/\d\.txt$/)).toHaveLength(5);
     fireEvent.click(screen.getByRole("button", { name: "x.test (7)" }));
     const dialog = screen.getByRole("dialog", { name: "x.test (7)" });
     expect(within(dialog).getAllByText(/^\d\.txt$/)).toHaveLength(7);
+    // Path order only: nothing to group a list of different names by.
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
   });
 
-  it("shows a short informational card's rows without a click, and folds a long one to its count", () => {
-    show(plan([
-      junk("a/.DS_Store"), junk("b/.DS_Store"),
-      ...Array.from({ length: 6 }, (_, i) => entry(`empty${i}`, { type: "dir", excluded: true, excludeReason: "empty directory pruned" })),
-    ]));
-    const junkCard = screen.getByRole("button", { name: /^Junk files excluded\s*2$/ });
-    expect(junkCard.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getAllByTitle(/\.DS_Store$/)).toHaveLength(2);
-    const pruned = screen.getByRole("button", { name: /^Empty directory pruned\s*6$/ });
-    expect(pruned.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByTitle("empty0")).toBeNull();
-    fireEvent.click(pruned);
-    expect(screen.getAllByTitle(/^empty\d$/)).toHaveLength(5);
+  it("explains the kind in the details, and groups excluded items by name unless unticked, remembering it", () => {
+    show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("z/.Trashes", "dir"), junk("v/.Trashes", "dir"), junk("w/Thumbs.db"), junk("u/desktop.ini")]));
+    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (6)" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/^System clutter from macOS, Windows and Linux/)).toBeTruthy();
+    const group = within(dialog).getByRole("checkbox", { name: "Group by name" }) as HTMLInputElement;
+    expect(group.checked).toBe(true);
+    expect(within(dialog).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([".Trashes (2)", ".DS_Store (2)"]);
+    // A name that occurs once is a plain row: its name, then its folder.
+    expect(within(dialog).getByText("Thumbs.db")).toBeTruthy();
+    expect(within(dialog).getByText("w")).toBeTruthy();
+    fireEvent.click(group);
+    expect(within(dialog).queryAllByRole("heading", { level: 3 })).toHaveLength(0);
+    expect(localStorage.getItem("zipkit.groupByName")).toBe("off");
+    fireEvent.click(within(dialog).getByText("Close", { selector: "button" }));
+    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (6)" }));
+    expect((within(screen.getByRole("dialog")).getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
   });
 
   it("says what is left out goes with the originals when they are to be removed, and raises anything but junk", () => {
     show(plan([junk("a/.DS_Store"), entry("sock", { excluded: true, findings: [{ rule: "entry.unsupported", severity: "info", path: "sock", message: "socket" }] })]),
       { intent: { verify: true, originals: "trash" } });
     expect(screen.getAllByText("These go to the Trash with the originals, without being archived.")).toHaveLength(2);
-    const cards = screen.getAllByRole("button", { expanded: true }).map((b) => b.textContent);
+    const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     // The socket card is now a warning, so it comes before the junk card.
-    expect(cards[0]).toMatch(/^Special files left out/);
-    expect(cards[1]).toMatch(/^Junk files excluded/);
+    expect(titles[0]).toMatch(/^Special files left out/);
+    expect(titles[1]).toMatch(/^Junk files excluded/);
   });
 
-  it("groups the names that repeat, folders first, lists the rest plainly, and remembers the order chosen", () => {
-    show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("z/.Trashes", "dir"), junk("v/.Trashes", "dir"), junk("w/Thumbs.db"), junk("u/desktop.ini")]));
-    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (6)" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("radio", { name: "By name" }));
-    expect(within(dialog).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([".Trashes (2)", ".DS_Store (2)"]);
-    // A name that occurs once is a plain row: its name, then its folder.
-    expect(within(dialog).getByText("Thumbs.db")).toBeTruthy();
-    expect(within(dialog).getByText("w")).toBeTruthy();
-    expect(localStorage.getItem("zipkit.listOrder")).toBe("name");
-    fireEvent.click(within(dialog).getByText("Close", { selector: "button" }));
-    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (6)" }));
-    expect(within(screen.getByRole("dialog")).getByRole("radio", { name: "By name" }).getAttribute("aria-checked")).toBe("true");
-  });
-
-  it("marks each change of a rename in the full list", () => {
-    const renames = Array.from({ length: 6 }, (_, i) => entry(`a_${i}.txt`, {
-      originalPath: `a:${i}.txt`,
-      findings: [{ rule: "name.invalid-char", severity: "info", path: `a:${i}.txt`, message: "substituted", fix: { kind: "rename", to: `a_${i}.txt` } }],
-    }));
-    show(plan(renames));
-    fireEvent.click(screen.getByRole("button", { name: /\(6\)$/ }));
+  it("marks each change of a rename in the details", () => {
+    show(plan([entry("a_0.txt", {
+      originalPath: "a:0.txt",
+      findings: [{ rule: "name.invalid-char", severity: "info", path: "a:0.txt", message: "substituted", fix: { kind: "rename", to: "a_0.txt" } }],
+    })]));
+    fireEvent.click(screen.getByRole("button", { name: /\(1\)$/ }));
     const dialog = screen.getByRole("dialog");
     expect(dialog.querySelector("del")!.textContent).toBe(":");
     expect(dialog.querySelector("ins")!.textContent).toBe("_");
@@ -122,12 +115,12 @@ describe("JobDetails", () => {
 
   it("lists each path a verification found missing or unexpected, and how the originals changed", () => {
     const missing = ["a/one.txt", "a/two.txt"];
-    render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["gone.txt"], added: [], changed: [], unlisted: [] } })} plan={plan()} events={[]} verify={{
+    render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["gone.txt"], added: [], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
       ok: true,
       data: { reportOk: false, missing, extra: ["stray.bin"], summary: { total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } } as never,
     }} />);
-    expect(screen.getByRole("button", { name: /^Missing from the archive\s*2$/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Unexpected extra entries\s*1$/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Missing from the archive\s*2$/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Unexpected extra entries\s*1$/ })).toBeTruthy();
     for (const path of [...missing, "stray.bin", "gone.txt"]) expect(screen.getByTitle(path)).toBeTruthy();
     expect(screen.getByText("No longer there")).toBeTruthy();
   });
@@ -165,7 +158,7 @@ describe("JobDetails", () => {
     const cards = vi.mocked(view.detailsCards);
     const shown = job();
     const report = plan([junk("a/.DS_Store")]);
-    const tree = (tick: number) => <div data-tick={tick}><JobDetails job={shown} plan={report} verify={null} events={[]} /></div>;
+    const tree = (tick: number) => <div data-tick={tick}><JobDetails job={shown} plan={report} verify={null} events={[]} rowLimit={5} /></div>;
     const { rerender } = render(tree(0));
     const first = cards.mock.calls.length;
     rerender(tree(1));

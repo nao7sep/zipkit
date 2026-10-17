@@ -858,20 +858,45 @@ export interface DetailsCard {
   /** Whether each row shows its own line of detail; a card whose title says
    *  it all leaves its rows to their paths. */
   rowDetail: boolean;
-  /** Whether its rows show without a click: errors and warnings always, and
-   *  anything else while it is short. */
+  /** Whether its rows show in the pane: a card with no more rows than the
+   *  user's limit lists them; a longer one shows its count, and Details lists
+   *  them all. */
   open: boolean;
+  /** Whether its rows are worth grouping by name, as excluded junk is: every
+   *  `.DS_Store` under one heading. */
+  groupable: boolean;
+  /** What this kind of thing is and what ZipKit does about it, for Details. */
+  about?: string;
   /** One line under the title, such as where excluded items go. */
   note?: string;
   /** The facts a card states instead of rows, such as the archive's size. */
   facts?: Array<{ label: string; value: string }>;
 }
 
-/** How many rows an open card shows before its toggle. */
-export const CARD_INLINE_ROWS = 5;
-/** How many rows a card may unfold in the pane; past this, its list opens in
- *  the full-list dialog, which draws only what is in view. */
-export const CARD_EXPAND_LIMIT = 100;
+/** What each kind of finding is and what ZipKit does about it. */
+const KIND_INFO: Record<string, MessageKey> = {
+  "name.nfd": "kindInfo.nfd",
+  "name.invalid-char": "kindInfo.invalidChar",
+  "name.control-char": "kindInfo.controlChar",
+  "name.trailing-dot-space": "kindInfo.trailingDotSpace",
+  "name.reserved": "kindInfo.reserved",
+  "name.suspicious": "kindInfo.suspicious",
+  "collision.case": "kindInfo.collision",
+  "collision.post-fix": "kindInfo.collision",
+  "path.absolute": "kindInfo.paths",
+  "path.traversal": "kindInfo.paths",
+  "path.too-long": "kindInfo.pathTooLong",
+  "macos.junk": "kindInfo.junk",
+  "windows.junk": "kindInfo.junk",
+  "linux.junk": "kindInfo.junk",
+  "entry.duplicate": "kindInfo.duplicate",
+  "entry.symlink": "kindInfo.symlink",
+  "entry.unsupported": "kindInfo.special",
+  "entry.unlisted": "kindInfo.special",
+  "time.pre-1980": "kindInfo.dates",
+  "time.post-2107": "kindInfo.dates",
+  "output.exists": "kindInfo.outputExists",
+};
 
 const JUNK_RULES = new Set(["macos.junk", "windows.junk", "linux.junk"]);
 const LEVEL_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -887,12 +912,13 @@ export function detailsCards(
   plan: PlanReport | null,
   verify: { missing: readonly string[]; extra: readonly string[] } | null,
   t: Translator,
+  rowLimit: number,
 ): DetailsCard[] {
   const cards = new Map<string, DetailsCard & { excluded: boolean; junk: boolean }>();
-  const card = (key: string, title: string, level: Severity, rowDetail: boolean) => {
+  const card = (key: string, title: string, level: Severity, rowDetail: boolean, about?: MessageKey) => {
     let found = cards.get(key);
     if (!found) {
-      found = { key, title, level, rows: [], rowDetail, open: false, excluded: false, junk: false };
+      found = { key, title, level, rows: [], rowDetail, open: false, groupable: false, excluded: false, junk: false, ...(about ? { about: t.t(about) } : {}) };
       cards.set(key, found);
     }
     return found;
@@ -905,7 +931,7 @@ export function detailsCards(
       for (const f of entry.findings) {
         onEntries.add(findingId(f));
         const renamed = f.fix?.kind === "rename" ? { from: entry.originalPath } : {};
-        const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, f.severity !== "info");
+        const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, f.severity !== "info", KIND_INFO[f.rule]);
         c.rows.push({ path: entry.archivePath, changes: [findingText(f, t, entry.excluded)], ...renamed, ...dir });
         if (entry.excluded && EXCLUDING_RULES.has(f.rule)) {
           c.excluded = true;
@@ -914,14 +940,14 @@ export function detailsCards(
       }
       if (entry.excluded && !entry.findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
         const reason = excludedText(entry.excludeReason, t);
-        const c = card(`excluded:${reason}`, reason, "info", false);
+        const c = card(`excluded:${reason}`, reason, "info", false, entry.excludeReason === "empty directory pruned" ? "kindInfo.emptyDirs" : undefined);
         c.rows.push({ path: entry.archivePath, changes: [reason], ...dir });
         c.excluded = true;
       }
     }
     for (const f of plan.findings) {
       if (onEntries.has(findingId(f))) continue;
-      card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, true).rows.push({ path: f.path, changes: [findingText(f, t)] });
+      card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, true, KIND_INFO[f.rule]).rows.push({ path: f.path, changes: [findingText(f, t)] });
     }
   }
   const pathRows = (paths: readonly string[], change = ""): ReportRow[] =>
@@ -943,12 +969,12 @@ export function detailsCards(
   const result: DetailsCard[] = [];
   for (const { excluded, junk, ...c } of cards.values()) {
     if (c.rows.length === 0) continue;
-    const shown: DetailsCard = { ...c };
+    const shown: DetailsCard = { ...c, groupable: excluded };
     if (excluded && removing) {
       shown.note = t.t(job.intent.originals === "delete" ? "details.deletedUnarchived" : "details.trashedUnarchived");
       if (!junk && shown.level === "info") shown.level = "warning";
     }
-    shown.open = shown.level !== "info" || shown.rows.length <= CARD_INLINE_ROWS;
+    shown.open = shown.rows.length <= rowLimit;
     result.push(shown);
   }
 
@@ -987,7 +1013,7 @@ function archiveCard(job: Job, t: Translator): DetailsCard | null {
   const level: Severity = job.archiveStatus === "missing"
     ? "error"
     : job.archiveStatus === "changed" || job.archiveStatus === "unavailable" ? "warning" : "info";
-  return { key: "archive", title: t.t("details.archive"), level, rows: [], rowDetail: false, open: true, facts };
+  return { key: "archive", title: t.t("details.archive"), level, rows: [], rowDetail: false, open: true, groupable: false, facts };
 }
 
 function compareText(a: string, b: string): number {

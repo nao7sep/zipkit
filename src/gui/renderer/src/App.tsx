@@ -20,7 +20,7 @@ import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable, removesOriginals, verifies, type OriginalsAction } from "../../shared/queue";
 import { multiline } from "../../shared/textCleanup";
-import { DEFAULT_PARAMETERS, newJobOptions, parametersEqual, parametersOf, type ArchiveParameters, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
+import { DEFAULT_PARAMETERS, DEFAULT_SETTINGS, newJobOptions, parametersEqual, parametersOf, type ArchiveParameters, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_MIN_HEIGHT,
@@ -137,6 +137,7 @@ export function App() {
   // The saved display zone, likewise: main tells the window which zone to show.
   const [timeZone, setTimeZone] = useState("system");
   const [confirmJobRemoval, setConfirmJobRemoval] = useState(true);
+  const [cardRowLimit, setCardRowLimit] = useState(DEFAULT_SETTINGS.cardRowLimit);
   const [systemChoices, setSystemChoices] = useState<SystemChoices | null>(null);
   const [dialog, setDialog] = useState<DialogName | null>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
@@ -210,6 +211,7 @@ export function App() {
       setLanguage(settings.language);
       setTimeZone(settings.timeZone);
       setConfirmJobRemoval(settings.confirmJobRemoval);
+      setCardRowLimit(settings.cardRowLimit);
       // Persisted pane widths are the intent. Live-width clamping below affects
       // display only and never rewrites what the user dragged.
       setIntent(clampLayout(layout));
@@ -334,6 +336,7 @@ export function App() {
     setLanguage(next.language);
     setTimeZone(next.timeZone);
     setConfirmJobRemoval(next.confirmJobRemoval);
+    setCardRowLimit(next.cardRowLimit);
   }
 
   async function saveSettings(draft: GuiSettings): Promise<void> {
@@ -643,6 +646,7 @@ export function App() {
             key={selected.id}
             job={selected}
             defaults={defaults}
+            cardRowLimit={cardRowLimit}
             splitter={progressSplitter}
             inputResult={inputResults[selected.id] ?? null}
             operationResult={jobResults[selected.id] ?? null}
@@ -676,7 +680,7 @@ export function App() {
 
       {dialog === "settings" && systemChoices && (
         <SettingsDialog
-          settings={{ defaults, uiFontFamily, theme, language, timeZone, confirmJobRemoval }}
+          settings={{ defaults, uiFontFamily, theme, language, timeZone, confirmJobRemoval, cardRowLimit }}
           system={systemChoices}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
@@ -691,6 +695,7 @@ export function App() {
 function JobView({
   job,
   defaults,
+  cardRowLimit,
   splitter,
   inputResult,
   onInputResult,
@@ -699,6 +704,7 @@ function JobView({
 }: {
   job: Job;
   defaults: ArchiveParameters;
+  cardRowLimit: number;
   splitter: ReactNode;
   inputResult: ReceiverResult | null;
   onInputResult: (outcome: ReceiverOutcome) => void;
@@ -1175,7 +1181,7 @@ function JobView({
       {splitter}
 
       <Pane title={t.t("pane.details")} rootStyle={GROW}>
-        <JobDetails job={job} plan={plan} verify={verify} events={events} />
+        <JobDetails job={job} plan={plan} verify={verify} events={events} rowLimit={cardRowLimit} />
       </Pane>
     </>
   );

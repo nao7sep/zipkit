@@ -26,6 +26,7 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
   de: [
     "messageDialog.ok",
     "details.factManifest",
+    "details.showList",
     "details.factFormat",
     "pane.details",
     "options.manifest",

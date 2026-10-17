@@ -965,7 +965,7 @@ describe("Details pane sections and orders", () => {
     const plan = { writable: false, summary: { total: 3, included: 2, excluded: 1, renamed: 0, warnings: 1, errors: 1, zip64: false }, findings: [],
       entries: [entry("a/.DS_Store", "macos.junk", "info", true), entry("long", "path.too-long", "warning"), entry("A", "collision.case", "error")] };
     const done = job({ state: "done", output: "/out/a.zip", archiveStatus: "written", summary: plan.summary });
-    const cards = detailsCards(done, plan as never, { missing: ["m"], extra: [] }, en);
+    const cards = detailsCards(done, plan as never, { missing: ["m"], extra: [] }, en, 5);
     expect(cards.map((card) => [card.key, card.level, card.open])).toEqual([
       ["rule:collision.case", "error", true],
       ["verify:missing", "error", true],
@@ -973,9 +973,10 @@ describe("Details pane sections and orders", () => {
       ["archive", "info", true],
       ["rule:macos.junk", "info", true],
     ]);
-    // A card of many informational rows folds to its count.
-    const many = { ...plan, entries: Array.from({ length: 6 }, (_, i) => entry(`d${i}/.DS_Store`, "macos.junk", "info", true)) };
-    expect(detailsCards(job(), many as never, null, en)[0]!.open).toBe(false);
+    // A card with more rows than the limit folds to its count, whatever its level.
+    const many = { ...plan, entries: Array.from({ length: 6 }, (_, i) => entry(`d${i}`, "collision.case", "error")) };
+    expect(detailsCards(job(), many as never, null, en, 5)[0]!.open).toBe(false);
+    expect(detailsCards(job(), many as never, null, en, 6)[0]!.open).toBe(true);
   });
 
   it("orders by path, or by name: repeated names grouped first, folders first, then each name that occurs once", () => {

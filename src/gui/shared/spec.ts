@@ -119,10 +119,19 @@ export interface GuiSettings {
   /** Ask before a job leaves the list. On by default: a list item that goes on
    *  one click is a surprise in the fleet's apps. */
   confirmJobRemoval: boolean;
+  /** How many items a Status card lists before it folds to its count. */
+  cardRowLimit: number;
+}
+
+/** The range a Status card's item limit may take. */
+export const CARD_ROW_LIMIT_RANGE = { min: 0, max: 100 } as const;
+
+export function isCardRowLimit(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= CARD_ROW_LIMIT_RANGE.min && value <= CARD_ROW_LIMIT_RANGE.max;
 }
 
 /** The config file's set keys. */
-export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "confirmJobRemoval", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
+export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "confirmJobRemoval", "cardRowLimit", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
 
 /** The sets the draft changed from the saved settings. */
 export function changedSettings(before: GuiSettings, draft: GuiSettings): Partial<GuiSettings> {
@@ -137,6 +146,7 @@ export const DEFAULT_SETTINGS: GuiSettings = {
   language: "system",
   timeZone: "system",
   confirmJobRemoval: true,
+  cardRowLimit: 5,
 };
 
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields

@@ -9,7 +9,7 @@ import path from "node:path";
 import { storageRoot } from "../../sdk/storage.js";
 import { changedSettings, DEFAULT_OPTIONS, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, PARAMETER_KEYS, SETTINGS_KEYS, THEME_PREFERENCES, type ArchiveParameters, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
-import { isDisplayZone } from "../shared/spec.js";
+import { isCardRowLimit, isDisplayZone } from "../shared/spec.js";
 import { singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
@@ -81,6 +81,9 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
         break;
       case "language":
         if (value === "system" || isLanguage(value)) { settings.language = value; continue; }
+        break;
+      case "cardRowLimit":
+        if (isCardRowLimit(value)) { settings.cardRowLimit = value; continue; }
         break;
       case "confirmJobRemoval":
         if (typeof value === "boolean") { settings.confirmJobRemoval = value; continue; }

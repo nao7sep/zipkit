@@ -21,7 +21,7 @@ import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
-import { changedSettings, DEFAULT_PARAMETERS, displayZones, type ArchiveParameters, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import { CARD_ROW_LIMIT_RANGE, changedSettings, DEFAULT_PARAMETERS, displayZones, isCardRowLimit, type ArchiveParameters, type GuiSettings, type ThemePreference } from "../../../shared/spec";
 import type { SystemChoices } from "../../../shared/api";
 import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
@@ -79,13 +79,13 @@ export function SettingsDialog({
   // A quit Retry can commit while this editor remains open. Clear the obsolete
   // failure message without replacing any newer, unsubmitted draft edits.
   useEffect(() => { setSaveError(false); },
-    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone, settings.confirmJobRemoval]);
+    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone, settings.confirmJobRemoval, settings.cardRowLimit]);
 
   const dirty = Object.keys(changedSettings(settings, draft)).length > 0;
   // Quit asks before discarding unsaved edits, so main follows whether there are any.
   useEffect(() => { window.zipkit.reportSettingsDraft(dirty); }, [dirty]);
   useEffect(() => () => window.zipkit.reportSettingsDraft(false), []);
-  const canSave = dirty && isValid(draft.defaults);
+  const canSave = dirty && isValid(draft.defaults) && isCardRowLimit(draft.cardRowLimit);
 
   async function save() {
     setSaving(true);
@@ -234,6 +234,19 @@ export function SettingsDialog({
         />
         {t("settings.confirmJobRemoval")}
       </label>
+      <label style={S.fontField}>
+        <span style={S.fontLabel}>{t("settings.cardRowLimit")}</span>
+        <input
+          type="number"
+          min={CARD_ROW_LIMIT_RANGE.min}
+          max={CARD_ROW_LIMIT_RANGE.max}
+          value={draft.cardRowLimit}
+          disabled={saving}
+          onChange={(e) => setDraft({ ...draft, cardRowLimit: Number(e.target.value) })}
+          style={S.limitInput}
+        />
+        <span style={S.fontHint}>{t("settings.cardRowLimitHint")}</span>
+      </label>
       {/* The defaults every new job starts with, under their own heading, with
           their reset closing the group as in the fleet's other Settings, so it
           plainly covers these and nothing above (config-sets conventions,
@@ -293,5 +306,6 @@ const S: Record<string, CSSProperties> = {
   languageSelect: { alignSelf: "flex-start", minWidth: "12rem" },
   fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
   check: { display: "flex", alignItems: "center", gap: "0.45rem", marginBottom: "1rem" },
+  limitInput: { width: "5rem" },
   error: { color: "var(--status-error)", marginBottom: 0 },
 };

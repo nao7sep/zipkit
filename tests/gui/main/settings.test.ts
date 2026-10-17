@@ -27,6 +27,7 @@ const CUSTOM = {
   language: "pt-BR" as const,
   timeZone: "America/Sao_Paulo",
   confirmJobRemoval: false,
+  cardRowLimit: 9,
 };
 
 describe("settings sets", () => {
@@ -154,7 +155,7 @@ describe("settings file location and persistence", () => {
   it("a reset removes defaults and keeps other stored sets", async () => {
     await settings.saveSettings(CUSTOM);
     expect(await settings.saveSettings({ ...CUSTOM, defaults: DEFAULT_PARAMETERS })).toEqual({ ...CUSTOM, defaults: DEFAULT_PARAMETERS });
-    expect(readStored()).toEqual(stored({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language, timeZone: CUSTOM.timeZone, confirmJobRemoval: false }));
+    expect(readStored()).toEqual(stored({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language, timeZone: CUSTOM.timeZone, confirmJobRemoval: false, cardRowLimit: 9 }));
   });
 
   it("removes a stored copy identical to the built-in and keeps the file with no sets", async () => {

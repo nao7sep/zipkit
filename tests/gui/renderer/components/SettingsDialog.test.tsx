@@ -37,6 +37,7 @@ const CUSTOM: GuiSettings = {
   language: "fr",
   timeZone: "Europe/Paris",
   confirmJobRemoval: false,
+  cardRowLimit: 9,
 };
 
 /** What each System choice resolves to on the test's imaginary computer. */
