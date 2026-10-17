@@ -213,6 +213,7 @@
   "details.factStatus": "状态",
   "details.factPath": "位置",
   "details.factSize": "大小",
+  "details.sizeOfOriginals": "{size}，为原始项目 {source} 的 {percent}",
   "details.factEntries": "项目数",
   "details.factManifest": "清单",
   "details.factFormat": "格式",

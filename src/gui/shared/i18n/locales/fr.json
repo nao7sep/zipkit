@@ -213,6 +213,7 @@
   "details.factStatus": "État",
   "details.factPath": "Emplacement",
   "details.factSize": "Taille",
+  "details.sizeOfOriginals": "{size}, soit {percent} des {source} des originaux",
   "details.factEntries": "Éléments",
   "details.factManifest": "Manifeste",
   "details.factFormat": "Format",

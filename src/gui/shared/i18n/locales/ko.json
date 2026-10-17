@@ -213,6 +213,7 @@
   "details.factStatus": "상태",
   "details.factPath": "위치",
   "details.factSize": "크기",
+  "details.sizeOfOriginals": "{size}, 원본 {source}의 {percent}",
   "details.factEntries": "항목",
   "details.factManifest": "매니페스트",
   "details.factFormat": "형식",

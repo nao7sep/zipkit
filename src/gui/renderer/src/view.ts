@@ -999,6 +999,14 @@ export function detailsCards(
   return result.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(({ c }) => c);
 }
 
+/** The archive's size, with how much of the originals' size it takes when
+ *  that is known (a job saved before ZipKit counted it has none). */
+function archiveSize(bytes: number, sourceBytes: number | undefined, t: Translator): string {
+  if (sourceBytes === undefined || sourceBytes <= 0) return t.size(bytes);
+  const percent = new Intl.NumberFormat(t.locale, { style: "percent", maximumFractionDigits: 0 }).format(bytes / sourceBytes);
+  return t.t("details.sizeOfOriginals", { size: { bytes }, percent, source: { bytes: sourceBytes } });
+}
+
 const ARCHIVE_STATUS_KEYS: Record<NonNullable<Job["archiveStatus"]>, MessageKey> = {
   written: "details.statusWritten",
   verified: "details.statusVerified",
@@ -1015,7 +1023,7 @@ function archiveCard(job: Job, t: Translator): DetailsCard | null {
     { label: t.t("details.factStatus"), value: t.t(ARCHIVE_STATUS_KEYS[job.archiveStatus]) },
     { label: t.t("details.factPath"), value: job.output },
   ];
-  if (job.archiveBytes !== undefined) facts.push({ label: t.t("details.factSize"), value: t.size(job.archiveBytes) });
+  if (job.archiveBytes !== undefined) facts.push({ label: t.t("details.factSize"), value: archiveSize(job.archiveBytes, job.summary?.sourceBytes, t) });
   if (job.summary) facts.push({ label: t.t("details.factEntries"), value: t.number(job.summary.included) });
   facts.push({
     label: t.t("details.factManifest"),

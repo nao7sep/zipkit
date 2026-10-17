@@ -121,11 +121,11 @@ describe("JobDetails", () => {
     for (const name of ["one.txt", "two.txt", "stray.bin", "gone.txt", "new.txt"]) expect(screen.getByText(name)).toBeTruthy();
   });
 
-  it("states the archive once there is one", () => {
+  it("states the archive once there is one, with how much of the originals' size it takes", () => {
     show(plan(), { state: "done", output: "/out/a.zip", archiveStatus: "verified", archiveBytes: 208_540_997,
-      summary: { total: 36, included: 36, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 } });
+      summary: { total: 36, included: 36, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 336_100_000 } });
     const facts = [...document.querySelectorAll("dt")].map((dt) => `${dt.textContent}: ${dt.nextElementSibling!.textContent}`);
-    expect(facts).toEqual(["State: Verified", "Location: /out/a.zip", "Size: 208.5 MB", "Items: 36", "Manifest: zipkit.json with SHA-256"]);
+    expect(facts).toEqual(["State: Verified", "Location: /out/a.zip", "Size: 208.5 MB, 62% of the originals’ 336.1 MB", "Items: 36", "Manifest: zipkit.json with SHA-256"]);
   });
 
   it("says when nothing needs a look, and shows the step a working job is on", () => {

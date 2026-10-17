@@ -213,6 +213,7 @@
   "details.factStatus": "Estado",
   "details.factPath": "Local",
   "details.factSize": "Tamanho",
+  "details.sizeOfOriginals": "{size}, {percent} dos {source} dos originais",
   "details.factEntries": "Itens",
   "details.factManifest": "Manifesto",
   "details.factFormat": "Formato",

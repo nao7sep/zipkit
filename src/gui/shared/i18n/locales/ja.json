@@ -213,6 +213,7 @@
   "details.factStatus": "状態",
   "details.factPath": "場所",
   "details.factSize": "サイズ",
+  "details.sizeOfOriginals": "{size}（元の {source} の {percent}）",
   "details.factEntries": "項目数",
   "details.factManifest": "マニフェスト",
   "details.factFormat": "形式",

@@ -213,6 +213,7 @@
   "details.factStatus": "Состояние",
   "details.factPath": "Расположение",
   "details.factSize": "Размер",
+  "details.sizeOfOriginals": "{size}, {percent} от {source} оригиналов",
   "details.factEntries": "Элементы",
   "details.factManifest": "Манифест",
   "details.factFormat": "Формат",
