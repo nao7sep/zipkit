@@ -1,5 +1,5 @@
 /**
- * The counts behind `onCounts`: how many entries and bytes a write or a read
+ * The counts behind `onProgress`: how many entries and bytes a write or a read
  * has done of its total, reported at the start, at most every interval while
  * it runs, and once at the end, so a progress bar moves without a call per
  * chunk. The observer cannot break the verb.
@@ -51,6 +51,6 @@ export class Meter {
     if (this.#sink === undefined) return;
     this.#last = this.#now();
     try { this.#sink({ ...this.#counts }); }
-    catch { /* Like a progress sink, the observer cannot break the verb. */ }
+    catch { /* Like an event sink, the observer cannot break the verb. */ }
   }
 }

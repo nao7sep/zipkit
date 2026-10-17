@@ -33,13 +33,13 @@ describe("the SDK host", () => {
     const sdk = createSdkClient(inProcessHost);
     const events: LogEvent[] = [];
     // The plan crosses packaged by exportPlan; importPlan makes it writable again.
-    const plan = importPlan(await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onProgress: (e) => events.push(e) }));
+    const plan = importPlan(await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onEvent: (e) => events.push(e) }));
     expect(plan.writable).toBe(true);
     const settlements: Promise<void>[] = [];
     const counts: ProgressCounts[] = [];
     const bytes = await sdk.call("write", [exportPlan(plan)], {
       onPhysicalSettlement: (p) => settlements.push(p),
-      onCounts: (c) => counts.push(c),
+      onProgress: (c) => counts.push(c),
     });
     expect(bytes).toBeGreaterThan(0);
     // How far the write got crosses too, to its last byte.

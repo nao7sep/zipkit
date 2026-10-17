@@ -186,11 +186,11 @@ export interface ZipKitOptions {
    * it, and the path is returned on each result's `log`. The random id after
    * the seconds stamp, and the file's exclusive creation, keep the logs of runs
    * that start in the same second — zipkit is built to fan out — apart. Every
-   * event also reaches each call's `onProgress`, whether or not there is a log.
+   * event also reaches each call's `onEvent`, whether or not there is a log.
    */
   logDir?: string;
   /**
-   * Whether `debug` events reach the session log and `onProgress`. Off by
+   * Whether `debug` events reach the session log and `onEvent`. Off by
    * default: they are a developer's firehose, not an end user's record.
    */
   debug?: boolean;
@@ -221,12 +221,12 @@ export interface ZipKitOptions {
 }
 
 /**
- * Per-call control and observation. Both members are per-call rather than
- * per-instance, so each verb call decides where its progress goes and which
- * cancellation it answers to.
+ * Per-call control and observation. Every member is per-call rather than
+ * per-instance, so each verb call decides where its events and progress go
+ * and which cancellation it answers to.
  *
- * `onProgress` is the progress hook: a per-call destination for the live event
- * stream, so each call decides where its progress goes. With no hook the SDK
+ * `onEvent` is the event hook: a per-call destination for the live event
+ * stream, so each call decides where its events go. With no hook the SDK
  * writes nothing to stdout or stderr; the durable record still goes to the
  * instance's per-session log file (see {@link ZipKitOptions.logDir}), unless the
  * instance was built without a `logDir`. The same
@@ -239,12 +239,13 @@ export interface ZipKitOptions {
  * control, not data, so it lives here and not on the spec.
  */
 export interface ZipKitCallOptions {
-  onProgress?: (event: LogEvent) => void;
-  /** How far `write`/`create` and `extract` have got, for a progress bar: at
+  onEvent?: (event: LogEvent) => void;
+  /** How far `write`/`create` and `extract` have got, for a progress bar, as
+   *  counts rather than events: at
    *  the start, at most every 100 ms while entries stream, and once at the end
    *  of a run that finishes. Other verbs ignore this hook, and like
-   *  `onProgress` it cannot break the verb. */
-  onCounts?: (counts: ProgressCounts) => void;
+   *  `onEvent` it cannot break the verb. */
+  onProgress?: (counts: ProgressCounts) => void;
   signal?: AbortSignal;
   /** `write`/`create` deliver this after their logical outcome. The promise
    * joins raw I/O and late cleanup that may outlive a cancelled or timed-out
@@ -708,7 +709,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 /**
  * The typed body of a {@link LogEvent}, a discriminated union on `event`. Each
  * variant carries exactly the fields it means — there is no untyped `data` bag,
- * so a producer and every consumer (the SDK `onProgress` hook and the per-session
+ * so a producer and every consumer (the SDK `onEvent` hook and the per-session
  * log) agree on each event's shape by the type system, not by string convention.
  */
 export type LogEventBody =

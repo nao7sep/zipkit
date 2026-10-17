@@ -104,11 +104,11 @@ async function fixture() {
     admission: new CommandAdmission(), effects: createPathClaims(),
     resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
-    write: async (plan, signal, onProgress, onPhysicalSettlement) =>
-      (await zip.write(plan, { signal, onProgress, onPhysicalSettlement })).bytes,
+    write: async (plan, signal, onEvent, onPhysicalSettlement) =>
+      (await zip.write(plan, { signal, onEvent, onPhysicalSettlement })).bytes,
     verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
-    checkRemoval: (archive, inputs, removed, options, signal, onProgress) =>
-      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onProgress }),
+    checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
+      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       for (const file of paths) await rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
@@ -116,8 +116,8 @@ async function fixture() {
     },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
-    inspect: async (archive, signal, onProgress, checkMetadata) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
+    inspect: async (archive, signal, onEvent, checkMetadata) => {
+      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     emit: () => {}, progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,

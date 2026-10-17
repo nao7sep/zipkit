@@ -49,21 +49,21 @@ describe("planned entries", () => {
     const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") });
     expect(plan.summary.sourceBytes).toBe("alpha".length + "bravo!".length);
     const counts: ProgressCounts[] = [];
-    const written = await zip.write(plan, { onCounts: (c) => counts.push(c) });
+    const written = await zip.write(plan, { onProgress: (c) => counts.push(c) });
     expect(counts[0]).toEqual({ stage: "write", entriesDone: 0, entriesTotal: 3, bytesDone: 0, bytesTotal: 11 });
     expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 3, entriesTotal: 3, bytesDone: 11, bytesTotal: 11 });
     expect(written.metadata?.summary.sourceBytes).toBe(11);
   });
 });
 
-describe("onCounts", () => {
+describe("onProgress", () => {
   it("follows a read to its last entry and byte, the manifest included", async () => {
     const zip = new ZipKit();
     const archive = path.join(root, "o.zip");
     await zip.create({ inputs: [proj], output: archive });
     const listing = await zip.list(archive);
     const counts: ProgressCounts[] = [];
-    await zip.extract({ archive, dryRun: true, checkMetadata: true }, { onCounts: (c) => counts.push(c) });
+    await zip.extract({ archive, dryRun: true, checkMetadata: true }, { onProgress: (c) => counts.push(c) });
     const bytes = listing.entries.reduce((sum, e) => sum + e.size, 0);
     expect(counts[0]).toMatchObject({ stage: "extract", entriesDone: 0, bytesDone: 0 });
     expect(counts.at(-1)).toEqual({ stage: "extract", entriesDone: listing.entries.length, entriesTotal: listing.entries.length, bytesDone: bytes, bytesTotal: bytes });

@@ -57,7 +57,7 @@ function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved
 }
 
 // Every look at the user's files runs in the SDK host's utility process
-// (./sdk-host); the engine supplies a job-tagging `onProgress`, so progress
+// (./sdk-host); the engine supplies a job-tagging `onEvent`, so progress
 // reaches the right job's Progress stream. A plan crosses each way packaged by
 // the SDK's exportPlan, so it can still be written on the other side.
 /** The call's own outcome, or "aborted" once `signal` aborts first. The call
@@ -81,8 +81,8 @@ function progressRun(jobId: string, action: JobAction): (event: LogEvent) => voi
   sinkJobs.set(sink, jobId);
   return sink;
 }
-function countsFor(onProgress: (event: LogEvent) => void): ((counts: ProgressCounts) => void) | undefined {
-  const jobId = sinkJobs.get(onProgress);
+function countsFor(onEvent: (event: LogEvent) => void): ((counts: ProgressCounts) => void) | undefined {
+  const jobId = sinkJobs.get(onEvent);
   return jobId === undefined ? undefined : (counts) => sendCounts(jobId, counts);
 }
 
@@ -91,15 +91,15 @@ const engine = createQueueEngine({
   effects: appPathClaims,
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
-  inspect: (output, signal, onProgress, checkMetadata) =>
-    sdk.call("inspect", [output, checkMetadata], { signal, onProgress, onCounts: countsFor(onProgress) }),
-  plan: async (inputs, options, signal, onProgress) => importPlan(await sdk.call("plan", [inputs, options], { signal, onProgress })),
-  write: (plan, signal, onProgress, onPhysicalSettlement) =>
-    sdk.call("write", [exportPlan(plan)], { signal, onProgress, onPhysicalSettlement, onCounts: countsFor(onProgress) }),
-  verify: (output, signal, onProgress, checkMetadata) =>
-    sdk.call("verify", [output, checkMetadata], { signal, onProgress, onCounts: countsFor(onProgress) }),
-  checkRemoval: async (output, inputs, removed, options, signal, onProgress) => {
-    const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onProgress, onCounts: countsFor(onProgress) });
+  inspect: (output, signal, onEvent, checkMetadata) =>
+    sdk.call("inspect", [output, checkMetadata], { signal, onEvent, onProgress: countsFor(onEvent) }),
+  plan: async (inputs, options, signal, onEvent) => importPlan(await sdk.call("plan", [inputs, options], { signal, onEvent })),
+  write: (plan, signal, onEvent, onPhysicalSettlement) =>
+    sdk.call("write", [exportPlan(plan)], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
+  verify: (output, signal, onEvent, checkMetadata) =>
+    sdk.call("verify", [output, checkMetadata], { signal, onEvent, onProgress: countsFor(onEvent) }),
+  checkRemoval: async (output, inputs, removed, options, signal, onEvent) => {
+    const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onEvent, onProgress: countsFor(onEvent) });
     const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: new SdkHostError(check.refusal.error) } : check.refusal;
     return { ...check, refusal };
   },

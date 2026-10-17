@@ -53,8 +53,8 @@ export interface ExtractDeps {
   signal?: AbortSignal;
   /** The run's bounded file access, built with the same signal. */
   volume: Volume;
-  /** The caller's `onCounts`, for how far the read has got. */
-  onCounts?: ((counts: ProgressCounts) => void) | undefined;
+  /** The caller's `onProgress`, for how far the read has got. */
+  onProgress?: ((counts: ProgressCounts) => void) | undefined;
 }
 
 interface WriteOptions {
@@ -526,7 +526,7 @@ export async function extractArchive(
     const meter = new Meter(
       "extract",
       { entries: parsed.entries.length, bytes: parsed.entries.reduce((sum, entry) => sum + entry.uncompSize, 0) },
-      deps.onCounts,
+      deps.onProgress,
     );
     const collision = findTargetCollision(parsed.entries);
     if (collision) {

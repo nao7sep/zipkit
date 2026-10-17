@@ -12,10 +12,10 @@
  * events there; each result's `log` field names the file. Lines are appended
  * synchronously, so there is no descriptor to close and nothing to flush. An
  * instance without a `logDir` writes no file and its results' `log` is `null`;
- * its events reach only each call's `onProgress`, for a caller that records
+ * its events reach only each call's `onEvent`, for a caller that records
  * them itself. The SDK reads no environment variables, writes nothing outside
- * the paths it is given, and writes nothing to stdout or stderr — progress goes
- * only to a per-call `onProgress` hook.
+ * the paths it is given, and writes nothing to stdout or stderr — events go
+ * only to a per-call `onEvent` hook and progress to `onProgress`.
  * A log-sink failure is deliberately silent so logging cannot break a verb.
  *
  * The session spans the instance's lifetime: a caller that builds one `ZipKit`
@@ -173,20 +173,20 @@ export class ZipKit {
     const volume = this.volume(options.signal);
     try {
       return await this.#run(options, (logger) => this.#runWrite(plan, {
-        logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onCounts: options.onCounts,
+        logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onProgress: options.onProgress,
       }));
     } finally { this.#notifySettlement(options, volume); }
   }
 
   /** Plan and write in one call. One logger and one signal serve both inner
-   *  steps, so the caller's single `onProgress` hook sees the whole run and one
+   *  steps, so the caller's single `onEvent` hook sees the whole run and one
    *  cancellation stops it at whichever phase it is in. */
   async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData> {
     const volume = this.volume(options.signal);
     try {
       return await this.#run(options, async (logger) => {
         const plan = await this.#plan(spec, logger, options.signal, volume);
-        return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onCounts: options.onCounts });
+        return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onProgress: options.onProgress });
       });
     } finally { this.#notifySettlement(options, volume); }
   }
@@ -195,7 +195,7 @@ export class ZipKit {
     // Capture after logical cleanup: an earlier empty set could report idle
     // before the first write, or omit continuations spawned by late calls.
     try { options.onPhysicalSettlement?.(volume.whenSettled()); }
-    catch { /* Like a progress sink, the observer cannot break the verb. */ }
+    catch { /* Like an event sink, the observer cannot break the verb. */ }
   }
 
   /**
@@ -215,7 +215,7 @@ export class ZipKit {
           logger,
           signal: options.signal,
           volume: this.volume(options.signal),
-          onCounts: options.onCounts,
+          onProgress: options.onProgress,
         });
       } catch (err) {
         this.#reportError(logger, err);
@@ -355,7 +355,7 @@ export class ZipKit {
   /**
    * The one seam every verb runs through. Builds the run's logger from the two
    * sinks a run has — the session log (when there is a `logDir`) and the
-   * optional per-call `onProgress` hook — runs the verb, then stamps the
+   * optional per-call `onEvent` hook — runs the verb, then stamps the
    * session-log path (or `null`) onto the result the boundary owns. The stamp is
    * a mutation, not a spread: a {@link PlanData} carries non-enumerable writer
    * instructions (`src/internal/carrier.ts`) that an object spread would
@@ -367,7 +367,7 @@ export class ZipKit {
   ): Promise<U & { log: string | null }> {
     const sinks: LogSink[] = [];
     if (this.#sessionPath !== null) sinks.push(this.#sessionLog(this.#sessionPath).sink);
-    if (options.onProgress) sinks.push(options.onProgress);
+    if (options.onEvent) sinks.push(options.onEvent);
     const logger = createLogger(sinks, this.#debug);
     // Startup line, once per session: the tool version and the effective runtime
     // configuration, so a session log is always tied to a version and the knobs
@@ -427,7 +427,7 @@ export class ZipKit {
     }
   }
 
-  /** Emit a terminal error event so the session log (and any `onProgress` hook)
+  /** Emit a terminal error event so the session log (and any `onEvent` hook)
    *  records the failure instead of going silent mid-stream. Best-effort: the
    *  logger swallows its own faults, and the original error is always rethrown
    *  by the caller. The stage comes from the fault's `errorType` — the typed

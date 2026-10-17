@@ -777,7 +777,7 @@ function JobView({
     };
   }, [job.id]);
 
-  useEffect(() => window.zipkit.onCounts((batch) => {
+  useEffect(() => window.zipkit.onProgress((batch) => {
     const mine = batch.filter((item) => item.jobId === job.id).at(-1);
     if (mine) setCounts(mine.counts);
   }), [job.id]);

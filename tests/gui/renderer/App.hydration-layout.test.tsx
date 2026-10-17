@@ -65,7 +65,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     reveal: vi.fn(),
     getJobEvents: vi.fn(async () => []),
     onEvents: vi.fn(() => () => {}),
-    onCounts: vi.fn(() => () => {}),
+    onProgress: vi.fn(() => () => {}),
     openRecordsWindow: vi.fn(async () => {}),
     readRecordsPage: vi.fn(async () => ({ records: [], more: false })),
     readRecordDetail: vi.fn(async () => null),

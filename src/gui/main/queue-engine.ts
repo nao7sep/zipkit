@@ -55,17 +55,17 @@ export interface EngineDeps {
   /** What is at a path now: there with a comparable fingerprint (which file,
    *  its size and when it last changed), gone, or out of reach. */
   pathState(target: string, signal: AbortSignal): Promise<PathState>;
-  /** Dry-run plan for the given inputs/options; progress events go to `onProgress`. */
-  plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<PlanData>;
+  /** Dry-run plan for the given inputs/options; progress events go to `onEvent`. */
+  plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count (or null if unknown). */
-  write(plan: PlanData, signal: AbortSignal, onProgress: (e: LogEvent) => void,
+  write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
     onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number | null>;
   /** Verify a written archive: every entry's CRC-32, and against its manifest
    *  when `checkMetadata`; resolves to the SDK's reportOk. */
-  verify(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void, checkMetadata: boolean): Promise<boolean>;
+  verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, checkMetadata: boolean): Promise<boolean>;
   /** Verify a written archive on request: the verdict, the counts and the
    *  paths that disagree, for the job's review. */
-  inspect(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void, checkMetadata: boolean): Promise<VerifyReport>;
+  inspect(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, checkMetadata: boolean): Promise<VerifyReport>;
   /** Every check before the originals are removed (the SDK's checkRemoval):
    *  the archive is not inside them, it verifies against its manifest, and a
    *  fresh scan of `inputs` under the job's options still matches it; `removed`
@@ -76,7 +76,7 @@ export interface EngineDeps {
     removed: string[],
     options: GuiOptions,
     signal: AbortSignal,
-    onProgress: (e: LogEvent) => void,
+    onEvent: (e: LogEvent) => void,
   ): Promise<RemovalCheck>;
   /** Classify input paths on disk (dir/file/missing) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
@@ -428,7 +428,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     output: string,
     inputs: string[],
     signal: AbortSignal,
-    onProgress: (e: LogEvent) => void,
+    onEvent: (e: LogEvent) => void,
     removed: string[] = [],
   ): Promise<RemovalRefusal | null> {
     const id = rec.job.id;
@@ -436,7 +436,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (!(await publicationCurrent(rec, output, signal))) return { reason: "replaced" };
     let check: RemovalCheck;
     try {
-      check = await deps.checkRemoval(output, inputs, removed, rec.job.options, signal, onProgress);
+      check = await deps.checkRemoval(output, inputs, removed, rec.job.options, signal, onEvent);
     } catch (error) {
       // The check as a whole ended, such as when the SDK host's process did,
       // which the recheck's message covers: the originals were not checked.
@@ -572,14 +572,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   async function writeStage(
     rec: Rec,
     signal: AbortSignal,
-    onProgress: (e: LogEvent) => void,
+    onEvent: (e: LogEvent) => void,
   ): Promise<{ output: string; bytes: number | null; claim: PathClaim } | null> {
     const id = rec.job.id;
     // Re-plan fresh: the world may have changed since this job was enqueued.
     const reviewed = rec.plan;
     let plan: PlanData;
     try {
-      plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onProgress);
+      plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onEvent);
       rec.plan = plan;
       set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable, scanIncomplete: scanIncomplete(plan) });
     } catch (err) {
@@ -625,7 +625,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.publication = null;
     set(rec, { archiveWritten: false });
     try {
-      bytes = await deps.write(plan, signal, onProgress, (physical) => { settlement = physical; });
+      bytes = await deps.write(plan, signal, onEvent, (physical) => { settlement = physical; });
     } catch (err) {
       claim.release(settlement ?? (stalledWhileCommitting(err) ? (err as { settlement?: Promise<void> }).settlement ?? null : undefined));
       set(rec, { state: "failed", message: writeFailureMessage(err, plan.output) });
@@ -652,7 +652,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     const resumeFrom = removal ? rec.publishedOutput : null;
     rec.aborter = new AbortController();
     const signal = rec.aborter.signal;
-    const onProgress = progressFor(id, "create");
+    const onEvent = progressFor(id, "create");
     set(rec, { state: "running", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
     deps.log.info(resumeFrom ? "job run resumed after its write" : "job run started", {
@@ -678,12 +678,12 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         set(rec, { entries });
         inputs = entries.filter((e) => e.kind !== "missing").map((e) => e.path);
       } else {
-        const written = await writeStage(rec, signal, onProgress);
+        const written = await writeStage(rec, signal, onEvent);
         if (!written) return;
         claim = written.claim;
         output = written.output;
         if (!removal) {
-          await finishKept(rec, output, written.bytes, signal, onProgress);
+          await finishKept(rec, output, written.bytes, signal, onEvent);
           return;
         }
       }
@@ -691,7 +691,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // The originals leave: every check, then Trash or deletion — kept on any failure.
       if (!removal) return; // a run that keeps them finished above
       const gone = rec.job.inputs.filter((p) => !inputs.includes(p));
-      const refusal = await checkBeforeTrash(rec, output, inputs, signal, onProgress, gone);
+      const refusal = await checkBeforeTrash(rec, output, inputs, signal, onEvent, gone);
       if (refusal) {
         const again = resumeFrom !== null && refusal.reason === "verify-failed";
         set(rec, {
@@ -741,7 +741,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   /** A run that keeps its originals: done once written, or once verified when
    *  the user chose to verify. A failed verification keeps the archive, which
    *  the job then offers to reveal or move to Trash. */
-  async function finishKept(rec: Rec, output: string, bytes: number | null, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<void> {
+  async function finishKept(rec: Rec, output: string, bytes: number | null, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<void> {
     const id = rec.job.id;
     if (!rec.job.intent.verify) {
       set(rec, { state: "done", message: bytes === null ? message("job.savedShort") : message("job.saved", { size: { bytes } }) });
@@ -751,7 +751,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     let verified: boolean;
     const seen: PathState | undefined = rec.fingerprint === null ? undefined : { kind: "present", fingerprint: rec.fingerprint };
     try {
-      verified = await deps.verify(output, signal, onProgress, rec.job.options.metadata);
+      verified = await deps.verify(output, signal, onEvent, rec.job.options.metadata);
     } catch (err) {
       set(rec, { state: "failed", message: failureMessage(err, "job.savedVerifyErrored") });
       deps.log.error("job saved; verification errored", { jobId: id, output, error: errorInfo(err) });

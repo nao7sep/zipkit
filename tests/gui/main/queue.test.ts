@@ -255,9 +255,9 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
 
 describe("the SDK host wiring", () => {
   type Wired = {
-    plan(inputs: string[], options: unknown, signal: AbortSignal, onProgress: () => void): Promise<object>;
-    write(plan: object, signal: AbortSignal, onProgress: () => void, onSettlement: () => void): Promise<number | null>;
-    verify(output: string, signal: AbortSignal, onProgress: () => void): Promise<boolean>;
+    plan(inputs: string[], options: unknown, signal: AbortSignal, onEvent: () => void): Promise<object>;
+    write(plan: object, signal: AbortSignal, onEvent: () => void, onSettlement: () => void): Promise<number | null>;
+    verify(output: string, signal: AbortSignal, onEvent: () => void): Promise<boolean>;
     classify(paths: string[]): Promise<unknown>;
   };
   const wired = () => mocks.deps as unknown as Wired;
@@ -268,14 +268,14 @@ describe("the SDK host wiring", () => {
     const plan = { mode: "plan", output: "/out.zip", writable: true };
     mocks.sdkCall.mockResolvedValueOnce({ format: "zipkit.plan-transfer/1", plan, internals }).mockResolvedValueOnce(42);
     const signal = new AbortController().signal;
-    const onProgress = vi.fn();
-    const planned = await wired().plan(["/in"], { level: 6 }, signal, onProgress);
-    expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }], { signal, onProgress });
+    const onEvent = vi.fn();
+    const planned = await wired().plan(["/in"], { level: 6 }, signal, onEvent);
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }], { signal, onEvent });
     // The public plan alone, as the SDK's own plans are: the writer's instructions travel hidden.
     expect(Object.keys(planned)).not.toContain("internals");
     const onSettlement = vi.fn();
-    await expect(wired().write(planned, signal, onProgress, onSettlement)).resolves.toBe(42);
-    expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [exportPlan(planned as PlanData)], { signal, onProgress, onPhysicalSettlement: onSettlement });
+    await expect(wired().write(planned, signal, onEvent, onSettlement)).resolves.toBe(42);
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [exportPlan(planned as PlanData)], { signal, onEvent, onPhysicalSettlement: onSettlement });
     expect(exportPlan(planned as PlanData).internals).toBe(internals);
   });
 

@@ -114,7 +114,7 @@ const api = {
       ipcRenderer.removeListener("zipkit:events", handler);
     };
   },
-  onCounts: (callback: (counts: JobCounts[]) => void): (() => void) => {
+  onProgress: (callback: (counts: JobCounts[]) => void): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, counts: JobCounts[]): void => callback(counts);
     ipcRenderer.on("zipkit:counts", handler);
     return () => {

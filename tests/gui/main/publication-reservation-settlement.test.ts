@@ -81,9 +81,9 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
   const deps: EngineDeps = {
     admission: new CommandAdmission(), effects: createPathClaims(),
     resources: (files, signal) => zip.pathResources(files, { signal: signal }),
-    plan: (inputs, options, signal, onProgress) =>
-      zip.plan({ ...buildSpec(inputs, options), output }, { signal, onProgress }),
-    write: async (plan, signal, onProgress, onPhysicalSettlement) => {
+    plan: (inputs, options, signal, onEvent) =>
+      zip.plan({ ...buildSpec(inputs, options), output }, { signal, onEvent }),
+    write: async (plan, signal, onEvent, onPhysicalSettlement) => {
       const first = ++writesStarted === 1;
       if (first) {
         firstVolume = new Volume(port, 1_000, signal);
@@ -91,7 +91,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
       }
       try {
         return (await zip.write(plan, {
-          signal, onProgress,
+          signal, onEvent,
           onPhysicalSettlement: (settlement) => {
             if (first) {
               physical = settlement;
@@ -105,16 +105,16 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
         throw error;
       }
     },
-    verify: async (archive, signal, onProgress) =>
-      (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal, onProgress })).reportOk,
-    checkRemoval: (archive, inputs, removed, options, signal, onProgress) =>
-      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onProgress }),
+    verify: async (archive, signal, onEvent) =>
+      (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal, onEvent })).reportOk,
+    checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
+      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
     classify: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
     trash: async () => { throw new Error("save jobs must never call Trash"); },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
-    inspect: async (archive, signal, onProgress, checkMetadata) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
+    inspect: async (archive, signal, onEvent, checkMetadata) => {
+      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     emit: (jobs) => { if (jobs[0]?.state === "failed") firstFailed.resolve(); },

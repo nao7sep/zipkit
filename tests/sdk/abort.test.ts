@@ -73,14 +73,14 @@ describe("abort propagation", () => {
     const controller = new AbortController();
     const zip = new ZipKit();
 
-    // Abort the instant the write phase begins, via the per-call onProgress hook;
+    // Abort the instant the write phase begins, via the per-call onEvent hook;
     // the per-entry abort check then trips before any bytes reach disk.
     await expect(
       zip.create(
         { inputs: [proj], output },
         {
           signal: controller.signal,
-          onProgress: (event) => {
+          onEvent: (event) => {
             if (event.event === "write.start") controller.abort();
           },
         },
@@ -96,7 +96,7 @@ describe("abort propagation", () => {
     // finalized and renamed into place despite the cancellation.
     //
     // entry.written is a debug event; enable the developer debug channel so it
-    // reaches the onProgress hook the abort trigger watches.
+    // reaches the onEvent hook the abort trigger watches.
     const file = path.join(dir, "only.txt");
     await writeFile(file, "just one file");
     const output = path.join(dir, "last-entry.zip");
@@ -108,7 +108,7 @@ describe("abort propagation", () => {
         { inputs: [file], output },
         {
           signal: controller.signal,
-          onProgress: (event) => {
+          onEvent: (event) => {
             if (event.event === "entry.written") controller.abort();
           },
         },

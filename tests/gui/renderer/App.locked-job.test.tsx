@@ -68,7 +68,7 @@ describe("a job that finishes mid-edit", () => {
         refreshJob: async () => {},
         getJobEvents: async () => [],
         onEvents: () => () => {},
-        onCounts: () => () => {},
+        onProgress: () => () => {},
         updateJob,
         reportError: vi.fn(),
       },

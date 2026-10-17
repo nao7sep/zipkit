@@ -52,7 +52,7 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
 /** The SDK's removal check's own steps, faked one by one: the engine's fake
  *  `checkRemoval` runs them through the SDK's real sequence. */
 interface RemovalFakes {
-  recheck(output: string, inputs: string[], options: typeof DEFAULT_OPTIONS, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<SourceComparison>;
+  recheck(output: string, inputs: string[], options: typeof DEFAULT_OPTIONS, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<SourceComparison>;
   outputInsideInputs(output: string, inputs: string[], signal: AbortSignal): Promise<boolean>;
 }
 
@@ -95,11 +95,11 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
     progress: () => () => {},
     newId: () => `job-${++idN}`,
     log: nullLog,
-    checkRemoval: (output, inputs, removed, options, signal, onProgress) => checkRemoval({
+    checkRemoval: (output, inputs, removed, options, signal, onEvent) => checkRemoval({
       state: () => deps.pathState(output, signal),
       inside: () => fakes.outputInsideInputs(output, inputs, signal),
-      verify: () => deps.verify(output, signal, onProgress, true),
-      compare: () => fakes.recheck(output, inputs, options, signal, onProgress),
+      verify: () => deps.verify(output, signal, onEvent, true),
+      compare: () => fakes.recheck(output, inputs, options, signal, onEvent),
     }, inputs, removed),
     ...overrides,
   };
@@ -378,14 +378,14 @@ describe("queue engine", () => {
         sinks.set(sink, action);
         return sink;
       },
-      plan: async (_inputs, _options, _signal, onProgress) => {
-        seen.push(`plan:${sinks.get(onProgress)}`);
+      plan: async (_inputs, _options, _signal, onEvent) => {
+        seen.push(`plan:${sinks.get(onEvent)}`);
         return planData(true);
       },
-      write: async (_plan, _signal, onProgress) => (seen.push(`write:${sinks.get(onProgress)}`), 1),
-      verify: async (_output, _signal, onProgress) => (seen.push(`verify:${sinks.get(onProgress)}`), true),
-      recheck: async (_output, _inputs, _options, _signal, onProgress) => {
-        seen.push(`recheck:${sinks.get(onProgress)}`);
+      write: async (_plan, _signal, onEvent) => (seen.push(`write:${sinks.get(onEvent)}`), 1),
+      verify: async (_output, _signal, onEvent) => (seen.push(`verify:${sinks.get(onEvent)}`), true),
+      recheck: async (_output, _inputs, _options, _signal, onEvent) => {
+        seen.push(`recheck:${sinks.get(onEvent)}`);
         return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
       },
     });

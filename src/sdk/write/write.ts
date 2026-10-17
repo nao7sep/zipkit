@@ -43,8 +43,8 @@ export interface WriteDeps {
   signal?: AbortSignal;
   /** The run's bounded file access, built with the same signal. */
   volume: Volume;
-  /** The caller's `onCounts`, for how far the write has got. */
-  onCounts?: ((counts: ProgressCounts) => void) | undefined;
+  /** The caller's `onProgress`, for how far the write has got. */
+  onProgress?: ((counts: ProgressCounts) => void) | undefined;
 }
 
 /** What each streamed entry contributed, gathered for the metadata record. */
@@ -230,7 +230,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   const meter = new Meter(
     "write",
     { entries: writeEntries.length, bytes: writeEntries.reduce((sum, entry) => sum + contentBytes(entry), 0) },
-    deps.onCounts,
+    deps.onProgress,
   );
   const writer = new ZipWriter(
     plan.output,

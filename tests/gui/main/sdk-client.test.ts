@@ -23,8 +23,8 @@ describe("createSdkClient", () => {
     const spawn = vi.fn(() => host.process);
     const sdk = createSdkClient(spawn);
     expect(spawn).not.toHaveBeenCalled();
-    const onProgress = vi.fn();
-    const first = sdk.call("classify", [["/a"]], { onProgress });
+    const onEvent = vi.fn();
+    const first = sdk.call("classify", [["/a"]], { onEvent });
     const second = sdk.call("verify", ["/a.zip", true]);
     expect(spawn).toHaveBeenCalledOnce();
     expect(host.sent).toEqual([
@@ -37,7 +37,7 @@ describe("createSdkClient", () => {
     host.reply({ type: "done", id: 1, value: [{ path: "/a", kind: "file" }] });
     await expect(first).resolves.toEqual([{ path: "/a", kind: "file" }]);
     await expect(second).resolves.toBe(true);
-    expect(onProgress).toHaveBeenCalledExactlyOnceWith(event);
+    expect(onEvent).toHaveBeenCalledExactlyOnceWith(event);
   });
 
   it("asks the host to cancel on abort and rebuilds its failure with the fields main reads", async () => {

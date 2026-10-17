@@ -34,8 +34,8 @@ export class SdkHostError extends Error {
 
 export interface CallOptions {
   signal?: AbortSignal;
-  onProgress?: (event: LogEvent) => void;
-  onCounts?: (counts: ProgressCounts) => void;
+  onEvent?: (event: LogEvent) => void;
+  onProgress?: (counts: ProgressCounts) => void;
   onPhysicalSettlement?: (settlement: Promise<void>) => void;
 }
 
@@ -63,10 +63,10 @@ export function createSdkClient(spawn: () => HostProcess) {
   function receive(reply: HostReply): void {
     switch (reply.type) {
       case "event":
-        calls.get(reply.id)?.options.onProgress?.(reply.event);
+        calls.get(reply.id)?.options.onEvent?.(reply.event);
         return;
       case "counts":
-        calls.get(reply.id)?.options.onCounts?.(reply.counts);
+        calls.get(reply.id)?.options.onProgress?.(reply.counts);
         return;
       case "done":
         finish(reply.id)?.resolve(reply.value);

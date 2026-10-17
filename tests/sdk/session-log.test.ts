@@ -1,7 +1,7 @@
 /**
  * End-to-end: one ZipKit instance keeps one session log under its `logDir`,
  * named with a seconds stamp and a random id; events carry the `time`/`message` envelope;
- * `debug` is gated; `result.log` identifies the file; the `onProgress` stream
+ * `debug` is gated; `result.log` identifies the file; the `onEvent` stream
  * carries exactly what the file holds; and an instance without a `logDir` writes no file.
  */
 
@@ -125,17 +125,17 @@ describe("SDK session log", () => {
     expect((await sessionLines()).map((l) => l.event)).toContain("entry.verified");
   });
 
-  it("hands onProgress every line the session log holds, session.start included, for each verb", async () => {
+  it("hands onEvent every line the session log holds, session.start included, for each verb", async () => {
     const archive = await buildArchive();
     const zip = new ZipKit({ logDir });
     const seen: LogEvent[] = [];
-    const onProgress = (e: LogEvent): void => {
+    const onEvent = (e: LogEvent): void => {
       seen.push(e);
     };
-    const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onProgress });
-    await zip.write(plan, { onProgress });
-    await zip.extract({ archive, dryRun: true, checkMetadata: true }, { onProgress });
-    await expect(zip.extract({ archive: path.join(root, "missing.zip"), dryRun: true }, { onProgress })).rejects.toThrow();
+    const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onEvent });
+    await zip.write(plan, { onEvent });
+    await zip.extract({ archive, dryRun: true, checkMetadata: true }, { onEvent });
+    await expect(zip.extract({ archive: path.join(root, "missing.zip"), dryRun: true }, { onEvent })).rejects.toThrow();
 
     const lines = await sessionLines();
     expect(seen.map((e) => e.event)).toContain("fault");
@@ -152,12 +152,12 @@ describe("SDK without a session log", () => {
     try {
       const zip = new ZipKit();
       const seen: LogEvent[] = [];
-      const onProgress = (e: LogEvent): void => {
+      const onEvent = (e: LogEvent): void => {
         seen.push(e);
       };
-      const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onProgress });
-      const written = await zip.write(plan, { onProgress });
-      const extracted = await zip.extract({ archive: written.output, dryRun: true }, { onProgress });
+      const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onEvent });
+      const written = await zip.write(plan, { onEvent });
+      const extracted = await zip.extract({ archive: written.output, dryRun: true }, { onEvent });
 
       expect([plan.log, written.log, extracted.log]).toEqual([null, null, null]);
       await expect(readdir(dir)).rejects.toMatchObject({ code: "ENOENT" });

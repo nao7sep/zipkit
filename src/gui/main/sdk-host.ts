@@ -80,26 +80,26 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
 
   type Run = (
     signal: AbortSignal,
-    onProgress: (event: LogEvent) => void,
+    onEvent: (event: LogEvent) => void,
     id: number,
-    onCounts: (counts: ProgressCounts) => void,
+    onProgress: (counts: ProgressCounts) => void,
   ) => Promise<unknown>;
   const ops: { [K in SdkOp]: (...args: never[]) => Run } = {
     resources: (paths: string[]) => (signal) => zip.pathResources(paths, { signal }),
     // What is at a path now: there with a comparable fingerprint, gone, or
     // out of reach on a drive that is not connected.
     pathState: (target: string) => (signal) => zip.pathState(target, { signal }),
-    plan: (inputs: string[], options: GuiOptions) => async (signal, onProgress) => {
+    plan: (inputs: string[], options: GuiOptions) => async (signal, onEvent) => {
       const spec = buildSpec(inputs, options);
       Object.assign(spec, outputRequest(options.outputDir, options.fileName));
-      const plan = await zip.plan(spec, { signal, onProgress });
+      const plan = await zip.plan(spec, { signal, onEvent });
       return exportPlan(plan);
     },
-    write: (transfer: PlanTransfer) => async (signal, onProgress, id, onCounts) => {
+    write: (transfer: PlanTransfer) => async (signal, onEvent, id, onProgress) => {
       const written = await zip.write(importPlan(transfer), {
         signal,
+        onEvent,
         onProgress,
-        onCounts,
         onPhysicalSettlement: (settlement) => {
           post({ type: "physical", id });
           const settled = (): void => post({ type: "physical-settled", id });
@@ -108,8 +108,8 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       });
       return written.bytes;
     },
-    verify: (output: string, checkMetadata: boolean) => async (signal, onProgress, _id, onCounts) =>
-      (await zip.extract({ archive: output, dryRun: true, checkMetadata }, { signal, onProgress, onCounts })).reportOk,
+    verify: (output: string, checkMetadata: boolean) => async (signal, onEvent, _id, onProgress) =>
+      (await zip.extract({ archive: output, dryRun: true, checkMetadata }, { signal, onEvent, onProgress })).reportOk,
     // Deletes one original for good: a folder with everything in it, a file, or
     // a link itself, never what a link points to. Only after the job's checks.
     deletePath: (target: string) => async () => {
@@ -117,12 +117,12 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     },
     // The report needs the verdict, the counts and the paths that disagree,
     // never every entry's result.
-    inspect: (archive: string, checkMetadata: boolean) => async (signal, onProgress, _id, onCounts) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress, onCounts });
+    inspect: (archive: string, checkMetadata: boolean) => async (signal, onEvent, _id, onProgress) => {
+      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra } satisfies VerifyReport;
     },
-    checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions) => async (signal, onProgress, _id, onCounts) => {
-      const check = await zip.checkRemoval(buildSpec(inputs, options), output, { removed, signal, onProgress, onCounts });
+    checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions) => async (signal, onEvent, _id, onProgress) => {
+      const check = await zip.checkRemoval(buildSpec(inputs, options), output, { removed, signal, onEvent, onProgress });
       const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: failure(check.refusal.error) } : check.refusal;
       return { ...check, refusal } satisfies RemoteRemovalCheck;
     },

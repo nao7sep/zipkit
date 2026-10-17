@@ -212,7 +212,7 @@ export interface ZipKitGuiApi {
   /** Subscribe to the live progress events of every job; returns an unsubscribe fn. */
   onEvents(callback: (events: JobEvent[]) => void): () => void;
   /** Subscribe to how far each job's write or verification has got. */
-  onCounts(callback: (counts: JobCounts[]) => void): () => void;
+  onProgress(callback: (counts: JobCounts[]) => void): () => void;
 
   /** Open the Records window, or bring it forward when it is open. */
   openRecordsWindow(): Promise<void>;

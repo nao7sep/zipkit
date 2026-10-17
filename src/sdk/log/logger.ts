@@ -1,6 +1,6 @@
 /**
  * The one log/progress seam. A single `EmittedEvent` stream from the SDK core is
- * stamped, gated, and fanned out in one place; the `onProgress` hook
+ * stamped, gated, and fanned out in one place; the `onEvent` hook
  * and the instance's per-session log are both just sinks. The logger is the edge
  * that turns a typed body into a convention {@link LogEvent}, in order:
  *
@@ -12,7 +12,7 @@
  * 3. **fan out** — to every sink, each isolated, so one sink's failure never
  *    starves the others or aborts the run it is reporting on.
  *
- * With no sinks the logger does no work, so a pure SDK call with no `onProgress`
+ * With no sinks the logger does no work, so a pure SDK call with no `onEvent`
  * and no open session file is silent and free.
  */
 
