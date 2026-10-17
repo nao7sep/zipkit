@@ -1,0 +1,27 @@
+{
+  // The SDK and its CLI as the package ships them: JavaScript with type
+  // declarations under dist/, resolved the way Node resolves an ESM package.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["src/sdk/**/*.ts", "src/cli/**/*.ts"]
+}

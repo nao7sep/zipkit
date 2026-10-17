@@ -32,15 +32,23 @@ describe("the SDK boundary", () => {
   });
 });
 
-describe("the app's side of the boundary", () => {
-  it("uses the SDK only through its public entry", () => {
-    const GUI = path.resolve("src/gui");
-    const offenders = (readdirSync(GUI, { recursive: true, encoding: "utf8" }) as string[])
-      .filter((file) => /\.tsx?$/.test(file))
-      .flatMap((file) => [...stripComments(readFileSync(path.join(GUI, file), "utf8")).matchAll(/from\s+["']((?:\.\.\/)+sdk\/[^"']+)["']/g)]
-        .map((match) => match[1]!)
-        .filter((spec) => !/\/sdk\/(index|types)\.(js|ts)$/.test(spec))
-        .map((spec) => `${file}: ${spec}`));
-    expect(offenders).toEqual([]);
+/** Every import of the SDK in `dir` that `allowed` does not accept. */
+function sdkImports(dir: string, allowed: RegExp): string[] {
+  const root = path.resolve(dir);
+  return (readdirSync(root, { recursive: true, encoding: "utf8" }) as string[])
+    .filter((file) => /\.tsx?$/.test(file))
+    .flatMap((file) => [...stripComments(readFileSync(path.join(root, file), "utf8")).matchAll(/from\s+["']((?:\.\.\/)+sdk\/[^"']+)["']/g)]
+      .map((match) => match[1]!)
+      .filter((spec) => !allowed.test(spec))
+      .map((spec) => `${file}: ${spec}`));
+}
+
+describe("the apps' side of the boundary", () => {
+  it("holds the desktop app to the SDK's public entry", () => {
+    expect(sdkImports("src/gui", /\/sdk\/(index|types)\.(js|ts)$/)).toEqual([]);
+  });
+
+  it("holds the CLI to the public entry alone, as any outside app is", () => {
+    expect(sdkImports("src/cli", /\/sdk\/index\.js$/)).toEqual([]);
   });
 });

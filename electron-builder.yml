@@ -1,7 +1,7 @@
 appId: io.github.nao7sep.zipkit
 productName: ZipKit
 
-# The repository package is the source-consumed SDK, so its `main` points at the
+# The repository package is the SDK, built to dist/, so its `main` points at the
 # SDK authority. Only packaged Electron metadata needs the compiled GUI entry.
 extraMetadata:
   main: out/main/index.js

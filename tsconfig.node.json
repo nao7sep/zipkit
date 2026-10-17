@@ -32,6 +32,7 @@
   },
   "include": [
     "src/sdk/**/*",
+    "src/cli/**/*",
     "src/gui/main/**/*",
     "src/gui/preload/**/*",
     "src/gui/shared/**/*",

@@ -18,17 +18,29 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "main": "./src/sdk/index.ts",
-  "types": "./src/sdk/index.ts",
+  "main": "./dist/sdk/index.js",
+  "types": "./dist/sdk/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/sdk/index.ts",
-      "import": "./src/sdk/index.ts"
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js"
     }
   },
+  "bin": {
+    "zipkit": "./dist/cli/zipkit.js"
+  },
+  "files": [
+    "dist/sdk",
+    "dist/cli",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "electron-vite --entry ./out/main/index.js",
     "build:gui": "npm run typecheck:node && npm run typecheck:web && electron-vite build",
+    "build:sdk": "node scripts/build-sdk.mjs",
+    "prepack": "npm run build:sdk",
     "dist": "npm run build:gui && npm run prepare:electron && electron-builder --publish never",
     "prepare:electron": "node node_modules/electron/install.js",
     "preview": "electron-vite preview --entry ./out/main/index.js",
