@@ -369,3 +369,18 @@ describe("skipPaths", () => {
     expect(() => new ZipKit({ skipPaths: "x" as never })).toThrow(PolicyError);
   });
 });
+
+describe("outputDir and outputName", () => {
+  it("place and name the archive, and refuse a name that is a path or a spec that also gives output", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    await writeFile(path.join(proj, "a.txt"), "a");
+    const out = path.join(dir, "out");
+    await mkdir(out);
+    const plan = await new ZipKit().plan({ inputs: [proj], outputDir: out, outputName: "delivery" });
+    expect(plan.output).toBe(path.join(out, "delivery.zip"));
+    await expect(new ZipKit().plan({ inputs: [proj], outputDir: out, outputName: "a/b" })).rejects.toThrow(PolicyError);
+    await expect(new ZipKit().plan({ inputs: [proj], outputName: ".." })).rejects.toThrow(PolicyError);
+    await expect(new ZipKit().plan({ inputs: [proj], output: path.join(out, "x.zip"), outputDir: out })).rejects.toThrow(PolicyError);
+  });
+});

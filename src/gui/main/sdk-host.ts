@@ -17,7 +17,7 @@ import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
 import { fileResources, type FileResource } from "./archive-effects.js";
-import { resolveOutputPath } from "./output.js";
+import { outputRequest } from "./output.js";
 import { outputInsideInputs } from "./safety.js";
 import { storageRoot } from "./storage.js";
 
@@ -83,8 +83,7 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     pathState: (target: string) => (signal) => zip.pathState(target, { signal }),
     plan: (inputs: string[], options: GuiOptions) => async (signal, onProgress) => {
       const spec = buildSpec(inputs, options);
-      const output = await resolveOutputPath(options.outputDir, options.fileName, inputs, zip.volume(signal));
-      if (output) spec.output = output;
+      Object.assign(spec, outputRequest(options.outputDir, options.fileName));
       const plan = await zip.plan(spec, { signal, onProgress });
       return exportPlan(plan);
     },

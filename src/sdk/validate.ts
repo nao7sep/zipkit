@@ -124,6 +124,14 @@ const partialPolicySchema = z.strictObject({
 const specSchema = z.strictObject({
   inputs: z.array(z.string().refine((input) => input !== "", { error: "input paths must not be empty" })).min(1),
   output: z.string().optional(),
+  outputDir: z.string().refine((d) => d.trim() !== "", { error: "outputDir must not be empty" }).optional(),
+  // A file name, never a path: it is joined to the folder as one component.
+  outputName: z
+    .string()
+    .refine((n) => n.trim() !== "" && !/[\\/]/.test(n) && n.trim() !== "." && n.trim() !== "..", {
+      error: "outputName must be a single file name (no slashes, not '.' or '..')",
+    })
+    .optional(),
   overwrite: z.boolean().optional(),
   // The ZIP EOCD comment-length field is 16-bit, so the UTF-8 encoding must fit
   // in 65535 bytes.
@@ -134,6 +142,9 @@ const specSchema = z.strictObject({
       error: "comment must be at most 65535 bytes when UTF-8 encoded",
     }),
   policy: partialPolicySchema.optional(),
+}).refine((s) => s.output === undefined || (s.outputDir === undefined && s.outputName === undefined), {
+  error: "give either output, or outputDir and outputName, not both",
+  path: ["output"],
 });
 
 /**

@@ -799,9 +799,9 @@ export function containingDir(p: string | undefined): string {
 
 /**
  * The destination preview shown above Create — the directory the archive lands in
- * and its file name, as two separate concerns. The AUTHORITATIVE composition is
- * the main process's `resolveOutputPath` (it owns `~` expansion and absolute-path
- * validation); this is a DISPLAY preview only. It prefers the SDK-resolved
+ * and its file name, as two separate concerns. The AUTHORITATIVE path is the
+ * SDK's, from the folder and name main hands it (`outputRequest` owns `~`
+ * expansion and absolute-path validation); this is a DISPLAY preview only. It prefers the SDK-resolved
  * `job.output`, falls back to what the user typed, leaves the name empty while a
  * plan is actually running (the state label says so; a stand-in value would not),
  * and otherwise names the default the user still needs to see — so it never

@@ -157,7 +157,14 @@ export interface ArchiveSpec {
   inputs: ArchiveInput[];
 
   // Destination
+  /** The archive's full path. Give this, or `outputDir` and `outputName`, or
+   *  neither, to have the archive written beside what it archives. */
   output?: string;
+  /** The folder the archive goes in; inferred from the inputs when left out. */
+  outputDir?: string;
+  /** The archive's file name, `.zip` added when it lacks it; inferred from the
+   *  inputs when left out (`foo.zip` gives `foo.zip.zip`, never itself). */
+  outputName?: string;
   overwrite?: boolean;
 
   // Content

@@ -154,9 +154,9 @@ export const DEFAULT_SETTINGS: GuiSettings = {
 
 /** Build the `ArchiveSpec` for the given inputs and option state. Only the fields
  *  the UI controls are set; the SDK fills the rest from its defaults. The output
- *  path is NOT set here — it is composed from `outputDir`/`fileName` in the main
- *  process (`resolveOutputPath`), which needs the host path/home logic the
- *  Node-free shared layer cannot import. */
+ *  folder and name are NOT set here — main adds them from `outputDir`/`fileName`
+ *  (`outputRequest`), which needs the host path/home logic the Node-free shared
+ *  layer cannot import. */
 export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
   const policy: DeepPartial<ArchivePolicy> = {
     junk: o.junk ? "builtin" : "none",

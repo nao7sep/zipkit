@@ -415,7 +415,7 @@ export async function scan(
   const anchors = inputs.map((input, i) => computeAnchor(input, isDir[i] ?? false, inputs.length));
   checkAnchorCollisions(inputs, anchors);
 
-  const output = resolveOutputPath(spec.output, inputs, isDir, cwd);
+  const output = resolveOutputPath(spec, inputs, isDir, cwd);
   // The identities of this run's own output files, used to exclude them from the
   // walk by file identity rather than by name (see `ScanContext.artifactIds`).
   const artifactIds = new Set<string>();
