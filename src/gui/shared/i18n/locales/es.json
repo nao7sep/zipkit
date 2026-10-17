@@ -349,7 +349,7 @@
   "options.junk": "Omitir archivos basura del sistema",
   "options.strict": "Estricto: bloquear los problemas de portabilidad en lugar de corregirlos automáticamente",
   "options.invalidChars": "Caracteres que Windows no admite",
-  "options.invalidCharsTidy": "Ordenar: un _ por grupo, ninguno en los extremos",
+  "options.invalidCharsTidy": "Ordenar: _ solo donde haga falta",
   "options.invalidCharsReplace": "Reemplazar cada uno por _",
   "options.invalidCharsFullwidth": "Equivalentes de ancho completo (？ ： ＊)",
   "options.invalidCharsRemove": "Quitarlos",

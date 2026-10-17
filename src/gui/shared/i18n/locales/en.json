@@ -349,7 +349,7 @@
   "options.junk": "Drop OS junk files",
   "options.strict": "Strict: block portability issues instead of auto-fixing",
   "options.invalidChars": "Characters Windows can’t use",
-  "options.invalidCharsTidy": "Tidy: one _ per run, none at the ends",
+  "options.invalidCharsTidy": "Tidy: _ only where needed",
   "options.invalidCharsReplace": "Replace each with _",
   "options.invalidCharsFullwidth": "Full-width look-alikes (？ ： ＊)",
   "options.invalidCharsRemove": "Remove them",

@@ -221,6 +221,25 @@ describe("invalid-character styles", () => {
     expect(fix("plain name.txt", "tidy")).toBe("plain name.txt");
   });
 
+  it("treats any white space as a space, and never touches an underscore or a space the name had", () => {
+    expect(fix("a:\u3000b", "tidy")).toBe("a\u3000b");
+    expect(fix("a\u3000:\u3000b", "tidy")).toBe("a\u3000b");
+    expect(fix("a\u00a0?", "tidy")).toBe("a");
+    expect(fix("my_file  name.txt", "tidy")).toBe("my_file  name.txt");
+    expect(fix("_a?b_.txt", "tidy")).toBe("_a_b_.txt");
+    expect(fix("a _?b", "tidy")).toBe("a __b");
+  });
+
+  it("never uncovers a dot the name did not start with, nor leaves only dots", () => {
+    expect(fix("?..txt", "tidy")).toBe("_..txt");
+    expect(fix("<.>", "remove")).toBe("_");
+    expect(fix("?.?", "remove")).toBe("_");
+    expect(fix(".?", "remove")).toBe("_");
+    // With trailing dots left alone by choice, the name keeps its dot, but is never only dots.
+    expect(processSegment("<.>", { ...allFix(), invalidCharStyle: "remove", trailingDotSpace: "none" }).segment).toBe("_.");
+    expect(processSegment(".<.", { ...allFix(), invalidCharStyle: "remove", trailingDotSpace: "none" }).segment).toBe("_");
+  });
+
   it("replaces each one, uses the full-width look-alike, or removes them", () => {
     expect(fix("How are you???.url", "replace")).toBe("How are you___.url");
     expect(fix("How are you???.url", "fullwidth")).toBe("How are you\uff1f\uff1f\uff1f.url");
@@ -240,5 +259,35 @@ describe("invalid-character styles", () => {
   it("tidies by default", async () => {
     const { NAME_DEFAULTS } = await import("../../../src/sdk/policy.js");
     expect(NAME_DEFAULTS.invalidCharStyle).toBe("tidy");
+  });
+});
+
+describe("invalid-character styles never produce an unsafe name", () => {
+  // A seeded generator, so every run checks the same names and a failure
+  // reproduces exactly.
+  function* names(seed: number, count: number): Generator<string> {
+    const alphabet = ["a", "b", ".", " ", "\u3000", "_", "<", ">", ":", '"', "|", "?", "*", "\\"];
+    let state = seed;
+    const next = (): number => { state = (state * 1103515245 + 12345) % 2147483648; return state; };
+    for (let i = 0; i < count; i++) {
+      let name = "";
+      const length = 1 + (next() % 8);
+      for (let j = 0; j < length; j++) name += alphabet[next() % alphabet.length];
+      yield name;
+    }
+  }
+
+  it.each(["tidy", "replace", "fullwidth", "remove"] as const)("%s: never empty, a dot file it was not, only dots, or still invalid", (style) => {
+    for (const name of names(20261017, 20000)) {
+      for (const trailingDotSpace of ["fix", "none"] as const) {
+        const out = processSegment(name, { ...allFix(), invalidCharStyle: style, trailingDotSpace }).segment;
+        if (out === name) continue; // nothing to fix: the path pass judges the name as it came
+        const at = `${JSON.stringify(name)} → ${JSON.stringify(out)} (${style}, trailing ${trailingDotSpace})`;
+        expect(out, at).not.toBe("");
+        expect(/^[.\s]+$/u.test(out), at).toBe(false);
+        expect(/[<>:"|?*\\/]/.test(out), at).toBe(false);
+        if (!name.startsWith(".")) expect(out.startsWith("."), at).toBe(false);
+      }
+    }
   });
 });

@@ -38,26 +38,29 @@ const FULLWIDTH: Record<string, string> = {
 };
 
 /** One part of a name (its stem or its extension) with each run of invalid
- *  characters dropped at either end or beside a space, the space it leaves
- *  doubled or dangling tidied, and any other run replaced by `inner`. */
+ *  characters dropped where a separator would only clutter it — at either end,
+ *  or beside white space of any kind (a full-width space included) — and any
+ *  other run replaced by `inner`. A dropped run that leaves white space doubled
+ *  or dangling has it tidied; nothing else in the name is touched, so an
+ *  underscore or a space the name already had stays as it was. */
 function tidyPart(part: string, inner: string): string {
   const pieces = part.split(INVALID_RUN);
   if (pieces.length === 1) return part;
   let out = pieces[0]!;
   for (let i = 1; i < pieces.length; i += 2) {
-    const after = pieces[i + 1]!;
+    let after = pieces[i + 1]!;
     const atStart = out === "";
     const atEnd = after === "" && i === pieces.length - 2;
     if (atStart) {
-      pieces[i + 1] = after.replace(/^ +/, "");
+      after = after.replace(/^\s+/u, "");
     } else if (atEnd) {
-      out = out.replace(/ +$/, "");
-    } else if (out.endsWith(" ") || after.startsWith(" ")) {
-      if (out.endsWith(" ") && after.startsWith(" ")) out = out.replace(/ $/, "");
+      out = out.replace(/\s+$/u, "");
+    } else if (/\s$/u.test(out) || /^\s/u.test(after)) {
+      if (/\s$/u.test(out) && /^\s/u.test(after)) out = out.slice(0, -1);
     } else {
       out += inner;
     }
-    out += pieces[i + 1]!;
+    out += after;
   }
   return out;
 }
@@ -79,7 +82,11 @@ function fixInvalidChars(segment: string, names: NameRules): string {
       const fixedStem = tidyPart(stem, inner);
       // A stem made only of invalid characters keeps one replacement rather
       // than turning the name into a hidden dot file.
-      return (fixedStem === "" && stem !== "" ? names.invalidCharReplacement : fixedStem) + tidyPart(ext, inner);
+      let fixed = (fixedStem === "" && stem !== "" ? names.invalidCharReplacement : fixedStem) + tidyPart(ext, inner);
+      // Nor may dropping a leading run uncover a dot the name did not start
+      // with ("?..txt" is not "..txt").
+      if (fixed.startsWith(".") && !segment.startsWith(".")) fixed = names.invalidCharReplacement + fixed;
+      return fixed;
     }
   }
 }
@@ -192,6 +199,10 @@ export function processSegment(segment: string, names: NameRules): SegmentFix {
   // empty path component is invalid, so fall back to the replacement. Only an
   // applied fix can reach here, so this never silently alters a left-as-is name.
   if (s === "") s = names.invalidCharReplacement;
+  // Nor may a fix leave only dots or white space: "." and ".." would point at
+  // the folder itself or its parent, and Windows drops such a name to nothing.
+  // A name that came in that way is the path pass's to judge, not changed here.
+  if (transformations.length > 0 && /^[.\s]+$/u.test(s)) s = names.invalidCharReplacement;
 
   if (hasSuspicious(s)) {
     if (names.suspicious === "warn") {

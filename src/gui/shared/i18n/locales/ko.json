@@ -349,7 +349,7 @@
   "options.junk": "OS 불필요 파일 제외",
   "options.strict": "엄격: 이식성 문제를 자동으로 고치지 않고 생성을 막음",
   "options.invalidChars": "Windows에서 쓸 수 없는 문자",
-  "options.invalidCharsTidy": "정리(연속은 _ 하나, 양 끝은 삭제)",
+  "options.invalidCharsTidy": "정리(필요한 곳에만 _)",
   "options.invalidCharsReplace": "하나씩 _로 바꾸기",
   "options.invalidCharsFullwidth": "전각 유사 문자(？ ： ＊)",
   "options.invalidCharsRemove": "삭제하기",

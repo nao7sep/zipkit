@@ -349,7 +349,7 @@
   "options.junk": "Systemmülldateien weglassen",
   "options.strict": "Streng: Portabilitätsprobleme blockieren statt automatisch beheben",
   "options.invalidChars": "Zeichen, die Windows nicht erlaubt",
-  "options.invalidCharsTidy": "Aufräumen: ein _ pro Folge, keins an den Enden",
+  "options.invalidCharsTidy": "Aufräumen: _ nur wo nötig",
   "options.invalidCharsReplace": "Jedes durch _ ersetzen",
   "options.invalidCharsFullwidth": "Breite Entsprechungen (？ ： ＊)",
   "options.invalidCharsRemove": "Entfernen",

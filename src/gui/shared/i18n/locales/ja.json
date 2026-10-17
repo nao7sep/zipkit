@@ -349,7 +349,7 @@
   "options.junk": "OS の不要ファイルを除外",
   "options.strict": "厳格: 移植性の問題を自動修正せずに作成を止める",
   "options.invalidChars": "Windows で使えない文字",
-  "options.invalidCharsTidy": "整える（連続は _ 1 つ、両端は削除）",
+  "options.invalidCharsTidy": "整える（必要な所だけ _）",
   "options.invalidCharsReplace": "1 文字ずつ _ に置き換える",
   "options.invalidCharsFullwidth": "全角の似た文字（？ ： ＊）",
   "options.invalidCharsRemove": "削除する",

@@ -349,7 +349,7 @@
   "options.junk": "排除系统垃圾文件",
   "options.strict": "严格：遇到可移植性问题时阻止创建，而不是自动修复",
   "options.invalidChars": "Windows 不允许的字符",
-  "options.invalidCharsTidy": "整理（连续的只用一个 _，两端删除）",
+  "options.invalidCharsTidy": "整理（仅在需要处用 _）",
   "options.invalidCharsReplace": "每个都替换为 _",
   "options.invalidCharsFullwidth": "全角相似字符（？ ： ＊）",
   "options.invalidCharsRemove": "删除",

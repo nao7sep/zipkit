@@ -349,7 +349,7 @@
   "options.junk": "Écarter les fichiers parasites du système",
   "options.strict": "Strict\u00a0: bloquer les problèmes de portabilité au lieu de les corriger automatiquement",
   "options.invalidChars": "Caractères refusés par Windows",
-  "options.invalidCharsTidy": "Nettoyer\u00a0: un _ par suite, aucun aux extrémités",
+  "options.invalidCharsTidy": "Nettoyer\u00a0: _ seulement si nécessaire",
   "options.invalidCharsReplace": "Remplacer chacun par _",
   "options.invalidCharsFullwidth": "Équivalents pleine chasse (？ ： ＊)",
   "options.invalidCharsRemove": "Les supprimer",

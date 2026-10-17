@@ -349,7 +349,7 @@
   "options.junk": "Omitir arquivos inúteis do sistema",
   "options.strict": "Estrito: bloquear problemas de portabilidade em vez de corrigi-los automaticamente",
   "options.invalidChars": "Caracteres que o Windows não aceita",
-  "options.invalidCharsTidy": "Arrumar: um _ por sequência, nenhum nas pontas",
+  "options.invalidCharsTidy": "Arrumar: _ só onde precisa",
   "options.invalidCharsReplace": "Substituir cada um por _",
   "options.invalidCharsFullwidth": "Equivalentes de largura total (？ ： ＊)",
   "options.invalidCharsRemove": "Removê-los",

@@ -349,7 +349,7 @@
   "options.junk": "Пропускать служебный мусор ОС",
   "options.strict": "Строго: блокировать проблемы переносимости вместо автоматического исправления",
   "options.invalidChars": "Символы, недопустимые в Windows",
-  "options.invalidCharsTidy": "Аккуратно: один _ на группу, без крайних",
+  "options.invalidCharsTidy": "Аккуратно: _ только где нужно",
   "options.invalidCharsReplace": "Заменять каждый на _",
   "options.invalidCharsFullwidth": "Полноширинные аналоги (？ ： ＊)",
   "options.invalidCharsRemove": "Удалять",
