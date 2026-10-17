@@ -16,8 +16,9 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "declaration": true,
-    "declarationMap": true,
+    // The package ships no src/, so each map carries its own source.
     "sourceMap": true,
+    "inlineSources": true,
     "rootDir": "./src",
     "outDir": "./dist",
     "lib": ["ES2022"],
