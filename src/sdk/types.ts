@@ -67,6 +67,19 @@ export interface CompressionPolicy {
  */
 export type NameAction = "fix" | "warn" | "error" | "none";
 
+/**
+ * How characters Windows forbids in names are replaced when they are fixed:
+ *
+ * - `tidy` (the default): a run of them becomes one `invalidCharReplacement`,
+ *   and a run at either end of the name or beside a space is dropped, so
+ *   `How are you???.url` becomes `How are you.url` and `a:b` becomes `a_b`;
+ * - `replace`: each one becomes `invalidCharReplacement` (`How are you___.url`);
+ * - `fullwidth`: each one becomes its full-width look-alike, which Windows
+ *   allows (`How are you？？？.url`);
+ * - `remove`: each one is deleted, and the spaces around it tidied.
+ */
+export type InvalidCharStyle = "tidy" | "replace" | "fullwidth" | "remove";
+
 export interface NameRules {
   /** Non-NFC (e.g. macOS NFD) names → NFC. */
   nfc: NameAction;
@@ -74,6 +87,8 @@ export interface NameRules {
   invalidChars: NameAction;
   /** The substitute for an invalid character; a single safe path component. */
   invalidCharReplacement: string;
+  /** How invalid characters are replaced when they are fixed. */
+  invalidCharStyle: InvalidCharStyle;
   /** Control characters below 0x20. */
   controlChars: NameAction;
   /** Trailing spaces or dots (which Windows silently strips). */

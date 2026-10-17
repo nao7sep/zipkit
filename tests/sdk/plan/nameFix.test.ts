@@ -24,6 +24,7 @@ function allFix(replacement = "_"): NameRules {
     nfc: "fix",
     invalidChars: "fix",
     invalidCharReplacement: replacement,
+    invalidCharStyle: "replace",
     controlChars: "fix",
     trailingDotSpace: "fix",
     reserved: "fix",
@@ -200,5 +201,44 @@ describe("fullFixSegment", () => {
 
   it("returns the fully repaired segment", () => {
     expect(fullFixSegment("a:b. ", "_")).toBe("a_b");
+  });
+});
+
+describe("invalid-character styles", () => {
+  const fix = (input: string, invalidCharStyle: NameRules["invalidCharStyle"]) =>
+    processSegment(input, { ...allFix(), invalidCharStyle }).segment;
+
+  it("tidies runs: one replacement inside a word, dropped at either end of the name or beside a space", () => {
+    expect(fix("How are you???.url", "tidy")).toBe("How are you.url");
+    expect(fix("a:b.txt", "tidy")).toBe("a_b.txt");
+    expect(fix("a::b", "tidy")).toBe("a_b");
+    expect(fix("Re: plan <draft>.txt", "tidy")).toBe("Re plan draft.txt");
+    expect(fix("a : b", "tidy")).toBe("a b");
+    expect(fix("? hello", "tidy")).toBe("hello");
+    expect(fix("file.t?t", "tidy")).toBe("file.t_t");
+    // A name made only of them keeps one replacement rather than becoming a dot file.
+    expect(fix("???.txt", "tidy")).toBe("_.txt");
+    expect(fix("plain name.txt", "tidy")).toBe("plain name.txt");
+  });
+
+  it("replaces each one, uses the full-width look-alike, or removes them", () => {
+    expect(fix("How are you???.url", "replace")).toBe("How are you___.url");
+    expect(fix("How are you???.url", "fullwidth")).toBe("How are you\uff1f\uff1f\uff1f.url");
+    expect(fix('<a>:"b"|c?*\\', "fullwidth")).toBe("\uff1ca\uff1e\uff1a\uff02b\uff02\uff5cc\uff1f\uff0a\uff3c");
+    expect(fix("How are you???.url", "remove")).toBe("How are you.url");
+    expect(fix("a:b.txt", "remove")).toBe("ab.txt");
+    expect(fix("Re: plan <draft>.txt", "remove")).toBe("Re plan draft.txt");
+  });
+
+  it("records the fix as one invalid-character finding whatever the style", () => {
+    for (const style of ["tidy", "replace", "fullwidth", "remove"] as const) {
+      const result = processSegment("a:b", { ...allFix(), invalidCharStyle: style });
+      expect(result.issues.map((issue) => issue.rule)).toEqual(["name.invalid-char"]);
+    }
+  });
+
+  it("tidies by default", async () => {
+    const { NAME_DEFAULTS } = await import("../../../src/sdk/policy.js");
+    expect(NAME_DEFAULTS.invalidCharStyle).toBe("tidy");
   });
 });

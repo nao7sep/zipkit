@@ -91,6 +91,12 @@ describe("JobDetails", () => {
     expect((within(screen.getByRole("dialog")).getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
   });
 
+  it("offers no grouping for excluded items whose names are all different", () => {
+    show(plan([junk("w/Thumbs.db"), junk("u/desktop.ini")]));
+    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (2)" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("checkbox")).toBeNull();
+  });
+
   it("says what is left out goes with the originals when they are to be removed, and raises anything but junk", () => {
     show(plan([junk("a/.DS_Store"), entry("sock", { excluded: true, findings: [{ rule: "entry.unsupported", severity: "info", path: "sock", message: "socket" }] })]),
       { intent: { verify: true, originals: "trash" } });

@@ -24,10 +24,15 @@ describe("buildSpec", () => {
     expect(spec.policy?.emptyDirs).toBe("keep");
     expect(spec.policy?.compression?.level).toBe(6);
     expect(spec.policy?.metadata).toEqual({ hash: true });
-    expect(spec.policy?.names).toBeUndefined(); // default "fix" left to the SDK
+    // Only the replacement style is chosen here; every action is left to the SDK.
+    expect(spec.policy?.names).toEqual({ invalidCharStyle: "tidy" });
     expect(spec.output).toBeUndefined(); // composed in the main process, not here
     expect(spec.overwrite).toBeUndefined();
     expect(spec.comment).toBeUndefined();
+  });
+
+  it("passes the chosen way of replacing characters Windows can't use", () => {
+    expect(buildSpec(["/a"], { ...DEFAULT_OPTIONS, invalidChars: "fullwidth" }).policy?.names).toEqual({ invalidCharStyle: "fullwidth" });
   });
 
   it("strict mode sets every name rule to error", () => {

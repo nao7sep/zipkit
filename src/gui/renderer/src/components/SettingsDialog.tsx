@@ -234,19 +234,23 @@ export function SettingsDialog({
         />
         {t("settings.confirmJobRemoval")}
       </label>
-      <label style={S.fontField}>
-        <span style={S.fontLabel}>{t("settings.cardRowLimit")}</span>
-        <input
-          type="number"
-          min={CARD_ROW_LIMIT_RANGE.min}
-          max={CARD_ROW_LIMIT_RANGE.max}
-          value={draft.cardRowLimit}
-          disabled={saving}
-          onChange={(e) => setDraft({ ...draft, cardRowLimit: Number(e.target.value) })}
-          style={S.limitInput}
-        />
+      {/* The number sits beside its label, wrapping below it only when the
+          label leaves it no room. */}
+      <div style={S.fontField}>
+        <label style={S.inlineField}>
+          <span style={S.fontLabel}>{t("settings.cardRowLimit")}</span>
+          <input
+            type="number"
+            min={CARD_ROW_LIMIT_RANGE.min}
+            max={CARD_ROW_LIMIT_RANGE.max}
+            value={draft.cardRowLimit}
+            disabled={saving}
+            onChange={(e) => setDraft({ ...draft, cardRowLimit: Number(e.target.value) })}
+            style={S.limitInput}
+          />
+        </label>
         <span style={S.fontHint}>{t("settings.cardRowLimitHint")}</span>
-      </label>
+      </div>
       {/* The defaults every new job starts with, under their own heading, with
           their reset closing the group as in the fleet's other Settings, so it
           plainly covers these and nothing above (config-sets conventions,
@@ -306,6 +310,7 @@ const S: Record<string, CSSProperties> = {
   languageSelect: { alignSelf: "flex-start", minWidth: "12rem" },
   fontHint: { fontSize: "0.85em", color: "var(--text-2)" },
   check: { display: "flex", alignItems: "center", gap: "0.45rem", marginBottom: "1rem" },
+  inlineField: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.35rem 0.75rem" },
   limitInput: { width: "5rem" },
   error: { color: "var(--status-error)", marginBottom: 0 },
 };

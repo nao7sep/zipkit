@@ -79,6 +79,7 @@ const partialPolicySchema = z.strictObject({
             "names.invalidCharReplacement must be a single path component (no slashes, not '.' or '..')",
           path: ["invalidCharReplacement"],
         }),
+      invalidCharStyle: z.enum(["tidy", "replace", "fullwidth", "remove"]).optional(),
       controlChars: nameActionSchema.optional(),
       trailingDotSpace: nameActionSchema.optional(),
       reserved: nameActionSchema.optional(),

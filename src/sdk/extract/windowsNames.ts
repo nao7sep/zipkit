@@ -17,6 +17,7 @@ export function windowsSafeSegment(segment: string): string {
     nfc: "none",
     invalidChars: "fix",
     invalidCharReplacement: "_",
+    invalidCharStyle: "replace",
     controlChars: "fix",
     trailingDotSpace: "fix",
     reserved: "fix",

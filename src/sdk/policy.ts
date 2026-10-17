@@ -128,6 +128,7 @@ export const NAME_DEFAULTS: NameRules = {
   nfc: "fix",
   invalidChars: "fix",
   invalidCharReplacement: "_",
+  invalidCharStyle: "tidy",
   controlChars: "fix",
   trailingDotSpace: "fix",
   reserved: "fix",

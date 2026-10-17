@@ -73,7 +73,7 @@ describe("settings sets", () => {
     expect(settings.parseSettings({ defaults: { level: 1 } }, logger).defaults)
       .toEqual({ ...DEFAULT_PARAMETERS, level: 1 });
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(logger.warn).mock.calls[0]![1]?.members).toHaveLength(6);
+    expect(vi.mocked(logger.warn).mock.calls[0]![1]?.members).toHaveLength(7);
   });
 
   it("does not read an output folder, overwrite choice or comment an earlier build saved as a default", () => {

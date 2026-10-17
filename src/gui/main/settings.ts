@@ -26,6 +26,7 @@ function freshSettings(): GuiSettings {
 
 const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
   ["junk", (v) => typeof v === "boolean"], ["strict", (v) => typeof v === "boolean"],
+  ["invalidChars", (v) => v === "tidy" || v === "replace" || v === "fullwidth" || v === "remove"],
   ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
   ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
   ["emptyDirs", (v) => v === "keep" || v === "prune"], ["metadata", (v) => typeof v === "boolean"],

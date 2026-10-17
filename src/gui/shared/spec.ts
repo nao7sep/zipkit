@@ -5,7 +5,7 @@
  * (no Electron, no Node, no SDK runtime), so it is unit-tested directly.
  */
 
-import type { ArchivePolicy, ArchiveSpec, DeepPartial, NameAction } from "../../sdk/types.js";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial, InvalidCharStyle, NameAction } from "../../sdk/types.js";
 import type { LanguagePreference } from "./i18n/languages.js";
 
 /** The visible option state for one job. Defaults mirror the SDK's own defaults. */
@@ -14,6 +14,8 @@ export interface GuiOptions {
   junk: boolean;
   /** Make every name-portability issue block (error) instead of being auto-fixed. */
   strict: boolean;
+  /** How characters Windows forbids in names are replaced (the SDK's styles). */
+  invalidChars: InvalidCharStyle;
   /** Deflate level 1–9. */
   level: number;
   symlinks: "ignore" | "preserve" | "follow";
@@ -35,6 +37,7 @@ export interface GuiOptions {
 export const DEFAULT_OPTIONS: GuiOptions = {
   junk: true,
   strict: false,
+  invalidChars: "tidy",
   level: 6,
   symlinks: "ignore",
   emptyDirs: "keep",
@@ -54,7 +57,7 @@ export const DEFAULT_OPTIONS: GuiOptions = {
  * GuiOptions (where the archive goes, its name, whether it may replace a file,
  * its comment) belongs to one job and never comes from Settings.
  */
-export const PARAMETER_KEYS = ["junk", "strict", "level", "symlinks", "emptyDirs", "metadata", "hash"] as const satisfies readonly (keyof GuiOptions)[];
+export const PARAMETER_KEYS = ["junk", "strict", "invalidChars", "level", "symlinks", "emptyDirs", "metadata", "hash"] as const satisfies readonly (keyof GuiOptions)[];
 export type ArchiveParameters = Pick<GuiOptions, (typeof PARAMETER_KEYS)[number]>;
 
 /** Just the parameters of a job's options. */
@@ -162,9 +165,11 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
     compression: { level: o.level },
     metadata: o.metadata ? { hash: o.hash } : false,
   };
+  policy.names = { invalidCharStyle: o.invalidChars };
   if (o.strict) {
     const e: NameAction = "error";
     policy.names = {
+      ...policy.names,
       nfc: e,
       invalidChars: e,
       controlChars: e,
@@ -192,6 +197,7 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
 const PLAN_AFFECTING: (keyof GuiOptions)[] = [
   "junk",
   "strict",
+  "invalidChars",
   "symlinks",
   "emptyDirs",
   "metadata",

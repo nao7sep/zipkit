@@ -36,6 +36,21 @@ export function OptionsPanel({
         <Check checked={options.strict} onChange={(v) => set("strict", v)}>
           {t("options.strict")}
         </Check>
+        {/* Strict makes these characters block the archive, so how they would
+            be replaced does not apply then. */}
+        <Field label={t("options.invalidChars")}>
+          <select
+            style={S.select}
+            value={options.invalidChars}
+            disabled={options.strict}
+            onChange={(e) => set("invalidChars", e.target.value as ArchiveParameters["invalidChars"])}
+          >
+            <option value="tidy">{t("options.invalidCharsTidy")}</option>
+            <option value="replace">{t("options.invalidCharsReplace")}</option>
+            <option value="fullwidth">{t("options.invalidCharsFullwidth")}</option>
+            <option value="remove">{t("options.invalidCharsRemove")}</option>
+          </select>
+        </Field>
       </Section>
 
       <Section title={t("options.manifest")}>

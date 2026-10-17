@@ -29,6 +29,60 @@ import type { ArchivePolicy, NameAction, NameRules, Severity } from "../types.js
 import type { WorkItem } from "./workItem.js";
 
 const INVALID_CHARS = /[<>:"|?*\\]/g;
+const INVALID_RUN = /([<>:"|?*\\]+)/;
+
+// The full-width look-alike of each character Windows forbids in names.
+const FULLWIDTH: Record<string, string> = {
+  "<": "\uff1c", ">": "\uff1e", ":": "\uff1a", '"': "\uff02",
+  "|": "\uff5c", "?": "\uff1f", "*": "\uff0a", "\\": "\uff3c",
+};
+
+/** One part of a name (its stem or its extension) with each run of invalid
+ *  characters dropped at either end or beside a space, the space it leaves
+ *  doubled or dangling tidied, and any other run replaced by `inner`. */
+function tidyPart(part: string, inner: string): string {
+  const pieces = part.split(INVALID_RUN);
+  if (pieces.length === 1) return part;
+  let out = pieces[0]!;
+  for (let i = 1; i < pieces.length; i += 2) {
+    const after = pieces[i + 1]!;
+    const atStart = out === "";
+    const atEnd = after === "" && i === pieces.length - 2;
+    if (atStart) {
+      pieces[i + 1] = after.replace(/^ +/, "");
+    } else if (atEnd) {
+      out = out.replace(/ +$/, "");
+    } else if (out.endsWith(" ") || after.startsWith(" ")) {
+      if (out.endsWith(" ") && after.startsWith(" ")) out = out.replace(/ $/, "");
+    } else {
+      out += inner;
+    }
+    out += pieces[i + 1]!;
+  }
+  return out;
+}
+
+/** A segment with the characters Windows forbids replaced in the given style. */
+function fixInvalidChars(segment: string, names: NameRules): string {
+  switch (names.invalidCharStyle) {
+    case "replace":
+      return segment.replace(INVALID_CHARS, names.invalidCharReplacement);
+    case "fullwidth":
+      return segment.replace(INVALID_CHARS, (ch) => FULLWIDTH[ch]!);
+    case "tidy":
+    case "remove": {
+      // The stem and the extension are tidied apart, so a run just before the
+      // extension counts as the end of the name.
+      const inner = names.invalidCharStyle === "tidy" ? names.invalidCharReplacement : "";
+      const dot = segment.lastIndexOf(".");
+      const [stem, ext] = dot > 0 ? [segment.slice(0, dot), segment.slice(dot)] : [segment, ""];
+      const fixedStem = tidyPart(stem, inner);
+      // A stem made only of invalid characters keeps one replacement rather
+      // than turning the name into a hidden dot file.
+      return (fixedStem === "" && stem !== "" ? names.invalidCharReplacement : fixedStem) + tidyPart(ext, inner);
+    }
+  }
+}
 const TRAILING_DOT_SPACE = /[ .]+$/;
 
 // Invisible and bidirectional-control characters with no legitimate use in a
@@ -74,6 +128,7 @@ export interface SegmentFix {
 const ALL_FIX: Omit<NameRules, "invalidCharReplacement"> = {
   nfc: "fix",
   invalidChars: "fix",
+  invalidCharStyle: "replace",
   controlChars: "fix",
   trailingDotSpace: "fix",
   reserved: "fix",
@@ -128,7 +183,7 @@ export function processSegment(segment: string, names: NameRules): SegmentFix {
   };
 
   step("name.nfd", names.nfc, s.normalize("NFC"));
-  step("name.invalid-char", names.invalidChars, s.replace(INVALID_CHARS, names.invalidCharReplacement));
+  step("name.invalid-char", names.invalidChars, fixInvalidChars(s, names));
   step("name.control-char", names.controlChars, stripControlChars(s));
   step("name.trailing-dot-space", names.trailingDotSpace, s.replace(TRAILING_DOT_SPACE, ""));
   if (isReservedStem(s)) step("name.reserved", names.reserved, suffixReserved(s));
