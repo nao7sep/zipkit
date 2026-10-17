@@ -44,6 +44,7 @@ import { readInternals } from "./internal/carrier.js";
 import { classifyPaths, pathState } from "./paths.js";
 import { checkRemoval, outputInsideInputs } from "./removal.js";
 import { pathResources, type PathResource } from "./claims.js";
+import { listArchive, readArchiveManifest } from "./extract/list.js";
 import { nodeFileSystem, Volume } from "./internal/volume.js";
 import { planArchive } from "./plan/plan.js";
 import { METADATA_DEFAULTS, resolvePolicy } from "./policy.js";
@@ -59,10 +60,11 @@ import {
   validateSkipPaths,
   validateSpec,
 } from "./validate.js";
-import { writeArchive } from "./write/write.js";
+import { writeArchive, type WriteDeps } from "./write/write.js";
 import { VERSION } from "./version.js";
 import type { Unlogged } from "./internal/types.js";
 import type {
+  ArchiveListing,
   ArchivePolicy,
   ArchiveSpec,
   CreateData,
@@ -70,6 +72,7 @@ import type {
   ExtractData,
   ExtractSpec,
   LogStage,
+  Metadata,
   SourceComparison,
   PathEntry,
   PathState,
@@ -154,7 +157,8 @@ export class ZipKit {
   /**
    * Scan and plan; writes nothing. Returns the `mode:"plan"` payload, which is a
    * **live handle**: pass the *same* object to {@link ZipKit.write}. It is safe to
-   * inspect and `JSON.stringify` (it carries no absolute source paths), but the
+   * inspect and `JSON.stringify` (its only absolute paths are `output` and each
+   * entry's `diskPath`), but the
    * writer's instructions ride on it out of band, so a cloned or re-serialized
    * copy cannot be written — inspect freely, but write from the original.
    */
@@ -169,7 +173,7 @@ export class ZipKit {
     const volume = this.volume(options.signal);
     try {
       return await this.#run(options, (logger) => this.#runWrite(plan, {
-        logger, chunkSize: this.#chunkSize, signal: options.signal, volume,
+        logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onCounts: options.onCounts,
       }));
     } finally { this.#notifySettlement(options, volume); }
   }
@@ -182,7 +186,7 @@ export class ZipKit {
     try {
       return await this.#run(options, async (logger) => {
         const plan = await this.#plan(spec, logger, options.signal, volume);
-        return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume });
+        return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onCounts: options.onCounts });
       });
     } finally { this.#notifySettlement(options, volume); }
   }
@@ -211,6 +215,7 @@ export class ZipKit {
           logger,
           signal: options.signal,
           volume: this.volume(options.signal),
+          onCounts: options.onCounts,
         });
       } catch (err) {
         this.#reportError(logger, err);
@@ -261,6 +266,28 @@ export class ZipKit {
     });
     const { log: _log, ...comparison } = result;
     return comparison;
+  }
+
+  /**
+   * The entries of `archive` as its central directory records them, without
+   * reading their data: what `extract` would verify. Works on any ZIP. A time
+   * stored only in the DOS field, which carries no zone, is read in
+   * `timeZone` (the host's by default). Bounded like every look at a user volume.
+   */
+  list(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { timeZone?: string } = {}): Promise<ArchiveListing> {
+    return listArchive(this.volume(options.signal), archive, options.timeZone);
+  }
+
+  /**
+   * The manifest ZipKit embedded in `archive`, read whole: the policy, the
+   * summary, every entry with its source trace, size, times and hashes, what
+   * was left out and why. `name` is the manifest's name when the archive was
+   * made with another (`zipkit.json` by default). Holds the whole document, so
+   * to check a very large archive against its manifest use `extract` with
+   * `checkMetadata`, which streams it.
+   */
+  readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { name?: string } = {}): Promise<Metadata> {
+    return readArchiveManifest(this.volume(options.signal), archive, options.name);
   }
 
   /**
@@ -390,7 +417,7 @@ export class ZipKit {
    *  double-report when its inner plan throws. */
   async #runWrite(
     plan: Unlogged<PlanData>,
-    deps: { logger: Logger; chunkSize: number; signal?: AbortSignal; volume: Volume },
+    deps: WriteDeps,
   ): Promise<Unlogged<WriteData>> {
     try {
       return await writeArchive(plan, deps);

@@ -38,12 +38,13 @@ const SKIP_MESSAGES: Record<SkipKind, string> = {
 };
 
 /** A scan entry for an item that has no stat of its own to carry. */
-function placeholderScan(archivePath: string, sourcePath: string, type: ScanEntry["type"]): ScanEntry {
+function placeholderScan(archivePath: string, sourcePath: string, diskPath: string, type: ScanEntry["type"]): ScanEntry {
   return {
     absolutePath: "",
     inputIndex: -1,
     archivePath,
     sourcePath,
+    diskPath,
     type,
     size: 0,
     mtimeNs: 0n,
@@ -60,7 +61,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
   for (const dir of scan.prunedDirs) {
     if (dir.archivePath === "") continue;
     items.push({
-      scan: placeholderScan(dir.archivePath, dir.archivePath, "dir"),
+      scan: placeholderScan(dir.archivePath, dir.archivePath, dir.diskPath, "dir"),
       archivePath: dir.archivePath,
       originalPath: dir.archivePath,
       type: "dir",
@@ -82,7 +83,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
     const type = skipped.kind.endsWith("-link") ? "symlink" : "file";
     const message = SKIP_MESSAGES[skipped.kind];
     items.push({
-      scan: placeholderScan(skipped.archivePath, skipped.sourcePath, type),
+      scan: placeholderScan(skipped.archivePath, skipped.sourcePath, skipped.diskPath, type),
       archivePath: skipped.archivePath,
       originalPath: skipped.archivePath,
       type,
@@ -132,6 +133,7 @@ export function toPlannedEntry(item: WorkItem): PlannedEntry {
     return {
       archivePath: item.archivePath,
       originalPath: item.originalPath,
+      diskPath: item.scan.diskPath,
       type,
       method: item.method,
       excluded: item.excluded,
@@ -143,6 +145,7 @@ export function toPlannedEntry(item: WorkItem): PlannedEntry {
   return {
     archivePath: item.archivePath,
     originalPath: item.originalPath,
+    diskPath: item.scan.diskPath,
     type,
     method: item.method,
     excluded: item.excluded,

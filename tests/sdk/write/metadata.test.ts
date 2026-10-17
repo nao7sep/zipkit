@@ -17,7 +17,7 @@ const plan: Unlogged<Extract<CreateData, { mode: "plan" }>> = {
   mode: "plan",
   output: "out.zip",
   writable: true,
-  summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false },
+  summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
   findings: [],
   entries: [],
 };
@@ -231,6 +231,7 @@ describe("estimateMetadataSize (Zip64 manifest bound)", () => {
     const excludedPlanned: PlannedEntry = {
       archivePath: `junk/${"z".repeat(160)}`,
       originalPath: `junk/${"z".repeat(160)}`,
+      diskPath: `/in/junk/${"z".repeat(160)}`,
       type: "file",
       method: "store",
       excluded: true,
@@ -263,7 +264,7 @@ describe("estimateMetadataSize (Zip64 manifest bound)", () => {
       output: "out.zip",
       writable: true,
       // Max-width summary numbers: their exact values don't matter for the bound.
-      summary: { total: 99999, included: 99999, excluded: 99999, renamed: 99999, warnings: 99999, errors: 0, zip64: false },
+      summary: { total: 99999, included: 99999, excluded: 99999, renamed: 99999, warnings: 99999, errors: 0, zip64: false, sourceBytes: 0 },
       findings,
       entries: [excludedPlanned],
     };

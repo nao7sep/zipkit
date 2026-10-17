@@ -8,6 +8,7 @@ export type { PlanData, WriteData } from "./zipkit.js";
 export { exportPlan, importPlan } from "./transfer.js";
 export { sameFile } from "./paths.js";
 export { createPathClaims } from "./claims.js";
+export { unarchived } from "./removal.js";
 export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.js";
 export { machineTimeZone } from "./internal/timeZone.js";
 export type { PlanTransfer } from "./transfer.js";
@@ -17,6 +18,7 @@ export type { ExtractRuleId, FindingRule, RuleId, RuleSpec } from "./registry.js
 
 export type {
   ArchiveInput,
+  ArchiveListing,
   ArchivePolicy,
   ArchiveSpec,
   CompressionPolicy,
@@ -39,6 +41,7 @@ export type {
   LogEventBody,
   LogMeta,
   LogLevel,
+  ListedEntry,
   LogStage,
   Metadata,
   MetadataEntry,
@@ -46,12 +49,14 @@ export type {
   MetadataPolicy,
   PlanSummary,
   PlannedEntry,
+  ProgressCounts,
   RemovalCheck,
   RemovalOptions,
   RemovalRefusal,
   Severity,
   SourceComparison,
   Transformation,
+  Unarchived,
   UtcTime,
   ZipKitCallOptions,
   ZipKitOptions,

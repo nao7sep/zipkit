@@ -173,7 +173,7 @@ describe("scan over a real tree", () => {
 
     const blocked = await runScan({ inputs: [proj] }, { symlinks: "follow" });
     expect(names(blocked)).not.toContain("escape/secret.txt");
-    expect(blocked.skipped).toEqual([{ archivePath: "escape", sourcePath: "proj/escape", kind: "external-link" }]);
+    expect(blocked.skipped).toEqual([{ archivePath: "escape", sourcePath: "proj/escape", diskPath: path.join(proj, "escape"), kind: "external-link" }]);
 
     const allowed = await runScan(
       { inputs: [proj] },
@@ -191,7 +191,7 @@ describe("scan over a real tree", () => {
     const result = await runScan({ inputs: [proj] }, { symlinks: "follow" });
 
     expect(names(result)).toEqual(["real.txt"]);
-    expect(result.skipped).toEqual([{ archivePath: "dangling", sourcePath: "proj/dangling", kind: "broken-link" }]);
+    expect(result.skipped).toEqual([{ archivePath: "dangling", sourcePath: "proj/dangling", diskPath: path.join(proj, "dangling"), kind: "broken-link" }]);
   });
 
   // A FIFO is a POSIX object; Windows has no mkfifo.
@@ -204,7 +204,7 @@ describe("scan over a real tree", () => {
     const result = await runScan({ inputs: [proj] });
 
     expect(names(result)).toEqual(["real.txt"]);
-    expect(result.skipped).toEqual([{ archivePath: "pipe", sourcePath: "proj/pipe", kind: "fifo" }]);
+    expect(result.skipped).toEqual([{ archivePath: "pipe", sourcePath: "proj/pipe", diskPath: path.join(proj, "pipe"), kind: "fifo" }]);
   });
 
   // POSIX permissions decide whether a folder can be listed; root lists anything.

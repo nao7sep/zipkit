@@ -105,6 +105,8 @@ interface EntryPaths {
   archive: string;
   /** The input-relative disk-trace path (see {@link ScanEntry.sourcePath}). */
   source: string;
+  /** Where it is on disk, from the input as given (see {@link ScanEntry.diskPath}). */
+  disk: string;
 }
 
 function makeEntry(
@@ -120,6 +122,7 @@ function makeEntry(
     inputIndex,
     archivePath: paths.archive,
     sourcePath: paths.source,
+    diskPath: paths.disk,
     type,
     size: Number(stats.size),
     mtimeNs: stats.mtimeNs,
@@ -140,7 +143,7 @@ function specialKind(stats: BigIntStats): SkipKind {
 }
 
 function skip(ctx: ScanContext, paths: EntryPaths, kind: SkipKind): void {
-  ctx.skipped.push({ archivePath: paths.archive, sourcePath: paths.source, kind });
+  ctx.skipped.push({ archivePath: paths.archive, sourcePath: paths.source, diskPath: paths.disk, kind });
 }
 
 function isWithin(root: string, target: string): boolean {
@@ -316,7 +319,11 @@ async function walkTree(
             const archive = joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, abs)));
             const rule = archive === "" ? null : ctx.matcher.match(archive, true);
             if (rule) {
-              const pruned: PrunedDir = { archivePath: archive, reason: rule.describe };
+              const pruned: PrunedDir = {
+                archivePath: archive,
+                diskPath: path.join(anchors.disk, path.relative(absDir, abs)),
+                reason: rule.describe,
+              };
               if (rule.junkRule) pruned.rule = rule.junkRule;
               ctx.prunedDirs.push(pruned);
               continue;
@@ -348,9 +355,10 @@ async function crawlDirectory(
     const archive = joinArchivePath(anchors.archive, fwdRel);
     if (archive === "") continue;
     const source = joinArchivePath(anchors.source, fwdRel);
+    const disk = path.join(anchors.disk, path.relative(absDir, abs));
     // Descendants acquire this same pool. Release the entry's slot before
     // awaiting them, including when every slot discovers a followed directory.
-    tasks.push(ctx.limit(() => processPath(ctx, abs, { archive, source }, inputIndex))
+    tasks.push(ctx.limit(() => processPath(ctx, abs, { archive, source, disk }, inputIndex))
       .then(async (followed) => {
         if (followed) await crawlDirectory(ctx, followed.real, followed.real, followed.paths, followed.inputIndex);
       }));
@@ -504,6 +512,7 @@ export async function scan(
     const anchorPaths: EntryPaths = {
       archive: anchors[i] ?? "",
       source: path.basename(inputs[i]?.path ?? real),
+      disk: inputs[i]?.path ?? real,
     };
     // An input that is ZipKit's own storage root, or inside it.
     if (skipped(ctx, canonicalRoots[i] as string)) continue;

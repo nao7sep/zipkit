@@ -43,7 +43,7 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
     output,
     log: "",
     writable,
-    summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: writable ? 0 : 1, zip64: false },
+    summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: writable ? 0 : 1, zip64: false, sourceBytes: 0 },
     findings: [],
     entries: [],
   };
@@ -547,6 +547,7 @@ describe("queue engine", () => {
         plan.entries = files.map((archivePath) => ({
           archivePath,
           originalPath: archivePath,
+          diskPath: `/in/${archivePath}`,
           type: "file" as const,
           method: "deflate" as const,
           excluded: false,

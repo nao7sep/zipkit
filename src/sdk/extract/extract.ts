@@ -36,7 +36,8 @@ import { METADATA_DEFAULTS } from "../policy.js";
 import { finding } from "../registry.js";
 import { MANIFEST_FORMAT_VERSION } from "../write/metadata.js";
 import { createManifestReader, type ManifestReading } from "./manifestReader.js";
-import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding } from "../types.js";
+import type { ExtractData, ExtractEntryResult, ExtractSpec, Finding, ProgressCounts } from "../types.js";
+import { Meter } from "../progress.js";
 import { restoreTimes } from "./restore.js";
 import { findTargetCollision } from "./targetCollision.js";
 import { createLinkTargetGuard, type LinkTargetGuard } from "./linkTargets.js";
@@ -52,6 +53,8 @@ export interface ExtractDeps {
   signal?: AbortSignal;
   /** The run's bounded file access, built with the same signal. */
   volume: Volume;
+  /** The caller's `onCounts`, for how far the read has got. */
+  onCounts?: ((counts: ProgressCounts) => void) | undefined;
 }
 
 interface WriteOptions {
@@ -298,6 +301,7 @@ async function verifyEntry(
   stageTo: string | null,
   captureLink: boolean,
   signal: AbortSignal | undefined,
+  meter: Meter,
 ): Promise<VerifyResult> {
   if (entry.type === "dir") {
     return { crcOk: true, sha: checkSha ? (storedSha ? "ok" : "absent") : undefined };
@@ -318,6 +322,7 @@ async function verifyEntry(
     if (hasher) hasher.update(chunk);
     if (captureLink) linkChunks.push(chunk);
     if (out) await out.writeAll(chunk, null);
+    meter.bytes(chunk.length);
   };
 
   let crc32: number;
@@ -518,6 +523,11 @@ export async function extractArchive(
       write,
     });
 
+    const meter = new Meter(
+      "extract",
+      { entries: parsed.entries.length, bytes: parsed.entries.reduce((sum, entry) => sum + entry.uncompSize, 0) },
+      deps.onCounts,
+    );
     const collision = findTargetCollision(parsed.entries);
     if (collision) {
       throw new ReadError(
@@ -670,7 +680,9 @@ export async function extractArchive(
         tempPath,
         captureLink,
         signal,
+        meter,
       );
+      meter.entry();
 
       if (deferLink && verified.crcOk && target !== null) {
         // Settle implicit link parents before accepting any link graph. Creating
@@ -871,6 +883,7 @@ export async function extractArchive(
       reportOk,
     });
 
+    meter.finish();
     return {
       archive: spec.archive,
       dest: write && spec.dest !== undefined ? spec.dest : null,

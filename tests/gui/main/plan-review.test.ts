@@ -12,6 +12,7 @@ type Entry = PlanData["entries"][number];
 const entry = (archivePath: string, over: Partial<Entry> = {}): Entry => ({
   archivePath,
   originalPath: archivePath,
+  diskPath: `/in/${archivePath}`,
   type: "file",
   method: "deflate",
   excluded: false,

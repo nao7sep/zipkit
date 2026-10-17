@@ -240,12 +240,28 @@ export interface ZipKitOptions {
  */
 export interface ZipKitCallOptions {
   onProgress?: (event: LogEvent) => void;
+  /** How far `write`/`create` and `extract` have got, for a progress bar: at
+   *  the start, at most every 100 ms while entries stream, and once at the end
+   *  of a run that finishes. Other verbs ignore this hook, and like
+   *  `onProgress` it cannot break the verb. */
+  onCounts?: (counts: ProgressCounts) => void;
   signal?: AbortSignal;
   /** `write`/`create` deliver this after their logical outcome. The promise
    * joins raw I/O and late cleanup that may outlive a cancelled or timed-out
    * wait. Callers reserving output paths retain them until it settles. The
    * observer cannot change the verb's outcome. Other verbs ignore this hook. */
   onPhysicalSettlement?: (settlement: Promise<void>) => void;
+}
+
+/** How far a write or a read has got. A write counts the entries it streams
+ *  and their content as on disk (the plan's `summary.sourceBytes`); a read
+ *  counts every entry and its uncompressed bytes. */
+export interface ProgressCounts {
+  stage: "write" | "extract";
+  entriesDone: number;
+  entriesTotal: number;
+  bytesDone: number;
+  bytesTotal: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +353,10 @@ export interface Finding {
 export interface PlannedEntry {
   archivePath: string; // identity (final, NFC, forward-slash, relative)
   originalPath: string; // identity (as found on disk, pre-fix)
+  /** Where the item is on disk: the input as given joined with the item's
+   *  path inside it, through any followed link, so it names the place the
+   *  user sees rather than a link's target. Absolute. */
+  diskPath: string;
   type: "file" | "dir"; // classification
   method: "store" | "deflate";
   excluded: boolean; // state
@@ -355,6 +375,10 @@ export interface PlanSummary {
   warnings: number;
   errors: number;
   zip64: boolean;
+  /** The size of what is archived, as on disk: every included file's bytes
+   *  and every stored link's target. Compared with the archive's size, the
+   *  compression ratio. */
+  sourceBytes: number;
 }
 
 /**
@@ -468,7 +492,9 @@ export interface Metadata {
   /** The archive comment, present only when one was set. */
   comment?: string;
   policy: ArchivePolicy; // configuration
-  summary: PlanSummary; // quantities (aggregate)
+  /** Quantities (aggregate); `sourceBytes` is absent from archives made
+   *  before ZipKit recorded it. */
+  summary: Omit<PlanSummary, "sourceBytes"> & { sourceBytes?: number };
   totals: { uncompressedBytes: number; compressedBytes: number };
   /**
    * The modification-time span of the archived file set: the oldest and newest
@@ -597,6 +623,39 @@ export interface SourceComparison {
   changed: string[];
   /** Folders the fresh scan could not list, so their contents went unchecked. */
   unlisted: string[];
+}
+
+/** One entry of an archive as its central directory records it. */
+export interface ListedEntry {
+  archivePath: string;
+  type: "file" | "dir" | "symlink";
+  /** How it is compressed; `other` is a method ZipKit cannot read. */
+  method: "store" | "deflate" | "other";
+  /** Uncompressed bytes. */
+  size: number;
+  compressedSize: number;
+  crc32: number;
+  /** Its modification time, from the most precise field stored. */
+  modified: UtcTime;
+}
+
+/** The answer of `ZipKit.list`. */
+export interface ArchiveListing {
+  archive: string;
+  zip64: boolean;
+  entries: ListedEntry[];
+}
+
+/** What removing the originals a plan was made from would take without a
+ *  copy in the archive (see `unarchived`). */
+export interface Unarchived {
+  /** Items left out, each where it is on disk (`diskPath`); a folder left out
+   *  goes with everything in it. A duplicate is not one: its content is in the
+   *  archive through another input. */
+  excluded: PlannedEntry[];
+  /** Folders that could not be read: what they hold is not in the archive
+   *  and not known. */
+  unlisted: PlannedEntry[];
 }
 
 /** Why the originals may not be removed: the first check of

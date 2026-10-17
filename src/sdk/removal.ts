@@ -9,7 +9,7 @@
 import path from "node:path";
 import { sameFile } from "./paths.js";
 import type { Volume } from "./internal/volume.js";
-import type { PathState, RemovalCheck, SourceComparison } from "./types.js";
+import type { PathState, PlannedEntry, RemovalCheck, SourceComparison, Unarchived } from "./types.js";
 
 /** Whether `output` resolves to a location at or inside any of `inputs`. Both
  *  sides are resolved to their physical identities, so a link cannot hide the
@@ -97,4 +97,14 @@ export async function checkRemoval(
     return refuse({ reason: "error", step: "recheck", error }, verified);
   }
   return { refusal: null, verified };
+}
+
+/** What removing the originals `plan` was made from would take without a
+ *  copy in the archive: the items it leaves out, but for duplicates archived
+ *  through another input, and the folders it could not read. */
+export function unarchived(plan: { entries: readonly PlannedEntry[] }): Unarchived {
+  return {
+    excluded: plan.entries.filter((entry) => entry.excluded && entry.excludeCode !== "duplicate"),
+    unlisted: plan.entries.filter((entry) => entry.findings.some((f) => f.rule === "entry.unlisted")),
+  };
 }

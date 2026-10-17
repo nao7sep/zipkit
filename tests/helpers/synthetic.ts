@@ -15,6 +15,7 @@ export function scanEntry(over: Partial<ScanEntry> & { archivePath: string }): S
     inputIndex: over.inputIndex ?? 0,
     archivePath: over.archivePath,
     sourcePath: over.sourcePath ?? over.archivePath,
+    diskPath: over.diskPath ?? `/in/${over.archivePath}`,
     type: over.type ?? "file",
     size: over.size ?? 10,
     mtimeNs: over.mtimeNs ?? Y2020_NS,

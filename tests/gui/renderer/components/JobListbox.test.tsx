@@ -61,7 +61,7 @@ describe("JobListbox", () => {
       ...job("a"),
       inputs: ["/a/photos", "/a/notes.txt"],
       entries: [{ path: "/a/photos", kind: "directory" }, { path: "/a/notes.txt", kind: "file" }],
-      summary: { total: 9, included: 6, excluded: 2, renamed: 0, warnings: 0, errors: 1, zip64: false },
+      summary: { total: 9, included: 6, excluded: 2, renamed: 0, warnings: 0, errors: 1, zip64: false, sourceBytes: 0 },
     };
     renderListbox({ jobs: [planned], selectedId: "a" });
     expect(screen.getByText("photos").className).toBe("text-line");

@@ -92,7 +92,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   if (scan.comment !== undefined) content.comment = scan.comment;
   const zip64 = planNeedsZip64(content, policy);
 
-  const summary = buildSummary(items, findings, zip64);
+  const summary = buildSummary(items, findings, zip64, writeEntries);
   const writable = summary.errors === 0;
 
   const plan: PlanData = {

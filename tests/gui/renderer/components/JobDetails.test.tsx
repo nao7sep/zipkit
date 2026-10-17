@@ -40,11 +40,11 @@ const plan = (entries: PlannedEntry[] = []): PlanData => ({
   log: "/log",
   entries,
   findings: [],
-  summary: { total: entries.length, included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false },
+  summary: { total: entries.length, included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
   writable: true,
 } as PlanData);
 const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEntry => ({
-  archivePath, originalPath: archivePath, type: "file", method: "deflate", excluded: false, findings: [], ...over,
+  archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, findings: [], ...over,
 });
 const junk = (path: string, type: "file" | "dir" = "file") =>
   entry(path, { type, excluded: true, findings: [{ rule: "macos.junk", severity: "info", path, message: "junk" }] });
@@ -123,7 +123,7 @@ describe("JobDetails", () => {
 
   it("states the archive once there is one", () => {
     show(plan(), { state: "done", output: "/out/a.zip", archiveStatus: "verified", archiveBytes: 208_540_997,
-      summary: { total: 36, included: 36, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false } });
+      summary: { total: 36, included: 36, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 } });
     const facts = [...document.querySelectorAll("dt")].map((dt) => `${dt.textContent}: ${dt.nextElementSibling!.textContent}`);
     expect(facts).toEqual(["State: Verified", "Location: /out/a.zip", "Size: 208.5 MB", "Items: 36", "Manifest: zipkit.json with SHA-256"]);
   });

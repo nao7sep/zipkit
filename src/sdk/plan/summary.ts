@@ -7,10 +7,19 @@
  * raises an `output.exists` error finding).
  */
 
+import type { WriteEntry } from "../internal/types.js";
 import type { Finding, PlanSummary } from "../types.js";
 import type { WorkItem } from "./workItem.js";
 
-export function buildSummary(items: WorkItem[], findings: Finding[], zip64: boolean): PlanSummary {
+/** The bytes an entry's content takes as on disk: a file's size, a stored
+ *  link's target as UTF-8; a folder holds none. */
+export function contentBytes(entry: WriteEntry): number {
+  if (entry.type === "file") return entry.size;
+  if (entry.type === "symlink") return Buffer.byteLength(entry.linkTarget ?? "", "utf8");
+  return 0;
+}
+
+export function buildSummary(items: WorkItem[], findings: Finding[], zip64: boolean, writeEntries: WriteEntry[]): PlanSummary {
   let included = 0;
   let excluded = 0;
   let renamed = 0;
@@ -38,5 +47,6 @@ export function buildSummary(items: WorkItem[], findings: Finding[], zip64: bool
     warnings,
     errors,
     zip64,
+    sourceBytes: writeEntries.reduce((sum, entry) => sum + contentBytes(entry), 0),
   };
 }

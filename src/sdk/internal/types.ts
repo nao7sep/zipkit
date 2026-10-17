@@ -40,6 +40,10 @@ export interface ScanEntry {
    * filesystem-root input ("/") contributes no name. Recorded in the metadata.
    */
   sourcePath: string;
+  /** Where it is on disk as the user sees it: the input as given joined with
+   *  the entry's path inside it, through followed links (`absolutePath` is
+   *  what is read, a followed link's target). Public on the planned entry. */
+  diskPath: string;
   type: "file" | "dir" | "symlink";
   size: number;
   /**
@@ -64,6 +68,7 @@ export interface ScanEntry {
 /** A directory whose subtree the walk pruned because a filter excluded it. */
 export interface PrunedDir {
   archivePath: string;
+  diskPath: string;
   /** The junk rule that pruned it, when the prune came from the junk preset. */
   rule?: RuleId;
   reason: string;
@@ -77,6 +82,7 @@ export type SkipKind = "socket" | "fifo" | "device" | "broken-link" | "external-
 export interface SkippedEntry {
   archivePath: string;
   sourcePath: string;
+  diskPath: string;
   kind: SkipKind;
 }
 

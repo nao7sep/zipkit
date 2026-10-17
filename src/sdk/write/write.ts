@@ -20,7 +20,9 @@ import { readInternals } from "../internal/carrier.js";
 import type { Volume } from "../internal/volume.js";
 import type { Unlogged, WriteEntry } from "../internal/types.js";
 import type { Logger } from "../log/logger.js";
-import type { CreateData } from "../types.js";
+import type { CreateData, ProgressCounts } from "../types.js";
+import { contentBytes } from "../plan/summary.js";
+import { Meter } from "../progress.js";
 
 /** The `mode:"plan"` member of {@link CreateData} — the writer's input, carrying
  *  the resolved output, the writable gate, summary, findings, and (out of band,
@@ -41,6 +43,8 @@ export interface WriteDeps {
   signal?: AbortSignal;
   /** The run's bounded file access, built with the same signal. */
   volume: Volume;
+  /** The caller's `onCounts`, for how far the write has got. */
+  onCounts?: ((counts: ProgressCounts) => void) | undefined;
 }
 
 /** What each streamed entry contributed, gathered for the metadata record. */
@@ -96,6 +100,7 @@ async function streamFile(
   level: number,
   hasher: Hash | null,
   deps: WriteDeps,
+  meter: Meter,
 ): Promise<StreamResult> {
   const input = toWriteEntryInput(source);
   return writer.streamEntry(input, async (sink) => {
@@ -115,6 +120,7 @@ async function streamFile(
           const chunk = bytesRead === chunkSize ? buf : buf.subarray(0, bytesRead);
           if (hasher) hasher.update(chunk);
           await compressor.update(chunk);
+          meter.bytes(bytesRead);
         }
         if (position !== source.size || changedSinceScan(source, await file.stat())) {
           throw sourceChanged(source);
@@ -221,6 +227,11 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   // only forces Zip64 on when the estimate already requires it.
   const zip64Needed = plan.summary.zip64;
 
+  const meter = new Meter(
+    "write",
+    { entries: writeEntries.length, bytes: writeEntries.reduce((sum, entry) => sum + contentBytes(entry), 0) },
+    deps.onCounts,
+  );
   const writer = new ZipWriter(
     plan.output,
     { timeZone, chunkSize: deps.chunkSize, overwrite },
@@ -239,6 +250,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
         await writer.addDir(toWriteEntryInput(source));
         streamed.push({ source, crc32: 0, compressedSize: 0 });
         deps.logger.emit({ stage: "write", level: "debug", event: "entry.written", path: source.archivePath });
+        meter.entry();
         continue;
       }
 
@@ -259,11 +271,13 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
         if (hash) entry.sha256 = createHash("sha256").update(raw).digest("hex");
         streamed.push(entry);
         deps.logger.emit({ stage: "write", level: "debug", event: "entry.written", path: source.archivePath });
+        meter.bytes(raw.length);
+        meter.entry();
         continue;
       }
 
       const hasher = hash ? createHash("sha256") : null;
-      const result = await streamFile(writer, source, deps.chunkSize, level, hasher, deps);
+      const result = await streamFile(writer, source, deps.chunkSize, level, hasher, deps, meter);
       const entry: StreamedEntry = {
         source,
         crc32: result.crc32,
@@ -272,6 +286,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       if (hasher) entry.sha256 = hasher.digest("hex");
       streamed.push(entry);
       deps.logger.emit({ stage: "write", level: "debug", event: "entry.written", path: source.archivePath });
+      meter.entry();
     }
 
     // Phase edge between streaming and finalize: a cancellation that arrived
@@ -331,6 +346,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     bytes = final.bytes;
 
     deps.logger.emit({ stage: "write", level: "info", event: "write.done", bytes, zip64 });
+    meter.finish();
 
     return {
       mode: "write",

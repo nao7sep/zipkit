@@ -99,7 +99,7 @@ describe("label", () => {
 });
 
 describe("jobCounts", () => {
-  const summary = { total: 0, included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false };
+  const summary = { total: 0, included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 };
   const texts = (j: Job, t = en) => jobCounts(j, t).map((count) => count.text);
 
   it("counts the inputs by kind, only the kinds present, in the Inputs list's order", () => {
@@ -449,6 +449,7 @@ describe("jobAdvisories", () => {
 type Entry = PlanData["entries"][number];
 const entry = (over: Partial<Entry> & { archivePath: string }): Entry => ({
   originalPath: over.archivePath,
+  diskPath: `/in/${over.archivePath}`,
   type: "file",
   method: "deflate",
   excluded: false,
@@ -962,7 +963,7 @@ describe("Details pane sections and orders", () => {
       archivePath, originalPath: archivePath, type: "file" as const, method: "deflate" as const, excluded,
       findings: [{ rule, severity, path: archivePath, message: rule }],
     });
-    const plan = { writable: false, summary: { total: 3, included: 2, excluded: 1, renamed: 0, warnings: 1, errors: 1, zip64: false }, findings: [],
+    const plan = { writable: false, summary: { total: 3, included: 2, excluded: 1, renamed: 0, warnings: 1, errors: 1, zip64: false, sourceBytes: 0 }, findings: [],
       entries: [entry("a/.DS_Store", "macos.junk", "info", true), entry("long", "path.too-long", "warning"), entry("A", "collision.case", "error")] };
     const done = job({ state: "done", output: "/out/a.zip", archiveStatus: "written", summary: plan.summary });
     const cards = detailsCards(done, plan as never, { missing: ["m"], extra: [] }, en, 5);

@@ -361,7 +361,7 @@ describe("mounted run consent across queue projection changes", () => {
         output: "/out/consent.zip",
         log: "",
         writable: true,
-        summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false },
+        summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
         findings: [],
         entries: [],
       })),

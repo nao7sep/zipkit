@@ -3,7 +3,7 @@ import { toPlanReport } from "../../../src/gui/shared/plan-report";
 import type { Finding, PlanData, PlannedEntry } from "../../../src/gui/shared/api";
 
 const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEntry =>
-  ({ archivePath, originalPath: archivePath, type: "file", method: "deflate", excluded: false, findings: [], ...over });
+  ({ archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, findings: [], ...over });
 
 describe("toPlanReport", () => {
   it("sends the window only the entries the report shows, with the summary and every finding", () => {
