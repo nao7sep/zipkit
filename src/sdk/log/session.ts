@@ -1,7 +1,7 @@
 /**
- * The per-session log file — the durable, always-on JSON-Lines record one
- * `ZipKit` instance keeps for its session. The convention: one file per session
- * under the app's own data dir (`~/.zipkit/logs/`), named by a UTC start
+ * The per-session log file — the durable JSON-Lines record one `ZipKit`
+ * instance keeps for its session when the caller gives it a `logDir`. The
+ * convention: one file per session in that folder, named by a UTC start
  * timestamp and nothing else — no app name, no word "log", no level.
  *
  * zipkit is built to fan out (an SDK invoked many times in parallel), and
@@ -15,17 +15,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { customAlphabet } from "nanoid";
-import { storageRoot } from "../storage.js";
 import type { LogSink } from "./logger.js";
-
-/** `<root>/logs` — the `logs/` subfolder under ZipKit's storage root, where the
- *  root is `ZIPKIT_DATA_DIR` or `~/.zipkit` (resolved in one place by
- *  {@link storageRoot}). Created on the first write if missing. Overridable per
- *  instance via `logDir`, or for a whole process via the narrower
- *  `ZIPKIT_LOG_DIR` environment variable, which wins over this default. */
-export function defaultLogDir(): string {
-  return path.join(storageRoot(), "logs");
-}
 
 /** `yyyymmdd-hhmmss-utc`: a UTC filename stamp to the second, from the OS clock. */
 export function fileTimestamp(now: Date = new Date()): string {

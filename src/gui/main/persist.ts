@@ -10,7 +10,7 @@
  */
 
 import path from "node:path";
-import { storageRoot } from "../../sdk/storage.js";
+import { storageRoot } from "./storage.js";
 import type { Job, SavedJob } from "../shared/queue.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";

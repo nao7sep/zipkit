@@ -6,16 +6,16 @@
  * plan carries the resolved output and the overwrite intent, so `write(plan)`
  * is self-contained. The per-call policy is merged over the instance policy.
  *
- * **One instance is one logging session.** Each instance opens a single
- * per-session log — `<logDir>/yyyymmdd-hhmmss-utc-<id>.log`, JSON Lines — lazily
- * on its first verb call, and every verb on the instance appends its events
- * there; each result's `log` field names the file. `logDir` defaults to
- * `ZIPKIT_LOG_DIR`, else `<ZIPKIT_DATA_DIR or ~/.zipkit>/logs`. Lines are appended synchronously, so
- * there is no descriptor to close and nothing to flush. An instance built with
- * `sessionLog: false` writes no file and its results' `log` is `null`; its
- * events reach only each call's `onProgress`, for a caller that records them
- * itself. The SDK writes nothing to stdout or stderr — progress goes only to a
- * per-call `onProgress` hook.
+ * **One instance is one logging session.** An instance given a `logDir` opens a
+ * single per-session log — `<logDir>/yyyymmdd-hhmmss-utc-<id>.log`, JSON Lines —
+ * lazily on its first verb call, and every verb on the instance appends its
+ * events there; each result's `log` field names the file. Lines are appended
+ * synchronously, so there is no descriptor to close and nothing to flush. An
+ * instance without a `logDir` writes no file and its results' `log` is `null`;
+ * its events reach only each call's `onProgress`, for a caller that records
+ * them itself. The SDK reads no environment variables, writes nothing outside
+ * the paths it is given, and writes nothing to stdout or stderr — progress goes
+ * only to a per-call `onProgress` hook.
  * A log-sink failure is deliberately silent so logging cannot break a verb.
  *
  * The session spans the instance's lifetime: a caller that builds one `ZipKit`
@@ -34,7 +34,6 @@ import { reportFindings } from "./log/findings.js";
 import { createLogger, type LogSink } from "./log/logger.js";
 import type { Logger } from "./log/logger.js";
 import {
-  defaultLogDir,
   openSessionLog,
   sessionLogName,
   type SessionLog,
@@ -52,7 +51,9 @@ import {
   validateExtractSpec,
   validateIoTimeout,
   validatePolicy,
-  validateSessionLog,
+  validateDebug,
+  validateLogDir,
+  validateSkipPaths,
   validateSpec,
 } from "./validate.js";
 import { writeArchive } from "./write/write.js";
@@ -115,13 +116,17 @@ export class ZipKit {
   readonly #chunkSize: number;
   readonly #ioTimeoutMs: number;
   /** This session's log path, stamped at construction (the session start);
-   *  `null` when the instance was built with `sessionLog: false`. */
+   *  `null` when the instance was built without a `logDir`. */
   readonly #sessionPath: string | null;
   /** The session log, opened lazily on the first verb call and reused so its
    *  directory is created once and its degrade state is shared across verbs. */
   #session: SessionLog | undefined;
   /** Whether the once-per-session startup line has been emitted yet. */
   #startupLogged = false;
+  /** Whether `debug` events reach the sinks. */
+  readonly #debug: boolean;
+  /** Folders a scan leaves out entirely. */
+  readonly #skipPaths: readonly string[];
 
   constructor(options: ZipKitOptions = {}) {
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
@@ -133,12 +138,10 @@ export class ZipKit {
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
     this.#ioTimeoutMs =
       options.ioTimeoutMs !== undefined ? validateIoTimeout(options.ioTimeoutMs) : DEFAULT_IO_TIMEOUT_MS;
-    if (validateSessionLog(options.sessionLog, options.logDir)) {
-      const logDir = options.logDir ?? process.env.ZIPKIT_LOG_DIR ?? defaultLogDir();
-      this.#sessionPath = path.join(logDir, sessionLogName());
-    } else {
-      this.#sessionPath = null;
-    }
+    const logDir = validateLogDir(options.logDir);
+    this.#sessionPath = logDir === null ? null : path.join(logDir, sessionLogName());
+    this.#debug = validateDebug(options.debug);
+    this.#skipPaths = validateSkipPaths(options.skipPaths);
   }
 
   /**
@@ -234,6 +237,7 @@ export class ZipKit {
           logger,
           signal: options.signal,
           volume,
+          skipPaths: this.#skipPaths,
         });
         const plan = planArchive(scanned, policy);
         const name = policy.metadata !== false ? policy.metadata.name : METADATA_DEFAULTS.name;
@@ -271,7 +275,7 @@ export class ZipKit {
 
   /**
    * The one seam every verb runs through. Builds the run's logger from the two
-   * sinks a run has — the session log (unless `sessionLog: false`) and the
+   * sinks a run has — the session log (when there is a `logDir`) and the
    * optional per-call `onProgress` hook — runs the verb, then stamps the
    * session-log path (or `null`) onto the result the boundary owns. The stamp is
    * a mutation, not a spread: a {@link PlanData} carries non-enumerable writer
@@ -285,7 +289,7 @@ export class ZipKit {
     const sinks: LogSink[] = [];
     if (this.#sessionPath !== null) sinks.push(this.#sessionLog(this.#sessionPath).sink);
     if (options.onProgress) sinks.push(options.onProgress);
-    const logger = createLogger(sinks);
+    const logger = createLogger(sinks, this.#debug);
     // Startup line, once per session: the tool version and the effective runtime
     // configuration, so a session log is always tied to a version and the knobs
     // it ran with (the logging convention's startup-coverage rule).
@@ -319,7 +323,7 @@ export class ZipKit {
       const matcher = matcherFor(policy);
       const limit = pLimit(this.#concurrency);
 
-      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal, volume });
+      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal, volume, skipPaths: this.#skipPaths });
       const plan = planArchive(scanResult, policy);
       this.#reportPlan(logger, plan);
       return plan;

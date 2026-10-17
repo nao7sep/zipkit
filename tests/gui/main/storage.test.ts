@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { secureStorageRoot, storageRoot, StorageRootError } from "../../src/sdk/storage.js";
+import { secureStorageRoot, storageRoot, StorageRootError } from "../../../src/gui/main/storage.js";
 
 const ROOT = path.parse(path.resolve(".")).root;
 const HOME = path.join(ROOT, "home", "tester");

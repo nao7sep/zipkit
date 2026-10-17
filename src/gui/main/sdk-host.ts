@@ -24,6 +24,7 @@ import { classifyPaths } from "./inputs.js";
 import { resolveOutputPath } from "./output.js";
 import { outputInsideInputs } from "./safety.js";
 import { pathState, type PathState } from "./path-state.js";
+import { storageRoot } from "./storage.js";
 
 /** A plan as it crosses between processes: the public plan and the internals
  *  the writer needs, which a plain copy would drop. */
@@ -76,7 +77,14 @@ function failure(err: unknown): RemoteFailure {
   return out;
 }
 
-export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = new ZipKit({ sessionLog: false })) {
+/** The SDK as the app runs it: ZipKit's own data folder is never archived,
+ *  and debug events follow the app's own switch. Main records every event
+ *  itself, so the SDK keeps no session log. */
+export function appZipKit(): ZipKit {
+  return new ZipKit({ skipPaths: [storageRoot()], debug: process.env.ZIPKIT_DEBUG === "1" });
+}
+
+export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = appZipKit()) {
   const running = new Map<number, AbortController>();
 
   type Run = (signal: AbortSignal, onProgress: (event: LogEvent) => void, id: number) => Promise<unknown>;

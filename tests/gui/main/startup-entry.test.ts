@@ -16,7 +16,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-vi.mock("../../../src/sdk/storage.js", () => {
+vi.mock("../../../src/gui/main/storage.js", () => {
   class StorageRootError extends Error {}
   return {
     StorageRootError,

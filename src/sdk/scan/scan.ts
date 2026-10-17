@@ -39,7 +39,6 @@ import {
   joinArchivePath,
   normalizeInputs,
 } from "../plan/arcname.js";
-import { storageRoot } from "../storage.js";
 import { resolveOutputPath } from "./output.js";
 import type { ArchivePolicy, ArchiveSpec } from "../types.js";
 
@@ -50,6 +49,8 @@ export interface ScanDeps {
   signal: AbortSignal | undefined;
   /** The run's bounded file access, built with the same signal. */
   volume: Volume;
+  /** Folders the scan leaves out entirely, wherever an input reaches them. */
+  skipPaths: readonly string[];
 }
 
 interface ScanContext {
@@ -78,8 +79,8 @@ interface ScanContext {
    * `archive.zip.20240604`, which is the worse failure.
    */
   artifactIds: Set<string>;
-  /** The canonical path of ZipKit's storage root, or null when it does not exist. */
-  appRoot: string | null;
+  /** The canonical paths of the folders the caller asked to leave out. */
+  skipRoots: string[];
   entries: ScanEntry[];
   prunedDirs: PrunedDir[];
   skipped: SkippedEntry[];
@@ -148,15 +149,16 @@ function isWithin(root: string, target: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-/** Whether canonical `target` is the app's storage root or inside it. Both sides
- *  already carry their on-disk case (the root and every input come through
+/** Whether canonical `target` is a folder to leave out or inside one. Both sides
+ *  already carry their on-disk case (the folders and every input come through
  *  realpath, walked names through readdir), so they compare exactly: folding
  *  case would also match a distinct folder that differs only in case on a
  *  case-sensitive volume, leaving it out of the archive. */
-function inAppRoot(ctx: ScanContext, target: string): boolean {
-  if (ctx.appRoot === null) return false;
-  const rel = path.relative(ctx.appRoot, target);
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+function skipped(ctx: ScanContext, target: string): boolean {
+  return ctx.skipRoots.some((root) => {
+    const rel = path.relative(root, target);
+    return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+  });
 }
 
 /** Rethrow a stall or a cancel from a call whose ordinary failure is tolerated. */
@@ -202,7 +204,7 @@ async function handleSymlink(
   }
 
   // ZipKit's own files, reached through a link. Silent, like the output archive.
-  if (inAppRoot(ctx, real)) return;
+  if (skipped(ctx, real)) return;
 
   const root = ctx.inputRoots[inputIndex] ?? "";
   if (!ctx.followExternal && !isWithin(root, real)) {
@@ -310,7 +312,7 @@ async function walkTree(
         for (const entry of entries) {
           const abs = path.join(dir, entry.name);
           if (entry.isDirectory()) {
-            if (inAppRoot(ctx, path.join(canonicalDir, path.relative(absDir, abs)))) continue;
+            if (skipped(ctx, path.join(canonicalDir, path.relative(absDir, abs)))) continue;
             const archive = joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, abs)));
             const rule = archive === "" ? null : ctx.matcher.match(archive, true);
             if (rule) {
@@ -460,13 +462,15 @@ export async function scan(
     }
   }
 
-  // ZipKit's own storage root, from the one resolver, in the same canonical
-  // space. An absent or unresolvable root has nothing in it to leave out.
-  let appRoot: string | null = null;
-  try {
-    appRoot = await deps.volume.realpath(storageRoot());
-  } catch (err) {
-    rethrowClassified(err);
+  // The folders to leave out, in the same canonical space. One that is absent
+  // or unresolvable has nothing in it to leave out.
+  const skipRoots: string[] = [];
+  for (const skip of deps.skipPaths) {
+    try {
+      skipRoots.push(await deps.volume.realpath(path.resolve(cwd, skip)));
+    } catch (err) {
+      rethrowClassified(err);
+    }
   }
 
   const ctx: ScanContext = {
@@ -478,7 +482,7 @@ export async function scan(
     logger: deps.logger,
     volume: deps.volume,
     artifactIds,
-    appRoot,
+    skipRoots,
     entries: [],
     prunedDirs: [],
     skipped: [],
@@ -502,7 +506,7 @@ export async function scan(
       source: path.basename(inputs[i]?.path ?? real),
     };
     // An input that is ZipKit's own storage root, or inside it.
-    if (inAppRoot(ctx, canonicalRoots[i] as string)) continue;
+    if (skipped(ctx, canonicalRoots[i] as string)) continue;
     if (isDir[i]) {
       ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: real });
       await crawlDirectory(ctx, real, canonicalRoots[i] as string, anchorPaths, i);

@@ -236,20 +236,29 @@ export function validateConcurrency(concurrency: number): number {
   return concurrency;
 }
 
-/**
- * Validate the session-log switch: a boolean when given, and never `false`
- * beside a `logDir`, which would name a directory for a log the caller turned
- * off. Returns whether the instance writes its session log (`true` when unset).
- */
-export function validateSessionLog(sessionLog: unknown, logDir: unknown): boolean {
-  if (sessionLog === undefined) return true;
-  if (typeof sessionLog !== "boolean") {
-    throw new PolicyError("options.invalid", `sessionLog must be a boolean (got ${String(sessionLog)})`);
+/** Validate the session-log folder: a non-empty string when given. */
+export function validateLogDir(logDir: unknown): string | null {
+  if (logDir === undefined) return null;
+  if (typeof logDir !== "string" || logDir.trim() === "") {
+    throw new PolicyError("options.invalid", `logDir must be a non-empty string (got ${String(logDir)})`);
   }
-  if (!sessionLog && logDir !== undefined) {
-    throw new PolicyError("options.invalid", "logDir cannot be given when sessionLog is false");
+  return logDir;
+}
+
+/** Validate the debug switch: a boolean when given (`false` when unset). */
+export function validateDebug(debug: unknown): boolean {
+  if (debug === undefined) return false;
+  if (typeof debug !== "boolean") throw new PolicyError("options.invalid", `debug must be a boolean (got ${String(debug)})`);
+  return debug;
+}
+
+/** Validate the folders a scan leaves out: a list of non-empty strings. */
+export function validateSkipPaths(skipPaths: unknown): string[] {
+  if (skipPaths === undefined) return [];
+  if (!Array.isArray(skipPaths) || skipPaths.some((p) => typeof p !== "string" || p.trim() === "")) {
+    throw new PolicyError("options.invalid", "skipPaths must be a list of non-empty strings");
   }
-  return sessionLog;
+  return [...skipPaths] as string[];
 }
 
 /** Validate an instance-level policy, applying filter-rule defaults. */

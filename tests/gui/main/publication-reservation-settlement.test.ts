@@ -36,7 +36,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
   const faultStarted = deferred(), releaseFault = deferred();
   const unlinkStarted = deferred(), releaseUnlink = deferred();
   const firstFailed = deferred();
-  const zip = new ZipKit({ sessionLog: false });
+  const zip = new ZipKit();
   let firstVolume: Volume | undefined;
   let physical: Promise<void> | undefined;
   let physicallySettled = false, oldClaimRemoved = false;

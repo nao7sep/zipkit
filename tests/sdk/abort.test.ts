@@ -29,7 +29,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  delete process.env.ZIPKIT_DEBUG;
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -98,12 +97,11 @@ describe("abort propagation", () => {
     //
     // entry.written is a debug event; enable the developer debug channel so it
     // reaches the onProgress hook the abort trigger watches.
-    process.env.ZIPKIT_DEBUG = "1";
     const file = path.join(dir, "only.txt");
     await writeFile(file, "just one file");
     const output = path.join(dir, "last-entry.zip");
     const controller = new AbortController();
-    const zip = new ZipKit();
+    const zip = new ZipKit({ debug: true });
 
     await expect(
       zip.create(

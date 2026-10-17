@@ -39,7 +39,7 @@ it.runIf(fileSymlinksSupported).each([
   ], { timeZone: "UTC", chunkSize: 65536 });
   // The public SDK processes newlink first. Its own later directory entry,
   // rather than an external replacement, makes the existing alias resolvable.
-  const result = await new ZipKit({ concurrency: 1, sessionLog: false }).extract({ archive: archive.path, dest });
+  const result = await new ZipKit({ concurrency: 1 }).extract({ archive: archive.path, dest });
   expect(result.entries.find((entry) => entry.archivePath === createdDirectory)?.written).toBe(true);
   expect(result.reportOk).toBe(safe);
   const restored = path.join(dest, "newlink");
@@ -73,7 +73,7 @@ it.runIf(fileSymlinksSupported).each([
       uncompressedSize: raw.length, mode: 0o120777, ...times };
   });
   const archive = await buildZipFile(entries, { timeZone: "UTC", chunkSize: 65536 });
-  const result = await new ZipKit({ concurrency: 1, sessionLog: false }).extract({ archive: archive.path, dest, overwrite: true });
+  const result = await new ZipKit({ concurrency: 1 }).extract({ archive: archive.path, dest, overwrite: true });
   const restored = path.join(dest, "newlink");
   if (safe) {
     expect(result.reportOk).toBe(true);
@@ -115,7 +115,7 @@ it.runIf(fileSymlinksSupported).each([
     return { name: name!, type: "symlink" as const, method: "store" as const, raw,
       uncompressedSize: raw.length, mode: 0o120777, ...times };
   }), { timeZone: "UTC", chunkSize: 65536 });
-  const result = await new ZipKit({ concurrency, sessionLog: false }).extract({ archive: archive.path, dest, overwrite: true });
+  const result = await new ZipKit({ concurrency }).extract({ archive: archive.path, dest, overwrite: true });
   expect(result.reportOk).toBe(!dependsOnDeep);
   if (unchanged) expect(result.entries.find((entry) => entry.archivePath === "newlink")?.skipped).toBe("unchanged");
   const actual = await realpath(path.join(dest, "newlink")).catch((error: NodeJS.ErrnoException) => {
@@ -138,7 +138,7 @@ it.runIf(fileSymlinksSupported).each([
     return { name: entry!, type: "symlink" as const, method: "store" as const, raw,
       uncompressedSize: raw.length, mode: 0o120777, ...times };
   }), { timeZone: "UTC", chunkSize: 65536 });
-  const result = await new ZipKit({ concurrency: 4, sessionLog: false }).extract({ archive: archive.path, dest, overwrite: true });
+  const result = await new ZipKit({ concurrency: 4 }).extract({ archive: archive.path, dest, overwrite: true });
   const parentAliases = await lstat(path.join(dest, alias)).then(() => true, (error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return false;
     throw error;

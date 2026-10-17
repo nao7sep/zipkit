@@ -38,12 +38,13 @@ function deps(policy: ArchivePolicy) {
     logger: createLogger(),
     signal: undefined,
     volume: realVolume(),
+    skipPaths: [] as string[],
   };
 }
 
-async function runScan(spec: ArchiveSpec, partial: Partial<ArchivePolicy> = {}, volume?: Volume) {
+async function runScan(spec: ArchiveSpec, partial: Partial<ArchivePolicy> = {}, volume?: Volume, skipPaths: string[] = []) {
   const policy = resolvePolicy(undefined, partial);
-  return scan(spec, policy, { ...deps(policy), ...(volume ? { volume } : {}) });
+  return scan(spec, policy, { ...deps(policy), skipPaths, ...(volume ? { volume } : {}) });
 }
 
 function names(result: { entries: { archivePath: string }[] }): string[] {
@@ -272,9 +273,9 @@ describe("scan over a real tree", () => {
   });
 });
 
-describe("ZipKit's own storage root", () => {
-  const previous = process.env.ZIPKIT_DATA_DIR;
+describe("a folder the caller asks the scan to leave out (an app's own data folder)", () => {
   let home: string;
+  let skip: string[];
 
   beforeEach(async () => {
     home = path.join(dir, "home");
@@ -282,20 +283,20 @@ describe("ZipKit's own storage root", () => {
     await writeFile(path.join(home, ".zipkit", "queue.json"), "{}");
     await writeFile(path.join(home, ".zipkit", "logs", "session.log"), "live");
     await writeFile(path.join(home, "notes.txt"), "mine");
-    process.env.ZIPKIT_DATA_DIR = path.join(home, ".zipkit");
+    skip = [path.join(home, ".zipkit")];
   });
 
-  afterEach(() => {
-    process.env.ZIPKIT_DATA_DIR = previous;
+  it("leaves nothing out unless asked: the SDK knows no app folder of its own", async () => {
+    expect(names(await runScan({ inputs: [home] }))).toContain(".zipkit/queue.json");
   });
 
   it("is left out of a folder that contains it", async () => {
-    expect(names(await runScan({ inputs: [home] }))).toEqual(["notes.txt"]);
+    expect(names(await runScan({ inputs: [home] }, {}, undefined, skip))).toEqual(["notes.txt"]);
   });
 
   it("is left out when it is an input, or an input lies inside it", async () => {
     const root = path.join(home, ".zipkit");
-    const result = await runScan({ inputs: [root, path.join(root, "queue.json"), path.join(home, "notes.txt")], output: path.join(dir, "out.zip") });
+    const result = await runScan({ inputs: [root, path.join(root, "queue.json"), path.join(home, "notes.txt")], output: path.join(dir, "out.zip") }, {}, undefined, skip);
     expect(names(result)).toEqual(["notes.txt"]);
   });
 
@@ -306,7 +307,7 @@ describe("ZipKit's own storage root", () => {
     await createDirectoryLink(path.join(home, ".zipkit"), path.join(proj, "data"));
     await createFileLink(path.join(home, ".zipkit", "queue.json"), path.join(proj, "queue.json"));
 
-    const result = await runScan({ inputs: [proj] }, { symlinks: "follow", followExternal: true });
+    const result = await runScan({ inputs: [proj] }, { symlinks: "follow", followExternal: true }, undefined, skip);
 
     expect(names(result)).toEqual(["a.txt"]);
   });
@@ -331,16 +332,15 @@ describe("ZipKit's own storage root", () => {
         p === home && entry.name === "user-folder" ? { name: ".ZipKit", isDirectory: () => entry.isDirectory() } : entry),
     };
 
-    const result = await runScan({ inputs: [home] }, {}, new Volume(port, 30_000));
+    const result = await runScan({ inputs: [home] }, {}, new Volume(port, 30_000), skip);
 
     expect(names(result)).toEqual([".ZipKit", ".ZipKit/kept.txt", "notes.txt"]);
   });
 
   it.runIf(process.platform === "darwin" || process.platform === "win32")(
-    "is left out when the relocation names it in another case",
+    "is left out when the caller names it in another case",
     async () => {
-      process.env.ZIPKIT_DATA_DIR = path.join(home, ".ZIPKIT");
-      expect(names(await runScan({ inputs: [home] }))).toEqual(["notes.txt"]);
+      expect(names(await runScan({ inputs: [home] }, {}, undefined, [path.join(home, ".ZIPKIT")]))).toEqual(["notes.txt"]);
     },
   );
 });

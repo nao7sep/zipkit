@@ -1,6 +1,8 @@
 /**
- * The single storage-root resolver — the one place that decides where zipkit
- * keeps its own files, per the storage-path convention. Every subpath (logs,
+ * The single storage-root resolver — the one place that decides where the
+ * ZipKit app keeps its own files, per the storage-path convention. It is the
+ * app's, not the SDK's: the SDK writes only where it is told, and the app
+ * tells its SDK host to leave this folder out of every scan. Every subpath (logs,
  * the GUI's queue) is derived from the root this module returns and from nowhere
  * else, so a single variable moves the whole tree and two derivations can never
  * disagree.
@@ -119,4 +121,15 @@ export function secureStorageRoot(root: string): void {
       `zipkit: could not tighten storage root "${root}" to owner-only (0700): ${err instanceof Error ? err.message : String(err)}\n`,
     );
   }
+}
+
+/** `<root>/logs`: where ZipKit keeps its app log and, in development, the SDK
+ *  host's session logs. Created on the first write if missing. */
+export function defaultLogDir(): string {
+  return path.join(storageRoot(), "logs");
+}
+
+/** `yyyymmdd-hhmmss-utc`: a UTC filename stamp to the second, from the OS clock. */
+export function fileTimestamp(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "").replace("T", "-") + "-utc";
 }

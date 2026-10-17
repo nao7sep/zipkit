@@ -5,7 +5,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AppLog } from "../../../src/gui/main/log.js";
-import { storageRoot } from "../../../src/sdk/storage.js";
+import { storageRoot } from "../../../src/gui/main/storage.js";
 import { DEFAULT_PARAMETERS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { singleLine } from "../../../src/gui/shared/textCleanup";
 import { managedEntries } from "../../helpers/managedEntries.js";

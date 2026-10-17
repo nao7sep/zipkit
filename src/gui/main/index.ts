@@ -15,7 +15,7 @@ import { app } from "electron";
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  const { storageRoot, secureStorageRoot, StorageRootError } = await import("../../sdk/storage.js");
+  const { storageRoot, secureStorageRoot, StorageRootError } = await import("./storage.js");
   let storageReady = false;
   try {
     secureStorageRoot(storageRoot());

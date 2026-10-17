@@ -61,7 +61,7 @@ it("write delivers its settlement observer before rejection and retains a late c
       return volume;
     }
   }
-  const zip = new TestZipKit({ sessionLog: false });
+  const zip = new TestZipKit();
   const order: string[] = [];
   let settlement: Promise<void> | undefined;
   let settled = false;
@@ -119,7 +119,7 @@ it("create delivers a settled observer before returning a successful archive", a
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-create-settlement-"));
   const input = path.join(root, "input.txt");
   const output = path.join(root, "archive.zip");
-  const zip = new ZipKit({ sessionLog: false });
+  const zip = new ZipKit();
   let settlement: Promise<void> | undefined;
   let calls = 0;
   try {

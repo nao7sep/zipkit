@@ -24,7 +24,7 @@ beforeEach(async () => {
   await writeFile(path.join(proj, "a.txt"), "alpha");
   await writeFile(path.join(proj, "sub", "b.txt"), "beta");
   output = path.join(dir, "proj.zip");
-  await new ZipKit({ sessionLog: false }).create({ inputs: [proj], output });
+  await new ZipKit().create({ inputs: [proj], output });
 });
 
 afterEach(async () => {
@@ -32,7 +32,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const compare = () => new ZipKit({ sessionLog: false }).compareSources({ inputs: [proj], output }, output);
+const compare = () => new ZipKit().compareSources({ inputs: [proj], output }, output);
 
 describe("compareSources", () => {
   it("matches an untouched tree, even after junk lands and folder times move", async () => {
@@ -72,8 +72,8 @@ describe("compareSources", () => {
 
   it("fails when the archive holds no manifest", async () => {
     const bare = path.join(dir, "bare.zip");
-    await new ZipKit({ sessionLog: false }).create({ inputs: [proj], output: bare, policy: { metadata: false } });
-    await expect(new ZipKit({ sessionLog: false }).compareSources({ inputs: [proj] }, bare)).rejects.toMatchObject({
+    await new ZipKit().create({ inputs: [proj], output: bare, policy: { metadata: false } });
+    await expect(new ZipKit().compareSources({ inputs: [proj] }, bare)).rejects.toMatchObject({
       code: "read.manifest-missing",
     });
   });

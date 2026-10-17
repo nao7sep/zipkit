@@ -2,7 +2,7 @@
  * End-to-end: one ZipKit instance keeps one session log under its `logDir`,
  * named with a seconds stamp and a random id; events carry the `time`/`message` envelope;
  * `debug` is gated; `result.log` identifies the file; the `onProgress` stream
- * carries exactly what the file holds; and `sessionLog: false` writes no file.
+ * carries exactly what the file holds; and an instance without a `logDir` writes no file.
  */
 
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -27,7 +27,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
-  delete process.env.ZIPKIT_DEBUG;
 });
 
 /** Locate the lone session log under `logDir` and parse its JSONL lines. */
@@ -85,9 +84,8 @@ describe("SDK session log", () => {
     expect(events).not.toContain("scan.dir");
   });
 
-  it("includes debug events when ZIPKIT_DEBUG=1", async () => {
-    process.env.ZIPKIT_DEBUG = "1";
-    const zip = new ZipKit({ logDir });
+  it("includes debug events when built with debug", async () => {
+    const zip = new ZipKit({ logDir, debug: true });
     await zip.create({ inputs: [proj], output: path.join(root, "o.zip") });
 
     expect((await sessionLines()).map((l) => l.event)).toContain("entry.written");
@@ -120,10 +118,9 @@ describe("SDK session log", () => {
     expect(events).not.toContain("entry.verified"); // debug, gated off by default
   });
 
-  it("records per-entry entry.verified in the extract log under ZIPKIT_DEBUG=1", async () => {
+  it("records per-entry entry.verified in the extract log when built with debug", async () => {
     const archive = await buildArchive();
-    process.env.ZIPKIT_DEBUG = "1";
-    await new ZipKit({ logDir }).extract({ archive, dryRun: true });
+    await new ZipKit({ logDir, debug: true }).extract({ archive, dryRun: true });
 
     expect((await sessionLines()).map((l) => l.event)).toContain("entry.verified");
   });
@@ -148,12 +145,12 @@ describe("SDK session log", () => {
 });
 
 describe("SDK without a session log", () => {
-  it("writes no log file, returns a null log, and still streams session.start first", async () => {
-    const dir = path.join(root, "default-logs");
+  it("writes no log file without a logDir, reads no environment variable for one, and still streams session.start first", async () => {
+    const dir = path.join(root, "env-logs");
     const previous = process.env.ZIPKIT_LOG_DIR;
     process.env.ZIPKIT_LOG_DIR = dir;
     try {
-      const zip = new ZipKit({ sessionLog: false });
+      const zip = new ZipKit();
       const seen: LogEvent[] = [];
       const onProgress = (e: LogEvent): void => {
         seen.push(e);
@@ -173,14 +170,14 @@ describe("SDK without a session log", () => {
     }
   });
 
-  it("keeps the session log on by default and with sessionLog: true", async () => {
-    const result = await new ZipKit({ logDir, sessionLog: true }).create({ inputs: [proj], output: path.join(root, "o.zip") });
+  it("keeps a session log exactly when given a logDir", async () => {
+    const result = await new ZipKit({ logDir }).create({ inputs: [proj], output: path.join(root, "o.zip") });
     expect(result.log).toMatch(/\d{8}-\d{6}-utc-[0-9a-z]{12}\.log$/);
     expect((await sessionLines()).length).toBeGreaterThan(0);
   });
 
-  it("rejects a non-boolean sessionLog and a logDir beside sessionLog: false", () => {
-    expect(() => new ZipKit({ sessionLog: "no" as never })).toThrow(PolicyError);
-    expect(() => new ZipKit({ sessionLog: false, logDir })).toThrow(PolicyError);
+  it("rejects a logDir that is not a non-empty string", () => {
+    expect(() => new ZipKit({ logDir: "" })).toThrow(PolicyError);
+    expect(() => new ZipKit({ logDir: 5 as never })).toThrow(PolicyError);
   });
 });

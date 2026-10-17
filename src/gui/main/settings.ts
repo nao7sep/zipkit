@@ -6,7 +6,7 @@
  */
 
 import path from "node:path";
-import { storageRoot } from "../../sdk/storage.js";
+import { storageRoot } from "./storage.js";
 import { changedSettings, DEFAULT_OPTIONS, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, PARAMETER_KEYS, SETTINGS_KEYS, THEME_PREFERENCES, type ArchiveParameters, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
 import { isCardRowLimit, isDisplayZone } from "../shared/spec.js";

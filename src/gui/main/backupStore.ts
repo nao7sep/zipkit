@@ -19,7 +19,7 @@
 
 import path from "node:path";
 import { Worker } from "node:worker_threads";
-import { storageRoot } from "../../sdk/storage.js";
+import { storageRoot } from "./storage.js";
 import { log } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import type { BackupsRequest, BackupsResponse, BackupsWorkerData } from "./backups-worker.js";

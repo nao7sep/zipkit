@@ -14,8 +14,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
-import { defaultLogDir, fileTimestamp } from "../../sdk/log/session.js";
-import { storageRoot } from "../../sdk/storage.js";
+import { defaultLogDir, fileTimestamp, storageRoot } from "./storage.js";
 import { JOB_EVENT_LIMIT, type JobAction, type JobEvent, type LogEvent } from "../shared/api.js";
 import type {
   JobEventRow,

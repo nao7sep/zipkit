@@ -1,9 +1,9 @@
 /**
  * The logger seam: it stamps the `time`/`message` envelope, gates `debug` behind
- * ZIPKIT_DEBUG, and fans out to every sink with per-sink isolation.
+ * the instance's `debug` option, and fans out to every sink with per-sink isolation.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createLogger, type LogSink } from "../../../src/sdk/log/logger.js";
 import type { LogEvent } from "../../../src/sdk/types.js";
 
@@ -11,10 +11,6 @@ function collect(): { sink: LogSink; events: LogEvent[] } {
   const events: LogEvent[] = [];
   return { sink: (e) => events.push(e), events };
 }
-
-afterEach(() => {
-  delete process.env.ZIPKIT_DEBUG;
-});
 
 describe("createLogger", () => {
   it("stamps the time and message envelope onto each event", () => {
@@ -28,15 +24,15 @@ describe("createLogger", () => {
     expect(e.event).toBe("scan.done"); // the typed fields ride alongside
   });
 
-  it("drops debug unless ZIPKIT_DEBUG=1", () => {
+  it("drops debug unless asked for it, whatever the environment says", () => {
     const { sink, events } = collect();
-    const logger = createLogger([sink]);
-
-    logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });
+    process.env.ZIPKIT_DEBUG = "1";
+    try {
+      createLogger([sink]).emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });
+    } finally { delete process.env.ZIPKIT_DEBUG; }
     expect(events).toHaveLength(0);
 
-    process.env.ZIPKIT_DEBUG = "1";
-    logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });
+    createLogger([sink], true).emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });
     expect(events).toHaveLength(1);
     expect(events[0]!.event).toBe("scan.dir");
   });

@@ -4,8 +4,9 @@
  * and the instance's per-session log are both just sinks. The logger is the edge
  * that turns a typed body into a convention {@link LogEvent}, in order:
  *
- * 1. **gate `debug`** — dropped unless `ZIPKIT_DEBUG=1`, so the developer
- *    firehose reaches no sink (and never an end-user's session log);
+ * 1. **gate `debug`** — dropped unless the instance was built with
+ *    `debug: true`, so the developer firehose reaches no sink (and never an
+ *    end-user's session log);
  * 2. **stamp the envelope** — `time` (UTC ISO-8601 ms) and a `message` derived
  *    from the typed `event`;
  * 3. **fan out** — to every sink, each isolated, so one sink's failure never
@@ -27,17 +28,12 @@ export interface Logger {
   emit(event: EmittedEvent): void;
 }
 
-/** `debug` is developer-only: enabled only when `ZIPKIT_DEBUG=1`. Read per call
- *  so a developer (or a test) can toggle it without reloading the module. */
-function debugEnabled(): boolean {
-  return process.env.ZIPKIT_DEBUG === "1";
-}
-
-export function createLogger(sinks: LogSink[] = []): Logger {
+/** `debug` events are developer-only: they reach the sinks only when `debug`. */
+export function createLogger(sinks: LogSink[] = [], debug = false): Logger {
   return {
     emit(event) {
       if (sinks.length === 0) return;
-      if (event.level === "debug" && !debugEnabled()) return;
+      if (event.level === "debug" && !debug) return;
       const stamped: LogEvent = {
         time: new Date().toISOString(),
         message: messageFor(event),

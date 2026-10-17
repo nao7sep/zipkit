@@ -56,7 +56,7 @@ it.each([
 it.each([["σ.zip", "ς.zip"], ["ß.zip", "ss.zip"], ["café.zip", "café.zip".normalize("NFD")]])(
   "retains a missing %s reservation across physical publication through %s", async (name, alias) => {
     const root = await mkdtemp(path.join(tmpdir(), "zipkit-missing-alias-"));
-    const zip = new ZipKit({ sessionLog: false });
+    const zip = new ZipKit();
     const owner = createArchiveEffects();
     const file = path.join(root, name), alternate = path.join(root, alias);
     let settle!: () => void;
@@ -82,7 +82,7 @@ it.each([["σ.zip", "ς.zip"], ["ß.zip", "ss.zip"], ["café.zip", "café.zip".n
 
 it("permits missing outputs in physically distinct Unicode directories", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-distinct-namespace-"));
-  const zip = new ZipKit({ sessionLog: false });
+  const zip = new ZipKit();
   try {
     const a = path.join(root, "α"), b = path.join(root, "β");
     await mkdir(a); await mkdir(b);
@@ -99,7 +99,7 @@ async function fixture() {
   await mkdir(trashDir);
   const a = path.join(root, "a.txt"), b = path.join(root, "b.txt");
   await writeFile(a, "original A"); await writeFile(b, "original B");
-  const zip = new ZipKit({ sessionLog: false });
+  const zip = new ZipKit();
   let ids = 0, moves = 0;
   const deps: EngineDeps = {
     admission: new CommandAdmission(), effects: createArchiveEffects(),

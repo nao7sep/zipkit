@@ -82,6 +82,7 @@ function runScan(proj: string, volume: Volume, signal?: AbortSignal) {
     limit: <T>(fn: () => Promise<T>): Promise<T> => fn(),
     logger: createLogger(),
     signal,
+    skipPaths: [],
     volume,
   });
 }

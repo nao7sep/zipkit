@@ -172,24 +172,28 @@ export interface ZipKitOptions {
   policy?: DeepPartial<ArchivePolicy>;
   concurrency?: number;
   /**
-   * Directory for this instance's per-session log. One `ZipKit` instance is one
+   * A folder for this instance's session log; without one the instance writes
+   * no log file, and each result's `log` is `null`. One `ZipKit` instance is one
    * logging session: a single `yyyymmdd-hhmmss-utc-<id>.log` (JSON Lines) is
    * opened lazily on the first verb call, every verb on the instance writes to
-   * it, and the path is returned on each result's `log`. Defaults to
-   * `process.env.ZIPKIT_LOG_DIR` when set, else `<ZIPKIT_DATA_DIR or ~/.zipkit>/logs`. The random
-   * id after the seconds stamp, and the file's exclusive creation, keep the logs of runs that
-   * start in the same second — zipkit is built to fan out — apart.
+   * it, and the path is returned on each result's `log`. The random id after
+   * the seconds stamp, and the file's exclusive creation, keep the logs of runs
+   * that start in the same second — zipkit is built to fan out — apart. Every
+   * event also reaches each call's `onProgress`, whether or not there is a log.
    */
   logDir?: string;
   /**
-   * Whether this instance writes its per-session log file. Defaults to `true`.
-   * Pass `false` when the caller keeps its own durable record of every event
-   * through each call's `onProgress` hook: the instance then writes no log file,
-   * and each result's `log` is `null`. The events themselves are unchanged —
-   * `session.start` still leads the first call's `onProgress` stream. Combining
-   * `false` with a `logDir` is a usage error.
+   * Whether `debug` events reach the session log and `onProgress`. Off by
+   * default: they are a developer's firehose, not an end user's record.
    */
-  sessionLog?: boolean;
+  debug?: boolean;
+  /**
+   * Folders a scan leaves out entirely, wherever an input reaches them, as if
+   * they were not there: an app's own data folder, say, so archiving a home
+   * folder never takes the app's logs or databases with it. Resolved like
+   * inputs; one that does not exist leaves nothing out.
+   */
+  skipPaths?: string[];
   /**
    * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
    * read/inflate/deflate/write streams. A runtime/performance concern, not a
@@ -218,7 +222,7 @@ export interface ZipKitOptions {
  * stream, so each call decides where its progress goes. With no hook the SDK
  * writes nothing to stdout or stderr; the durable record still goes to the
  * instance's per-session log file (see {@link ZipKitOptions.logDir}), unless the
- * instance was built with `sessionLog: false`. The same
+ * instance was built without a `logDir`. The same
  * structured `LogEvent` stream feeds this hook and that session log — one
  * producer, many sinks.
  *
@@ -341,7 +345,7 @@ export type CreateData =
   | {
       mode: "plan"; // --dry-run: planned, nothing written
       output: string; // resolved output path (the intended target)
-      log: string | null; // session log this run was recorded to (provenance); null with `sessionLog: false`
+      log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
       writable: boolean; // the gate
       summary: PlanSummary;
       findings: Finding[]; // SSOT
@@ -350,7 +354,7 @@ export type CreateData =
   | {
       mode: "write"; // actual create
       output: string;
-      log: string | null; // session log this run was recorded to (provenance); null with `sessionLog: false`
+      log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
       writable: boolean;
       written: boolean; // archive fully streamed, fsync'd, renamed?
       bytes: number | null; // final on-disk size; null if not written
@@ -526,7 +530,7 @@ export interface ExtractEntryResult {
  */
 export interface ExtractData {
   archive: string; // identity
-  log: string | null; // session log this run was recorded to (provenance); null with `sessionLog: false`
+  log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
   dest: string | null; // null on --dry-run
   dryRun: boolean;
   wrote: boolean; // state: whether any file was written

@@ -22,7 +22,7 @@ it("presents a real publication flush failure safely and keeps originals out of 
       return new Volume({ ...nodeFileSystem, syncDirectory: async () => { throw failure; } }, 30_000, signal);
     }
   }
-  const zip = new FailingZipKit({ sessionLog: false });
+  const zip = new FailingZipKit();
   const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }));
   const logged = vi.fn();
   const engine = createQueueEngine({
@@ -61,6 +61,6 @@ it("presents a real publication flush failure safely and keeps originals out of 
     expect(job.archiveWritten).toBe(false);
     expect(trash).not.toHaveBeenCalled();
     expect(await readFile(input, "utf8")).toBe("preserved original");
-    expect((await new ZipKit({ sessionLog: false }).extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
+    expect((await new ZipKit().extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
   } finally { await engine.shutdown(); await rm(root, { recursive: true, force: true }); }
 });

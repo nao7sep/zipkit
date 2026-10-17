@@ -350,3 +350,22 @@ describe("symlink preservation and empty directories", () => {
     expect(report.reportOk).toBe(true);
   });
 });
+
+describe("skipPaths", () => {
+  it("leaves the named folders out of a plan, wherever an input reaches them", async () => {
+    const proj = path.join(dir, "home");
+    await mkdir(path.join(proj, "app-data"), { recursive: true });
+    await writeFile(path.join(proj, "app-data", "queue.json"), "{}");
+    await writeFile(path.join(proj, "notes.txt"), "mine");
+    const output = path.join(dir, "out.zip");
+    const kept = await new ZipKit().plan({ inputs: [proj], output });
+    const skipped = await new ZipKit({ skipPaths: [path.join(proj, "app-data")] }).plan({ inputs: [proj], output });
+    expect(kept.entries.map((e) => e.archivePath)).toContain("app-data/queue.json");
+    expect(skipped.entries.map((e) => e.archivePath).filter((p) => p.includes("app-data"))).toEqual([]);
+  });
+
+  it("rejects anything but a list of non-empty strings", () => {
+    expect(() => new ZipKit({ skipPaths: [""] })).toThrow(PolicyError);
+    expect(() => new ZipKit({ skipPaths: "x" as never })).toThrow(PolicyError);
+  });
+});
