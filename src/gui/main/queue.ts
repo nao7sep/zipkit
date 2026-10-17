@@ -14,6 +14,7 @@ import type { PlanReport, VerifyResult } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
+import { SdkHostError } from "./sdk-client.js";
 import { exportPlan, importPlan } from "../../sdk/index.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
@@ -80,8 +81,11 @@ const engine = createQueueEngine({
   write: (plan, signal, onProgress, onPhysicalSettlement) =>
     sdk.call("write", [exportPlan(plan)], { signal, onProgress, onPhysicalSettlement }),
   verify: (output, signal, onProgress, checkMetadata) => sdk.call("verify", [output, checkMetadata], { signal, onProgress }),
-  recheck: (output, inputs, options, signal, onProgress) =>
-    sdk.call("recheck", [output, inputs, options], { signal, onProgress }),
+  checkRemoval: async (output, inputs, removed, options, signal, onProgress) => {
+    const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onProgress });
+    const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: new SdkHostError(check.refusal.error) } : check.refusal;
+    return { ...check, refusal };
+  },
   classify: (paths) => sdk.call("classify", [paths]),
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
@@ -128,7 +132,6 @@ const engine = createQueueEngine({
     }
     return result;
   },
-  outputInsideInputs: (output, inputs, signal) => sdk.call("outputInsideInputs", [output, inputs], { signal }),
   emit: (jobs) => {
     pendingJobs = toResumable(jobs);
     clearTimeout(saveTimer);

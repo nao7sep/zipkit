@@ -36,7 +36,7 @@ import {
   present,
   type SavedJob,
 } from "../shared/queue.js";
-import type { JobAction, LogEvent, PlanData, SourceComparison, VerifyReport } from "../shared/api.js";
+import type { JobAction, LogEvent, PlanData, VerifyReport } from "../shared/api.js";
 import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
@@ -45,7 +45,7 @@ import { message, sentences, type Message, type MessageValues } from "../shared/
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
 import { createArchiveEffects, type EffectClaim, type FileResource } from "./archive-effects.js";
-import { sameFile, type PathState } from "../../sdk/index.js";
+import { sameFile, type PathState, type RemovalCheck, type RemovalRefusal } from "../../sdk/index.js";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -67,15 +67,18 @@ export interface EngineDeps {
   /** Verify a written archive on request: the verdict, the counts and the
    *  paths that disagree, for the job's review. */
   inspect(output: string, signal: AbortSignal, onProgress: (e: LogEvent) => void, checkMetadata: boolean): Promise<VerifyReport>;
-  /** Re-scan the inputs under the job's options and compare them with the
-   *  archive's manifest: the last check before any of them goes to Trash. */
-  recheck(
+  /** Every check before the originals are removed (the SDK's checkRemoval):
+   *  the archive is not inside them, it verifies against its manifest, and a
+   *  fresh scan of `inputs` under the job's options still matches it; `removed`
+   *  are inputs already gone. */
+  checkRemoval(
     output: string,
     inputs: string[],
+    removed: string[],
     options: GuiOptions,
     signal: AbortSignal,
     onProgress: (e: LogEvent) => void,
-  ): Promise<SourceComparison>;
+  ): Promise<RemovalCheck>;
   /** Classify input paths on disk (dir/file/missing) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
   /** Move each path independently to the OS Trash and report the exact outcome.
@@ -87,9 +90,6 @@ export interface EngineDeps {
   /** Delete each path permanently and report the exact outcome, in the same
    *  buckets as {@link trash}: `moved` holds what was deleted. */
   deleteOriginals(paths: string[], signal: AbortSignal): Promise<TrashResult>;
-  /** Physical-identity containment guard for every destructive action; bounded,
-   *  and cancellable through `signal` when a job is waiting on it. */
-  outputInsideInputs(output: string, inputs: string[], signal?: AbortSignal): Promise<boolean>;
   /** Push the current job list to observers (renderer + persistence). */
   emit(jobs: Job[]): void;
   /** Start a Progress run for a job's action: every event the returned sink
@@ -205,17 +205,11 @@ function writeFailureMessage(err: unknown, output: string): Message {
   return failureMessage(err, "job.writeFailed");
 }
 
-/** Why the originals may not go to Trash, from {@link EngineDeps}' checks in
- *  order: the archive's location, its verify, and the recheck of the inputs. */
-type TrashRefusal =
-  | { reason: "inside" }
-  | { reason: "location-error"; err: unknown }
-  | { reason: "verify-failed" }
-  /** Another file is at the archive's path: it is not the one ZipKit made. */
-  | { reason: "replaced" }
-  | { reason: "verify-error"; err: unknown }
-  | { reason: "changed"; comparison: SourceComparison }
-  | { reason: "recheck-error"; err: unknown };
+const ERRORED_KEYS: Record<Extract<RemovalRefusal, { reason: "error" }>["step"], MessageKey> = {
+  location: "job.locationUnverified",
+  verify: "job.verifyErrored",
+  recheck: "job.recheckErrored",
+};
 
 /** Whether moving the archive to Trash cannot lose data: a done job whose
  *  originals are all still there, or a `failed` job whose write succeeded but a
@@ -228,18 +222,14 @@ function archiveRemovable(job: Job): boolean {
 
 /** The message for a refused Trash; only the location sentence differs between
  *  a Move-to-Trash run and the command on a finished job. */
-function refusalMessage(refusal: TrashRefusal, insideKey: MessageKey): Message {
+function refusalMessage(refusal: RemovalRefusal, insideKey: MessageKey): Message {
   switch (refusal.reason) {
     case "inside":
       return message(insideKey);
-    case "location-error":
-      return failureMessage(refusal.err, "job.locationUnverified");
     case "verify-failed":
       return message("job.verifyFailed");
     case "replaced":
       return message("job.archiveReplaced");
-    case "verify-error":
-      return failureMessage(refusal.err, "job.verifyErrored");
     case "changed": {
       // Says how the originals differ from the archive, each kind only when
       // there is any, before what was done about it; the paths are in the
@@ -253,35 +243,9 @@ function refusalMessage(refusal: TrashRefusal, insideKey: MessageKey): Message {
       ].filter((part): part is Message => part !== null);
       return sentences([...counts, message("job.originalsChanged")])!;
     }
-    case "recheck-error":
-      return failureMessage(refusal.err, "job.recheckErrored");
+    case "error":
+      return failureMessage(refusal.error, ERRORED_KEYS[refusal.step]);
   }
-}
-
-/** An input's own name: the first segment of every manifest source path it
- *  contributed. */
-function inputName(input: string): string {
-  return input.split(/[\\/]/).filter((s) => s !== "").pop() ?? "";
-}
-
-/**
- * A recheck of only the inputs still present, after a partial Trash moved the
- * others: the manifest entries the moved inputs contributed are missing by
- * design, so they are not a difference. A moved input that shares its name
- * with one still present explains nothing, since their entries cannot be told
- * apart.
- */
-function explainMoved(comparison: SourceComparison, present: string[], moved: string[]): SourceComparison {
-  if (moved.length === 0) return comparison;
-  const presentNames = new Set(present.map(inputName));
-  const movedNames = new Set(moved.map(inputName).filter((name) => !presentNames.has(name)));
-  const missing = comparison.missing.filter((p) => !movedNames.has(p.split("/")[0] ?? ""));
-  const matches =
-    comparison.added.length === 0 &&
-    missing.length === 0 &&
-    comparison.changed.length === 0 &&
-    comparison.unlisted.length === 0;
-  return { ...comparison, missing, matches };
 }
 
 /** A failed step's job message: the step's own sentence, led by the path that
@@ -431,8 +395,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     void planJob(rec.job.id);
   }
   /** Record a verification that passed, against the archive as it stood when it began. */
-  function markVerified(rec: Rec, seen: PathState | undefined): void {
-    if (seen?.kind === "present") rec.fingerprint = seen.fingerprint;
+  function markVerified(rec: Rec, fingerprint: string | null): void {
+    if (fingerprint !== null) rec.fingerprint = fingerprint;
     set(rec, { archiveStatus: "verified" });
   }
   /** The commands on finished jobs that are still moving originals to Trash,
@@ -458,63 +422,53 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (result.unconfirmed.length > 0) claim.release(result.settlement ?? null);
   }
 
-  /** Every check before the originals go to Trash, in order: the archive is
-   *  not inside them, it verifies against its manifest, and a fresh scan of
-   *  the inputs still matches that manifest. Null when all pass. */
+  /** Every check before the originals are removed, in order: the archive is
+   *  still the one this job made, then the SDK's checks. Null when all pass. */
   async function checkBeforeTrash(
     rec: Rec,
     output: string,
     inputs: string[],
     signal: AbortSignal,
     onProgress: (e: LogEvent) => void,
-    moved: string[] = [],
-  ): Promise<TrashRefusal | null> {
+    removed: string[] = [],
+  ): Promise<RemovalRefusal | null> {
     const id = rec.job.id;
     set(rec, { originalsChanges: undefined });
     if (!(await publicationCurrent(rec, output, signal))) return { reason: "replaced" };
+    let check: RemovalCheck;
     try {
-      if (await deps.outputInsideInputs(output, inputs, signal)) {
+      check = await deps.checkRemoval(output, inputs, removed, rec.job.options, signal, onProgress);
+    } catch (error) {
+      // The check as a whole ended, such as when the SDK host's process did,
+      // which the recheck's message covers: the originals were not checked.
+      check = { refusal: { reason: "error", step: "recheck", error }, verified: null };
+    }
+    if (check.verified) markVerified(rec, check.verified.fingerprint);
+    const refusal = check.refusal;
+    if (refusal === null) return null;
+    switch (refusal.reason) {
+      case "inside":
         deps.log.error("trash blocked: archive inside source", { jobId: id, output });
-        return { reason: "inside" };
-      }
-    } catch (err) {
-      deps.log.error("trash blocked: physical identity check failed", { jobId: id, error: errorInfo(err) });
-      return { reason: "location-error", err };
-    }
-    try {
-      const seen = await lookAt(rec, output, signal);
-      if (!(await deps.verify(output, signal, onProgress, true))) {
+        break;
+      case "verify-failed":
         deps.log.error("trash blocked: verification failed; originals kept", { jobId: id, output });
-        return { reason: "verify-failed" };
-      }
-      markVerified(rec, seen);
-    } catch (err) {
-      deps.log.error("trash blocked: verification errored; originals kept", { jobId: id, error: errorInfo(err) });
-      return { reason: "verify-error", err };
-    }
-    try {
-      const comparison = explainMoved(
-        await deps.recheck(output, inputs, rec.job.options, signal, onProgress),
-        inputs,
-        moved,
-      );
-      if (!comparison.matches) {
+        break;
+      case "changed": {
+        const { missing, added, changed, unlisted } = refusal.comparison;
         deps.log.error("trash blocked: originals changed since archiving", {
-          jobId: id,
-          added: comparison.added.length,
-          missing: comparison.missing.length,
-          changed: comparison.changed.length,
-          unlisted: comparison.unlisted.length,
+          jobId: id, added: added.length, missing: missing.length, changed: changed.length, unlisted: unlisted.length,
         });
-        const { missing, added, changed, unlisted } = comparison;
         set(rec, { originalsChanges: { missing, added, changed, unlisted } });
-        return { reason: "changed", comparison };
+        break;
       }
-    } catch (err) {
-      deps.log.error("trash blocked: originals recheck errored", { jobId: id, error: errorInfo(err) });
-      return { reason: "recheck-error", err };
+      case "error":
+        deps.log.error(`trash blocked: ${refusal.step} check errored; originals kept`, { jobId: id, error: errorInfo(refusal.error) });
+        break;
+      case "replaced":
+        deps.log.error("trash blocked: another file at the archive's path", { jobId: id, output });
+        break;
     }
-    return null;
+    return refusal;
   }
 
   /** A progress sink for one run of an action on a job: Create's fresh plan,
@@ -809,7 +763,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       deps.log.error("job saved; verification failed", { jobId: id, output });
       return;
     }
-    markVerified(rec, seen);
+    markVerified(rec, seen?.kind === "present" ? seen.fingerprint : null);
     set(rec, { state: "done", message: bytes === null ? message("job.savedVerifiedShort") : message("job.savedVerified", { size: { bytes } }) });
     deps.log.info("job saved and verified", { jobId: id, output, bytes });
   }
@@ -1221,7 +1175,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           const seen = await lookAt(rec, output, signal);
           const report = await deps.inspect(output, signal, deps.progress(id, "verify"), rec.job.options.metadata);
           if (report.reportOk) {
-            markVerified(rec, seen);
+            markVerified(rec, seen?.kind === "present" ? seen.fingerprint : null);
             set(rec, { actionResult: { severity: "info", message: message("history.verified", { count: report.summary.total }) } });
           } else {
             const s = report.summary;

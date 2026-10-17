@@ -107,8 +107,8 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     },
     verify: async (archive, signal, onProgress) =>
       (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal, onProgress })).reportOk,
-    recheck: (archive, inputs, options, signal, onProgress) =>
-      zip.compareSources({ ...buildSpec(inputs, options), output: archive }, archive, { signal, onProgress }),
+    checkRemoval: (archive, inputs, removed, options, signal, onProgress) =>
+      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onProgress }),
     classify: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
     trash: async () => { throw new Error("save jobs must never call Trash"); },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
@@ -117,7 +117,6 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
       const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
     },
-    outputInsideInputs: async () => false,
     emit: (jobs) => { if (jobs[0]?.state === "failed") firstFailed.resolve(); },
     progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,
   };

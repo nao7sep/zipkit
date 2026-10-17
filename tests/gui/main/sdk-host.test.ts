@@ -47,7 +47,7 @@ describe("the SDK host", () => {
     expect((await readdir(root)).sort()).toEqual(["photos", "photos.zip"]);
   });
 
-  it("rechecks the inputs against the written archive, and classifies and resolves paths", async () => {
+  it("checks the originals against the written archive before removal, and classifies and resolves paths", async () => {
     const input = path.join(root, "docs");
     await mkdir(input);
     await writeFile(path.join(input, "note.txt"), "hello");
@@ -55,19 +55,20 @@ describe("the SDK host", () => {
     const transfer = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }]);
     const plan = transfer.plan;
     await sdk.call("write", [transfer]);
-    const comparison = await sdk.call("recheck", [plan.output, [input], { ...DEFAULT_OPTIONS }]);
-    expect(comparison).toMatchObject({ matches: true });
+    const check = await sdk.call("checkRemoval", [plan.output, [input], [], { ...DEFAULT_OPTIONS }]);
+    expect(check).toEqual({ refusal: null, verified: { fingerprint: expect.any(String) } });
     await writeFile(path.join(input, "late.txt"), "added after the archive");
-    expect(await sdk.call("recheck", [plan.output, [input], { ...DEFAULT_OPTIONS }])).toMatchObject({ matches: false });
+    expect((await sdk.call("checkRemoval", [plan.output, [input], [], { ...DEFAULT_OPTIONS }])).refusal)
+      .toMatchObject({ reason: "changed", comparison: { added: ["docs/late.txt"] } });
+    // An error crosses as the fields main reads.
+    const missing = await sdk.call("checkRemoval", [path.join(root, "none.zip"), [input], [], { ...DEFAULT_OPTIONS }]);
+    expect(missing.refusal).toMatchObject({ reason: "error", step: "location", error: { name: expect.any(String), message: expect.any(String) } });
     expect(await sdk.call("classify", [[input, path.join(root, "gone")]])).toEqual([
       { path: input, kind: "directory" },
       { path: path.join(root, "gone"), kind: "missing" },
     ]);
     const [resource] = await sdk.call("resources", [[plan.output]]);
     expect(resource).toMatchObject({ location: expect.stringContaining("docs.zip"), identity: expect.any(String) });
-    await writeFile(path.join(input, "inside.zip"), "");
-    expect(await sdk.call("outputInsideInputs", [path.join(input, "inside.zip"), [input]])).toBe(true);
-    expect(await sdk.call("outputInsideInputs", [plan.output, [input]])).toBe(false);
   });
 
   it("tells what is at a path: there with a fingerprint that changes with its content, or gone", async () => {

@@ -11,14 +11,13 @@
  */
 
 import { rm } from "node:fs/promises";
-import { exportPlan, importPlan, ZipKit, type PathState, type PlanTransfer } from "../../sdk/index.js";
-import type { LogEvent, SourceComparison } from "../../sdk/types.js";
+import { exportPlan, importPlan, ZipKit, type PathState, type PlanTransfer, type RemovalCheck } from "../../sdk/index.js";
+import type { LogEvent } from "../../sdk/types.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
 import { fileResources, type FileResource } from "./archive-effects.js";
 import { outputRequest } from "./output.js";
-import { outputInsideInputs } from "./safety.js";
 import { storageRoot } from "./storage.js";
 
 export interface SdkOps {
@@ -29,9 +28,8 @@ export interface SdkOps {
   verify(output: string, checkMetadata: boolean): boolean;
   deletePath(path: string): void;
   inspect(archive: string, checkMetadata: boolean): VerifyReport;
-  recheck(output: string, inputs: string[], options: GuiOptions): SourceComparison;
+  checkRemoval(output: string, inputs: string[], removed: string[], options: GuiOptions): RemoteRemovalCheck;
   classify(paths: string[]): InputEntry[];
-  outputInsideInputs(output: string, inputs: string[]): boolean;
 }
 export type SdkOp = keyof SdkOps;
 
@@ -48,6 +46,11 @@ export interface RemoteFailure {
   path?: string;
 }
 
+/** A removal check as it crosses: a check that errored carries its failure. */
+export type RemoteRemovalCheck = Omit<RemovalCheck, "refusal"> & {
+  refusal: Exclude<RemovalCheck["refusal"], { reason: "error" }> | { reason: "error"; step: "location" | "verify" | "recheck"; error: RemoteFailure };
+};
+
 export type HostReply =
   | { type: "event"; id: number; event: LogEvent }
   | { type: "done"; id: number; value: unknown }
@@ -55,7 +58,7 @@ export type HostReply =
   | { type: "physical"; id: number }
   | { type: "physical-settled"; id: number };
 
-function failure(err: unknown): RemoteFailure {
+export function failure(err: unknown): RemoteFailure {
   if (!(err instanceof Error)) return { name: "Error", message: String(err) };
   const fields = err as Error & { errorType?: unknown; code?: unknown; path?: unknown };
   const out: RemoteFailure = { name: err.name, message: err.message };
@@ -112,16 +115,12 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra } satisfies VerifyReport;
     },
-    recheck: (output: string, inputs: string[], options: GuiOptions) => (signal, onProgress) => {
-      // The archive is the output: naming it keeps the fresh scan from counting
-      // the archive itself when it sits beside the inputs.
-      const spec = buildSpec(inputs, options);
-      spec.output = output;
-      return zip.compareSources(spec, output, { signal, onProgress });
+    checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions) => async (signal, onProgress) => {
+      const check = await zip.checkRemoval(buildSpec(inputs, options), output, { removed, signal, onProgress });
+      const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: failure(check.refusal.error) } : check.refusal;
+      return { ...check, refusal } satisfies RemoteRemovalCheck;
     },
     classify: (paths: string[]) => (signal) => zip.classify(paths, { signal }),
-    outputInsideInputs: (output: string, inputs: string[]) => (signal) =>
-      outputInsideInputs(output, inputs, zip.volume(signal)),
   };
 
   return {

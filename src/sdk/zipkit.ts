@@ -42,6 +42,7 @@ import { compareWithManifest } from "./compare/sources.js";
 import { extractArchive, readManifest } from "./extract/extract.js";
 import { readInternals } from "./internal/carrier.js";
 import { classifyPaths, pathState } from "./paths.js";
+import { checkRemoval, outputInsideInputs } from "./removal.js";
 import { nodeFileSystem, Volume } from "./internal/volume.js";
 import { planArchive } from "./plan/plan.js";
 import { METADATA_DEFAULTS, resolvePolicy } from "./policy.js";
@@ -71,6 +72,8 @@ import type {
   SourceComparison,
   PathEntry,
   PathState,
+  RemovalCheck,
+  RemovalOptions,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.js";
@@ -257,6 +260,29 @@ export class ZipKit {
     });
     const { log: _log, ...comparison } = result;
     return comparison;
+  }
+
+  /**
+   * Whether the originals `archive` was made from can be removed without
+   * losing data, checked in order: the archive is the one expected (when
+   * `fingerprint` is given), it does not sit at or inside an input, it
+   * verifies against its manifest, and a fresh scan of `spec`'s inputs still
+   * matches that manifest. `spec` is the one the archive was created with,
+   * its inputs only those still to be removed. Removes nothing; a check that
+   * cannot finish refuses, naming its step, rather than throwing.
+   */
+  async checkRemoval(spec: ArchiveSpec, archive: string, options: RemovalOptions = {}): Promise<RemovalCheck> {
+    const { removed = [], fingerprint, ...call } = options;
+    // The archive is the output, so the fresh scan never counts the archive
+    // itself when it sits beside the inputs.
+    const { outputDir: _dir, outputName: _name, ...rest } = spec;
+    const rescan: ArchiveSpec = { ...rest, output: archive };
+    return checkRemoval({
+      state: () => this.pathState(archive, call),
+      inside: () => outputInsideInputs(archive, spec.inputs, this.volume(call.signal)),
+      verify: async () => (await this.extract({ archive, dryRun: true, checkMetadata: true }, call)).reportOk,
+      compare: () => this.compareSources(rescan, archive, call),
+    }, spec.inputs, removed, fingerprint);
   }
 
   /**

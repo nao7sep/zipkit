@@ -32,7 +32,8 @@ it("presents a real publication flush failure safely and keeps originals out of 
     write: async (plan, signal, onProgress, onPhysicalSettlement) =>
       (await zip.write(plan, { signal, onProgress, onPhysicalSettlement })).bytes,
     verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
-    recheck: (archive, inputs, options, signal) => zip.compareSources(buildSpec(inputs, options), archive, { signal }),
+    checkRemoval: (archive, inputs, removed, options, signal, onProgress) =>
+      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onProgress }),
     classify: async (paths) => paths.map((location) => ({ path: location, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
@@ -40,7 +41,7 @@ it("presents a real publication flush failure safely and keeps originals out of 
       const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
     },
-    trash, outputInsideInputs: async () => false, emit: () => {}, progress: () => () => {},
+    trash, emit: () => {}, progress: () => () => {},
     newId: () => "job", log: { ...nullLog, error: logged },
   });
   try {

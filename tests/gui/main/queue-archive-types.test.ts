@@ -31,7 +31,8 @@ it("keeps originals when a real archive's file type changes after publication", 
       return result.bytes;
     },
     verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
-    recheck: (archive, inputs, options, signal) => zip.compareSources(buildSpec(inputs, options), archive, { signal }),
+    checkRemoval: (archive, inputs, removed, options, signal, onProgress) =>
+      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onProgress }),
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
@@ -39,7 +40,7 @@ it("keeps originals when a real archive's file type changes after publication", 
       const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
     },
-    trash, outputInsideInputs: async () => false, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,
+    trash, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,
   });
   try {
     const id = engine.add([input], DEFAULT_OPTIONS, TRASH);

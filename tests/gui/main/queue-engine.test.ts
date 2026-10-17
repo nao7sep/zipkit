@@ -16,6 +16,8 @@ import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator, type Message } from "../../../src/gui/shared/i18n/translate.js";
 import { StallError, WriteError } from "../../../src/sdk/errors.js";
+import { checkRemoval } from "../../../src/sdk/removal.js";
+import type { SourceComparison } from "../../../src/sdk/types.js";
 import { DELETE, SAVE, TRASH } from "../../helpers/intents.js";
 
 const en = createTranslator("en");
@@ -47,7 +49,14 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
   };
 }
 
-function makeDeps(overrides: Partial<EngineDeps> = {}) {
+/** The SDK's removal check's own steps, faked one by one: the engine's fake
+ *  `checkRemoval` runs them through the SDK's real sequence. */
+interface RemovalFakes {
+  recheck(output: string, inputs: string[], options: typeof DEFAULT_OPTIONS, signal: AbortSignal, onProgress: (e: LogEvent) => void): Promise<SourceComparison>;
+  outputInsideInputs(output: string, inputs: string[], signal: AbortSignal): Promise<boolean>;
+}
+
+function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
   const calls = { plan: 0, write: 0, verify: 0, recheck: 0, trash: [] as string[][], deleted: [] as string[][], maxWriteInFlight: 0 };
   let writeInFlight = 0;
   let idN = 0;
@@ -73,10 +82,6 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
       calls.verify++;
       return true;
     },
-    recheck: async () => {
-      calls.recheck++;
-      return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
-    },
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       calls.trash.push(paths);
@@ -86,11 +91,24 @@ function makeDeps(overrides: Partial<EngineDeps> = {}) {
       calls.deleted.push(paths);
       return { moved: paths, failed: [], unconfirmed: [] };
     },
-    outputInsideInputs: async () => false,
     emit: () => {},
     progress: () => () => {},
     newId: () => `job-${++idN}`,
     log: nullLog,
+    checkRemoval: (output, inputs, removed, options, signal, onProgress) => checkRemoval({
+      state: () => deps.pathState(output, signal),
+      inside: () => fakes.outputInsideInputs(output, inputs, signal),
+      verify: () => deps.verify(output, signal, onProgress, true),
+      compare: () => fakes.recheck(output, inputs, options, signal, onProgress),
+    }, inputs, removed),
+    ...overrides,
+  };
+  const fakes: RemovalFakes = {
+    recheck: async () => {
+      calls.recheck++;
+      return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+    },
+    outputInsideInputs: async () => false,
     ...overrides,
   };
   return { deps, calls };

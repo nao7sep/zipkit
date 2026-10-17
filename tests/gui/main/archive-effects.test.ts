@@ -6,7 +6,6 @@ import { createArchiveEffects, fileResources, type FileUse } from "../../../src/
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
-import { outputInsideInputs } from "../../../src/gui/main/safety.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { JobIntent } from "../../../src/gui/shared/queue.js";
 import { ZipKit } from "../../../src/sdk/index.js";
@@ -108,7 +107,8 @@ async function fixture() {
     write: async (plan, signal, onProgress, onPhysicalSettlement) =>
       (await zip.write(plan, { signal, onProgress, onPhysicalSettlement })).bytes,
     verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
-    recheck: (archive, inputs, options, signal) => zip.compareSources({ ...buildSpec(inputs, options), output: archive }, archive, { signal }),
+    checkRemoval: (archive, inputs, removed, options, signal, onProgress) =>
+      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onProgress }),
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       for (const file of paths) await rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
@@ -120,7 +120,6 @@ async function fixture() {
       const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onProgress });
       return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
     },
-    outputInsideInputs: (output, inputs, signal) => outputInsideInputs(output, inputs, zip.volume(signal)),
     emit: () => {}, progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,
   };
   const engine = createQueueEngine(deps);
