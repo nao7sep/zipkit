@@ -989,6 +989,8 @@ describe("Details pane sections and orders", () => {
       { name: "Thumbs.db", count: 1 },
     ]);
     expect(namesOf([row("/Users/me/Desktop/Desktop.zip")], "en")).toEqual([{ name: "Desktop.zip", count: 1 }]);
+    // A renamed item goes by its name on disk.
+    expect(namesOf([{ path: "a/How are you.url", from: "a/How are you???.url", changes: [] }], "en")).toEqual([{ name: "How are you???.url", count: 1 }]);
     expect(rowsByPath(rows, "en").map((r) => r.path)).toEqual(["a/.DS_Store", "b/file 9.txt", "b/file 10.txt", "m/Thumbs.db", "q/.Trashes/", "z/.DS_Store"]);
   });
 

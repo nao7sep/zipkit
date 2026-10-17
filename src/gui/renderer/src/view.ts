@@ -1032,11 +1032,12 @@ function collator(locale: string): Intl.Collator {
 
 /** The names of a card's rows, each once with how many rows carry it, in the
  *  order the locale sorts names: a card shows names only, so every
- *  `.DS_Store` reads as one line however many folders held one. */
+ *  `.DS_Store` reads as one line however many folders held one. A renamed
+ *  item goes by the name it has on disk, the one the user would look for. */
 export function namesOf(rows: readonly ReportRow[], locale: string): Array<{ name: string; count: number }> {
   const counts = new Map<string, number>();
   for (const row of rows) {
-    const name = nameOf(row.path);
+    const name = nameOf(row.from ?? row.path);
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   const order = collator(locale);
