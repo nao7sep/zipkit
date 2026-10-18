@@ -37,7 +37,7 @@ for (const f of plan.findings) console.log(f.severity, f.rule, f.path);
 if (plan.writable) await zip.write(plan); // or zip.create(spec) in one call
 ```
 
-`npm test` runs the app's tests and then the SDK's.
+`npm test` type-checks and runs both the app's tests and the SDK's; `npx vitest` at the root runs either by path.
 
 ## License
 

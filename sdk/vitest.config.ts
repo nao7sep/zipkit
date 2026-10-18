@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    name: "sdk",
     include: ["tests/**/*.test.ts"],
     // Every test's temp files land in a per-file root that must be empty once
     // its tests finish (see tests/setup.ts).
@@ -11,7 +12,7 @@ export default defineConfig({
       reporter: ["text", "html", "lcov"],
       include: ["src/**/*.ts"],
       // Re-exports and type declarations only: no decision to cover.
-      exclude: ["src/index.ts", "src/types.ts", "src/testing.ts", "src/cli/zipkit.ts"],
+      exclude: ["src/index.ts", "src/types.ts", "src/testing.ts"],
     },
   },
 });

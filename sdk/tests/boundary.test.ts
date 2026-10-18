@@ -8,13 +8,16 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const SRC = path.resolve("src");
+// From this file, not the working directory, so the check holds wherever the suite runs from.
+const PACKAGE = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+const SRC = path.join(PACKAGE, "src");
 const sources = (readdirSync(SRC, { recursive: true, encoding: "utf8" }) as string[])
   .filter((file) => file.endsWith(".ts"))
   .map((file) => ({ file, code: stripComments(readFileSync(path.join(SRC, file), "utf8")) }));
-const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies: Record<string, string> };
+const pkg = JSON.parse(readFileSync(path.join(PACKAGE, "package.json"), "utf8")) as { dependencies: Record<string, string> };
 
 function stripComments(code: string): string {
   return code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
