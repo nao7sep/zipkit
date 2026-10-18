@@ -115,7 +115,7 @@ describe("JobDetails", () => {
   it("lists by name what a verification found missing or unexpected, and each way the originals changed", () => {
     render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["a/gone.txt"], added: ["a/new.txt"], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
       ok: true,
-      data: { reportOk: false, missing: ["a/one.txt", "b/two.txt"], extra: ["stray.bin"], summary: { total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } } as never,
+      data: { reportOk: false, missing: ["a/one.txt", "b/two.txt"], extra: ["stray.bin"], summary: { total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 } } as never,
     }} />);
     expect(screen.getByRole("heading", { name: /^Missing from the archive\s*2$/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /^Unexpected extra entries\s*1$/ })).toBeTruthy();

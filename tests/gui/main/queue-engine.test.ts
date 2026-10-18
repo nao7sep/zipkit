@@ -47,7 +47,7 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
 }
 
 const FAILED_REPORT: VerifyReport = {
-  summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0 }, missing: [], extra: [], findings: [],
+  summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 }, missing: [], extra: [], findings: [],
 };
 
 /** The SDK's removal check's own steps, faked one by one: the engine's fake
@@ -67,7 +67,7 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
     effects: createPathClaims(),
     resources: async (paths) => paths.map((location) => ({ location, identity: location })),
     pathState: async (target) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` }),
-    inspect: async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] }),
+    inspect: async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 } as never, missing: [], extra: [] }),
     plan: async (inputs) => {
       calls.plan++;
       return planData(inputs[0] !== "bad");
@@ -1695,7 +1695,7 @@ describe("the archive's recorded state and the job's history", () => {
 
   it("records a failed verification on request as a problem count", async () => {
     const { deps } = withArchive({
-      inspect: async () => ({ reportOk: false, summary: { total: 3, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0 } as never, missing: ["a"], extra: [] }),
+      inspect: async () => ({ reportOk: false, summary: { total: 3, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 } as never, missing: ["a"], extra: [] }),
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
