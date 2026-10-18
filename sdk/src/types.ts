@@ -408,17 +408,13 @@ export type CreateData =
       mode: "write"; // actual create
       output: string;
       log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
-      writable: boolean;
-      written: boolean; // archive fully streamed, fsync'd, renamed?
-      bytes: number | null; // final on-disk size; null if not written
+      bytes: number; // final on-disk size
       zip64: boolean;
       summary: PlanSummary;
       findings: Finding[]; // SSOT (domain + operational)
-      /**
-       * The embedded `zipkit.json` document = the post-write per-entry SSOT
-       * (crc/sha/sizes/times). `null` only if a fault hit before it was built.
-       */
-      metadata: Metadata | null;
+      /** The manifest document: the post-write per-entry record (CRC, SHA-256,
+       *  sizes, times), embedded unless the policy turned the manifest off. */
+      metadata: Metadata;
     };
 
 // ---------------------------------------------------------------------------
@@ -426,6 +422,15 @@ export type CreateData =
 // ---------------------------------------------------------------------------
 
 /** A UTC instant as both its lossless nanosecond count and an ISO-8601 string. */
+/** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns. */
+export type PlanData = Extract<CreateData, { mode: "plan" }>;
+
+/** The `mode:"write"` member of {@link CreateData}: what `write()` and
+ *  `create()` return. */
+export type WriteData = Extract<CreateData, { mode: "write" }>;
+
+export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
+
 export interface UtcTime {
   ns: string;
   iso: string;
@@ -433,7 +438,7 @@ export interface UtcTime {
 
 /** One name fix applied to an entry. `rule` is a `RuleId`. */
 export interface Transformation {
-  rule: string;
+  rule: RuleId;
   before: string;
   after: string;
 }
@@ -649,18 +654,6 @@ export interface ArchiveListing {
   entries: ListedEntry[];
 }
 
-/** What removing the originals a plan was made from would take without a
- *  copy in the archive (see `unarchived`). */
-export interface Unarchived {
-  /** Items left out, each where it is on disk (`diskPath`); a folder left out
-   *  goes with everything in it. A duplicate is not one: its content is in the
-   *  archive through another input. */
-  excluded: PlannedEntry[];
-  /** Folders that could not be read: what they hold is not in the archive
-   *  and not known. */
-  unlisted: PlannedEntry[];
-}
-
 /** Why the originals may not be removed: the first check of
  *  `ZipKit.checkRemoval` that refused. */
 export type RemovalRefusal =
@@ -737,7 +730,7 @@ export type LogEventBody =
     }
   | { event: "entry.excluded"; path: string; reason?: string }
   | { event: "entry.renamed"; path: string; from: string }
-  | { event: "entry.flagged"; rule: string; path: string; severity: Severity }
+  | { event: "entry.flagged"; rule: FindingRule; path: string; severity: Severity }
   | { event: "write.start"; entries: number }
   | { event: "entry.written"; path: string }
   | { event: "write.done"; bytes: number; zip64: boolean }

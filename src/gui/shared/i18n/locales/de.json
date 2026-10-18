@@ -87,7 +87,6 @@
   "job.writeDurabilityFailed": "Das Archiv befindet sich unter {path}, aber ZipKit konnte nicht bestätigen, dass es auf den Datenträger geschrieben wurde. Ihre Originale wurden beibehalten. Prüfen Sie diesen Speicherort, bevor Sie das Archiv erneut erstellen.",
   "job.sourceChanged": "{path} wurde während der Archivierung geändert, daher wurde kein Archiv geschrieben. Erstellen Sie das Archiv erneut.",
   "job.saved": "Gespeichert ({size}).",
-  "job.savedShort": "Gespeichert.",
   "job.insideSource": "Das Archiv liegt innerhalb der Quelle, daher wurden die Originale nicht angetastet.",
   "job.locationUnverified": "Der Speicherort des Archivs konnte nicht geprüft werden. Die Originale wurden behalten.",
   "job.verifyFailed": "Die Prüfung ist fehlgeschlagen. Die Originale wurden behalten.",

@@ -87,7 +87,6 @@
   "job.writeDurabilityFailed": "归档位于 {path}，但 ZipKit 无法确认保存内容已同步到磁盘。原始文件已保留。重新创建归档前，请检查该位置。",
   "job.sourceChanged": "{path} 在归档过程中发生了变化，因此未写入归档。请重新创建归档。",
   "job.saved": "已保存（{size}）。",
-  "job.savedShort": "已保存。",
   "job.insideSource": "归档位于源项目内部，因此原始项目未被改动。",
   "job.locationUnverified": "无法确认归档的位置。原始项目已保留。",
   "job.verifyFailed": "校验失败。原始项目已保留。",

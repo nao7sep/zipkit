@@ -131,17 +131,6 @@ interface RunOptions<T> {
   onLateValue?: (value: T) => void | Promise<unknown>;
 }
 
-let pendingOperations = 0;
-/** Physical SDK calls and their late cleanup, including abandoned caller waits.
- * Used only at final process exit; it never changes the SDK's wait budgets. */
-export function volumeWorkPending(): boolean { return pendingOperations > 0; }
-function trackPhysical<T>(work: Promise<T>): Promise<T> {
-  pendingOperations++;
-  const settled = () => { pendingOperations--; };
-  void work.then(settled, settled);
-  return work;
-}
-
 /**
  * The bounded owner of one verb run's file access. Built per run with the
  * run's budget and signal; see the module comment for the modes.
@@ -163,7 +152,7 @@ export class Volume {
   trackPhysical<T>(work: Promise<T>): Promise<T> {
     this.#physical.add(work);
     void work.then(() => this.#physical.delete(work), () => this.#physical.delete(work));
-    return trackPhysical(work);
+    return work;
   }
   /** The run is physically settled only after its late continuations finish. */
   async whenSettled(): Promise<void> {
@@ -355,7 +344,7 @@ export class Volume {
     }
     let abandoned = false;
     // Keep one physical token across a late result and its cleanup continuation.
-    const physical = this.trackPhysical(pending.then((value) => abandoned ? options.onLateValue?.(value) : undefined, () => {}));
+    void this.trackPhysical(pending.then((value) => abandoned ? options.onLateValue?.(value) : undefined, () => {}));
     return new Promise<T>((resolve, reject) => {
       let settled = false;
       const finish = (fn: () => void): void => {
@@ -372,7 +361,7 @@ export class Volume {
           reject(err);
         });
       const timer = setTimeout(() => {
-        const stall = stallError(operation, path, this.#timeoutMs, mode === "commit", physical.then(() => {}, () => {}));
+        const stall = stallError(operation, path, this.#timeoutMs, mode === "commit");
         if (mode !== "cleanup") this.#stall ??= stall;
         abandon(stall);
       }, this.#timeoutMs);

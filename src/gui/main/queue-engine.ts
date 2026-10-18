@@ -59,7 +59,7 @@ export interface EngineDeps {
   plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count (or null if unknown). */
   write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
-    onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number | null>;
+    onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number>;
   /** Verify a written archive: every entry's CRC-32, and against its manifest
    *  when `checkMetadata`; resolves to the SDK's reportOk. */
   verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, checkMetadata: boolean): Promise<boolean>;
@@ -570,7 +570,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec: Rec,
     signal: AbortSignal,
     onEvent: (e: LogEvent) => void,
-  ): Promise<{ output: string; bytes: number | null; claim: PathClaim } | null> {
+  ): Promise<{ output: string; bytes: number; claim: PathClaim } | null> {
     const id = rec.job.id;
     // Re-plan fresh: the world may have changed since this job was enqueued.
     const reviewed = rec.plan;
@@ -607,7 +607,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return null;
     }
 
-    let bytes: number | null;
+    let bytes: number;
     let settlement: Promise<void> | undefined;
     let claim: PathClaim;
     const removing = removesOriginals(rec.job.intent);
@@ -624,7 +624,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     try {
       bytes = await deps.write(plan, signal, onEvent, (physical) => { settlement = physical; });
     } catch (err) {
-      claim.release(settlement ?? (stalledWhileCommitting(err) ? (err as { settlement?: Promise<void> }).settlement ?? null : undefined));
+      claim.release(settlement ?? (stalledWhileCommitting(err) ? null : undefined));
       set(rec, { state: "failed", message: writeFailureMessage(err, plan.output) });
       deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
       return null;
@@ -632,7 +632,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.publishedOutput = plan.output;
     const written = await lookAt(rec, plan.output, signal);
     rec.fingerprint = written?.kind === "present" ? written.fingerprint : null;
-    set(rec, { archiveWritten: true, archiveStatus: "written", ...(bytes === null ? {} : { archiveBytes: bytes }) });
+    set(rec, { archiveWritten: true, archiveStatus: "written", archiveBytes: bytes });
     try { rec.publication = (await deps.resources([plan.output], signal))[0] ?? null; }
     catch (error) { deps.log.warn("archive publication identity unavailable", { jobId: id, error: errorInfo(error) }); }
     return { output: plan.output, bytes, claim };
@@ -738,10 +738,10 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   /** A run that keeps its originals: done once written, or once verified when
    *  the user chose to verify. A failed verification keeps the archive, which
    *  the job then offers to reveal or move to Trash. */
-  async function finishKept(rec: Rec, output: string, bytes: number | null, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<void> {
+  async function finishKept(rec: Rec, output: string, bytes: number, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<void> {
     const id = rec.job.id;
     if (!rec.job.intent.verify) {
-      set(rec, { state: "done", message: bytes === null ? message("job.savedShort") : message("job.saved", { size: { bytes } }) });
+      set(rec, { state: "done", message: message("job.saved", { size: { bytes } }) });
       deps.log.info("job saved", { jobId: id, output, bytes });
       return;
     }
@@ -760,7 +760,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return;
     }
     markVerified(rec, seen?.kind === "present" ? seen.fingerprint : null);
-    set(rec, { state: "done", message: bytes === null ? message("job.savedVerifiedShort") : message("job.savedVerified", { size: { bytes } }) });
+    set(rec, { state: "done", message: message("job.savedVerified", { size: { bytes } }) });
     deps.log.info("job saved and verified", { jobId: id, output, bytes });
   }
 

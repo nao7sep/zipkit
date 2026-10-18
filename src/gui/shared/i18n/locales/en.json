@@ -87,7 +87,6 @@
   "job.writeDurabilityFailed": "The archive is at {path}, but ZipKit could not confirm that the save was synchronized to disk. Your originals were kept. Check that location before creating the archive again.",
   "job.sourceChanged": "{path} changed while it was being archived, so no archive was written. Create the archive again.",
   "job.saved": "Saved ({size}).",
-  "job.savedShort": "Saved.",
   "job.insideSource": "The archive is inside the source, so the originals were left untouched.",
   "job.locationUnverified": "The archive location could not be verified. The originals were kept.",
   "job.verifyFailed": "Verification failed. The originals were kept.",

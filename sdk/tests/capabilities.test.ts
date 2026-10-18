@@ -1,7 +1,7 @@
 /**
  * What an app reads from the SDK beyond a verdict: where each planned item is
  * on disk, how much the archive holds as on disk, how far a write or a read
- * has got, what removing the originals would take unarchived, and what an
+ * has got, and what an
  * archive holds without verifying it.
  */
 
@@ -9,8 +9,8 @@ import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { unarchived, ZipKit, ZipKitError } from "../src/index.ts";
-import type { PlannedEntry, ProgressCounts } from "../src/index.ts";
+import { ZipKit, ZipKitError } from "../src/index.ts";
+import type { ProgressCounts } from "../src/index.ts";
 import { Meter } from "../src/progress.ts";
 import { createDirectoryLink } from "./helpers/symlink.ts";
 
@@ -81,29 +81,6 @@ describe("onProgress", () => {
     expect(seen).toEqual([0, 20, 30]);
     // With no observer it does nothing at all.
     expect(() => new Meter("extract", { entries: 1, bytes: 1 }, undefined).finish()).not.toThrow();
-  });
-});
-
-describe("unarchived", () => {
-  it("names what the originals' removal would take without a copy", async () => {
-    const plan = await new ZipKit().plan({ inputs: [proj], output: path.join(root, "o.zip") });
-    expect(unarchived(plan)).toEqual({ excluded: [expect.objectContaining({ diskPath: path.join(proj, ".DS_Store") })], unlisted: [] });
-  });
-
-  it("leaves out a duplicate, archived through another input, and adds a folder that could not be read", () => {
-    const entry = (archivePath: string, over: Partial<PlannedEntry>): PlannedEntry => ({
-      archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "store", excluded: false, findings: [], ...over,
-    });
-    const locked = entry("locked", { type: "dir", findings: [{ rule: "entry.unlisted", severity: "warning", path: "locked", message: "unreadable" }] });
-    const plan = { entries: [
-      entry("dup.txt", { excluded: true, excludeCode: "duplicate", excludeReason: "duplicate" }),
-      entry("empty", { type: "dir", excluded: true, excludeCode: "empty-dir", excludeReason: "empty" }),
-      locked,
-      entry("kept.txt", {}),
-    ] };
-    const { excluded, unlisted } = unarchived(plan);
-    expect(excluded.map((e) => e.archivePath)).toEqual(["empty"]);
-    expect(unlisted).toEqual([locked]);
   });
 });
 

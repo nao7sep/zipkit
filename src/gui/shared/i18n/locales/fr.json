@@ -87,7 +87,6 @@
   "job.writeDurabilityFailed": "L’archive se trouve à {path}, mais ZipKit n’a pas pu confirmer que l’enregistrement a été synchronisé sur le disque. Vos originaux ont été conservés. Vérifiez cet emplacement avant de créer à nouveau l’archive.",
   "job.sourceChanged": "{path} a été modifié pendant son archivage, aucune archive n’a donc été écrite. Créez de nouveau l’archive.",
   "job.saved": "Enregistrée ({size}).",
-  "job.savedShort": "Enregistrée.",
   "job.insideSource": "L’archive se trouve dans la source, les originaux n’ont donc pas été touchés.",
   "job.locationUnverified": "L’emplacement de l’archive n’a pas pu être vérifié. Les originaux ont été conservés.",
   "job.verifyFailed": "La vérification a échoué. Les originaux ont été conservés.",

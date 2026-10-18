@@ -28,7 +28,6 @@ import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
 import { appAdmission } from "./command-admission.js";
-import { machineTimeZone } from "zipkitsdk";
 
 export function registerIpc(): void {
   ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {
@@ -47,7 +46,8 @@ export function registerIpc(): void {
   ipcMain.handle("zipkit:getSystemChoices", (): SystemChoices => ({
     appearance: systemAppearance(),
     language: systemLanguageNow(),
-    timeZone: machineTimeZone(),
+    // The computer's own zone, or UTC when it reports none.
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   }));
 
   ipcMain.handle("zipkit:getLayout", (): PaneLayout => paneLayout());

@@ -73,7 +73,8 @@ import type {
   ArchiveListing,
   ArchivePolicy,
   ArchiveSpec,
-  CreateData,
+  PlanData,
+  WriteData,
   DeepPartial,
   ExtractData,
   ExtractSpec,
@@ -88,13 +89,7 @@ import type {
   ZipKitOptions,
 } from "./types.ts";
 
-/** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns and
- *  `write()` consumes (it also carries the writer's instructions out of band). */
-export type PlanData = Extract<CreateData, { mode: "plan" }>;
-
-/** The `mode:"write"` member of {@link CreateData}: what `write()`/`create()`
- *  return on success. */
-export type WriteData = Extract<CreateData, { mode: "write" }>;
+export type { PlanData, WriteData } from "./types.ts";
 
 /**
  * The default concurrency tracks the host's available parallelism (which

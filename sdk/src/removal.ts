@@ -9,7 +9,7 @@
 import path from "node:path";
 import { fsFailure, type ZipKitError } from "./errors.ts";
 import type { Volume } from "./internal/volume.ts";
-import type { PathState, PlannedEntry, RemovalCheck, SourceComparison, Unarchived, VerifyReport } from "./types.ts";
+import type { PathState, RemovalCheck, SourceComparison, VerifyReport } from "./types.ts";
 
 /** Whether `output` resolves to a location at or inside any of `inputs`. Both
  *  sides are resolved to their physical identities, so a link cannot hide the
@@ -105,14 +105,4 @@ export async function checkRemoval(
     return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive) }, verified);
   }
   return { refusal: null, verified };
-}
-
-/** What removing the originals `plan` was made from would take without a
- *  copy in the archive: the items it leaves out, but for duplicates archived
- *  through another input, and the folders it could not read. */
-export function unarchived(plan: { entries: readonly PlannedEntry[] }): Unarchived {
-  return {
-    excluded: plan.entries.filter((entry) => entry.excluded && entry.excludeCode !== "duplicate"),
-    unlisted: plan.entries.filter((entry) => entry.findings.some((f) => f.rule === "entry.unlisted")),
-  };
 }

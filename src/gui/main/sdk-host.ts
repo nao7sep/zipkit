@@ -23,7 +23,7 @@ export interface SdkOps {
   resources(paths: string[]): PathResource[];
   pathState(path: string): PathState;
   plan(inputs: string[], options: GuiOptions): PlanTransfer;
-  write(transfer: PlanTransfer): number | null;
+  write(transfer: PlanTransfer): number;
   verify(output: string, checkMetadata: boolean): boolean;
   deletePath(path: string): void;
   inspect(archive: string, checkMetadata: boolean): VerifyReport;

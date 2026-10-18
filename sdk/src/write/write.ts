@@ -351,8 +351,6 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     return {
       mode: "write",
       output: plan.output,
-      writable: plan.writable,
-      written: true,
       // The exact post-write outcome from finalize.
       bytes,
       zip64,

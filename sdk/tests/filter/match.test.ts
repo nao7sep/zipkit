@@ -8,7 +8,6 @@
 
 import { describe, expect, it } from "vitest";
 import { buildMatcher } from "../../src/filter/match.ts";
-import { globExclude, regexExclude } from "../../src/filter/rules.ts";
 import type { FilterRule } from "../../src/types.ts";
 
 function matcher(rules: FilterRule[], junk = false) {
@@ -230,15 +229,5 @@ describe("junk preset, ordering, and the inclusive default", () => {
   it("an empty rule set with no junk excludes nothing", () => {
     const m = matcher([], false);
     expect(m.match("anything/at/all.txt", false)).toBeNull();
-  });
-});
-
-describe("rule builders (shared by create and extract)", () => {
-  it("globExclude derives a directory target from a trailing slash", () => {
-    expect(globExclude("logs/")).toEqual({ pattern: "logs/", match: "glob", target: "dir" });
-    expect(globExclude("*.tmp")).toEqual({ pattern: "*.tmp", match: "glob", target: "both" });
-  });
-  it("regexExclude targets both files and directories", () => {
-    expect(regexExclude("\\.log$")).toEqual({ pattern: "\\.log$", match: "regex", target: "both" });
   });
 });

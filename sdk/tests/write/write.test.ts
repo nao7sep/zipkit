@@ -93,7 +93,7 @@ describe("a source file changed during Create", () => {
   it("writes the archive when nothing changed", async () => {
     const plan = await new ZipKit().plan({ inputs: [proj], output });
     const result = await write(plan);
-    expect(result.written).toBe(true);
+    expect(result.bytes).toBeGreaterThan(0);
     expect(existsSync(output)).toBe(true);
   });
 });

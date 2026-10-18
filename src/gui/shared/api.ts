@@ -15,7 +15,7 @@
  */
 
 import type { InputAdmission } from "./input-admission.js";
-import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "zipkitsdk/types";
+import type { ArchiveSpec, ExtractData, Finding, LogEvent, PlanData, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "zipkitsdk/types";
 import type { PlanReport } from "./plan-report.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
@@ -24,8 +24,6 @@ import type { Language, LanguageEnvironment } from "./i18n/languages.js";
 import type { Message } from "./i18n/translate.js";
 import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "./records.js";
 
-/** The `mode:"plan"` payload — the dry run shown in a job's detail. */
-export type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 /** The host OS, as a portable literal union — mirrors `process.platform` without
  *  pulling Node's `NodeJS` namespace into the renderer program. */
@@ -42,7 +40,7 @@ export type GuiPlatform =
   | "cygwin"
   | "netbsd";
 
-export type { ArchiveSpec, ExtractData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, SourceComparison };
+export type { ArchiveSpec, PlanData, ExtractData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, SourceComparison };
 export type { LanguageEnvironment, Message, PaneLayout };
 
 /** The action that started a Progress run: a background plan, Create (its

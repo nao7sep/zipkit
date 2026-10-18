@@ -87,7 +87,6 @@
   "job.writeDurabilityFailed": "El archivo está en {path}, pero ZipKit no pudo confirmar que se haya guardado de forma sincronizada en el disco. Se conservaron los originales. Revisa esa ubicación antes de crear el archivo de nuevo.",
   "job.sourceChanged": "{path} cambió mientras se comprimía, así que no se escribió ningún archivo comprimido. Vuelve a crear el archivo comprimido.",
   "job.saved": "Guardado ({size}).",
-  "job.savedShort": "Guardado.",
   "job.insideSource": "El archivo comprimido está dentro del origen, así que no se tocaron los originales.",
   "job.locationUnverified": "No se pudo verificar la ubicación del archivo comprimido. Se conservaron los originales.",
   "job.verifyFailed": "La verificación falló. Se conservaron los originales.",

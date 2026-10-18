@@ -96,7 +96,6 @@ export interface ZipKitErrorOptions<C extends ErrorCode> {
   subject?: string;
   details?: C extends keyof ErrorDetails ? ErrorDetails[C] : never;
   cause?: unknown;
-  settlement?: Promise<void>;
 }
 
 export class ZipKitError<C extends ErrorCode = ErrorCode> extends Error implements ZipKitErrorData {
@@ -106,10 +105,6 @@ export class ZipKitError<C extends ErrorCode = ErrorCode> extends Error implemen
   readonly effect: ErrorEffect;
   readonly subject: string | undefined;
   readonly details: (C extends keyof ErrorDetails ? ErrorDetails[C] : never) | undefined;
-  /** When a write may still land (`effect: "unknown"` from a stalled
-   *  publication), the settlement of that physical work, for a caller in the
-   *  same process that holds the path until it ends. Never serialized. */
-  readonly settlement: Promise<void> | undefined;
 
   constructor(code: C, message: string, options: ZipKitErrorOptions<C> = {}) {
     super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
@@ -118,7 +113,6 @@ export class ZipKitError<C extends ErrorCode = ErrorCode> extends Error implemen
     this.effect = options.effect ?? "none";
     this.subject = options.subject;
     this.details = options.details;
-    this.settlement = options.settlement;
   }
 
   toJSON(): ZipKitErrorData {
@@ -144,7 +138,7 @@ export function isZipKitError(value: unknown): value is ZipKitErrorData {
 /** A file operation that did not settle within its time budget, naming the
  *  operation and the path. When it was publishing a finished file
  *  (`committing`), that work may still land, so the effect is unknown. */
-export function stallError(operation: string, path: string, timeoutMs: number, committing: boolean, settlement?: Promise<void>): ZipKitError<"io.stalled"> {
+export function stallError(operation: string, path: string, timeoutMs: number, committing: boolean): ZipKitError<"io.stalled"> {
   const message = committing
     ? `${operation} did not finish within ${timeoutMs} ms and may still complete: ${path}`
     : `${operation} did not respond within ${timeoutMs} ms: ${path}`;
@@ -152,7 +146,6 @@ export function stallError(operation: string, path: string, timeoutMs: number, c
     effect: committing ? "unknown" : "none",
     subject: path,
     details: { operation, timeoutMs },
-    ...(settlement ? { settlement } : {}),
   });
 }
 
@@ -164,7 +157,6 @@ export function withUnknownEffect(err: unknown): unknown {
   const options: ZipKitErrorOptions<ErrorCode> = { effect: "unknown", cause: err.cause };
   if (err.subject !== undefined) options.subject = err.subject;
   if (err.details !== undefined) options.details = err.details as never;
-  if (err.settlement !== undefined) options.settlement = err.settlement;
   return new ZipKitError(err.code, err.message, options);
 }
 

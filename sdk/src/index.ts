@@ -8,9 +8,7 @@ export type { PlanData, WriteData } from "./zipkit.ts";
 export { exportPlan, importPlan } from "./transfer.ts";
 export { sameFile } from "./paths.ts";
 export { createPathClaims } from "./claims.ts";
-export { unarchived } from "./removal.ts";
 export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.ts";
-export { machineTimeZone } from "./internal/timeZone.ts";
 export type { PlanTransfer } from "./transfer.ts";
 
 export { RULE_REGISTRY } from "./registry.ts";
@@ -57,7 +55,6 @@ export type {
   Severity,
   SourceComparison,
   Transformation,
-  Unarchived,
   UtcTime,
   ZipKitCallOptions,
   ZipKitOptions,

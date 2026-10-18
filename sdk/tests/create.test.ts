@@ -253,7 +253,7 @@ describe("plan / inspect / write flow", () => {
 
     const result = await zip.write(plan);
     expect(result.mode).toBe("write");
-    expect(result.written).toBe(true);
+    expect(result.bytes).toBeGreaterThan(0);
     expect(existsSync(output)).toBe(true);
     const { entries } = readZip(await readFile(output));
     // The metadata document lists every written entry except the embedded

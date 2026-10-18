@@ -26,9 +26,8 @@ describe("ZipKitError", () => {
     expect(toAbortError(new Error("stop"))).toMatchObject({ code: "aborted", kind: "cancelled", effect: "none" });
   });
 
-  it("crosses a process boundary as plain data the guard still recognizes, without what only works in-process", () => {
-    const settlement = Promise.resolve();
-    const err = stallError("publish", "/out/a.zip", 30_000, true, settlement);
+  it("crosses a process boundary as plain data the guard still recognizes", () => {
+    const err = stallError("publish", "/out/a.zip", 30_000, true);
     const data = structuredClone(JSON.parse(JSON.stringify(err)));
     expect(data).toEqual({
       name: "ZipKitError", code: "io.stalled", kind: "unavailable", effect: "unknown",
@@ -37,8 +36,6 @@ describe("ZipKitError", () => {
     });
     expect(isZipKitError(data)).toBe(true);
     expect(isZipKitError(err)).toBe(true);
-    expect(err.settlement).toBe(settlement);
-    expect(data).not.toHaveProperty("settlement");
   });
 
   it("recognizes only a known code with its own kind", () => {

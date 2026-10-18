@@ -87,7 +87,6 @@
   "job.writeDurabilityFailed": "L’archivio si trova in {path}, ma ZipKit non ha potuto confermare che il salvataggio sia stato sincronizzato sul disco. Gli originali sono stati conservati. Controlla quella posizione prima di creare di nuovo l’archivio.",
   "job.sourceChanged": "{path} è cambiato durante l’archiviazione, quindi non è stato scritto alcun archivio. Crea di nuovo l’archivio.",
   "job.saved": "Salvato ({size}).",
-  "job.savedShort": "Salvato.",
   "job.insideSource": "L’archivio si trova all’interno dell’origine, quindi gli originali non sono stati toccati.",
   "job.locationUnverified": "Impossibile verificare la posizione dell’archivio. Gli originali sono stati conservati.",
   "job.verifyFailed": "La verifica non è riuscita. Gli originali sono stati conservati.",

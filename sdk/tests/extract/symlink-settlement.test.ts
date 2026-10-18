@@ -4,7 +4,7 @@ import path from "node:path";
 import pLimit from "p-limit";
 import { expect, it, vi, onTestFinished } from "vitest";
 import { extractArchive } from "../../src/extract/extract.ts";
-import { nodeFileSystem, Volume, volumeWorkPending } from "../../src/internal/volume.ts";
+import { nodeFileSystem, Volume } from "../../src/internal/volume.ts";
 import { createLogger } from "../../src/log/logger.ts";
 import { buildZipFile } from "../helpers/writeZip.ts";
 import { fileSymlinksSupported } from "../helpers/symlink.ts";
@@ -31,10 +31,12 @@ it.runIf(fileSymlinksSupported).each([
     started(); await held; await nodeFileSystem.symlink(value, file);
   } }, cancel ? 1000 : 50, controller.signal);
   let settled = false;
+  let physicallySettled = false;
   const work = extractArchive({ archive: archive.path, dest, overwrite }, { volume, signal: controller.signal, chunkSize: 65536,
     limit: pLimit(1), logger: createLogger() });
   const outcome = work.then((result) => ({ result }), (error: unknown) => ({ error }));
   void outcome.then(() => { settled = true; });
+  void outcome.then(() => volume.whenSettled()).then(() => { physicallySettled = true; });
   try {
     await seen;
     if (cancel) controller.abort();
@@ -46,14 +48,14 @@ it.runIf(fileSymlinksSupported).each([
     } else {
       expect(await outcome).toMatchObject({ error: cancel
         ? { code: "aborted" } : { code: "io.stalled", effect: overwrite ? "none" : "unknown" } });
-      expect(volumeWorkPending()).toBe(true);
+      expect(physicallySettled).toBe(false);
       release();
     }
-    await vi.waitFor(() => expect(volumeWorkPending()).toBe(false));
+    await vi.waitFor(() => expect(physicallySettled).toBe(true));
     expect(await readdir(dest)).toEqual(["link"]);
     expect((await lstat(target)).isSymbolicLink()).toBe(!overwrite);
   } finally {
     release(); await outcome;
-    await vi.waitFor(() => expect(volumeWorkPending()).toBe(false));
+    await vi.waitFor(() => expect(physicallySettled).toBe(true));
   }
 });
