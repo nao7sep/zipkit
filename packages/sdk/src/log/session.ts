@@ -48,7 +48,7 @@ export interface SessionLog {
  * created (a name another run already holds included), or a later append fails
  * (disk full, permissions), the sink degrades to a silent no-op and the run continues —
  * the SDK never crashes because logging failed, and it never falls back to a
- * standard stream (sdk-toolkit-conventions §4: an SDK prints nothing). The live
+ * standard stream (sdk-conventions: an SDK prints nothing). The live
  * progress/event seam is a separate sink, independent of this file, so it keeps
  * carrying every event; the on-disk log is the one sink that goes quiet.
  */
