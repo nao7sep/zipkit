@@ -498,7 +498,7 @@ export async function extractArchive(
   const onUnsafe = spec.onUnsafe ?? "skip";
   // The same exclusion engine the archive side uses; no junk preset on read.
   const matcher = buildMatcher(spec.exclude ?? [], false);
-  const dest = spec.dest !== undefined ? path.resolve(spec.dest) : undefined;
+  const dest = spec.dest !== undefined ? path.normalize(spec.dest) : undefined;
 
   const volume = deps.volume;
   let archive: VolumeFile;

@@ -7,6 +7,7 @@
  * object is validated directly with nothing carried around the schema.
  */
 
+import path from "node:path";
 import { z } from "zod";
 import { ZipKitError } from "./errors.js";
 import { resolveSegments, toForwardSlash } from "./internal/path.js";
@@ -121,10 +122,15 @@ const partialPolicySchema = z.strictObject({
     .optional(),
 });
 
+/** A location the caller gives: the SDK resolves nothing against a working
+ *  directory, so every path it is handed is absolute. */
+const absolutePath = (what: string) =>
+  z.string().refine((p) => p !== "" && path.isAbsolute(p), { error: `${what} must be an absolute path` });
+
 const specSchema = z.strictObject({
-  inputs: z.array(z.string().refine((input) => input !== "", { error: "input paths must not be empty" })).min(1),
-  output: z.string().optional(),
-  outputDir: z.string().refine((d) => d.trim() !== "", { error: "outputDir must not be empty" }).optional(),
+  inputs: z.array(absolutePath("each input")).min(1),
+  output: absolutePath("output").optional(),
+  outputDir: absolutePath("outputDir").optional(),
   // A file name, never a path: it is joined to the folder as one component.
   outputName: z
     .string()
@@ -161,8 +167,8 @@ export function validateSpec(spec: ArchiveSpec): ArchiveSpec {
 }
 
 const extractSpecSchema = z.strictObject({
-  archive: z.string(),
-  dest: z.string().optional(),
+  archive: absolutePath("archive"),
+  dest: absolutePath("dest").optional(),
   overwrite: z.boolean().optional(),
   dryRun: z.boolean().optional(),
   checkMetadata: z.boolean().optional(),
@@ -250,8 +256,8 @@ export function validateConcurrency(concurrency: number): number {
 /** Validate the session-log folder: a non-empty string when given. */
 export function validateLogDir(logDir: unknown): string | null {
   if (logDir === undefined) return null;
-  if (typeof logDir !== "string" || logDir.trim() === "") {
-    throw new ZipKitError("options.invalid", `logDir must be a non-empty string (got ${String(logDir)})`);
+  if (typeof logDir !== "string" || !path.isAbsolute(logDir)) {
+    throw new ZipKitError("options.invalid", `logDir must be an absolute path (got ${String(logDir)})`);
   }
   return logDir;
 }
@@ -266,8 +272,8 @@ export function validateDebug(debug: unknown): boolean {
 /** Validate the folders a scan leaves out: a list of non-empty strings. */
 export function validateSkipPaths(skipPaths: unknown): string[] {
   if (skipPaths === undefined) return [];
-  if (!Array.isArray(skipPaths) || skipPaths.some((p) => typeof p !== "string" || p.trim() === "")) {
-    throw new ZipKitError("options.invalid", "skipPaths must be a list of non-empty strings");
+  if (!Array.isArray(skipPaths) || skipPaths.some((p) => typeof p !== "string" || !path.isAbsolute(p))) {
+    throw new ZipKitError("options.invalid", "skipPaths must be a list of absolute paths");
   }
   return [...skipPaths] as string[];
 }
@@ -279,4 +285,13 @@ export function validatePolicy(policy: DeepPartial<ArchivePolicy>): DeepPartial<
     throw new ZipKitError("policy.invalid", `invalid policy: ${formatZodError(result.error)}`);
   }
   return result.data as DeepPartial<ArchivePolicy>;
+}
+
+/** A path handed to a verb on its own, outside a spec: it must be absolute,
+ *  since the SDK resolves nothing against a working directory. */
+export function requireAbsolute(value: string, what: string): string {
+  if (typeof value !== "string" || !path.isAbsolute(value)) {
+    throw new ZipKitError("path.not-absolute", `${what} must be an absolute path (got ${String(value)})`, { subject: String(value) });
+  }
+  return value;
 }

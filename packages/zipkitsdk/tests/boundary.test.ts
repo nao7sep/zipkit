@@ -34,6 +34,11 @@ describe("the SDK boundary", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("takes every location from its caller: no working directory, home or temp folder", () => {
+    const offenders = sources.filter(({ code }) => /process\.cwd\(|\bhomedir\(|\btmpdir\(/.test(code)).map(({ file }) => file);
+    expect(offenders).toEqual([]);
+  });
+
   it("imports nothing outside its package but Node and its declared dependencies", () => {
     const offenders = sources.flatMap(({ file, code }) => specifiers(code).flatMap((spec) => {
       if (spec.startsWith("node:")) return [];

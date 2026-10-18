@@ -18,8 +18,8 @@ export interface ResolvedInput {
   path: string; // absolute
 }
 
-export function normalizeInputs(inputs: ArchiveInput[], cwd: string): ResolvedInput[] {
-  return inputs.map((input) => ({ path: path.resolve(cwd, input) }));
+export function normalizeInputs(inputs: ArchiveInput[]): ResolvedInput[] {
+  return inputs.map((input) => ({ path: path.normalize(input) }));
 }
 
 /**

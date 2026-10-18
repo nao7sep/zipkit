@@ -44,9 +44,8 @@ export function resolveOutputPath(
   request: OutputRequest,
   inputs: ResolvedInput[],
   isDir: boolean[],
-  cwd: string,
 ): string {
-  if (request.output !== undefined) return path.resolve(cwd, request.output);
+  if (request.output !== undefined) return path.normalize(request.output);
   const first = inputs[0];
   if (!first) throw new ZipKitError("output.ambiguous", "no inputs to infer an output path from");
   const parents = new Set(inputs.map((input) => path.dirname(input.path)));
@@ -59,7 +58,7 @@ export function resolveOutputPath(
       : `${path.basename(shared)}.zip`;
 
   let dir: string;
-  if (request.outputDir !== undefined) dir = path.resolve(cwd, request.outputDir);
+  if (request.outputDir !== undefined) dir = path.normalize(request.outputDir);
   else if (shared !== null) dir = shared;
   else if (request.outputName !== undefined) dir = path.dirname(first.path);
   else {

@@ -35,6 +35,7 @@ export const ERROR_CODES = {
   "input.prefix-collision": "invalid",
   "plan.not-exportable": "invalid",
   "plan.transfer-invalid": "invalid",
+  "path.not-absolute": "invalid",
   "scan.input-missing": "unavailable",
   "scan.output-is-input": "invalid",
   "scan.output-stat-failed": "unavailable",

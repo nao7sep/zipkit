@@ -16,11 +16,11 @@ import {
 import { invalidError } from "../helpers/errors.js";
 
 describe("normalizeInputs", () => {
-  it("resolves string inputs against the cwd", () => {
-    const cwd = path.join(path.parse(path.resolve(".")).root, "work");
-    const inputs = normalizeInputs(["a", "sub/b"], cwd);
-    expect(inputs[0]).toEqual({ path: path.join(cwd, "a") });
-    expect(inputs[1]).toEqual({ path: path.join(cwd, "sub", "b") });
+  it("normalizes absolute inputs without consulting a working directory", () => {
+    const root = path.join(path.parse(path.resolve(".")).root, "work");
+    const inputs = normalizeInputs([path.join(root, "a", "."), path.join(root, "sub", "x", "..", "b")]);
+    expect(inputs[0]).toEqual({ path: path.join(root, "a") });
+    expect(inputs[1]).toEqual({ path: path.join(root, "sub", "b") });
   });
 });
 
@@ -54,12 +54,12 @@ describe("joinArchivePath", () => {
 
 describe("checkAnchorCollisions", () => {
   it("rejects two inputs that resolve to the same non-empty prefix", () => {
-    const inputs = normalizeInputs(["/a/src", "/b/src"], "/");
+    const inputs = normalizeInputs(["/a/src", "/b/src"]);
     expect(() => checkAnchorCollisions(inputs, ["src", "src"])).toThrow(invalidError);
   });
 
   it("allows distinct prefixes and ignores root-level merges", () => {
-    const inputs = normalizeInputs(["/a", "/b", "/c"], "/");
+    const inputs = normalizeInputs(["/a", "/b", "/c"]);
     expect(() => checkAnchorCollisions(inputs, ["a", "b", ""])).not.toThrow();
     expect(() => checkAnchorCollisions(inputs, ["", "", ""])).not.toThrow();
   });

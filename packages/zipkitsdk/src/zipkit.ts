@@ -57,6 +57,7 @@ import {
   validatePolicy,
   validateDebug,
   validateLogDir,
+  requireAbsolute,
   validateSkipPaths,
   validateSpec,
 } from "./validate.js";
@@ -237,6 +238,7 @@ export class ZipKit {
     archive: string,
     options: ZipKitCallOptions = {},
   ): Promise<SourceComparison> {
+    requireAbsolute(archive, "archive");
     const result = await this.#run(options, async (logger) => {
       try {
         const validated = validateSpec(spec);
@@ -274,8 +276,8 @@ export class ZipKit {
    * stored only in the DOS field, which carries no zone, is read in
    * `timeZone` (the host's by default). Bounded like every look at a user volume.
    */
-  list(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { timeZone?: string } = {}): Promise<ArchiveListing> {
-    return listArchive(this.volume(options.signal), archive, options.timeZone);
+  async list(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { timeZone?: string } = {}): Promise<ArchiveListing> {
+    return listArchive(this.volume(options.signal), requireAbsolute(archive, "archive"), options.timeZone);
   }
 
   /**
@@ -286,8 +288,8 @@ export class ZipKit {
    * to check a very large archive against its manifest use `extract` with
    * `checkMetadata`, which streams it.
    */
-  readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { name?: string } = {}): Promise<Metadata> {
-    return readArchiveManifest(this.volume(options.signal), archive, options.name);
+  async readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { name?: string } = {}): Promise<Metadata> {
+    return readArchiveManifest(this.volume(options.signal), requireAbsolute(archive, "archive"), options.name);
   }
 
   /**
@@ -300,6 +302,8 @@ export class ZipKit {
    * cannot finish refuses, naming its step, rather than throwing.
    */
   async checkRemoval(spec: ArchiveSpec, archive: string, options: RemovalOptions = {}): Promise<RemovalCheck> {
+    requireAbsolute(archive, "archive");
+    for (const removed of options.removed ?? []) requireAbsolute(removed, "each removed input");
     const { removed = [], fingerprint, ...call } = options;
     // The archive is the output, so the fresh scan never counts the archive
     // itself when it sits beside the inputs.
@@ -329,20 +333,20 @@ export class ZipKit {
    * fingerprints with `sameFile` to tell a file rewritten in place from another
    * file put in its place. Bounded like every look at a user volume.
    */
-  pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
-    return pathState(target, this.volume(options.signal));
+  async pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
+    return pathState(requireAbsolute(target, "path"), this.volume(options.signal));
   }
 
   /** Each path as a path claim compares it (see `createPathClaims`), resolved
    *  through links and folder aliases; a path that is a link to a file also
    *  yields the file it points to. Bounded like every look at a user volume. */
-  pathResources(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathResource[]> {
-    return pathResources(paths, this.volume(options.signal));
+  async pathResources(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathResource[]> {
+    return pathResources(paths.map((p) => requireAbsolute(p, "each path")), this.volume(options.signal));
   }
 
   /** What each path is on disk now, in order (see `PathKind`). */
-  classify(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
-    return classifyPaths(paths, this.volume(options.signal));
+  async classify(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
+    return classifyPaths(paths.map((p) => requireAbsolute(p, "each path")), this.volume(options.signal));
   }
 
   /** The instance's session log, opened lazily on first use so an instance that

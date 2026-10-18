@@ -371,8 +371,7 @@ export async function scan(
   policy: ArchivePolicy,
   deps: ScanDeps,
 ): Promise<ScanResult> {
-  const cwd = process.cwd();
-  const inputs = normalizeInputs(spec.inputs, cwd);
+  const inputs = normalizeInputs(spec.inputs);
   const signal = deps.signal;
   throwIfAborted(signal);
 
@@ -423,7 +422,7 @@ export async function scan(
   const anchors = inputs.map((input, i) => computeAnchor(input, isDir[i] ?? false, inputs.length));
   checkAnchorCollisions(inputs, anchors);
 
-  const output = resolveOutputPath(spec, inputs, isDir, cwd);
+  const output = resolveOutputPath(spec, inputs, isDir);
   // The identities of this run's own output files, used to exclude them from the
   // walk by file identity rather than by name (see `ScanContext.artifactIds`).
   const artifactIds = new Set<string>();
@@ -475,7 +474,7 @@ export async function scan(
   const skipRoots: string[] = [];
   for (const skip of deps.skipPaths) {
     try {
-      skipRoots.push(await deps.volume.realpath(path.resolve(cwd, skip)));
+      skipRoots.push(await deps.volume.realpath(path.normalize(skip)));
     } catch (err) {
       rethrowClassified(err);
     }

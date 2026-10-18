@@ -5,18 +5,19 @@
 
 import { describe, expect, it } from "vitest";
 
-import { validatePolicy, validateSpec } from "../src/validate.js";
+import { validateExtractSpec, validatePolicy, validateSpec } from "../src/validate.js";
+import { ZipKit } from "../src/index.js";
 import { invalidError } from "./helpers/errors.js";
 
 describe("validateSpec", () => {
   it("accepts a minimal spec", () => {
-    const spec = validateSpec({ inputs: ["a"] });
-    expect(spec.inputs).toEqual(["a"]);
+    const spec = validateSpec({ inputs: ["/a"] });
+    expect(spec.inputs).toEqual(["/a"]);
   });
 
   it("applies filter-rule defaults", () => {
     const spec = validateSpec({
-      inputs: ["a"],
+      inputs: ["/a"],
       policy: { filters: [{ pattern: "*.tmp" }] as never },
     });
     expect(spec.policy?.filters?.[0]).toEqual({
@@ -28,7 +29,7 @@ describe("validateSpec", () => {
 
   it("rejects a filter rule with an unknown 'action' key (include is gone)", () => {
     expect(() =>
-      validateSpec({ inputs: ["a"], policy: { filters: [{ action: "include", pattern: "x" }] } as never }),
+      validateSpec({ inputs: ["/a"], policy: { filters: [{ action: "include", pattern: "x" }] } as never }),
     ).toThrow(invalidError);
   });
 
@@ -38,21 +39,21 @@ describe("validateSpec", () => {
 
   it("rejects an exact-empty input without trimming legal path names", () => {
     expect(() => validateSpec({ inputs: [""] })).toThrow(invalidError);
-    expect(validateSpec({ inputs: [" "] }).inputs).toEqual([" "]);
+    expect(validateSpec({ inputs: ["/ "] }).inputs).toEqual(["/ "]);
   });
 
   it("rejects an unknown top-level key", () => {
-    expect(() => validateSpec({ inputs: ["a"], bogus: 1 } as never)).toThrow(invalidError);
+    expect(() => validateSpec({ inputs: ["/a"], bogus: 1 } as never)).toThrow(invalidError);
   });
 
   it("rejects an invalid policy enum value", () => {
-    expect(() => validateSpec({ inputs: ["a"], policy: { junk: "weird" } as never })).toThrow(invalidError);
+    expect(() => validateSpec({ inputs: ["/a"], policy: { junk: "weird" } as never })).toThrow(invalidError);
   });
 
   it("rejects an invalid regex filter pattern with an invalid error", () => {
     expect(() =>
       validateSpec({
-        inputs: ["a"],
+        inputs: ["/a"],
         policy: { filters: [{ pattern: "[", match: "regex" }] as never },
       }),
     ).toThrow(invalidError);
@@ -61,7 +62,7 @@ describe("validateSpec", () => {
   it("accepts a valid regex filter pattern", () => {
     expect(() =>
       validateSpec({
-        inputs: ["a"],
+        inputs: ["/a"],
         policy: { filters: [{ pattern: "\\.log$", match: "regex" }] as never },
       }),
     ).not.toThrow();
@@ -131,7 +132,7 @@ describe("new configuration surface", () => {
   });
 
   it("rejects a spec root and object-form inputs", () => {
-    expect(() => validateSpec({ inputs: ["a"], root: "base" } as never)).toThrow(invalidError);
+    expect(() => validateSpec({ inputs: ["/a"], root: "base" } as never)).toThrow(invalidError);
     expect(() => validateSpec({ inputs: [{ path: "a" }] } as never)).toThrow(invalidError);
   });
 
@@ -143,7 +144,28 @@ describe("new configuration surface", () => {
   });
 
   it("accepts an archive comment and rejects one over 65535 bytes", () => {
-    expect(() => validateSpec({ inputs: ["a"], comment: "release build" })).not.toThrow();
-    expect(() => validateSpec({ inputs: ["a"], comment: "x".repeat(65536) })).toThrow(invalidError);
+    expect(() => validateSpec({ inputs: ["/a"], comment: "release build" })).not.toThrow();
+    expect(() => validateSpec({ inputs: ["/a"], comment: "x".repeat(65536) })).toThrow(invalidError);
+  });
+});
+
+describe("locations", () => {
+  it("are absolute everywhere: the SDK resolves nothing against a working directory", async () => {
+    expect(() => validateSpec({ inputs: ["relative"] })).toThrow(invalidError);
+    expect(() => validateSpec({ inputs: ["/a"], output: "out.zip" })).toThrow(invalidError);
+    expect(() => validateSpec({ inputs: ["/a"], outputDir: "out" })).toThrow(invalidError);
+    expect(() => validateExtractSpec({ archive: "a.zip", dryRun: true })).toThrow(invalidError);
+    expect(() => validateExtractSpec({ archive: "/a.zip", dest: "out" })).toThrow(invalidError);
+    expect(() => new ZipKit({ logDir: "logs" })).toThrow(invalidError);
+    expect(() => new ZipKit({ skipPaths: ["data"] })).toThrow(invalidError);
+    const zip = new ZipKit();
+    const relative = { code: "path.not-absolute", kind: "invalid", subject: "a.zip" };
+    await expect(zip.list("a.zip")).rejects.toMatchObject(relative);
+    await expect(zip.readManifest("a.zip")).rejects.toMatchObject(relative);
+    await expect(zip.pathState("a.zip")).rejects.toMatchObject(relative);
+    await expect(zip.classify(["a.zip"])).rejects.toMatchObject(relative);
+    await expect(zip.pathResources(["a.zip"])).rejects.toMatchObject(relative);
+    await expect(zip.compareSources({ inputs: ["/a"] }, "a.zip")).rejects.toMatchObject(relative);
+    await expect(zip.checkRemoval({ inputs: ["/a"] }, "a.zip")).rejects.toMatchObject(relative);
   });
 });
