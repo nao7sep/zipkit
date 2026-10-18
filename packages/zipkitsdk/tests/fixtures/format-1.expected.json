@@ -1,0 +1,232 @@
+{
+  "formatVersion": 1,
+  "policy": {
+    "junk": "builtin",
+    "filters": [],
+    "emptyFiles": "keep",
+    "emptyDirs": "keep",
+    "names": {
+      "nfc": "fix",
+      "invalidChars": "fix",
+      "invalidCharReplacement": "_",
+      "invalidCharStyle": "tidy",
+      "controlChars": "fix",
+      "trailingDotSpace": "fix",
+      "reserved": "fix",
+      "suspicious": "warn"
+    },
+    "symlinks": "ignore",
+    "followExternal": false,
+    "compression": {
+      "stored": "builtin",
+      "store": [],
+      "level": 6
+    },
+    "metadata": {
+      "name": "zipkit.json",
+      "hash": true
+    },
+    "timezone": "UTC"
+  },
+  "summary": {
+    "total": 11,
+    "included": 10,
+    "excluded": 1,
+    "renamed": 2,
+    "warnings": 0,
+    "errors": 0,
+    "zip64": false,
+    "sourceBytes": 320
+  },
+  "entries": [
+    {
+      "archivePath": "README.md",
+      "originalPath": "README.md",
+      "sourcePath": "sample/README.md",
+      "type": "file",
+      "method": "deflate",
+      "size": 9,
+      "compressedSize": 11,
+      "crc32": 3331960979,
+      "sha256": "504c93c0602db99e83b1f46edb699375a33b3018c0a4f8b7c707a3a470539b31",
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    },
+    {
+      "archivePath": "café.txt",
+      "originalPath": "café.txt",
+      "sourcePath": "sample/café.txt",
+      "type": "file",
+      "method": "deflate",
+      "size": 18,
+      "compressedSize": 20,
+      "crc32": 1482438613,
+      "sha256": "930748c9aeebed211ad2e6aea26eb63eaf36811f600231ad5e6af497abdd6ffe",
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": [
+        {
+          "rule": "name.nfd",
+          "before": "café.txt",
+          "after": "café.txt"
+        }
+      ]
+    },
+    {
+      "archivePath": "docs",
+      "originalPath": "docs",
+      "sourcePath": "sample/docs",
+      "type": "dir",
+      "method": "store",
+      "compressedSize": 0,
+      "crc32": 0,
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    },
+    {
+      "archivePath": "docs/notes_v1.txt",
+      "originalPath": "docs/notes:v1.txt",
+      "sourcePath": "sample/docs/notes:v1.txt",
+      "type": "file",
+      "method": "deflate",
+      "size": 27,
+      "compressedSize": 29,
+      "crc32": 1800644352,
+      "sha256": "1046d0f76a36ca241883234b8dc561cf91134465040e2b3ad8a99f6bc727325e",
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": [
+        {
+          "rule": "name.invalid-char",
+          "before": "notes:v1.txt",
+          "after": "notes_v1.txt"
+        }
+      ]
+    },
+    {
+      "archivePath": "empty.txt",
+      "originalPath": "empty.txt",
+      "sourcePath": "sample/empty.txt",
+      "type": "file",
+      "method": "deflate",
+      "size": 0,
+      "compressedSize": 2,
+      "crc32": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    },
+    {
+      "archivePath": "photos",
+      "originalPath": "photos",
+      "sourcePath": "sample/photos",
+      "type": "dir",
+      "method": "store",
+      "compressedSize": 0,
+      "crc32": 0,
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    },
+    {
+      "archivePath": "photos/photo.jpg",
+      "originalPath": "photos/photo.jpg",
+      "sourcePath": "sample/photos/photo.jpg",
+      "type": "file",
+      "method": "store",
+      "size": 10,
+      "compressedSize": 10,
+      "crc32": 1089662023,
+      "sha256": "c8271e7a7c627a582c7743c59388e95ade120b2b83b707e8d2a8b443e7147e3e",
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    },
+    {
+      "archivePath": "sub",
+      "originalPath": "sub",
+      "sourcePath": "sample/sub",
+      "type": "dir",
+      "method": "store",
+      "compressedSize": 0,
+      "crc32": 0,
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    },
+    {
+      "archivePath": "sub/deep",
+      "originalPath": "sub/deep",
+      "sourcePath": "sample/sub/deep",
+      "type": "dir",
+      "method": "store",
+      "compressedSize": 0,
+      "crc32": 0,
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    },
+    {
+      "archivePath": "sub/deep/data.bin",
+      "originalPath": "sub/deep/data.bin",
+      "sourcePath": "sample/sub/deep/data.bin",
+      "type": "file",
+      "method": "deflate",
+      "size": 256,
+      "compressedSize": 261,
+      "crc32": 688229491,
+      "sha256": "40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880",
+      "mtime": {
+        "ns": "1767323045000000000",
+        "iso": "2026-01-02T03:04:05.000Z"
+      },
+      "transformations": []
+    }
+  ],
+  "excluded": [
+    {
+      "archivePath": ".DS_Store",
+      "originalPath": ".DS_Store",
+      "type": "file",
+      "reason": "junk: .DS_Store"
+    }
+  ],
+  "findings": [
+    {
+      "rule": "macos.junk",
+      "severity": "info",
+      "path": ".DS_Store"
+    },
+    {
+      "rule": "name.nfd",
+      "severity": "info",
+      "path": "café.txt"
+    },
+    {
+      "rule": "name.invalid-char",
+      "severity": "info",
+      "path": "docs/notes:v1.txt"
+    }
+  ]
+}
