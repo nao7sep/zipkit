@@ -16,6 +16,7 @@ function entry(archivePath: string, type: ReadEntry["type"] = "file"): ReadEntry
     dosDate: 0,
     dosTime: 0,
     extra: Buffer.alloc(0),
+    nameBytes: Buffer.alloc(0),
   };
 }
 

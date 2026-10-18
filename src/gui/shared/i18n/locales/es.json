@@ -452,6 +452,7 @@
   "findingKind.crcFail": "Discrepancias de CRC-32",
   "findingKind.shaMismatch": "Discrepancias de SHA-256",
   "findingKind.manifestMismatch": "Discrepancias con el manifiesto",
+  "findingKind.localMismatch": "Entradas con encabezados discordantes",
   "findingKind.unsafePath": "Rutas fuera del destino",
   "findingKind.missing": "Entradas que faltan en el archivo comprimido",
   "findingKind.extra": "Entradas que no están en el manifiesto",

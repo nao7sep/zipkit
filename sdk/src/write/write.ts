@@ -15,7 +15,7 @@
 
 import { createHash, type Hash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
-import { isStall, throwIfAborted, toAbortError, ZipKitError } from "../errors.ts";
+import { isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
 import { readInternals } from "../internal/carrier.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { Unlogged, WriteEntry } from "../internal/types.ts";
@@ -134,7 +134,7 @@ async function streamFile(
       // compressor is already classified; only a raw source error is wrapped.
       if (err instanceof ZipKitError) throw err;
       throw new ZipKitError("write.read-failed", `cannot read source for ${source.archivePath}`, {
-        cause: err,
+        cause: err, subject: source.archivePath,
       });
     }
     return compressor.finish();
@@ -362,12 +362,15 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       metadata,
     };
   } catch (err) {
-    await writer.abort();
+    // A temporary file that could not be removed is left behind, so the
+    // failure's effect is not nothing.
+    const cleaned = await writer.abort();
+    const left = (e: unknown): unknown => (cleaned ? e : withUnknownEffect(e));
     // A publication stall or flush failure keeps its truthful output status,
     // even when cancellation arrived during that publication.
-    if (isStall(err) || (err instanceof ZipKitError && err.code === "write.durability")) throw err;
-    if (signal?.aborted) throw toAbortError(signal.reason);
-    if (err instanceof ZipKitError && err.code.startsWith("write.")) throw err;
-    throw new ZipKitError("write.failed", `failed to write ${plan.output}`, { cause: err });
+    if (isStall(err) || (err instanceof ZipKitError && err.code === "write.durability")) throw left(err);
+    if (signal?.aborted) throw left(toAbortError(signal.reason));
+    if (err instanceof ZipKitError && err.code.startsWith("write.")) throw left(err);
+    throw left(new ZipKitError("write.failed", `failed to write ${plan.output}`, { cause: err, subject: plan.output }));
   }
 }

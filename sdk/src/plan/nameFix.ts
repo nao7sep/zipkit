@@ -159,7 +159,9 @@ function hasSuspicious(segment: string): boolean {
 
 function isReservedStem(segment: string): boolean {
   const dot = segment.indexOf(".");
-  const stem = dot === -1 ? segment : segment.slice(0, dot);
+  // Windows drops spaces at the end of the stem when it parses a device
+  // name, so `CON .txt` names the device as `CON.txt` does.
+  const stem = (dot === -1 ? segment : segment.slice(0, dot)).replace(/ +$/, "");
   return RESERVED.has(stem.toUpperCase());
 }
 

@@ -6,6 +6,7 @@
  */
 
 import { resolveSegments, toForwardSlash } from "../internal/path.ts";
+import { caseFold } from "../internal/caseFold.ts";
 import { extractionSegments } from "./windowsNames.ts";
 import type { ReadEntry } from "./zipReader.ts";
 
@@ -39,7 +40,7 @@ export function findTargetCollision(entries: readonly ReadEntry[], platform: Nod
     if (resolved.escaped || resolved.segments.length === 0) continue;
     records.push({
       entry,
-      segments: extractionSegments(resolved.segments, platform).map((segment) => segment.normalize("NFC").toLowerCase()),
+      segments: extractionSegments(resolved.segments, platform).map(caseFold),
     });
   }
   records.sort(compareSegments);

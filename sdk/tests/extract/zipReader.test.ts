@@ -182,6 +182,7 @@ describe("readEntryData rejects unreadable entries", () => {
       dosDate: 0,
       dosTime: 0,
       extra: Buffer.alloc(0),
+      nameBytes: Buffer.alloc(0),
     };
     try {
       await expect(readEntryData(fh, entry, async () => {}, 65536)).rejects.toMatchObject({ code: "read.size-mismatch" });

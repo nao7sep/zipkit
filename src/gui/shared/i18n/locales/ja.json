@@ -452,6 +452,7 @@
   "findingKind.crcFail": "CRC-32 の不一致",
   "findingKind.shaMismatch": "SHA-256 の不一致",
   "findingKind.manifestMismatch": "マニフェストとの不一致",
+  "findingKind.localMismatch": "ヘッダーが食い違う項目",
   "findingKind.unsafePath": "展開先の外を指すパス",
   "findingKind.missing": "アーカイブにないエントリ",
   "findingKind.extra": "マニフェストにないエントリ",

@@ -74,7 +74,7 @@ describe("outputInsideInputs", () => {
 
 describe("checkRemoval", () => {
   const same = { matches: true, added: [], missing: [], changed: [], unlisted: [] };
-  const report = { summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0 }, missing: [], extra: [], findings: [] };
+  const report = { summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 }, missing: [], extra: [], findings: [] };
   const steps = (over: Partial<RemovalSteps> = {}, ran: string[] = []): RemovalSteps => ({
     state: async () => (ran.push("state"), { kind: "present", fingerprint: "f1" }),
     inside: async () => (ran.push("inside"), false),

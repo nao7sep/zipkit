@@ -452,6 +452,7 @@
   "findingKind.crcFail": "CRC-32 mismatches",
   "findingKind.shaMismatch": "SHA-256 mismatches",
   "findingKind.manifestMismatch": "Mismatches with the manifest",
+  "findingKind.localMismatch": "Entries whose two headers disagree",
   "findingKind.unsafePath": "Paths outside the destination",
   "findingKind.missing": "Entries missing from the archive",
   "findingKind.extra": "Entries not in the manifest",

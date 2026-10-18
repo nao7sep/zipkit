@@ -385,3 +385,19 @@ describe("outputDir and outputName", () => {
     await expect(new ZipKit().plan({ inputs: [proj], output: path.join(out, "x.zip"), outputDir: out })).rejects.toThrow(invalidError);
   });
 });
+
+describe("entry order", () => {
+  it("is the same on every run, in path order with each folder before what it holds", async () => {
+    const proj = path.join(dir, "ordered");
+    for (let i = 0; i < 40; i++) {
+      const folder = path.join(proj, `d${i % 5}`, `e${i % 3}`);
+      await mkdir(folder, { recursive: true });
+      await writeFile(path.join(folder, `f${i}.txt`), String(i));
+    }
+    const order = async () => (await new ZipKit().plan({ inputs: [proj], output: path.join(dir, "o.zip") })).entries.map((e) => e.archivePath);
+    const first = await order();
+    for (let run = 0; run < 3; run++) expect(await order()).toEqual(first);
+    expect(first.indexOf("d0")).toBeLessThan(first.indexOf("d0/e0"));
+    expect(first.indexOf("d0/e0")).toBeLessThan(first.indexOf("d0/e0/f0.txt"));
+  });
+});

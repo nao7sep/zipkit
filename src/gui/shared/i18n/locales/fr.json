@@ -452,6 +452,7 @@
   "findingKind.crcFail": "Écarts de CRC-32",
   "findingKind.shaMismatch": "Écarts de SHA-256",
   "findingKind.manifestMismatch": "Écarts avec le manifeste",
+  "findingKind.localMismatch": "Entrées aux en-têtes contradictoires",
   "findingKind.unsafePath": "Chemins hors de la destination",
   "findingKind.missing": "Entrées absentes de l’archive",
   "findingKind.extra": "Entrées absentes du manifeste",

@@ -452,6 +452,7 @@
   "findingKind.crcFail": "CRC-32 불일치",
   "findingKind.shaMismatch": "SHA-256 불일치",
   "findingKind.manifestMismatch": "매니페스트 불일치",
+  "findingKind.localMismatch": "헤더가 서로 다른 항목",
   "findingKind.unsafePath": "대상 밖을 가리키는 경로",
   "findingKind.missing": "아카이브에 없는 항목",
   "findingKind.extra": "매니페스트에 없는 항목",

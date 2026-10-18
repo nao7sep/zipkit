@@ -452,6 +452,7 @@
   "findingKind.crcFail": "CRC-32-Abweichungen",
   "findingKind.shaMismatch": "SHA-256-Abweichungen",
   "findingKind.manifestMismatch": "Abweichungen vom Manifest",
+  "findingKind.localMismatch": "Einträge mit widersprüchlichen Kopfdaten",
   "findingKind.unsafePath": "Pfade außerhalb des Ziels",
   "findingKind.missing": "Im Archiv fehlende Einträge",
   "findingKind.extra": "Nicht im Manifest aufgeführte Einträge",

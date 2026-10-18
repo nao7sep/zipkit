@@ -1,6 +1,6 @@
 /**
- * Collision detection (pass 7). Post-fix names are folded case-insensitively
- * and grouped: distinct sources that fold together collide, exactly as they
+ * Collision detection (pass 7). Post-fix names are folded as a
+ * case-insensitive file system folds them (see `caseFold`) and grouped: distinct sources that fold together collide, exactly as they
  * would on macOS/Windows. Two names differing only by case are reported as
  * `collision.case`; an exact post-fix match (often substitution-induced) is
  * `collision.post-fix`. Both are always errors: ZipKit does not auto-rename,
@@ -9,6 +9,7 @@
  */
 
 import { finding } from "../registry.ts";
+import { caseFold } from "../internal/caseFold.ts";
 import type { WorkItem } from "./workItem.ts";
 
 /**
@@ -19,7 +20,7 @@ import type { WorkItem } from "./workItem.ts";
  *   the dry run predict it.
  */
 export function applyCollision(items: WorkItem[], reserved: readonly string[] = []): void {
-  const fold = (path: string): string => path.toLowerCase();
+  const fold = caseFold;
 
   const groups = new Map<string, WorkItem[]>();
   for (const item of items) {

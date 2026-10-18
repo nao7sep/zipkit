@@ -8,8 +8,8 @@
  * excluded and why, every finding, and the output path. Those are compared;
  * sizes and times are not, so editing a file's content does not stop a Save
  * (before Trash, the recheck against the manifest covers content). Entry and
- * finding order is not compared either: the scan reports entries in the order
- * its concurrent stats finish.
+ * finding order is not compared either: what the user reviewed is which
+ * entries and findings there are, not their sequence.
  */
 
 import type { PlanData } from "../shared/api.js";

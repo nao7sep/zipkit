@@ -452,6 +452,7 @@
   "findingKind.crcFail": "Divergências de CRC-32",
   "findingKind.shaMismatch": "Divergências de SHA-256",
   "findingKind.manifestMismatch": "Divergências com o manifesto",
+  "findingKind.localMismatch": "Entradas com cabeçalhos divergentes",
   "findingKind.unsafePath": "Caminhos fora do destino",
   "findingKind.missing": "Entradas ausentes do arquivo compactado",
   "findingKind.extra": "Entradas fora do manifesto",

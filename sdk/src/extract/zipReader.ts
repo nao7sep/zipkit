@@ -84,6 +84,9 @@ export interface ReadEntry {
   dosTime: number;
   /** The central record's extra field, where the timestamp extras live. */
   extra: Buffer;
+  /** The name exactly as the central record stores it, for comparing with
+   *  the local header's. */
+  nameBytes: Buffer;
 }
 
 export interface ParsedZip {
@@ -232,6 +235,7 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
       dosDate,
       dosTime,
       extra,
+      nameBytes: cd.subarray(p + 46, p + 46 + nameLen),
     });
     p = recordEnd;
   }
@@ -283,6 +287,43 @@ async function entryDataOffset(file: VolumeFile, entry: ReadEntry): Promise<numb
   const nameLen = header.readUInt16LE(26);
   const extraLen = header.readUInt16LE(28);
   return safeAdd(entry.localOffset, 30 + nameLen + extraLen, `data offset for ${entry.archivePath}`);
+}
+
+const GP_UTF8 = 0x0800;
+const GP_DATA_DESCRIPTOR = 0x0008;
+
+/**
+ * How an entry's local header disagrees with its central record, or null when
+ * they agree. A reader that walks the local headers (macOS Archive Utility,
+ * many streaming extractors) trusts them rather than the central directory,
+ * so an archive whose two copies differ opens differently, or not at all,
+ * depending on the tool. Compared: the name's bytes, the UTF-8 flag, the
+ * method, and the CRC-32 and sizes unless the entry defers them to a data
+ * descriptor.
+ */
+export async function localHeaderMismatch(file: VolumeFile, entry: ReadEntry): Promise<string | null> {
+  const header = await readExact(file, entry.localOffset, 30);
+  if (header.readUInt32LE(0) !== LOCAL_SIG) return "no local header at the recorded offset";
+  const flags = header.readUInt16LE(6);
+  const nameLen = header.readUInt16LE(26);
+  const extraLen = header.readUInt16LE(28);
+  const rest = await readExact(file, entry.localOffset + 30, nameLen + extraLen);
+  if (!rest.subarray(0, nameLen).equals(entry.nameBytes)) return "name differs";
+  if ((flags & GP_UTF8) !== (entry.gpFlag & GP_UTF8)) return "UTF-8 flag differs";
+  if (header.readUInt16LE(8) !== entry.method) return "compression method differs";
+  if (flags & GP_DATA_DESCRIPTOR) return null;
+  if ((header.readUInt32LE(14) >>> 0) !== (entry.crc32 >>> 0)) return "CRC-32 differs";
+  let compSize = header.readUInt32LE(18);
+  let uncompSize = header.readUInt32LE(22);
+  if (compSize === U32 || uncompSize === U32) {
+    // The local Zip64 extra holds both sizes, uncompressed first.
+    const z = findExtra(rest.subarray(nameLen), 0x0001);
+    if (!z || z.length < 16) return "Zip64 sizes missing";
+    uncompSize = safeNumber(z.readBigUInt64LE(0), `local uncompressed size for ${entry.archivePath}`);
+    compSize = safeNumber(z.readBigUInt64LE(8), `local compressed size for ${entry.archivePath}`);
+  }
+  if (compSize !== entry.compSize || uncompSize !== entry.uncompSize) return "sizes differ";
+  return null;
 }
 
 /** A sink for an entry's decompressed output chunks, in stream order. */

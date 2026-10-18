@@ -69,6 +69,7 @@ const rows: Row[] = [
     expected: "con_.txt",
     rules: ["name.reserved"],
   },
+  { name: "suffixes a reserved stem followed by spaces, which Windows drops", input: "con .txt", expected: "con _.txt", rules: ["name.reserved"] },
   { name: "suffixes COM1", input: "COM1", expected: "COM1_", rules: ["name.reserved"] },
   { name: "suffixes COM0", input: "COM0", expected: "COM0_", rules: ["name.reserved"] },
   { name: "suffixes LPT0", input: "LPT0", expected: "LPT0_", rules: ["name.reserved"] },

@@ -60,6 +60,7 @@ function entryWith(extra: Buffer, dos = { dosDate: 0, dosTime: 0 }): ReadEntry {
     dosDate: dos.dosDate,
     dosTime: dos.dosTime,
     extra,
+    nameBytes: Buffer.from("f.txt"),
   };
 }
 

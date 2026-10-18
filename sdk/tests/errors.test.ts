@@ -5,7 +5,7 @@
  * behind.
  */
 
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -93,5 +93,24 @@ describe("effect in practice", () => {
     const some = path.join(root, "some");
     await expect(new Refusing(1, some).extract({ archive, dest: some })).rejects.toMatchObject({ code: "read.write-failed", effect: "unknown" });
     expect((await readdir(some)).length).toBeGreaterThan(0);
+  });
+});
+
+describe("verification of the two headers", () => {
+  it("fails an entry whose local header disagrees with its central record, as tools that walk local headers would read it", async () => {
+    const file = path.join(root, "a.txt");
+    await writeFile(file, "alpha");
+    const archive = path.join(root, "a.zip");
+    await new ZipKit().create({ inputs: [file], output: archive });
+    expect((await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
+    const bytes = await readFile(archive);
+    // The first entry's local header starts the file; its name follows the 30-byte header.
+    expect(bytes.readUInt32LE(0)).toBe(0x04034b50);
+    bytes[30] = "z".charCodeAt(0);
+    await writeFile(archive, bytes);
+    const result = await new ZipKit().extract({ archive, dryRun: true });
+    expect(result.reportOk).toBe(false);
+    expect(result.summary.localMismatched).toBe(1);
+    expect(result.findings).toEqual([expect.objectContaining({ rule: "extract.local-mismatch", path: "a.txt", severity: "error" })]);
   });
 });

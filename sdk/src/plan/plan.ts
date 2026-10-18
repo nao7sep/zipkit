@@ -38,7 +38,10 @@ import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.ts
 
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   const matcher = matcherFor(policy);
-  const items = buildWorkItems(scan);
+  // In path order, a folder before what it holds, rather than the order the
+  // scan's concurrent stats happened to finish: the same tree always plans,
+  // writes and records its entries in the same order.
+  const items = buildWorkItems(scan).sort((a, b) => comparePaths(a.archivePath, b.archivePath));
 
   applyPathFix(items);
   applyFilter(items, matcher);
@@ -111,4 +114,14 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
     comment: scan.comment,
   });
   return plan;
+}
+
+/** Paths compared segment by segment, by code unit, so `a` comes before
+ *  `a/b` and `a/b` before `a-b`. */
+function comparePaths(a: string, b: string): number {
+  const left = a.split("/"), right = b.split("/");
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    if (left[i] !== right[i]) return left[i]! < right[i]! ? -1 : 1;
+  }
+  return left.length - right.length;
 }

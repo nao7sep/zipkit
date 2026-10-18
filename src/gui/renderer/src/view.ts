@@ -541,6 +541,7 @@ const RULE_KINDS: Record<string, MessageKey> = {
   "extract.crc-fail": "findingKind.crcFail",
   "extract.sha-mismatch": "findingKind.shaMismatch",
   "extract.manifest-mismatch": "findingKind.manifestMismatch",
+  "extract.local-mismatch": "findingKind.localMismatch",
   "extract.unsafe-path": "findingKind.unsafePath",
   "extract.missing": "findingKind.missing",
   "extract.extra": "findingKind.extra",

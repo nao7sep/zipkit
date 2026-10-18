@@ -452,6 +452,7 @@
   "findingKind.crcFail": "Discrepanze CRC-32",
   "findingKind.shaMismatch": "Discrepanze SHA-256",
   "findingKind.manifestMismatch": "Discrepanze con il manifesto",
+  "findingKind.localMismatch": "Voci con intestazioni discordanti",
   "findingKind.unsafePath": "Percorsi fuori dalla destinazione",
   "findingKind.missing": "Voci mancanti dall’archivio",
   "findingKind.extra": "Voci non presenti nel manifesto",

@@ -207,23 +207,26 @@ export class ZipKit {
    * nothing and is a pure integrity test that works on any ZIP.
    */
   async extract(spec: ExtractSpec, options: ZipKitCallOptions = {}): Promise<ExtractData> {
-    return this.#run(options, async (logger) => {
-      try {
-        const validated = validateExtractSpec(spec);
-        const limit = pLimit(this.#concurrency);
-        return await extractArchive(validated, {
-          limit,
-          chunkSize: this.#chunkSize,
-          logger,
-          signal: options.signal,
-          volume: this.volume(options.signal),
-          onProgress: options.onProgress,
-        });
-      } catch (err) {
-        this.#reportError(logger, err, "extract");
-        throw err;
-      }
-    });
+    const volume = this.volume(options.signal);
+    try {
+      return await this.#run(options, async (logger) => {
+        try {
+          const validated = validateExtractSpec(spec);
+          const limit = pLimit(this.#concurrency);
+          return await extractArchive(validated, {
+            limit,
+            chunkSize: this.#chunkSize,
+            logger,
+            signal: options.signal,
+            volume,
+            onProgress: options.onProgress,
+          });
+        } catch (err) {
+          this.#reportError(logger, err, "extract");
+          throw err;
+        }
+      });
+    } finally { this.#notifySettlement(options, volume); }
   }
 
   /**

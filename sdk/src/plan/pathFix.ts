@@ -46,7 +46,9 @@ export function fixPath(input: string): PathFixResult {
     path: finalPath,
     strippedAbsolute,
     escaped,
-    tooLongComponent: segments.some((s) => s.length > MAX_COMPONENT),
+    // Linux file systems limit a name to 255 bytes of UTF-8, Windows and
+    // macOS to 255 characters; a name must fit both.
+    tooLongComponent: segments.some((s) => s.length > MAX_COMPONENT || Buffer.byteLength(s, "utf8") > MAX_COMPONENT),
     tooLongPath: finalPath.length > MAX_PATH,
   };
 }
@@ -85,7 +87,7 @@ export function applyPathFix(items: WorkItem[]): void {
           "path.too-long",
           result.path,
           result.tooLongComponent
-            ? "a path component exceeds 255 characters"
+            ? "a path component exceeds 255 characters or 255 bytes"
             : "the full path exceeds 260 characters",
         ),
       );

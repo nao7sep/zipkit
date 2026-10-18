@@ -1175,7 +1175,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             set(rec, { actionResult: { severity: "info", message: message("history.verified", { count: report.summary.total }) } });
           } else {
             const s = report.summary;
-            const problems = s.crcFailed + s.shaMismatched + s.manifestMismatched + report.missing.length + report.extra.length;
+            const problems = s.crcFailed + s.shaMismatched + s.manifestMismatched + s.localMismatched + report.missing.length + report.extra.length;
             set(rec, {
               archiveStatus: rec.job.archiveStatus === "verified" ? "changed" : rec.job.archiveStatus,
               actionResult: { severity: "error", message: message("history.verifyFailed", { count: Math.max(problems, 1) }) },

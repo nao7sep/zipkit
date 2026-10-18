@@ -452,6 +452,7 @@
   "findingKind.crcFail": "CRC-32 不匹配",
   "findingKind.shaMismatch": "SHA-256 不匹配",
   "findingKind.manifestMismatch": "与清单不一致",
+  "findingKind.localMismatch": "头部信息不一致的条目",
   "findingKind.unsafePath": "指向目标之外的路径",
   "findingKind.missing": "归档中缺失的条目",
   "findingKind.extra": "清单中没有的条目",

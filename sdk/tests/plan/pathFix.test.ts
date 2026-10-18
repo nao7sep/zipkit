@@ -58,4 +58,9 @@ describe("fixPath", () => {
     expect(r.tooLongPath).toBe(true);
     expect(r.tooLongComponent).toBe(false);
   });
+
+  it("flags a name over 255 bytes of UTF-8 even under 255 characters, which Linux file systems refuse", () => {
+    expect(fixPath(`a/${"あ".repeat(100)}.txt`).tooLongComponent).toBe(true);
+    expect(fixPath(`a/${"a".repeat(255)}`).tooLongComponent).toBe(false);
+  });
 });

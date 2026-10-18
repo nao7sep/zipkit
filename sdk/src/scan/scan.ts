@@ -253,7 +253,7 @@ async function processPath(
     st = await ctx.volume.lstat(abs);
   } catch (err) {
     rethrowClassified(err);
-    throw new ZipKitError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
+    throw new ZipKitError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err, subject: abs });
   }
   // This run's own output archive, reached under any casing: skip it so the
   // archive can never contain itself.
@@ -304,7 +304,7 @@ async function walkTree(
           } catch (err) {
             rethrowClassified(err);
             if (dir === absDir) {
-              throw new ZipKitError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err });
+              throw new ZipKitError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err, subject: absDir });
             }
             ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, dir))));
             return { dir, entries: [] };
@@ -388,6 +388,7 @@ export async function scan(
       rethrowClassified(err);
       throw new ZipKitError("scan.input-missing", `cannot stat input: ${input.path}`, {
         cause: err,
+        subject: input.path,
       });
     }
     if (link.isSymbolicLink()) {
@@ -398,6 +399,7 @@ export async function scan(
         rethrowClassified(err);
         throw new ZipKitError("scan.input-missing", `cannot resolve symlink input: ${input.path}`, {
           cause: err,
+          subject: input.path,
         });
       }
       let resolved: BigIntStats;
@@ -407,6 +409,7 @@ export async function scan(
         rethrowClassified(err);
         throw new ZipKitError("scan.input-missing", `cannot stat symlink target: ${input.path}`, {
           cause: err,
+          subject: input.path,
         });
       }
       isDir.push(resolved.isDirectory());
@@ -445,6 +448,7 @@ export async function scan(
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       throw new ZipKitError("scan.output-stat-failed", `cannot inspect output path: ${output}`, {
         cause: err,
+        subject: output,
       });
     }
     outputExists = false;
@@ -526,6 +530,7 @@ export async function scan(
         rethrowClassified(err);
         throw new ZipKitError("scan.input-missing", `cannot stat input file: ${real}`, {
           cause: err,
+          subject: real,
         });
       }
       // A file named directly as input that is itself the output archive.

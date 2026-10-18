@@ -27,6 +27,18 @@ describe("applyCollision", () => {
     expect(items[0]!.findings[0]!.message).toMatch(/differ only by case/);
   });
 
+  it("folds as a case-insensitive file system does: final sigma meets sigma, but ß stays apart from ss", () => {
+    const sigma = [workItem({ archivePath: "ας" }), workItem({ archivePath: "ασ" })];
+    applyCollision(sigma);
+    expect(rules(sigma[0]!)).toEqual(["collision.case"]);
+    const decomposed = [workItem({ archivePath: "Cafe\u0301.txt" }), workItem({ archivePath: "CAFÉ.txt" })];
+    applyCollision(decomposed);
+    expect(rules(decomposed[1]!)).toEqual(["collision.case"]);
+    const sharp = [workItem({ archivePath: "Straße" }), workItem({ archivePath: "Strasse" })];
+    applyCollision(sharp);
+    expect(rules(sharp[0]!)).toEqual([]);
+  });
+
   it("flags an exact post-fix path match as collision.post-fix", () => {
     const items = [
       workItem({ archivePath: "a.txt", absolutePath: "/src/one/a.txt" }),

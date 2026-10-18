@@ -5,6 +5,7 @@
  */
 
 import { ZipKitError } from "../errors.ts";
+import { isManifestRecord } from "./extract.ts";
 import { machineTimeZone } from "../internal/timeZone.ts";
 import type { Volume, VolumeFile } from "../internal/volume.ts";
 import { METADATA_DEFAULTS } from "../policy.ts";
@@ -19,7 +20,7 @@ async function withArchive<T>(volume: Volume, archivePath: string, use: (archive
     archive = await volume.open(archivePath, "r");
   } catch (err) {
     if (err instanceof ZipKitError) throw err;
-    throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+    throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err, subject: archivePath });
   }
   try {
     let fileSize: number;
@@ -27,7 +28,7 @@ async function withArchive<T>(volume: Volume, archivePath: string, use: (archive
       fileSize = Number((await archive.stat()).size);
     } catch (err) {
       if (err instanceof ZipKitError) throw err;
-      throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+      throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err, subject: archivePath });
     }
     return await use(archive, await parseZip(archive, fileSize));
   } finally {
@@ -58,7 +59,8 @@ export async function listArchive(volume: Volume, archivePath: string, timeZone 
 }
 
 /** The manifest embedded as `name`, whole. Absent is `read.manifest-missing`,
- *  not JSON or without a valid `formatVersion` or `entries` list is
+ *  not JSON, without a valid `formatVersion` or `entries` list, or holding a
+ *  malformed or repeated entry record is
  *  `read.manifest-invalid`, and one a newer ZipKit wrote is
  *  `read.manifest-newer`. */
 export async function readArchiveManifest(volume: Volume, archivePath: string, name = METADATA_DEFAULTS.name): Promise<Metadata> {
@@ -87,6 +89,14 @@ export async function readArchiveManifest(volume: Volume, archivePath: string, n
       );
     }
     if (!Array.isArray(entries)) throw new ZipKitError("read.manifest-invalid", `manifest ${name} has no entries list`);
+    // The same records verification accepts, so a manifest that reads here
+    // also verifies there.
+    const paths = new Set<string>();
+    for (const record of entries) {
+      if (!isManifestRecord(record)) throw new ZipKitError("read.manifest-invalid", `manifest ${name} holds a malformed entry record`);
+      if (paths.has(record.archivePath)) throw new ZipKitError("read.manifest-invalid", `manifest ${name} records '${record.archivePath}' twice`);
+      paths.add(record.archivePath);
+    }
     return document as Metadata;
   });
 }

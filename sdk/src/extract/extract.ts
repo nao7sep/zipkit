@@ -42,7 +42,7 @@ import { restoreTimes } from "./restore.ts";
 import { findTargetCollision } from "./targetCollision.ts";
 import { createLinkTargetGuard, type LinkTargetGuard } from "./linkTargets.ts";
 import { extractionSegments } from "./windowsNames.ts";
-import { parseZip, readEntryData, type ReadEntry } from "./zipReader.ts";
+import { localHeaderMismatch, parseZip, readEntryData, type ReadEntry } from "./zipReader.ts";
 
 const MAX_SYMLINK_TARGET_BYTES = 64 * 1024;
 
@@ -159,7 +159,7 @@ export interface ManifestRecord {
 }
 
 /** Whether an untrusted `entries` item holds every field a {@link ManifestRecord} requires. */
-function isManifestRecord(value: unknown): value is ManifestRecord {
+export function isManifestRecord(value: unknown): value is ManifestRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const r = value as Record<string, unknown>;
   const mtime = r.mtime as Record<string, unknown> | null | undefined;
@@ -249,7 +249,7 @@ export async function readManifest(volume: Volume, archivePath: string, name: st
     archive = await volume.open(archivePath, "r");
   } catch (err) {
     if (err instanceof ZipKitError) throw err;
-    throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+    throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err, subject: archivePath });
   }
   try {
     let fileSize: number;
@@ -257,7 +257,7 @@ export async function readManifest(volume: Volume, archivePath: string, name: st
       fileSize = Number((await archive.stat()).size);
     } catch (err) {
       if (err instanceof ZipKitError) throw err;
-      throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+      throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err, subject: archivePath });
     }
     const parsed = await parseZip(archive, fileSize);
     return (await loadManifest(archive, parsed.entries, name)).records;
@@ -508,6 +508,7 @@ export async function extractArchive(
     if (err instanceof ZipKitError) throw err;
     throw new ZipKitError("read.open-failed", `cannot read archive ${spec.archive}`, {
       cause: err,
+      subject: spec.archive,
     });
   }
 
@@ -521,6 +522,7 @@ export async function extractArchive(
       if (err instanceof ZipKitError) throw err;
       throw new ZipKitError("read.open-failed", `cannot read archive ${spec.archive}`, {
         cause: err,
+        subject: spec.archive,
       });
     }
     const parsed = await parseZip(archive, fileSize);
@@ -567,6 +569,8 @@ export async function extractArchive(
     const abort: { entry: ReadEntry | null } = { entry: null };
     // Entries whose size or CRC-32 differs from their manifest record.
     const manifestMismatches = new Set<string>();
+    // Entries whose local header disagrees with their central record.
+    const localMismatches = new Map<string, string>();
     // Folder entries written, whose times are restored once every entry is in
     // place: writing a file into a folder moves the folder's modified time.
     const writtenDirs: { entry: ReadEntry; target: string }[] = [];
@@ -622,7 +626,7 @@ export async function extractArchive(
     function writeFailure(entry: ReadEntry, err: unknown): unknown {
       if (isStall(err)) return err;
       if (signal?.aborted) return toAbortError(signal.reason);
-      return new ZipKitError("read.write-failed", `cannot write ${entry.archivePath}`, { cause: err });
+      return new ZipKitError("read.write-failed", `cannot write ${entry.archivePath}`, { cause: err, subject: entry.archivePath });
     }
 
     async function processEntry(entry: ReadEntry, deferLink: boolean): Promise<ExtractEntryResult | null> {
@@ -634,6 +638,8 @@ export async function extractArchive(
       // replaced entry passes it; comparing the central directory's size and
       // CRC-32 and entry type with the manifest catches it even without a recorded SHA-256.
       if (record && recordMismatches(record, entry)) manifestMismatches.add(entry.archivePath);
+      const local = await localHeaderMismatch(archive, entry);
+      if (local !== null) localMismatches.set(entry.archivePath, local);
 
       // Decide up front whether this entry's bytes are written, so we only stage
       // a temp file when it will actually be committed. Everything else still
@@ -795,6 +801,7 @@ export async function extractArchive(
     let crcFailed = 0;
     let shaMismatched = 0;
     let manifestMismatched = 0;
+    let localMismatched = 0;
     let unsafe = 0;
     let written = 0;
     let skipped = 0;
@@ -826,6 +833,15 @@ export async function extractArchive(
             "type, size or CRC-32 in the archive does not match the manifest",
             { severity: "error" },
           ),
+        );
+      }
+      const local = localMismatches.get(r.archivePath);
+      if (local !== undefined) {
+        localMismatched++;
+        findings.push(
+          finding("extract.local-mismatch", r.archivePath, `local header disagrees with the central directory: ${local}`, {
+            severity: "error",
+          }),
         );
       }
       if (r.skipped === "unsafe") {
@@ -866,6 +882,7 @@ export async function extractArchive(
 
     const reportOk =
       crcFailed === 0 &&
+      localMismatched === 0 &&
       unsafe === 0 &&
       (!spec.checkMetadata ||
         (missing.length === 0 &&
@@ -888,6 +905,7 @@ export async function extractArchive(
       crcFailed,
       shaMismatched,
       manifestMismatched,
+      localMismatched,
       written,
       skipped,
       reportOk,
@@ -901,7 +919,7 @@ export async function extractArchive(
       wrote: written > 0,
       reportOk,
       manifest,
-      summary: { total: entries.length, written, skipped, crcFailed, shaMismatched, manifestMismatched },
+      summary: { total: entries.length, written, skipped, crcFailed, shaMismatched, manifestMismatched, localMismatched },
       entries,
       missing,
       extra,

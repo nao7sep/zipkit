@@ -286,11 +286,14 @@ export class Volume {
 
   /** Remove a temp file this run created, best-effort: bounded, never stopped
    *  by the cancel, and silent on failure. */
-  async discard(path: string): Promise<void> {
+  /** Remove a temporary file; whether it is gone afterwards. One that cannot
+   *  be removed stays visible under its `.tmp` name. */
+  async discard(path: string): Promise<boolean> {
     try {
       await this.#run("cleanup", "remove", path, () => this.#port.rm(path));
-    } catch {
-      /* a temp that cannot be removed stays visible under its `.tmp` name */
+      return true;
+    } catch (err) {
+      return (err as { code?: unknown }).code === "ENOENT";
     }
   }
 

@@ -591,11 +591,12 @@ export class ZipWriter {
 
   /** Close and remove the temp file after a failed write: best-effort and
    *  bounded, and still attempted after a cancel or a stall. */
-  async abort(): Promise<void> {
+  /** Abandon the write; whether its temporary file is gone. */
+  async abort(): Promise<boolean> {
     const file = this.#file;
     this.#file = null;
     if (file !== null) await file.release();
-    await this.#volume.discard(this.#tempPath);
+    return this.#volume.discard(this.#tempPath);
   }
 }
 
