@@ -121,8 +121,8 @@ export interface MetadataContent {
 }
 
 /** The resolved policy's variable-length strings, serialized in the manifest's
- *  `policy` block — bounded here so a run with many or long `--exclude` patterns
- *  or `--store` extensions cannot make the real manifest exceed the estimate. */
+ *  `policy` block — bounded here so a run with many or long filter patterns or
+ *  stored extensions cannot make the real manifest exceed the estimate. */
 function policyStringBytes(policy: ArchivePolicy): number {
   let bytes = jsonStringBytes(policy.names.invalidCharReplacement);
   if (policy.timezone !== undefined) bytes += jsonStringBytes(policy.timezone);

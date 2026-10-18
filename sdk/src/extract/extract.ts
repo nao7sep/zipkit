@@ -379,10 +379,7 @@ async function commitFile(
     await volume.discard(tempPath);
     return "unsafe";
   }
-  // not recorded: this is extracted archive content written to the user's chosen destination — output
-  // (arbitrary, often binary) the app writes for the user and then forgets, not managed state the app
-  // reloads. It lives outside `~/.zipkit/` and is not captured by the data-backup layer (data-backup
-  // conventions). The SDK is also a separate layer with no dependency on the GUI's backup store.
+  // Extracted content is output written where the caller asked, never state the SDK keeps.
   // A replaced file keeps its own permission mode; a new one takes the entry's.
   if (options.overwrite) {
     if (await sameContent(volume, target, tempPath, entry.uncompSize, options.chunkSize)) {
@@ -547,7 +544,7 @@ export async function extractArchive(
       );
     }
 
-    // Manifest resolution (heavy mode): the manifest is the entry embedded in
+    // Manifest resolution (under checkMetadata): the manifest is the entry embedded in
     // the archive, read via positioned reads. Requested-but-absent is a hard
     // failure.
     let manifest: ExtractData["manifest"] = null;
@@ -621,7 +618,7 @@ export async function extractArchive(
 
     /** A failure while writing an entry. A stall, and an abort (control flow,
      *  not a write fault), stay classified rather than mislabeled
-     *  read.write-failed (exit 5); a stall first, since a stalled publication
+     *  read.write-failed; a stall first, since a stalled publication
      *  may still land. */
     function writeFailure(entry: ReadEntry, err: unknown): unknown {
       if (isStall(err)) return err;

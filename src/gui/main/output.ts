@@ -1,13 +1,11 @@
 /**
  * The GUI's output-folder boundary. The SDK names and places the archive from
  * the folder and file name it is given (`outputDir`, `outputName`), inferring
- * either from the inputs when it is left out, and resolves a relative folder
- * against the working directory — right for a shell or script caller, wrong for
- * a desktop app, whose working directory is unpredictable (a double-clicked
- * macOS `.app` runs with cwd `/`). Per the storage-path convention the GUI hands
- * the SDK absolute folders only: a typed relative folder is rejected here, and a
- * leading `~` (and `~/`) is expanded to the home directory, the convention's
- * expansion for a user-supplied path.
+ * either from the inputs when it is left out, and accepts absolute folders
+ * only. What the user typed becomes one here: a leading `~` (and `~/`) is
+ * expanded to the home directory, the storage-path convention's expansion for
+ * a user-supplied path, and a folder still relative after that is rejected
+ * before it reaches the SDK.
  */
 
 import { homedir } from "node:os";

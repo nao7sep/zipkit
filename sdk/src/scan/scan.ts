@@ -13,9 +13,9 @@
  * against escaping the input tree unless `followExternal` is set. A symlink
  * given directly as a top-level input is always followed, as it is explicit.
  *
- * ZipKit's own storage root is never archived: the walk does not descend into
- * it, and an input or followed link inside it is skipped, so archiving the home
- * folder leaves out ZipKit's settings, queue, records and live logs.
+ * The folders the caller names in `skipPaths` are never archived: the walk does
+ * not descend into them, and an input or followed link inside one is skipped,
+ * so an app can keep its own data out of an archive of the home folder.
  *
  * Every filesystem call goes through the run's bounded {@link Volume}, so a
  * source on a stalled volume fails the scan with a `io.stalled` error naming the
@@ -206,7 +206,7 @@ async function handleSymlink(
     return;
   }
 
-  // ZipKit's own files, reached through a link. Silent, like the output archive.
+  // A folder the caller skips, reached through a link. Silent, like the output archive.
   if (skipped(ctx, real)) return;
 
   const root = ctx.inputRoots[inputIndex] ?? "";
@@ -281,8 +281,8 @@ const WALK_BATCH = 16;
  * is `handleSymlink`'s decision. A subdirectory that cannot be listed is
  * recorded in `unlistedDirs` and its contents are missing, while a stall or a
  * cancel ends the scan. Only the input root itself failing to list is a scan
- * fault. `canonicalDir` is `absDir`'s real path, against which ZipKit's own
- * storage root is left out without being listed.
+ * fault. `canonicalDir` is `absDir`'s real path, against which the folders
+ * the caller skips are left out without being listed.
  */
 async function walkTree(
   ctx: ScanContext,
@@ -517,7 +517,7 @@ export async function scan(
       source: path.basename(inputs[i]?.path ?? real),
       disk: inputs[i]?.path ?? real,
     };
-    // An input that is ZipKit's own storage root, or inside it.
+    // An input that is a folder the caller skips, or inside one.
     if (skipped(ctx, canonicalRoots[i] as string)) continue;
     if (isDir[i]) {
       ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: real });

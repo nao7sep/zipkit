@@ -1,6 +1,6 @@
 /**
  * The tool version, recorded in the metadata header.
- * Kept here rather than imported from package.json so the build never reaches
- * outside `src`. Update in lockstep with package.json on release.
+ * A literal, so plain Node loads it without reading package.json; a test holds
+ * it in lockstep with the package's version.
  */
 export const VERSION = "0.1.0";

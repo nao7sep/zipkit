@@ -67,10 +67,7 @@ export function openSessionLog(filePath: string): SessionLog {
     sink: (event) => {
       if (degraded) return;
       try {
-        // not recorded: the SDK per-verb session log is append-mode and never uses the managed-text
-        // atomic write path, so it never reaches the data-backup hook (excluded by construction —
-        // data-backup conventions). (The SDK is also a separate layer with no dependency on the GUI's
-        // backup store.)
+        // Append-only, into the folder the caller gave.
         appendFileSync(filePath, `${JSON.stringify(event)}\n`);
       } catch {
         // The file became unusable mid-session. Degrade this sink to a no-op

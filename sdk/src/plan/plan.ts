@@ -18,7 +18,7 @@ import type { ScanResult, Unlogged } from "../internal/types.ts";
 import { finding } from "../registry.ts";
 import type { ArchivePolicy, CreateData, Finding } from "../types.ts";
 
-/** The `mode:"plan"` member of {@link CreateData} — the dry-run payload and the
+/** The `mode:"plan"` member of {@link CreateData} — the plan payload and the
  *  writer's input. The carrier (writer instructions) rides on it out of band.
  *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
 type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
@@ -64,7 +64,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   const globalFindings: Finding[] = [];
   // The output pre-existing without an authorized overwrite blocks the write —
   // recorded as an error finding so it surfaces with a reason and so `writable`
-  // derives from one place (the findings), never silently diverging from `ok`.
+  // derives from one place (the findings).
   if (scan.outputExists && !scan.overwrite) {
     globalFindings.push(
       finding("output.exists", scan.output, "output archive already exists; authorize overwrite to replace it"),

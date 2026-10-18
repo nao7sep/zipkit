@@ -577,10 +577,8 @@ export class ZipWriter {
     // writer.abort() removes the orphaned temp file. Once publication starts,
     // only its time budget can abandon it (see `Volume`).
     throwIfAborted(signal);
-    // not recorded: this is the ZIP archive the user asked to create — the app's binary output written
-    // to the user's chosen destination, not managed state under `~/.zipkit/`. It is out of scope for the
-    // data-backup layer (data-backup conventions: binary output is never recorded), and the SDK has no
-    // dependency on the GUI's backup store.
+    // The archive is output written where the caller asked, never state the
+    // SDK keeps.
     if (this.#options.overwrite === true) {
       await this.#volume.publishRename(this.#tempPath, this.#output, true);
     } else {

@@ -5,7 +5,7 @@
  * input-relative disk-trace path. CRC-32 (already computed) detects corruption;
  * the optional SHA-256 establishes content identity; `size`/`compressedSize`
  * record how each entry compressed. The full record is always built and
- * returned from `create`; it is embedded as `zipkit.json` unless disabled.
+ * returned from `write` and `create`; it is embedded as `zipkit.json` unless disabled.
  *
  * The document carries a header (what the document is, the app, its version and
  * repository, creation time, the document's format version, the zone the DOS

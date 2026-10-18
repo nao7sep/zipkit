@@ -235,8 +235,8 @@ export interface ZipKitOptions {
  * structured `LogEvent` stream feeds this hook and that session log — one
  * producer, many sinks.
  *
- * `signal` is the cancellation signal. Every verb — `plan`, `write`, `create`,
- * `extract` — honors it, stopping cleanly at the next boundary (a phase edge, a
+ * `signal` is the cancellation signal. Every method that touches the disk
+ * honors it, stopping cleanly at the next boundary (a phase edge, a
  * walked entry, a streamed chunk) and rejecting with the `aborted` error. It is
  * control, not data, so it lives here and not on the spec.
  */
@@ -398,7 +398,7 @@ export interface PlanSummary {
  */
 export type CreateData =
   | {
-      mode: "plan"; // --dry-run: planned, nothing written
+      mode: "plan"; // planned, nothing written
       output: string; // resolved output path (the intended target)
       log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
       writable: boolean; // the gate
@@ -484,7 +484,7 @@ export interface ExtremeEntry {
 
 /**
  * The lossless structured record of an archive run: header, per-entry records,
- * dropped entries, and findings. Returned from every `create` and embedded as
+ * dropped entries, and findings. Returned from every `write` and `create` and embedded as
  * `zipkit.json` unless disabled.
  */
 export interface Metadata {
@@ -586,17 +586,16 @@ export interface ExtractEntryResult {
  * The `extract` verb's payload. `findings` is the SSOT fault carrier. The domain
  * verdict is `reportOk` — no CRC failure, no unsafe path, and (under
  * `checkMetadata`) no missing/extra entry and no SHA, size or CRC-32 mismatch
- * against the manifest — distinct from
- * the envelope's derived `ok`; a run can complete cleanly yet be "not ok," and a
- * caller gates off `reportOk` (the delete-gate reads it).
+ * against the manifest. A run can complete cleanly yet not be ok, so a
+ * caller decides from `reportOk`, as the removal check does.
  */
 export interface ExtractData {
   archive: string; // identity
   log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
-  dest: string | null; // null on --dry-run
+  dest: string | null; // null on a dry run
   dryRun: boolean;
   wrote: boolean; // state: whether any file was written
-  reportOk: boolean; // domain verdict (the delete-gate reads this)
+  reportOk: boolean; // domain verdict (the removal check reads this)
   /** The embedded manifest used, when `checkMetadata` was requested. */
   manifest: { name: string } | null;
   summary: {

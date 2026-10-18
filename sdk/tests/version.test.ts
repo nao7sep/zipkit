@@ -1,6 +1,6 @@
 /**
- * The SDK's VERSION constant is intentionally a literal (src/version.ts keeps
- * the build from reaching outside `src/`), so it is a deliberate synced copy of the
+ * The SDK's VERSION constant is intentionally a literal (plain Node loads
+ * src/version.ts without reading package.json), so it is a deliberate synced copy of the
  * one source of truth — package.json. This test is the lock-step guard the
  * app-release-conventions require for such a copy: VERSION must equal
  * package.json's version, or a release would self-report a version that has drifted
