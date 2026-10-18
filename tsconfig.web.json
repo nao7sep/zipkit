@@ -8,10 +8,6 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    // The SDK package resolves to its TypeScript source, through its exports
-    // map, so the app is checked against what it bundles and never reaches
-    // past the entries the package exports.
-    "customConditions": ["zipkit-source"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,

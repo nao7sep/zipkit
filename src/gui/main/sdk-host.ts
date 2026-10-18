@@ -11,8 +11,8 @@
  */
 
 import { rm } from "node:fs/promises";
-import { exportPlan, importPlan, ZipKit, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "zipkit";
-import type { LogEvent, ProgressCounts } from "zipkit/types";
+import { exportPlan, importPlan, ZipKit, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "zipkitsdk";
+import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";

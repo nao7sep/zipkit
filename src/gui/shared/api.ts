@@ -15,7 +15,7 @@
  */
 
 import type { InputAdmission } from "./input-admission.js";
-import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "zipkit/types";
+import type { ArchiveSpec, CreateData, ExtractData, Finding, LogEvent, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "zipkitsdk/types";
 import type { PlanReport } from "./plan-report.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";

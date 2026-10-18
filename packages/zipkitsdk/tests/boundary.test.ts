@@ -1,9 +1,9 @@
 /**
- * The SDK as a library any app can consume: it reads no environment variable,
- * prints nothing, keeps no app's folders of its own, and imports nothing from
- * outside its own package but its declared dependencies. Its CLI uses the
- * public entry alone, as any outside app must. A source check, so a change
- * that bends any of this fails here rather than surfacing in another app.
+ * The SDK as a library any app can consume: it reads nothing ambient (no
+ * environment, no working directory, no home or temp folder of its own),
+ * prints nothing, names no app's storage, and imports nothing from outside its
+ * own package but its declared dependencies. A source check, so a change that
+ * bends any of this fails here rather than surfacing in another app.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -14,7 +14,6 @@ const SRC = path.resolve("src");
 const sources = (readdirSync(SRC, { recursive: true, encoding: "utf8" }) as string[])
   .filter((file) => file.endsWith(".ts"))
   .map((file) => ({ file, code: stripComments(readFileSync(path.join(SRC, file), "utf8")) }));
-const library = sources.filter(({ file }) => !file.startsWith(`cli${path.sep}`));
 const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies: Record<string, string> };
 
 function stripComments(code: string): string {
@@ -31,7 +30,7 @@ function specifiers(code: string): string[] {
 
 describe("the SDK boundary", () => {
   it("reads no environment variable and prints nothing", () => {
-    const offenders = library.filter(({ code }) => /process\.env|process\.std(out|err)|console\./.test(code)).map(({ file }) => file);
+    const offenders = sources.filter(({ code }) => /process\.env|process\.std(out|err)|console\./.test(code)).map(({ file }) => file);
     expect(offenders).toEqual([]);
   });
 
@@ -49,15 +48,6 @@ describe("the SDK boundary", () => {
   });
 
   it("names no app's storage", () => {
-    expect(library.filter(({ code }) => /\.zipkit\b(?!\.json)|ZIPKIT_/.test(code)).map(({ file }) => file)).toEqual([]);
-  });
-
-  it("holds the CLI to the public entry alone, as any outside app is", () => {
-    const cli = sources.filter(({ file }) => file.startsWith(`cli${path.sep}`));
-    expect(cli.length).toBeGreaterThan(0);
-    const offenders = cli.flatMap(({ file, code }) => specifiers(code)
-      .filter((spec) => spec.startsWith("..") && spec !== "../index.js")
-      .map((spec) => `${file}: ${spec}`));
-    expect(offenders).toEqual([]);
+    expect(sources.filter(({ code }) => /\.zipkit\b(?!\.json)|ZIPKIT_/.test(code)).map(({ file }) => file)).toEqual([]);
   });
 });

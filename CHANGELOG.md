@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The SDK and the `zipkit` command are a package of their own, [packages/sdk](packages/sdk), which the app bundles from source; its changes are in [its changelog](packages/sdk/CHANGELOG.md).
+- The SDK is a package of its own, `zipkitsdk` in [packages/zipkitsdk](packages/zipkitsdk), which the app bundles from its source; its changes are in [its changelog](packages/zipkitsdk/CHANGELOG.md).
 
 ### Changed
 

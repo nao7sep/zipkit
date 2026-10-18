@@ -10,7 +10,7 @@ import path from "node:path";
 import { AppHeader } from "../../../src/gui/renderer/src/components/AppHeader";
 import { MainProcessLanguage } from "../../../src/gui/renderer/src/i18n/I18nContext";
 import { planReport } from "../../../src/gui/renderer/src/view";
-import { ZipKit } from "zipkit";
+import { ZipKit } from "zipkitsdk";
 import type { LanguageEnvironment, PlanData } from "../../../src/gui/shared/api";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate";
 import en from "../../../src/gui/shared/i18n/locales/en.json";

@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
-import { createPathClaims, StallError, WriteError, type RemovalCheck, type SourceComparison } from "zipkit";
+import { createPathClaims, StallError, WriteError, type RemovalCheck, type SourceComparison } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";

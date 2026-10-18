@@ -2,13 +2,13 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { createPathClaims } from "zipkit";
+import { createPathClaims } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
-import { AbortError, StallError, ZipKit } from "zipkit";
-import { nodeFileSystem, Volume, type FileSystemPort } from "zipkit/testing";
+import { AbortError, StallError, ZipKit } from "zipkitsdk";
+import { nodeFileSystem, Volume, type FileSystemPort } from "zipkitsdk/testing";
 import { SAVE } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
 

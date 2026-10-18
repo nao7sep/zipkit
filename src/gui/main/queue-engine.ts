@@ -44,7 +44,7 @@ import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type Tra
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
-import { sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal } from "zipkit";
+import { sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal } from "zipkitsdk";
 
 export type { TrashResult } from "./trash-outcome.js";
 

@@ -4,10 +4,10 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { createQueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { nullLog } from "../../../src/gui/main/log.js";
-import { createPathClaims } from "zipkit";
+import { createPathClaims } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
-import { ZipKit } from "zipkit";
+import { ZipKit } from "zipkitsdk";
 import { TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
 

@@ -2,7 +2,6 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { sdkSource } from "./sdk-source.config";
 
 // Single source of truth for the app version: package.json, injected as
 // __APP_VERSION__. Asking Electron for it instead answers about the running
@@ -15,8 +14,8 @@ const define = { __APP_VERSION__: JSON.stringify(version) };
 
 // The GUI lives under src/gui/{main,preload,renderer,shared}, so each
 // electron-vite part is pointed at its entry there rather than the default
-// src/{main,preload,renderer}. The SDK (packages/sdk, a development dependency)
-// is bundled in from its source; externalizeDepsPlugin keeps the app's
+// src/{main,preload,renderer}. The SDK (packages/zipkitsdk, a development
+// dependency whose entries are its TypeScript source) is bundled in; externalizeDepsPlugin keeps the app's
 // dependencies, the SDK's own among them, as externals in the main/preload
 // bundles, loaded at run time; the renderer bundles React.
 export default defineConfig({
@@ -42,7 +41,6 @@ export default defineConfig({
         output: { chunkFileNames: "[name].js" },
       },
     },
-    resolve: { alias: sdkSource },
     plugins: [externalizeDepsPlugin()],
     define,
   },
@@ -50,7 +48,6 @@ export default defineConfig({
     build: {
       rollupOptions: { input: { index: resolve(import.meta.dirname, "src/gui/preload/index.ts") } },
     },
-    resolve: { alias: sdkSource },
     plugins: [externalizeDepsPlugin()],
     define,
   },
@@ -71,7 +68,6 @@ export default defineConfig({
         },
       },
     },
-    resolve: { alias: sdkSource },
     plugins: [react()],
     define,
   },

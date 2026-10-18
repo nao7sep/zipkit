@@ -1,8 +1,8 @@
 {
-  "name": "zipkit",
+  "name": "zipkitsdk",
   "version": "0.1.0",
   "private": true,
-  "description": "Make ZIP archives that open cleanly on any system: fix file names, drop OS junk, and verify the result. The SDK and the zipkit command.",
+  "description": "ZipKit's SDK: make ZIP archives that open cleanly on any system, fixing file names, leaving out OS junk and verifying the result.",
   "license": "GPL-3.0-or-later",
   "author": {
     "name": "Yoshinao Inoguchi",
@@ -12,45 +12,25 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nao7sep/zipkit.git",
-    "directory": "packages/sdk"
+    "directory": "packages/zipkitsdk"
   },
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
-    ".": {
-      "zipkit-source": "./src/index.ts",
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./types": {
-      "zipkit-source": "./src/types.ts",
-      "types": "./dist/types.d.ts",
-      "import": "./dist/types.js"
-    },
-    "./testing": {
-      "zipkit-source": "./src/testing.ts",
-      "types": "./dist/testing.d.ts",
-      "import": "./dist/testing.js"
-    },
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./testing": "./src/testing.ts",
     "./package.json": "./package.json"
   },
-  "bin": {
-    "zipkit": "./dist/cli/zipkit.js"
-  },
   "files": [
-    "dist",
-    "docs",
+    "src",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test": "npm run typecheck && vitest run"
   },

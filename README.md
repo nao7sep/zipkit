@@ -26,22 +26,18 @@ Ordinary quit captures the latest job edits before saving the queue. Settings an
 
 ## Use the SDK
 
-The SDK is the library the app is built on, for any other app. It is a package of its own, [`packages/sdk`](packages/sdk) (named `zipkit`), with its own dependencies, tests and build; the app bundles it from source.
+The SDK is the library the app is built on, for any other app. It is a package of its own, [`packages/zipkitsdk`](packages/zipkitsdk) (named `zipkitsdk`), with its own dependencies and tests, consumed from its TypeScript source; the app bundles it.
 
 ```ts
-import { ZipKit } from "zipkit";
+import { ZipKit } from "zipkitsdk";
 
 const zip = new ZipKit();
-const plan = await zip.plan({ inputs: ["./my-project"] });
+const plan = await zip.plan({ inputs: ["/Users/me/my-project"] });
 for (const f of plan.findings) console.log(f.severity, f.rule, f.path);
 if (plan.writable) await zip.write(plan); // or zip.create(spec) in one call
 ```
 
-- [SDK guide and reference](packages/sdk/docs/sdk.md): making and reading archives, checking before the originals are removed, progress and cancellation, errors.
-- [Rules, exclusion codes and error codes](packages/sdk/docs/rules.md): every identifier a result carries.
-- [The `zipkit` command](packages/sdk/docs/cli.md): `plan`, `create`, `verify` and `list` from a shell.
-
-`npm test` runs the app's tests and then the SDK's; `npm run build:sdk` builds the package into `packages/sdk/dist/`, where the command is `node packages/sdk/dist/cli/zipkit.js`.
+`npm test` runs the app's tests and then the SDK's.
 
 ## License
 

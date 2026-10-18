@@ -1,5 +1,5 @@
 {
-  "name": "zipkit-app",
+  "name": "zipkit",
   "productName": "ZipKit",
   "version": "0.1.0",
   "private": true,
@@ -17,7 +17,7 @@
   },
   "type": "module",
   "workspaces": [
-    "packages/sdk"
+    "packages/zipkitsdk"
   ],
   "engines": {
     "node": ">=22.12.0"
@@ -26,7 +26,6 @@
   "scripts": {
     "dev": "electron-vite --entry ./out/main/index.js",
     "build:gui": "npm run typecheck:node && npm run typecheck:web && electron-vite build",
-    "build:sdk": "npm run build -w zipkit",
     "dist": "npm run build:gui && npm run prepare:electron && electron-builder --publish never",
     "prepare:electron": "node node_modules/electron/install.js",
     "preview": "electron-vite preview --entry ./out/main/index.js",
@@ -36,7 +35,7 @@
     "typecheck:web": "tsc --noEmit --composite false -p tsconfig.web.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:test",
-    "test": "npm run typecheck && vitest run && npm test -w zipkit",
+    "test": "npm run typecheck && vitest run && npm test -w zipkitsdk",
     "check:release-tag": "node scripts/check-release-tag.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -75,7 +74,7 @@
     "vite": "^7.3.7",
     "vitest": "^5.0.4",
     "yaml": "^2.9.1",
-    "zipkit": "0.1.0"
+    "zipkitsdk": "0.1.0"
   },
   "allowScripts": {
     "electron-winstaller@5.4.0": true,

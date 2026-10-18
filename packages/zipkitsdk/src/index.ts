@@ -4,7 +4,6 @@
  */
 
 export { ZipKit } from "./zipkit.js";
-export { VERSION } from "./version.js";
 export type { PlanData, WriteData } from "./zipkit.js";
 export { exportPlan, importPlan } from "./transfer.js";
 export { sameFile } from "./paths.js";

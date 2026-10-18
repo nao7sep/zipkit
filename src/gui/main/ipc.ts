@@ -28,7 +28,7 @@ import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "
 import { openRecordsWindow } from "./records-window.js";
 import { isHttpUrl } from "./url.js";
 import { appAdmission } from "./command-admission.js";
-import { machineTimeZone } from "zipkit";
+import { machineTimeZone } from "zipkitsdk";
 
 export function registerIpc(): void {
   ipcMain.on("zipkit:reportError", (_event, context: string, error: unknown): void => {

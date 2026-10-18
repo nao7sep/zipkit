@@ -15,7 +15,7 @@ import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
 import { SdkHostError } from "./sdk-client.js";
-import { createPathClaims, exportPlan, importPlan } from "zipkit";
+import { createPathClaims, exportPlan, importPlan } from "zipkitsdk";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
