@@ -1,6 +1,6 @@
 /**
  * The app's side of the SDK boundary: the SDK is a package of its own
- * (packages/zipkitsdk), and the app reaches it by name only, through the entries
+ * (sdk/), and the app reaches it by name only, through the entries
  * the package exports, never by a path into it. The app bundles the SDK's
  * source but loads the SDK's dependencies at run time, so it declares each of
  * them itself, or the packaged app would lack one.
@@ -33,7 +33,7 @@ function imports(dirs: string[]): Array<{ file: string; spec: string }> {
 /** Whether a specifier reaches into the SDK's package other than by name. */
 function intoPackage(file: string, spec: string): boolean {
   if (!spec.startsWith(".")) return /^zipkitsdk\/(?!types$|testing$)/.test(spec);
-  return path.resolve(path.dirname(file), spec).startsWith(path.resolve("packages", "zipkitsdk"));
+  return path.resolve(path.dirname(file), spec).startsWith(path.resolve("sdk"));
 }
 
 describe("the app's side of the SDK boundary", () => {
@@ -50,7 +50,7 @@ describe("the app's side of the SDK boundary", () => {
 
   it("declares every dependency of the SDK it bundles, and depends on the SDK only to build", () => {
     const app = JSON.parse(readFileSync("package.json", "utf8"));
-    const sdk = JSON.parse(readFileSync(path.join("packages", "zipkitsdk", "package.json"), "utf8"));
+    const sdk = JSON.parse(readFileSync(path.join("sdk", "package.json"), "utf8"));
     expect(Object.keys(sdk.dependencies).filter((name) => !(name in app.dependencies))).toEqual([]);
     expect(app.devDependencies.zipkitsdk).toBe(sdk.version);
     expect(app.dependencies.zipkitsdk).toBeUndefined();

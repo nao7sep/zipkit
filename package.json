@@ -17,7 +17,7 @@
   },
   "type": "module",
   "workspaces": [
-    "packages/zipkitsdk"
+    "sdk"
   ],
   "engines": {
     "node": ">=22.12.0"

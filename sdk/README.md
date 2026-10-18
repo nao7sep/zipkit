@@ -21,7 +21,7 @@ The public types in `src/types.ts`, the exported tables (`RULE_REGISTRY`, the er
 
 ## Develop
 
-From the repository root, `npm install` links the package into the workspace. In `packages/zipkitsdk`, `npm test` type-checks and runs its tests.
+From the repository root, `npm install` links the package into the workspace. In `sdk/`, `npm test` type-checks and runs its tests.
 
 ## License
 

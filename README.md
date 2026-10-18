@@ -26,7 +26,7 @@ Ordinary quit captures the latest job edits before saving the queue. Settings an
 
 ## Use the SDK
 
-The SDK is the library the app is built on, for any other app. It is a package of its own, [`packages/zipkitsdk`](packages/zipkitsdk) (named `zipkitsdk`), with its own dependencies and tests, consumed from its TypeScript source; the app bundles it.
+The SDK is the library the app is built on, for any other app. It is a package of its own, [`sdk/`](sdk) (named `zipkitsdk`), with its own dependencies and tests, consumed from its TypeScript source; the app bundles it.
 
 ```ts
 import { ZipKit } from "zipkitsdk";

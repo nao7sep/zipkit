@@ -12,7 +12,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nao7sep/zipkit.git",
-    "directory": "packages/zipkitsdk"
+    "directory": "sdk"
   },
   "type": "module",
   "engines": {
