@@ -8,8 +8,8 @@
  * the error tier. The finding is attached to every entry in the colliding group.
  */
 
-import { finding } from "../registry.js";
-import type { WorkItem } from "./workItem.js";
+import { finding } from "../registry.ts";
+import type { WorkItem } from "./workItem.ts";
 
 /**
  * @param reserved Archive paths the writer will inject after planning (the

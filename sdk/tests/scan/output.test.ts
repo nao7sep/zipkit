@@ -8,9 +8,9 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { resolveOutputPath } from "../../src/scan/output.js";
-import type { ResolvedInput } from "../../src/plan/arcname.js";
-import { invalidError } from "../helpers/errors.js";
+import { resolveOutputPath } from "../../src/scan/output.ts";
+import type { ResolvedInput } from "../../src/plan/arcname.ts";
+import { invalidError } from "../helpers/errors.ts";
 
 const cwd = path.resolve("/work");
 const input = (p: string): ResolvedInput => ({ path: path.resolve(cwd, p) });

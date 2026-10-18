@@ -7,7 +7,7 @@
  * new event variant is a compile error here until it is given a message.
  */
 
-import type { LogEventBody } from "../types.js";
+import type { LogEventBody } from "../types.ts";
 
 /** The trailing plural marker for a count: `1 → ""`, otherwise `"s"`. */
 function s(n: number): string {

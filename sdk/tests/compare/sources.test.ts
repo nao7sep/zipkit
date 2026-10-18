@@ -9,9 +9,9 @@ import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit } from "../../src/index.js";
-import { compareWithManifest } from "../../src/compare/sources.js";
-import { scanEntry } from "../helpers/synthetic.js";
+import { ZipKit } from "../../src/index.ts";
+import { compareWithManifest } from "../../src/compare/sources.ts";
+import { scanEntry } from "../helpers/synthetic.ts";
 
 let dir: string;
 let proj: string;

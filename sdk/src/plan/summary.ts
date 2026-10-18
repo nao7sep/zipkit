@@ -7,9 +7,9 @@
  * raises an `output.exists` error finding).
  */
 
-import type { WriteEntry } from "../internal/types.js";
-import type { Finding, PlanSummary } from "../types.js";
-import type { WorkItem } from "./workItem.js";
+import type { WriteEntry } from "../internal/types.ts";
+import type { Finding, PlanSummary } from "../types.ts";
+import type { WorkItem } from "./workItem.ts";
 
 /** The bytes an entry's content takes as on disk: a file's size, a stored
  *  link's target as UTF-8; a folder holds none. */

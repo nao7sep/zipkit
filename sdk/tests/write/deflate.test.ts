@@ -8,7 +8,7 @@
 import { randomBytes } from "node:crypto";
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { EntryCompressor } from "../../src/write/deflate.js";
+import { EntryCompressor } from "../../src/write/deflate.ts";
 
 const CHUNK = 64 * 1024;
 

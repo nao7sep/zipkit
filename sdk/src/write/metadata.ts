@@ -17,7 +17,7 @@
  * finally the nested transformation list.
  */
 
-import type { Unlogged, WriteEntry } from "../internal/types.js";
+import type { Unlogged, WriteEntry } from "../internal/types.ts";
 import type {
   ArchivePolicy,
   CreateData,
@@ -26,8 +26,8 @@ import type {
   MetadataEntry,
   MetadataExcluded,
   UtcTime,
-} from "../types.js";
-import { VERSION } from "../version.js";
+} from "../types.ts";
+import { VERSION } from "../version.ts";
 
 const ABOUT =
   "ZipKit wrote this manifest when it created the archive. It lists every entry with its " +

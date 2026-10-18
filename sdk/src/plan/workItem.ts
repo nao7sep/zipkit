@@ -7,9 +7,9 @@
  * keeps it (carried out of band, never serialized).
  */
 
-import { finding } from "../registry.js";
-import type { ScanEntry, ScanResult, SkipKind, Transformation, WriteEntry } from "../internal/types.js";
-import type { ExcludeCode, Finding, PlannedEntry } from "../types.js";
+import { finding } from "../registry.ts";
+import type { ScanEntry, ScanResult, SkipKind, Transformation, WriteEntry } from "../internal/types.ts";
+import type { ExcludeCode, Finding, PlannedEntry } from "../types.ts";
 
 export interface WorkItem {
   scan: ScanEntry;

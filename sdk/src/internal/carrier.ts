@@ -9,8 +9,8 @@
  * object across the handoff with no instance coupling.
  */
 
-import type { ArchivePolicy } from "../types.js";
-import type { WriteEntry } from "./types.js";
+import type { ArchivePolicy } from "../types.ts";
+import type { WriteEntry } from "./types.ts";
 
 export interface PlanInternals {
   /** Included entries, in plan order, ready for the writer. */

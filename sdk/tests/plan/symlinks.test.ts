@@ -7,9 +7,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { applySymlinks } from "../../src/plan/symlinks.js";
-import { resolvePolicy } from "../../src/policy.js";
-import { workItem } from "../helpers/synthetic.js";
+import { applySymlinks } from "../../src/plan/symlinks.ts";
+import { resolvePolicy } from "../../src/policy.ts";
+import { workItem } from "../helpers/synthetic.ts";
 
 describe("applySymlinks", () => {
   it("preserves a link as an emitted, stored Unix entry with a warning", () => {

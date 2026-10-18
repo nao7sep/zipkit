@@ -9,9 +9,9 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ERROR_CODES, isZipKitError, ZipKit, ZipKitError } from "../src/index.js";
-import { stallError, toAbortError, withUnknownEffect } from "../src/errors.js";
-import { nodeFileSystem, Volume } from "../src/testing.js";
+import { ERROR_CODES, isZipKitError, ZipKit, ZipKitError } from "../src/index.ts";
+import { stallError, toAbortError, withUnknownEffect } from "../src/errors.ts";
+import { nodeFileSystem, Volume } from "../src/testing.ts";
 
 let root: string;
 beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), "zipkit-errors-")); });

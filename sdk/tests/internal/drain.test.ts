@@ -2,7 +2,7 @@ import { PassThrough, Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 
-import { awaitDrain } from "../../src/internal/drain.js";
+import { awaitDrain } from "../../src/internal/drain.ts";
 
 // The backpressure wait used to listen for "drain" and nothing else. A stream
 // that errors instead of draining never emits it, so the await never settled:

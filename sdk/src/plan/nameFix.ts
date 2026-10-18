@@ -22,11 +22,11 @@
  * every entry's full path is corrected consistently.
  */
 
-import { finding } from "../registry.js";
-import type { RuleId } from "../registry.js";
-import type { Transformation } from "../internal/types.js";
-import type { ArchivePolicy, NameAction, NameRules, Severity } from "../types.js";
-import type { WorkItem } from "./workItem.js";
+import { finding } from "../registry.ts";
+import type { RuleId } from "../registry.ts";
+import type { Transformation } from "../internal/types.ts";
+import type { ArchivePolicy, NameAction, NameRules, Severity } from "../types.ts";
+import type { WorkItem } from "./workItem.ts";
 
 const INVALID_CHARS = /[<>:"|?*\\]/g;
 const INVALID_RUN = /([<>:"|?*\\]+)/;

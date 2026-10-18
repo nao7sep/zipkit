@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createManifestReader, type AcceptRecord } from "../../src/extract/manifestReader.js";
+import { createManifestReader, type AcceptRecord } from "../../src/extract/manifestReader.ts";
 
 const keepAll: AcceptRecord = (record) => ({ keep: record });
 

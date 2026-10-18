@@ -5,9 +5,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { validateExtractSpec, validatePolicy, validateSpec } from "../src/validate.js";
-import { ZipKit } from "../src/index.js";
-import { invalidError } from "./helpers/errors.js";
+import { validateExtractSpec, validatePolicy, validateSpec } from "../src/validate.ts";
+import { ZipKit } from "../src/index.ts";
+import { invalidError } from "./helpers/errors.ts";
 
 describe("validateSpec", () => {
   it("accepts a minimal spec", () => {

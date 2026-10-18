@@ -11,10 +11,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { onTestFinished } from "vitest";
-import { EntryCompressor, ZipWriter } from "../../src/write/zipWriter.js";
-import { realVolume } from "./volume.js";
-import { DEFAULT_DEFLATE_LEVEL } from "../../src/policy.js";
-import type { WriteEntryInput, ZipWriterOptions } from "../../src/write/zipWriter.js";
+import { EntryCompressor, ZipWriter } from "../../src/write/zipWriter.ts";
+import { realVolume } from "./volume.ts";
+import { DEFAULT_DEFLATE_LEVEL } from "../../src/policy.ts";
+import type { WriteEntryInput, ZipWriterOptions } from "../../src/write/zipWriter.ts";
 
 /** One entry plus the raw (uncompressed) bytes the writer should stream. */
 export interface EntryWithData extends WriteEntryInput {

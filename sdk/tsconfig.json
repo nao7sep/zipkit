@@ -16,6 +16,8 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true,
     "lib": ["ES2022"],

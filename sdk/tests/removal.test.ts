@@ -9,13 +9,13 @@ import { appendFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { checkRemoval, explainRemoved, outputInsideInputs as check, type RemovalSteps } from "../src/removal.js";
-import { ZipKit } from "../src/index.js";
-import { realVolume } from "./helpers/volume.js";
+import { checkRemoval, explainRemoved, outputInsideInputs as check, type RemovalSteps } from "../src/removal.ts";
+import { ZipKit } from "../src/index.ts";
+import { realVolume } from "./helpers/volume.ts";
 
 const outputInsideInputs = (output: string, inputs: string[]): Promise<boolean> =>
   check(output, inputs, realVolume());
-import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "./helpers/symlink.js";
+import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "./helpers/symlink.ts";
 
 async function fixture(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-safety-"));

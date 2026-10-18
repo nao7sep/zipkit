@@ -16,8 +16,8 @@
  * API sets it, so claiming to would be dishonest. Pure — no filesystem access.
  */
 
-import { instantFromWallClockInZone } from "../internal/timeZone.js";
-import { findExtra, type ReadEntry } from "./zipReader.js";
+import { instantFromWallClockInZone } from "../internal/timeZone.ts";
+import { findExtra, type ReadEntry } from "./zipReader.ts";
 
 // 100-ns ticks between the FILETIME epoch (1601) and the Unix epoch (1970).
 const NTFS_EPOCH_OFFSET = 116_444_736_000_000_000n;

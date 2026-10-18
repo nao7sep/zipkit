@@ -10,9 +10,9 @@
  * `as`-mapped inputs — exactly the paths that must be tested deliberately.
  */
 
-import { finding } from "../registry.js";
-import { resolveSegments, toForwardSlash } from "../internal/path.js";
-import type { WorkItem } from "./workItem.js";
+import { finding } from "../registry.ts";
+import { resolveSegments, toForwardSlash } from "../internal/path.ts";
+import type { WorkItem } from "./workItem.ts";
 
 const MAX_COMPONENT = 255;
 const MAX_PATH = 260;

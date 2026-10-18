@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { extractionSegments, windowsSafeSegment } from "../../src/extract/windowsNames.js";
-import { findTargetCollision } from "../../src/extract/targetCollision.js";
-import type { ReadEntry } from "../../src/extract/zipReader.js";
+import { extractionSegments, windowsSafeSegment } from "../../src/extract/windowsNames.ts";
+import { findTargetCollision } from "../../src/extract/targetCollision.ts";
+import type { ReadEntry } from "../../src/extract/zipReader.ts";
 
 describe("windowsSafeSegment", () => {
   it.each([

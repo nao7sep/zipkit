@@ -7,9 +7,9 @@
  * `dosDateTime` in the same resolved zone, so the flag matches the clamp.
  */
 
-import { dosDateTime } from "../internal/dosTime.js";
-import { finding } from "../registry.js";
-import type { WorkItem } from "./workItem.js";
+import { dosDateTime } from "../internal/dosTime.ts";
+import { finding } from "../registry.ts";
+import type { WorkItem } from "./workItem.ts";
 
 export function applyTimestamps(items: WorkItem[], timeZone: string): void {
   for (const item of items) {

@@ -21,10 +21,10 @@
  */
 
 import picomatch from "picomatch";
-import type { JunkRule } from "./junk.js";
-import { JUNK_RULES } from "./junk.js";
-import type { RuleId } from "../registry.js";
-import type { ArchivePolicy, FilterRule } from "../types.js";
+import type { JunkRule } from "./junk.ts";
+import { JUNK_RULES } from "./junk.ts";
+import type { RuleId } from "../registry.ts";
+import type { ArchivePolicy, FilterRule } from "../types.ts";
 
 export interface CompiledRule {
   target: "file" | "dir" | "both";

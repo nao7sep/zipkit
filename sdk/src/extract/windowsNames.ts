@@ -9,7 +9,7 @@
  * either form. The result is reported as the entry's `outputPath`.
  */
 
-import { processSegment } from "../plan/nameFix.js";
+import { processSegment } from "../plan/nameFix.ts";
 
 /** One path segment as Windows can hold it; unchanged when it already can. */
 export function windowsSafeSegment(segment: string): string {

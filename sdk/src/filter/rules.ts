@@ -4,7 +4,7 @@
  * agree on dialect and the trailing-slash directory convention.
  */
 
-import type { FilterRule } from "../types.js";
+import type { FilterRule } from "../types.ts";
 
 /** A glob exclusion. A trailing slash targets directories only. */
 export function globExclude(pattern: string): FilterRule {

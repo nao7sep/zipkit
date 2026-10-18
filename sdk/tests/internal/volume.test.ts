@@ -2,7 +2,7 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.js";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.ts";
 
 let root: string;
 beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), "zipkit-volume-mode-")); });

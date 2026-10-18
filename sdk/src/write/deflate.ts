@@ -15,7 +15,7 @@
 
 import zlib from "node:zlib";
 
-import { awaitDrain } from "../internal/drain.js";
+import { awaitDrain } from "../internal/drain.ts";
 
 /** A sink for compressed (or stored) output chunks, written in stream order. */
 export type ChunkSink = (chunk: Buffer) => Promise<void>;

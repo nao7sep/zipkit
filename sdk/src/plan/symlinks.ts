@@ -8,9 +8,9 @@
  * both modes raise `entry.symlink`.
  */
 
-import { finding } from "../registry.js";
-import type { ArchivePolicy } from "../types.js";
-import type { WorkItem } from "./workItem.js";
+import { finding } from "../registry.ts";
+import type { ArchivePolicy } from "../types.ts";
+import type { WorkItem } from "./workItem.ts";
 
 export function applySymlinks(items: WorkItem[], policy: ArchivePolicy): void {
   for (const item of items) {

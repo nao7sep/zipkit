@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { finding, isKnownRule, RULE_ORDER, RULE_REGISTRY } from "../src/registry.js";
+import { finding, isKnownRule, RULE_ORDER, RULE_REGISTRY } from "../src/registry.ts";
 
 const ALL_RULES = RULE_ORDER;
 

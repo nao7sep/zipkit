@@ -17,8 +17,8 @@
  */
 
 import path from "node:path";
-import { ZipKitError } from "../errors.js";
-import type { ResolvedInput } from "../plan/arcname.js";
+import { ZipKitError } from "../errors.ts";
+import type { ResolvedInput } from "../plan/arcname.ts";
 
 /** Where the caller asked the archive to go. */
 export interface OutputRequest {

@@ -3,8 +3,8 @@
  * rechecks to links whose actual traversal consulted the changed pathname. */
 import path from "node:path";
 import type { BigIntStats } from "node:fs";
-import type { Volume } from "../internal/volume.js";
-import { aliasUnprovable, foldedName } from "../internal/name-equivalence.js";
+import type { Volume } from "../internal/volume.ts";
+import { aliasUnprovable, foldedName } from "../internal/name-equivalence.ts";
 
 const key = (file: string): string => file.normalize("NFC").toLowerCase();
 const identity = (st: BigIntStats): string => `inode:${st.dev}:${st.ino}`;

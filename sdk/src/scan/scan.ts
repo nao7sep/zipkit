@@ -26,21 +26,21 @@
 
 import type { BigIntStats } from "node:fs";
 import path from "node:path";
-import { throwIfAborted, ZipKitError } from "../errors.js";
-import type { FilterMatcher } from "../filter/match.js";
-import { toForwardSlash } from "../internal/path.js";
-import { machineTimeZone } from "../internal/timeZone.js";
-import type { Volume } from "../internal/volume.js";
-import type { PrunedDir, ScanEntry, ScanResult, SkipKind, SkippedEntry } from "../internal/types.js";
-import type { Logger } from "../log/logger.js";
+import { throwIfAborted, ZipKitError } from "../errors.ts";
+import type { FilterMatcher } from "../filter/match.ts";
+import { toForwardSlash } from "../internal/path.ts";
+import { machineTimeZone } from "../internal/timeZone.ts";
+import type { Volume } from "../internal/volume.ts";
+import type { PrunedDir, ScanEntry, ScanResult, SkipKind, SkippedEntry } from "../internal/types.ts";
+import type { Logger } from "../log/logger.ts";
 import {
   checkAnchorCollisions,
   computeAnchor,
   joinArchivePath,
   normalizeInputs,
-} from "../plan/arcname.js";
-import { resolveOutputPath } from "./output.js";
-import type { ArchivePolicy, ArchiveSpec } from "../types.js";
+} from "../plan/arcname.ts";
+import { resolveOutputPath } from "./output.ts";
+import type { ArchivePolicy, ArchiveSpec } from "../types.ts";
 
 export interface ScanDeps {
   matcher: FilterMatcher;

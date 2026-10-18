@@ -6,8 +6,8 @@
  */
 
 import { createDefu } from "defu";
-import { normalizeExtension } from "./internal/path.js";
-import type { ArchivePolicy, DeepPartial, MetadataPolicy, NameRules } from "./types.js";
+import { normalizeExtension } from "./internal/path.ts";
+import type { ArchivePolicy, DeepPartial, MetadataPolicy, NameRules } from "./types.ts";
 
 /**
  * The built-in set stored verbatim under `compression.stored: "builtin"`. An

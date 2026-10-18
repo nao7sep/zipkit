@@ -11,9 +11,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit } from "../src/index.js";
-import { MANIFEST_FORMAT_VERSION } from "../src/write/metadata.js";
-import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./fixtures/sample-tree.js";
+import { ZipKit } from "../src/index.ts";
+import { MANIFEST_FORMAT_VERSION } from "../src/write/metadata.ts";
+import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./fixtures/sample-tree.ts";
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const SUPPORTED = Array.from({ length: MANIFEST_FORMAT_VERSION }, (_, i) => i + 1);

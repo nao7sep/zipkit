@@ -28,27 +28,27 @@
 import os from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
-import { toAbortError, ZipKitError } from "./errors.js";
-import { matcherFor } from "./filter/match.js";
-import { reportFindings } from "./log/findings.js";
-import { createLogger, type LogSink } from "./log/logger.js";
-import type { Logger } from "./log/logger.js";
+import { toAbortError, ZipKitError } from "./errors.ts";
+import { matcherFor } from "./filter/match.ts";
+import { reportFindings } from "./log/findings.ts";
+import { createLogger, type LogSink } from "./log/logger.ts";
+import type { Logger } from "./log/logger.ts";
 import {
   openSessionLog,
   sessionLogName,
   type SessionLog,
-} from "./log/session.js";
-import { compareWithManifest } from "./compare/sources.js";
-import { extractArchive, readManifest } from "./extract/extract.js";
-import { readInternals } from "./internal/carrier.js";
-import { classifyPaths, pathState } from "./paths.js";
-import { checkRemoval, outputInsideInputs } from "./removal.js";
-import { pathResources, type PathResource } from "./claims.js";
-import { listArchive, readArchiveManifest } from "./extract/list.js";
-import { nodeFileSystem, Volume } from "./internal/volume.js";
-import { planArchive } from "./plan/plan.js";
-import { METADATA_DEFAULTS, resolvePolicy } from "./policy.js";
-import { scan } from "./scan/scan.js";
+} from "./log/session.ts";
+import { compareWithManifest } from "./compare/sources.ts";
+import { extractArchive, readManifest } from "./extract/extract.ts";
+import { readInternals } from "./internal/carrier.ts";
+import { classifyPaths, pathState } from "./paths.ts";
+import { checkRemoval, outputInsideInputs } from "./removal.ts";
+import { pathResources, type PathResource } from "./claims.ts";
+import { listArchive, readArchiveManifest } from "./extract/list.ts";
+import { nodeFileSystem, Volume } from "./internal/volume.ts";
+import { planArchive } from "./plan/plan.ts";
+import { METADATA_DEFAULTS, resolvePolicy } from "./policy.ts";
+import { scan } from "./scan/scan.ts";
 import {
   validateChunkSize,
   validateConcurrency,
@@ -60,10 +60,10 @@ import {
   requireAbsolute,
   validateSkipPaths,
   validateSpec,
-} from "./validate.js";
-import { writeArchive, type WriteDeps } from "./write/write.js";
-import { VERSION } from "./version.js";
-import type { Unlogged } from "./internal/types.js";
+} from "./validate.ts";
+import { writeArchive, type WriteDeps } from "./write/write.ts";
+import { VERSION } from "./version.ts";
+import type { Unlogged } from "./internal/types.ts";
 import type {
   ArchiveListing,
   ArchivePolicy,
@@ -81,7 +81,7 @@ import type {
   RemovalOptions,
   ZipKitCallOptions,
   ZipKitOptions,
-} from "./types.js";
+} from "./types.ts";
 
 /** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns and
  *  `write()` consumes (it also carries the writer's instructions out of band). */

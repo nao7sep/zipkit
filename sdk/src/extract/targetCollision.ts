@@ -5,9 +5,9 @@
  * and non-directory ancestors in one pass after the O(n log n) sort.
  */
 
-import { resolveSegments, toForwardSlash } from "../internal/path.js";
-import { extractionSegments } from "./windowsNames.js";
-import type { ReadEntry } from "./zipReader.js";
+import { resolveSegments, toForwardSlash } from "../internal/path.ts";
+import { extractionSegments } from "./windowsNames.ts";
+import type { ReadEntry } from "./zipReader.ts";
 
 interface TargetRecord {
   entry: ReadEntry;

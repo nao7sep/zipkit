@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import { toAbortError } from "../errors.js";
+import { toAbortError } from "../errors.ts";
 
 /**
  * Wait for a writable stream's backpressure to clear.

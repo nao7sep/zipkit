@@ -12,8 +12,8 @@ import {
   computeAnchor,
   joinArchivePath,
   normalizeInputs,
-} from "../../src/plan/arcname.js";
-import { invalidError } from "../helpers/errors.js";
+} from "../../src/plan/arcname.ts";
+import { invalidError } from "../helpers/errors.ts";
 
 describe("normalizeInputs", () => {
   it("normalizes absolute inputs without consulting a working directory", () => {

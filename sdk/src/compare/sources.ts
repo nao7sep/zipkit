@@ -10,9 +10,9 @@
  * records, which the manifest load has already checked.
  */
 
-import type { WriteEntry } from "../internal/types.js";
-import type { SourceComparison } from "../types.js";
-import type { ManifestRecord } from "../extract/extract.js";
+import type { WriteEntry } from "../internal/types.ts";
+import type { SourceComparison } from "../types.ts";
+import type { ManifestRecord } from "../extract/extract.ts";
 
 /** One compared object: its type, size and modification time. */
 function signature(type: string, size: number, mtimeNs: string): string {

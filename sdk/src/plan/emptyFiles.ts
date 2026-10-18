@@ -5,8 +5,8 @@
  * directory left empty by skipped files can be pruned in turn.
  */
 
-import type { ArchivePolicy } from "../types.js";
-import type { WorkItem } from "./workItem.js";
+import type { ArchivePolicy } from "../types.ts";
+import type { WorkItem } from "./workItem.ts";
 
 export function applyEmptyFiles(items: WorkItem[], policy: ArchivePolicy): void {
   if (policy.emptyFiles !== "skip") return;

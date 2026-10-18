@@ -8,9 +8,9 @@
  * items, so they are skipped here.
  */
 
-import { finding } from "../registry.js";
-import type { FilterMatcher } from "../filter/match.js";
-import type { WorkItem } from "./workItem.js";
+import { finding } from "../registry.ts";
+import type { FilterMatcher } from "../filter/match.ts";
+import type { WorkItem } from "./workItem.ts";
 
 export function applyFilter(items: WorkItem[], matcher: FilterMatcher): void {
   for (const item of items) {

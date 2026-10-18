@@ -9,8 +9,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fileTimestamp, openSessionLog, sessionLogName } from "../../src/log/session.js";
-import type { LogEvent } from "../../src/types.js";
+import { fileTimestamp, openSessionLog, sessionLogName } from "../../src/log/session.ts";
+import type { LogEvent } from "../../src/types.ts";
 
 let dir: string;
 

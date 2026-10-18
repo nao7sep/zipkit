@@ -9,10 +9,10 @@
  * for streaming arbitrarily large files in bounded memory.
  */
 
-import { extnameLower } from "../internal/path.js";
-import { DEFAULT_STORE_EXTENSIONS } from "../policy.js";
-import type { ArchivePolicy } from "../types.js";
-import type { WorkItem } from "./workItem.js";
+import { extnameLower } from "../internal/path.ts";
+import { DEFAULT_STORE_EXTENSIONS } from "../policy.ts";
+import type { ArchivePolicy } from "../types.ts";
+import type { WorkItem } from "./workItem.ts";
 
 export function applyCompression(items: WorkItem[], policy: ArchivePolicy): void {
   // `store` is already canonical (lowercase, leading dot) — resolvePolicy

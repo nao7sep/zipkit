@@ -18,16 +18,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ZipKit, type ZipKitError } from "../src/index.js";
-import { extractArchive } from "../src/extract/extract.js";
-import { matcherFor } from "../src/filter/match.js";
-import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.js";
-import { createLogger } from "../src/log/logger.js";
-import { resolvePolicy } from "../src/policy.js";
-import { scan } from "../src/scan/scan.js";
-import { writeArchive } from "../src/write/write.js";
-import { stallingFileSystem, type StallingFileSystem } from "./helpers/volume.js";
-import { invalidError } from "./helpers/errors.js";
+import { ZipKit, type ZipKitError } from "../src/index.ts";
+import { extractArchive } from "../src/extract/extract.ts";
+import { matcherFor } from "../src/filter/match.ts";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.ts";
+import { createLogger } from "../src/log/logger.ts";
+import { resolvePolicy } from "../src/policy.ts";
+import { scan } from "../src/scan/scan.ts";
+import { writeArchive } from "../src/write/write.ts";
+import { stallingFileSystem, type StallingFileSystem } from "./helpers/volume.ts";
+import { invalidError } from "./helpers/errors.ts";
 
 const BUDGET = 150;
 

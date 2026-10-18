@@ -7,9 +7,9 @@
  */
 
 import path from "node:path";
-import { sameFile } from "./paths.js";
-import type { Volume } from "./internal/volume.js";
-import type { PathState, PlannedEntry, RemovalCheck, SourceComparison, Unarchived } from "./types.js";
+import { sameFile } from "./paths.ts";
+import type { Volume } from "./internal/volume.ts";
+import type { PathState, PlannedEntry, RemovalCheck, SourceComparison, Unarchived } from "./types.ts";
 
 /** Whether `output` resolves to a location at or inside any of `inputs`. Both
  *  sides are resolved to their physical identities, so a link cannot hide the

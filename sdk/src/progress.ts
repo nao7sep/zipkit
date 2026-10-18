@@ -5,7 +5,7 @@
  * chunk. The observer cannot break the verb.
  */
 
-import type { ProgressCounts } from "./types.js";
+import type { ProgressCounts } from "./types.ts";
 
 /** How often a running count is reported, at most. */
 const INTERVAL_MS = 100;

@@ -5,8 +5,8 @@ import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { ZipKit } from "../../src/index.js";
-import { buildZipFile, type EntryWithData } from "../helpers/writeZip.js";
+import { ZipKit } from "../../src/index.ts";
+import { buildZipFile, type EntryWithData } from "../helpers/writeZip.ts";
 
 let dir: string;
 beforeEach(async () => { dir = await mkdtemp(path.join(tmpdir(), "zk-win-extraction-")); });

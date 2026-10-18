@@ -15,14 +15,14 @@
 
 import { createHash, type Hash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
-import { isStall, throwIfAborted, toAbortError, ZipKitError } from "../errors.js";
-import { readInternals } from "../internal/carrier.js";
-import type { Volume } from "../internal/volume.js";
-import type { Unlogged, WriteEntry } from "../internal/types.js";
-import type { Logger } from "../log/logger.js";
-import type { CreateData, ProgressCounts } from "../types.js";
-import { contentBytes } from "../plan/summary.js";
-import { Meter } from "../progress.js";
+import { isStall, throwIfAborted, toAbortError, ZipKitError } from "../errors.ts";
+import { readInternals } from "../internal/carrier.ts";
+import type { Volume } from "../internal/volume.ts";
+import type { Unlogged, WriteEntry } from "../internal/types.ts";
+import type { Logger } from "../log/logger.ts";
+import type { CreateData, ProgressCounts } from "../types.ts";
+import { contentBytes } from "../plan/summary.ts";
+import { Meter } from "../progress.ts";
 
 /** The `mode:"plan"` member of {@link CreateData} — the writer's input, carrying
  *  the resolved output, the writable gate, summary, findings, and (out of band,
@@ -32,10 +32,10 @@ type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 /** The `mode:"write"` member of {@link CreateData}; the writer's success shape.
  *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
 type WriteData = Unlogged<Extract<CreateData, { mode: "write" }>>;
-import { buildMetadata, manifestText } from "./metadata.js";
-import type { MetadataEntryInput } from "./metadata.js";
-import { EntryCompressor, ZipWriter } from "./zipWriter.js";
-import type { StreamResult, WriteEntryInput } from "./zipWriter.js";
+import { buildMetadata, manifestText } from "./metadata.ts";
+import type { MetadataEntryInput } from "./metadata.ts";
+import { EntryCompressor, ZipWriter } from "./zipWriter.ts";
+import type { StreamResult, WriteEntryInput } from "./zipWriter.ts";
 
 export interface WriteDeps {
   logger: Logger;

@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { applyEmptyFiles } from "../../src/plan/emptyFiles.js";
-import { resolvePolicy } from "../../src/policy.js";
-import { workItem } from "../helpers/synthetic.js";
+import { applyEmptyFiles } from "../../src/plan/emptyFiles.ts";
+import { resolvePolicy } from "../../src/policy.ts";
+import { workItem } from "../helpers/synthetic.ts";
 
 const skip = resolvePolicy(undefined, { emptyFiles: "skip" });
 const keep = resolvePolicy(undefined, { emptyFiles: "keep" });

@@ -12,29 +12,29 @@
  * to the plan out of band (see `carrier.ts`).
  */
 
-import { matcherFor } from "../filter/match.js";
-import { attachInternals } from "../internal/carrier.js";
-import type { ScanResult, Unlogged } from "../internal/types.js";
-import { finding } from "../registry.js";
-import type { ArchivePolicy, CreateData, Finding } from "../types.js";
+import { matcherFor } from "../filter/match.ts";
+import { attachInternals } from "../internal/carrier.ts";
+import type { ScanResult, Unlogged } from "../internal/types.ts";
+import { finding } from "../registry.ts";
+import type { ArchivePolicy, CreateData, Finding } from "../types.ts";
 
 /** The `mode:"plan"` member of {@link CreateData} — the dry-run payload and the
  *  writer's input. The carrier (writer instructions) rides on it out of band.
  *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
 type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
-import { applyCollision } from "./collision.js";
-import { applyCompression } from "./compression.js";
-import { applyDedup } from "./dedup.js";
-import { applyEmptyDirs } from "./emptyDirs.js";
-import { applyEmptyFiles } from "./emptyFiles.js";
-import { applyFilter } from "./filterPass.js";
-import { applyNameFix } from "./nameFix.js";
-import { applyPathFix } from "./pathFix.js";
-import { buildSummary } from "./summary.js";
-import { applySymlinks } from "./symlinks.js";
-import { applyTimestamps } from "./timestamps.js";
-import { planNeedsZip64, type MetadataContent } from "./zip64.js";
-import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.js";
+import { applyCollision } from "./collision.ts";
+import { applyCompression } from "./compression.ts";
+import { applyDedup } from "./dedup.ts";
+import { applyEmptyDirs } from "./emptyDirs.ts";
+import { applyEmptyFiles } from "./emptyFiles.ts";
+import { applyFilter } from "./filterPass.ts";
+import { applyNameFix } from "./nameFix.ts";
+import { applyPathFix } from "./pathFix.ts";
+import { buildSummary } from "./summary.ts";
+import { applySymlinks } from "./symlinks.ts";
+import { applyTimestamps } from "./timestamps.ts";
+import { planNeedsZip64, type MetadataContent } from "./zip64.ts";
+import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.ts";
 
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   const matcher = matcherFor(policy);

@@ -13,8 +13,8 @@
  * living in exactly one place.
  */
 
-import type { Logger } from "./logger.js";
-import type { Finding, LogLevel, LogStage, Severity } from "../types.js";
+import type { Logger } from "./logger.ts";
+import type { Finding, LogLevel, LogStage, Severity } from "../types.ts";
 
 /** The log level a finding of the given severity is recorded at. */
 function levelForSeverity(severity: Severity): LogLevel {

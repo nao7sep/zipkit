@@ -6,8 +6,8 @@
  * the collision pass, which treats them as an error.
  */
 
-import { finding } from "../registry.js";
-import type { WorkItem } from "./workItem.js";
+import { finding } from "../registry.ts";
+import type { WorkItem } from "./workItem.ts";
 
 export function applyDedup(items: WorkItem[]): void {
   const seen = new Set<string>();

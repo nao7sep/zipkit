@@ -8,9 +8,9 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { classifyPaths, mountPointOf, pathState, sameFile } from "../src/paths.js";
-import { ZipKit } from "../src/index.js";
-import { nodeFileSystem, Volume } from "../src/internal/volume.js";
+import { classifyPaths, mountPointOf, pathState, sameFile } from "../src/paths.ts";
+import { ZipKit } from "../src/index.ts";
+import { nodeFileSystem, Volume } from "../src/internal/volume.ts";
 
 const volume = new Volume(nodeFileSystem, 30_000);
 let root: string;

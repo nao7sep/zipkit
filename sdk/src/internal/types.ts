@@ -8,12 +8,12 @@
  * writer's edge.
  */
 
-import type { RuleId } from "../registry.js";
+import type { RuleId } from "../registry.ts";
 
 /**
  * A verb result before the SDK boundary stamps the session-log path onto it. The
  * pure builders (`planArchive`, `writeArchive`, `extractArchive`) produce
- * everything a result holds *except* `log`; {@link import("../zipkit.js").ZipKit}
+ * everything a result holds *except* `log`; {@link import("../zipkit.ts").ZipKit}
  * adds it where it owns the per-session log, so the builders stay
  * logging-agnostic.
  */
@@ -115,7 +115,7 @@ export interface Transformation {
 
 /**
  * An entry the writer will emit. Produced by the planner alongside the public
- * {@link import("../types.js").PlannedEntry}, but retaining the absolute source
+ * {@link import("../types.ts").PlannedEntry}, but retaining the absolute source
  * path and raw attributes the writer and metadata builder need. Carried out of
  * band on the plan (see `carrier.ts`) so it never reaches serialization.
  */

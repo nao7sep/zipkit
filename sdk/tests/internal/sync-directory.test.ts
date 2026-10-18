@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { syncDirectory } from "../../src/internal/sync-directory.js";
+import { syncDirectory } from "../../src/internal/sync-directory.ts";
 
 const fs = vi.hoisted(() => ({ open: vi.fn(), sync: vi.fn(), close: vi.fn() }));
 vi.mock("node:fs/promises", () => ({ open: fs.open }));

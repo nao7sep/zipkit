@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { publishNoOverwrite, volumePublishOperations, type PublishDestination } from "../../src/internal/noClobberPublish.js";
-import { nodeFileSystem, Volume } from "../../src/internal/volume.js";
+import { publishNoOverwrite, volumePublishOperations, type PublishDestination } from "../../src/internal/noClobberPublish.ts";
+import { nodeFileSystem, Volume } from "../../src/internal/volume.ts";
 
 function gate() {
   let release!: () => void;

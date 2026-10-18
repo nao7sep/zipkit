@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { VERSION } from "../src/version.js";
+import { VERSION } from "../src/version.ts";
 
 describe("SDK VERSION", () => {
   it("matches package.json (the single source of truth)", () => {

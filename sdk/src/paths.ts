@@ -9,9 +9,9 @@
  */
 
 import path from "node:path";
-import { ZipKitError } from "./errors.js";
-import type { Volume } from "./internal/volume.js";
-import type { PathEntry, PathKind, PathState } from "./types.js";
+import { ZipKitError } from "./errors.ts";
+import type { Volume } from "./internal/volume.ts";
+import type { PathEntry, PathKind, PathState } from "./types.ts";
 
 /** The folder a removable or network drive is mounted at, for a path on one,
  *  or the drive root on Windows; null for a path on the system drive. A path

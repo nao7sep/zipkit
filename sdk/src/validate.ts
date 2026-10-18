@@ -9,12 +9,12 @@
 
 import path from "node:path";
 import { z } from "zod";
-import { ZipKitError } from "./errors.js";
-import { resolveSegments, toForwardSlash } from "./internal/path.js";
-import { formatZodError } from "./internal/zodError.js";
-import { fullFixSegment } from "./plan/nameFix.js";
-import { isValidTimeZone } from "./internal/timeZone.js";
-import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExtractSpec } from "./types.js";
+import { ZipKitError } from "./errors.ts";
+import { resolveSegments, toForwardSlash } from "./internal/path.ts";
+import { formatZodError } from "./internal/zodError.ts";
+import { fullFixSegment } from "./plan/nameFix.ts";
+import { isValidTimeZone } from "./internal/timeZone.ts";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExtractSpec } from "./types.ts";
 
 /**
  * A single archive-path segment that the name fixer would leave untouched — the

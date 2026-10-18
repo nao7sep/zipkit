@@ -8,8 +8,8 @@
  * matcher applies them case-insensitively since the casing varies by filesystem.
  */
 
-import type { RuleId } from "../registry.js";
-import type { FilterRule } from "../types.js";
+import type { RuleId } from "../registry.ts";
+import type { FilterRule } from "../types.ts";
 
 export interface JunkRule {
   id: Extract<RuleId, "macos.junk" | "windows.junk" | "linux.junk">;

@@ -15,7 +15,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { customAlphabet } from "nanoid";
-import type { LogSink } from "./logger.js";
+import type { LogSink } from "./logger.ts";
 
 /** `yyyymmdd-hhmmss-utc`: a UTC filename stamp to the second, from the OS clock. */
 export function fileTimestamp(now: Date = new Date()): string {

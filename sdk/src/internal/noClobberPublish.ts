@@ -1,6 +1,6 @@
 /** Portable no-clobber publication for a completed same-directory temp file. */
 
-import type { Volume } from "./volume.js";
+import type { Volume } from "./volume.ts";
 
 const LINK_UNSUPPORTED = new Set(["EACCES", "EMLINK", "ENOSYS", "ENOTSUP", "EOPNOTSUPP", "EPERM"]);
 

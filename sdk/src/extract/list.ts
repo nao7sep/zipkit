@@ -4,14 +4,14 @@
  * on any ZIP; only the manifest needs one ZipKit made.
  */
 
-import { ZipKitError } from "../errors.js";
-import { machineTimeZone } from "../internal/timeZone.js";
-import type { Volume, VolumeFile } from "../internal/volume.js";
-import { METADATA_DEFAULTS } from "../policy.js";
-import type { ArchiveListing, ListedEntry, Metadata } from "../types.js";
-import { MANIFEST_FORMAT_VERSION } from "../write/metadata.js";
-import { restoreTimes } from "./restore.js";
-import { parseZip, readEntryData, type ParsedZip } from "./zipReader.js";
+import { ZipKitError } from "../errors.ts";
+import { machineTimeZone } from "../internal/timeZone.ts";
+import type { Volume, VolumeFile } from "../internal/volume.ts";
+import { METADATA_DEFAULTS } from "../policy.ts";
+import type { ArchiveListing, ListedEntry, Metadata } from "../types.ts";
+import { MANIFEST_FORMAT_VERSION } from "../write/metadata.ts";
+import { restoreTimes } from "./restore.ts";
+import { parseZip, readEntryData, type ParsedZip } from "./zipReader.ts";
 
 async function withArchive<T>(volume: Volume, archivePath: string, use: (archive: VolumeFile, parsed: ParsedZip) => Promise<T>): Promise<T> {
   let archive: VolumeFile;

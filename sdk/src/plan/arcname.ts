@@ -10,9 +10,9 @@
  */
 
 import path from "node:path";
-import { ZipKitError } from "../errors.js";
-import { toForwardSlash, trimSlashes } from "../internal/path.js";
-import type { ArchiveInput } from "../types.js";
+import { ZipKitError } from "../errors.ts";
+import { toForwardSlash, trimSlashes } from "../internal/path.ts";
+import type { ArchiveInput } from "../types.ts";
 
 export interface ResolvedInput {
   path: string; // absolute

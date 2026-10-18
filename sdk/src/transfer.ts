@@ -12,9 +12,9 @@
  * may be bigint).
  */
 
-import { attachInternals, readInternals, type PlanInternals } from "./internal/carrier.js";
-import { ZipKitError } from "./errors.js";
-import type { PlanData } from "./zipkit.js";
+import { attachInternals, readInternals, type PlanInternals } from "./internal/carrier.ts";
+import { ZipKitError } from "./errors.ts";
+import type { PlanData } from "./zipkit.ts";
 
 const FORMAT = "zipkit.plan-transfer/1";
 

@@ -4,7 +4,7 @@ import {
   type PublishDestination,
   type PublishOperations,
   type PublishSource,
-} from "../../src/internal/noClobberPublish.js";
+} from "../../src/internal/noClobberPublish.ts";
 
 function failure(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });

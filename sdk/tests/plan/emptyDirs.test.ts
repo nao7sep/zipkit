@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { applyEmptyDirs } from "../../src/plan/emptyDirs.js";
-import { resolvePolicy } from "../../src/policy.js";
-import { workItem } from "../helpers/synthetic.js";
+import { applyEmptyDirs } from "../../src/plan/emptyDirs.ts";
+import { resolvePolicy } from "../../src/policy.ts";
+import { workItem } from "../helpers/synthetic.ts";
 
 const keep = resolvePolicy(undefined, { emptyDirs: "keep" });
 const prune = resolvePolicy(undefined, { emptyDirs: "prune" });

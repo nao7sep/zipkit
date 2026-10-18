@@ -7,7 +7,7 @@
 
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ArchivePolicy, DeepPartial } from "../../src/index.js";
+import type { ArchivePolicy, DeepPartial } from "../../src/index.ts";
 
 export const SAMPLE_TIME = new Date("2026-01-02T03:04:05Z");
 

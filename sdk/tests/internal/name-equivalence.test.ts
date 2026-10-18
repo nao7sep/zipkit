@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aliasUnprovable, foldedName } from "../../src/internal/name-equivalence.js";
-import { linkValueComponents } from "../../src/extract/linkTargets.js";
+import { aliasUnprovable, foldedName } from "../../src/internal/name-equivalence.ts";
+import { linkValueComponents } from "../../src/extract/linkTargets.ts";
 
 describe("aliasUnprovable", () => {
   it.each(["darwin", "linux", "win32"] as const)("treats non-ASCII names as unprovable on %s", (platform) => {

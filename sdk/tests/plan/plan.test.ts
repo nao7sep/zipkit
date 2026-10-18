@@ -12,12 +12,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readInternals } from "../../src/internal/carrier.js";
-import { planArchive } from "../../src/plan/plan.js";
-import { resolvePolicy } from "../../src/policy.js";
-import type { ArchivePolicy, DeepPartial, Finding } from "../../src/types.js";
-import { scanEntry, scanResult } from "../helpers/synthetic.js";
-import type { ScanEntry } from "../../src/internal/types.js";
+import { readInternals } from "../../src/internal/carrier.ts";
+import { planArchive } from "../../src/plan/plan.ts";
+import { resolvePolicy } from "../../src/policy.ts";
+import type { ArchivePolicy, DeepPartial, Finding } from "../../src/types.ts";
+import { scanEntry, scanResult } from "../helpers/synthetic.ts";
+import type { ScanEntry } from "../../src/internal/types.ts";
 
 function plan(entries: ScanEntry[], policy: DeepPartial<ArchivePolicy> = {}, over = {}) {
   return planArchive(scanResult(entries, over), resolvePolicy(undefined, policy));

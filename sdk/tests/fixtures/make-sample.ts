@@ -11,9 +11,9 @@ import { mkdtemp, rm, copyFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ZipKit } from "../../src/index.js";
-import { MANIFEST_FORMAT_VERSION } from "../../src/write/metadata.js";
-import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./sample-tree.js";
+import { ZipKit } from "../../src/index.ts";
+import { MANIFEST_FORMAT_VERSION } from "../../src/write/metadata.ts";
+import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./sample-tree.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const work = await mkdtemp(path.join(tmpdir(), "zipkit-sample-"));

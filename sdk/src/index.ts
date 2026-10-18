@@ -3,18 +3,18 @@
  * writer are internal and may be refactored without affecting this surface.
  */
 
-export { ZipKit } from "./zipkit.js";
-export type { PlanData, WriteData } from "./zipkit.js";
-export { exportPlan, importPlan } from "./transfer.js";
-export { sameFile } from "./paths.js";
-export { createPathClaims } from "./claims.js";
-export { unarchived } from "./removal.js";
-export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.js";
-export { machineTimeZone } from "./internal/timeZone.js";
-export type { PlanTransfer } from "./transfer.js";
+export { ZipKit } from "./zipkit.ts";
+export type { PlanData, WriteData } from "./zipkit.ts";
+export { exportPlan, importPlan } from "./transfer.ts";
+export { sameFile } from "./paths.ts";
+export { createPathClaims } from "./claims.ts";
+export { unarchived } from "./removal.ts";
+export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.ts";
+export { machineTimeZone } from "./internal/timeZone.ts";
+export type { PlanTransfer } from "./transfer.ts";
 
-export { RULE_REGISTRY } from "./registry.js";
-export type { ExtractRuleId, FindingRule, RuleId, RuleSpec } from "./registry.js";
+export { RULE_REGISTRY } from "./registry.ts";
+export type { ExtractRuleId, FindingRule, RuleId, RuleSpec } from "./registry.ts";
 
 export type {
   ArchiveInput,
@@ -60,9 +60,9 @@ export type {
   UtcTime,
   ZipKitCallOptions,
   ZipKitOptions,
-} from "./types.js";
+} from "./types.ts";
 
-export { ERROR_CODES, isZipKitError, ZipKitError } from "./errors.js";
-export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.js";
+export { ERROR_CODES, isZipKitError, ZipKitError } from "./errors.ts";
+export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
 
-export type { Volume, VolumeFile } from "./internal/volume.js";
+export type { Volume, VolumeFile } from "./internal/volume.ts";

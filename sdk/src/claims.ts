@@ -4,8 +4,8 @@
  * as one set, without waiting while holding another claim. An unresolved
  * external effect retains its claim through physical settlement. */
 import path from "node:path";
-import type { Volume } from "./internal/volume.js";
-import { aliasUnprovable, foldedName } from "./internal/name-equivalence.js";
+import type { Volume } from "./internal/volume.ts";
+import { aliasUnprovable, foldedName } from "./internal/name-equivalence.ts";
 
 /** A path as a claim compares it (see `ZipKit.pathResources`). */
 export interface PathResource {

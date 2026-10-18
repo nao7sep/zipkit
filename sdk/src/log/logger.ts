@@ -16,8 +16,8 @@
  * and no open session file is silent and free.
  */
 
-import { messageFor } from "./messages.js";
-import type { LogEvent, LogEventBody, LogMeta } from "../types.js";
+import { messageFor } from "./messages.ts";
+import type { LogEvent, LogEventBody, LogMeta } from "../types.ts";
 
 export type LogSink = (event: LogEvent) => void;
 

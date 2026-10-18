@@ -38,8 +38,8 @@
 import type { BigIntStats } from "node:fs";
 import * as fsp from "node:fs/promises";
 import path from "node:path";
-import { stallError, toAbortError, ZipKitError } from "../errors.js";
-import { syncDirectory } from "./sync-directory.js";
+import { stallError, toAbortError, ZipKitError } from "../errors.ts";
+import { syncDirectory } from "./sync-directory.ts";
 
 /** A directory entry as the walker needs it. */
 export interface DirEntry {

@@ -9,8 +9,8 @@
  * transparently whenever this holds and omitted otherwise; there is no policy knob.
  */
 
-import type { WriteEntry } from "../internal/types.js";
-import type { ArchivePolicy, Finding } from "../types.js";
+import type { WriteEntry } from "../internal/types.ts";
+import type { ArchivePolicy, Finding } from "../types.ts";
 
 const U32_MAX = 0xffffffff;
 const U16_MAX = 0xffff;

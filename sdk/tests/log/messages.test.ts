@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { messageFor } from "../../src/log/messages.js";
-import type { LogEventBody } from "../../src/types.js";
+import { messageFor } from "../../src/log/messages.ts";
+import type { LogEventBody } from "../../src/types.ts";
 
 const samples: LogEventBody[] = [
   { event: "session.start", version: "0.1.0", concurrency: 8, chunkSize: 65536 },

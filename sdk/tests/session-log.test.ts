@@ -9,9 +9,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit } from "../src/index.js";
-import type { LogEvent } from "../src/index.js";
-import { invalidError } from "./helpers/errors.js";
+import { ZipKit } from "../src/index.ts";
+import type { LogEvent } from "../src/index.ts";
+import { invalidError } from "./helpers/errors.ts";
 
 let root: string;
 let logDir: string;

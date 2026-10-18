@@ -16,8 +16,8 @@ import { constants as bufferConstants } from "node:buffer";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import zlib from "node:zlib";
-import { ZipKitError } from "../errors.js";
-import type { VolumeFile } from "../internal/volume.js";
+import { ZipKitError } from "../errors.ts";
+import type { VolumeFile } from "../internal/volume.ts";
 
 const EOCD_SIG = 0x06054b50;
 const EOCD_MIN = 22;

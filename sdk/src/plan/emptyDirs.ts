@@ -8,9 +8,9 @@
  * survive extraction.
  */
 
-import { ancestorDirs } from "../internal/path.js";
-import type { ArchivePolicy } from "../types.js";
-import type { WorkItem } from "./workItem.js";
+import { ancestorDirs } from "../internal/path.ts";
+import type { ArchivePolicy } from "../types.ts";
+import type { WorkItem } from "./workItem.ts";
 
 export function applyEmptyDirs(items: WorkItem[], policy: ArchivePolicy): void {
   const occupied = new Set<string>();

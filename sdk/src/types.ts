@@ -609,7 +609,7 @@ export interface ExtractData {
 
 /**
  * How an archive's inputs on disk compare with its manifest, from
- * {@link import("./zipkit.js").ZipKit.compareSources}. Paths are the
+ * {@link import("./zipkit.ts").ZipKit.compareSources}. Paths are the
  * manifest's input-relative source paths. `matches` is the delete gate: true
  * only when every included file and symlink is as archived and the fresh scan
  * listed every folder.

@@ -2,9 +2,9 @@ import { lstat, mkdir, mkdtemp, realpath, rm, symlink, unlink } from "node:fs/pr
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, onTestFinished } from "vitest";
-import { createLinkTargetGuard } from "../../src/extract/linkTargets.js";
-import { nodeFileSystem, Volume } from "../../src/internal/volume.js";
-import { fileSymlinksSupported } from "../helpers/symlink.js";
+import { createLinkTargetGuard } from "../../src/extract/linkTargets.ts";
+import { nodeFileSystem, Volume } from "../../src/internal/volume.ts";
+import { fileSymlinksSupported } from "../helpers/symlink.ts";
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-link-targets-"));

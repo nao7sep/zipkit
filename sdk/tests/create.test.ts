@@ -11,10 +11,10 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit, ZipKitError } from "../src/index.js";
-import { readZip } from "./helpers/readZip.js";
-import { createFileLink, fileSymlinksSupported } from "./helpers/symlink.js";
-import { invalidError } from "./helpers/errors.js";
+import { ZipKit, ZipKitError } from "../src/index.ts";
+import { readZip } from "./helpers/readZip.ts";
+import { createFileLink, fileSymlinksSupported } from "./helpers/symlink.ts";
+import { invalidError } from "./helpers/errors.ts";
 
 let dir: string;
 

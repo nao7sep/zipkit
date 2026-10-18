@@ -2,9 +2,9 @@ import { lstat, mkdir, mkdtemp, readlink, realpath, rm, symlink } from "node:fs/
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, onTestFinished } from "vitest";
-import { ZipKit } from "../../src/index.js";
-import { buildZipFile } from "../helpers/writeZip.js";
-import { fileSymlinksSupported } from "../helpers/symlink.js";
+import { ZipKit } from "../../src/index.ts";
+import { buildZipFile } from "../helpers/writeZip.ts";
+import { fileSymlinksSupported } from "../helpers/symlink.ts";
 
 const times = {
   mtimeNs: 1_577_836_800_000_000_000n,

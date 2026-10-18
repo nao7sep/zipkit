@@ -8,8 +8,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { exportPlan, importPlan, ZipKit, type PlanData } from "../src/index.js";
-import { invalidError } from "./helpers/errors.js";
+import { exportPlan, importPlan, ZipKit, type PlanData } from "../src/index.ts";
+import { invalidError } from "./helpers/errors.ts";
 
 let dir: string;
 beforeEach(async () => { dir = await mkdtemp(path.join(tmpdir(), "zipkit-transfer-")); });

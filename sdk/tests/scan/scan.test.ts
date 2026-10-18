@@ -12,14 +12,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import pLimit from "p-limit";
-import { matcherFor } from "../../src/filter/match.js";
-import { createLogger } from "../../src/log/logger.js";
-import { resolvePolicy } from "../../src/policy.js";
-import { scan } from "../../src/scan/scan.js";
-import type { ArchivePolicy, ArchiveSpec } from "../../src/types.js";
-import { realVolume } from "../helpers/volume.js";
-import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.js";
-import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../helpers/symlink.js";
+import { matcherFor } from "../../src/filter/match.ts";
+import { createLogger } from "../../src/log/logger.ts";
+import { resolvePolicy } from "../../src/policy.ts";
+import { scan } from "../../src/scan/scan.ts";
+import type { ArchivePolicy, ArchiveSpec } from "../../src/types.ts";
+import { realVolume } from "../helpers/volume.ts";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.ts";
+import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../helpers/symlink.ts";
 
 let dir: string;
 

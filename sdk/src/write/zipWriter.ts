@@ -42,12 +42,12 @@
 
 import { dirname, join, parse } from "node:path";
 import { nanoid } from "nanoid";
-import { throwIfAborted } from "../errors.js";
-import { dosDateTime } from "../internal/dosTime.js";
-import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobberPublish.js";
-import type { Volume, VolumeFile } from "../internal/volume.js";
-import { deflateBound } from "../plan/zip64.js";
-import { EntryCompressor, type ChunkSink } from "./deflate.js";
+import { throwIfAborted } from "../errors.ts";
+import { dosDateTime } from "../internal/dosTime.ts";
+import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobberPublish.ts";
+import type { Volume, VolumeFile } from "../internal/volume.ts";
+import { deflateBound } from "../plan/zip64.ts";
+import { EntryCompressor, type ChunkSink } from "./deflate.ts";
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;

@@ -6,5 +6,5 @@
  * `ZipKit.volume`. Not for production code: there the SDK builds its own.
  */
 
-export { nodeFileSystem, Volume } from "./internal/volume.js";
-export type { FileSystemPort } from "./internal/volume.js";
+export { nodeFileSystem, Volume } from "./internal/volume.ts";
+export type { FileSystemPort } from "./internal/volume.ts";

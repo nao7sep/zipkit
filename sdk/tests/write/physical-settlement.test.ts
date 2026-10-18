@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { ZipKit } from "../../src/zipkit.js";
-import { nodeFileSystem, Volume, volumeWorkPending, type FileSystemPort } from "../../src/internal/volume.js";
+import { ZipKit } from "../../src/zipkit.ts";
+import { nodeFileSystem, Volume, volumeWorkPending, type FileSystemPort } from "../../src/internal/volume.ts";
 
 function gate() {
   let release!: () => void;

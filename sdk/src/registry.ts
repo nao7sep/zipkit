@@ -14,7 +14,7 @@
  * fixing, deduplication, collision detection, and timestamp resolution.
  */
 
-import type { ExtractRuleId, Finding, FindingRule, RuleId, Severity } from "./types.js";
+import type { ExtractRuleId, Finding, FindingRule, RuleId, Severity } from "./types.ts";
 
 export type { RuleId };
 

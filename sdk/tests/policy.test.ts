@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_POLICY, NAME_DEFAULTS, resolvePolicy } from "../src/policy.js";
-import type { FilterRule } from "../src/types.js";
+import { DEFAULT_POLICY, NAME_DEFAULTS, resolvePolicy } from "../src/policy.ts";
+import type { FilterRule } from "../src/types.ts";
 
 const ruleA: FilterRule = { pattern: "a", match: "glob", target: "both" };
 const ruleB: FilterRule = { pattern: "b", match: "glob", target: "both" };

@@ -8,7 +8,7 @@
  * is exactly the clamping the writer applies.
  */
 
-import { wallClockInZone } from "./timeZone.js";
+import { wallClockInZone } from "./timeZone.ts";
 
 /** Which DOS bound a time was clamped to, if any. */
 export type DosClamp = "pre-1980" | "post-2107";

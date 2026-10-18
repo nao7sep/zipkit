@@ -15,11 +15,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.js";
-import { findExtra, readZipFile } from "../helpers/readZip.js";
-import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../src/plan/zip64.js";
-import { ZipWriter } from "../../src/write/zipWriter.js";
-import { realVolume } from "../helpers/volume.js";
+import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.ts";
+import { findExtra, readZipFile } from "../helpers/readZip.ts";
+import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../src/plan/zip64.ts";
+import { ZipWriter } from "../../src/write/zipWriter.ts";
+import { realVolume } from "../helpers/volume.ts";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
 // 100-ns ticks between 1601 (FILETIME epoch) and 1970, for decoding NTFS times.
