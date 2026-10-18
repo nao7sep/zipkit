@@ -384,7 +384,7 @@ describe("heavy validation against a manifest", () => {
     const archive = await writeArchive([fileEntry("a.txt", "alpha"), fileEntry("zipkit.json", JSON.stringify(manifest))]);
     const before = await readFile(archive);
     await expect(new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).rejects.toMatchObject({
-      errorType: "read",
+      kind: "invalid",
       code: "read.manifest-newer",
     });
     expect((await readFile(archive)).equals(before)).toBe(true);

@@ -213,7 +213,7 @@ export interface ZipKitOptions {
    * verb performs: one stat, directory listing, open, chunk read or write,
    * sync, or rename. An operation that has not settled within it is treated as
    * a stalled volume (a dropped network share, a removed drive): the verb stops
-   * waiting and fails with a `StallError` naming the operation and the path.
+   * waiting and fails with a `io.stalled` error naming the operation and the path.
    * It bounds each operation, not the whole verb, so a large archive on a
    * healthy volume is never cut short. Defaults to 30000 (30 s).
    */
@@ -235,7 +235,7 @@ export interface ZipKitOptions {
  *
  * `signal` is the cancellation signal. Every verb — `plan`, `write`, `create`,
  * `extract` — honors it, stopping cleanly at the next boundary (a phase edge, a
- * walked entry, a streamed chunk) and rejecting with {@link AbortError}. It is
+ * walked entry, a streamed chunk) and rejecting with the `aborted` error. It is
  * control, not data, so it lives here and not on the spec.
  */
 export interface ZipKitCallOptions {

@@ -1,7 +1,7 @@
 import { PassThrough, Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { AbortError } from "../../src/errors.js";
+
 import { awaitDrain } from "../../src/internal/drain.js";
 
 // The backpressure wait used to listen for "drain" and nothing else. A stream
@@ -45,7 +45,7 @@ describe("awaitDrain", () => {
     stream.write(Buffer.alloc(64));
     const pending = awaitDrain(stream, controller.signal);
     controller.abort();
-    await expect(pending).rejects.toBeInstanceOf(AbortError);
+    await expect(pending).rejects.toMatchObject({ code: "aborted" });
   });
 
   it("rejects immediately for an already-aborted signal", async () => {
@@ -53,7 +53,7 @@ describe("awaitDrain", () => {
     controller.abort();
     const stream = backedUpStream();
     stream.write(Buffer.alloc(64));
-    await expect(awaitDrain(stream, controller.signal)).rejects.toBeInstanceOf(AbortError);
+    await expect(awaitDrain(stream, controller.signal)).rejects.toMatchObject({ code: "aborted" });
   });
 
   it("leaves no listeners behind on any path", async () => {

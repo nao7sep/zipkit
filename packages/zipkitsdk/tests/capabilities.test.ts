@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ReadError, unarchived, ZipKit } from "../src/index.js";
+import { unarchived, ZipKit, ZipKitError } from "../src/index.js";
 import type { PlannedEntry, ProgressCounts } from "../src/index.js";
 import { Meter } from "../src/progress.js";
 import { createDirectoryLink } from "./helpers/symlink.js";
@@ -134,7 +134,7 @@ describe("list and readManifest", () => {
     await expect(zip.readManifest(bare)).rejects.toMatchObject({ code: "read.manifest-missing" });
     const text = path.join(root, "not.zip");
     await writeFile(text, "x".repeat(100));
-    await expect(zip.list(text)).rejects.toBeInstanceOf(ReadError);
+    await expect(zip.list(text)).rejects.toBeInstanceOf(ZipKitError);
     expect((await stat(text)).size).toBe(100);
   });
 });

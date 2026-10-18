@@ -11,7 +11,7 @@
  */
 
 import { rm } from "node:fs/promises";
-import { exportPlan, importPlan, ZipKit, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "zipkitsdk";
+import { exportPlan, importPlan, ZipKit, ZipKitError, type ErrorEffect, type ErrorKind, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
@@ -37,12 +37,17 @@ export type HostRequest =
   | { type: "cancel"; id: number };
 
 /** A failure as it crosses: the fields main's error handling reads. */
+/** A failure as it crosses: an SDK error's own data (see the SDK's
+ *  `ZipKitErrorData`), or the name and message of anything else, or the
+ *  host's own `host.exited` when its process ends. */
 export interface RemoteFailure {
   name: string;
   message: string;
-  errorType?: string;
   code?: string;
-  path?: string;
+  kind?: ErrorKind;
+  effect?: ErrorEffect;
+  subject?: string;
+  details?: unknown;
 }
 
 /** A removal check as it crosses: a check that errored carries its failure. */
@@ -59,13 +64,9 @@ export type HostReply =
   | { type: "physical-settled"; id: number };
 
 export function failure(err: unknown): RemoteFailure {
+  if (err instanceof ZipKitError) return err.toJSON();
   if (!(err instanceof Error)) return { name: "Error", message: String(err) };
-  const fields = err as Error & { errorType?: unknown; code?: unknown; path?: unknown };
-  const out: RemoteFailure = { name: err.name, message: err.message };
-  if (typeof fields.errorType === "string") out.errorType = fields.errorType;
-  if (typeof fields.code === "string") out.code = fields.code;
-  if (typeof fields.path === "string") out.path = fields.path;
-  return out;
+  return { name: err.name, message: err.message };
 }
 
 /** The SDK as the app runs it: ZipKit's own data folder is never archived,

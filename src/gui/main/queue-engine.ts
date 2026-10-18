@@ -44,7 +44,7 @@ import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type Tra
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
-import { sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal } from "zipkitsdk";
+import { isZipKitError, sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal } from "zipkitsdk";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -156,38 +156,28 @@ interface Rec {
   runAfterPlan: boolean;
 }
 
-/** The SDK error code for a thrown value, if it is a ZipKitError (carries both a
- *  dot-separated `code` and an `errorType`). Returns undefined for plain/Node
- *  errors, so a Node `code` like ENOENT is never mistaken for an SDK code. */
+/** The code of an SDK failure, or of the SDK host's own exit. Undefined for
+ *  plain or Node errors, so a Node `code` like ENOENT is never mistaken for an
+ *  SDK code. */
 function errCode(err: unknown): string | undefined {
-  if (err instanceof Error && typeof (err as { errorType?: unknown }).errorType === "string") {
-    const code = (err as { code?: unknown }).code;
-    if (typeof code === "string") return code;
-  }
-  return undefined;
+  if (isZipKitError(err)) return err.code;
+  return (err as { code?: unknown } | null)?.code === "host.exited" ? "host.exited" : undefined;
 }
 
-/** The path a stalled volume stopped responding at, when the SDK reports one
- *  (a `stall` error names the operation's path). */
+/** The path a stalled volume stopped responding at. */
 function stalledPath(err: unknown): string | undefined {
-  if (err instanceof Error && (err as { errorType?: unknown }).errorType === "stall") {
-    const path = (err as { path?: unknown }).path;
-    if (typeof path === "string") return path;
-  }
-  return undefined;
+  return isZipKitError(err) && err.code === "io.stalled" ? err.subject : undefined;
 }
 
 /** The archive path of the source file a write found changed since the scan. */
 function changedSourcePath(err: unknown): string | undefined {
-  if (errCode(err) !== "write.source-changed") return undefined;
-  const path = (err as { path?: unknown }).path;
-  return typeof path === "string" ? path : undefined;
+  return isZipKitError(err) && err.code === "write.source-changed" ? err.subject : undefined;
 }
 
 /** Whether a stall struck while a finished archive was being published, so the
  *  archive may still appear once the stalled call completes. */
 function stalledWhileCommitting(err: unknown): boolean {
-  return stalledPath(err) !== undefined && (err as { committing?: unknown }).committing === true;
+  return stalledPath(err) !== undefined && isZipKitError(err) && err.effect === "unknown";
 }
 
 /** A failed write's job message: a source file that changed while it was read

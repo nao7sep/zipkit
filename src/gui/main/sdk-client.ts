@@ -18,17 +18,23 @@ export interface HostProcess {
   kill(): void;
 }
 
-/** An SDK failure rebuilt in main: the fields the engine and the error mapper read. */
+/** A failure rebuilt in main with the fields it crossed with: an SDK error
+ *  keeps its code, kind, effect, subject and details, so the SDK's
+ *  `isZipKitError` recognizes it here as it would in the host. */
 export class SdkHostError extends Error {
-  readonly errorType: string | undefined;
   readonly code: string | undefined;
-  readonly path: string | undefined;
+  readonly kind: RemoteFailure["kind"];
+  readonly effect: RemoteFailure["effect"];
+  readonly subject: string | undefined;
+  readonly details: unknown;
   constructor(failure: RemoteFailure) {
     super(failure.message);
     this.name = failure.name;
-    this.errorType = failure.errorType;
     this.code = failure.code;
-    this.path = failure.path;
+    this.kind = failure.kind;
+    this.effect = failure.effect;
+    this.subject = failure.subject;
+    this.details = failure.details;
   }
 }
 
@@ -97,8 +103,10 @@ export function createSdkClient(spawn: () => HostProcess) {
       finish(id)?.reject(new SdkHostError({
         name: "SdkHostExited",
         message: `ZipKit's archiving process ended (exit code ${code})`,
-        errorType: "host",
         code: "host.exited",
+        kind: "unavailable",
+        // Whatever it was doing may have landed before it ended.
+        effect: "unknown",
       }));
     }
   }

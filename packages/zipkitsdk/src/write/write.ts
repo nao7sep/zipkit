@@ -8,14 +8,14 @@
  * instructions ride on the plan (see `carrier.ts`), so `write(plan)` needs no
  * second argument.
  *
- * `writable` is the gate: a non-writable plan throws `WriteError`, with no
+ * `writable` is the gate: a non-writable plan throws `write.not-writable`, with no
  * override for the error tier. The output is written to a temp file in its own
  * directory and atomically renamed into place by the writer.
  */
 
 import { createHash, type Hash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
-import { StallError, throwIfAborted, toAbortError, WriteError, ZipKitError } from "../errors.js";
+import { isStall, throwIfAborted, toAbortError, ZipKitError } from "../errors.js";
 import { readInternals } from "../internal/carrier.js";
 import type { Volume } from "../internal/volume.js";
 import type { Unlogged, WriteEntry } from "../internal/types.js";
@@ -75,11 +75,11 @@ function changedSinceScan(source: WriteEntry, stats: BigIntStats): boolean {
   return Number(stats.size) !== source.size || stats.mtimeNs !== source.mtimeNs;
 }
 
-function sourceChanged(source: WriteEntry): WriteError {
-  return new WriteError(
+function sourceChanged(source: WriteEntry): ZipKitError {
+  return new ZipKitError(
     "write.source-changed",
     `source changed while it was being archived: ${source.archivePath}`,
-    { path: source.archivePath },
+    { subject: source.archivePath },
   );
 }
 
@@ -133,7 +133,7 @@ async function streamFile(
       // A cancel, a stall, or a destination fault surfacing through the
       // compressor is already classified; only a raw source error is wrapped.
       if (err instanceof ZipKitError) throw err;
-      throw new WriteError("write.read-failed", `cannot read source for ${source.archivePath}`, {
+      throw new ZipKitError("write.read-failed", `cannot read source for ${source.archivePath}`, {
         cause: err,
       });
     }
@@ -195,13 +195,13 @@ async function streamPieces(
 export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<WriteData> {
   const internals = readInternals(plan);
   if (!internals) {
-    throw new WriteError(
+    throw new ZipKitError(
       "write.no-internals",
       "this plan was not produced by ZipKit.plan(); a re-serialized plan cannot be written",
     );
   }
   if (!plan.writable) {
-    throw new WriteError(
+    throw new ZipKitError(
       "write.not-writable",
       "the plan is not writable: resolve blocking findings or authorize overwrite",
     );
@@ -367,9 +367,9 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     await writer.abort();
     // A publication stall or flush failure keeps its truthful output status,
     // even when cancellation arrived during that publication.
-    if (err instanceof StallError || (err instanceof WriteError && err.code === "write.durability")) throw err;
+    if (isStall(err) || (err instanceof ZipKitError && err.code === "write.durability")) throw err;
     if (signal?.aborted) throw toAbortError(signal.reason);
-    if (err instanceof WriteError) throw err;
-    throw new WriteError("write.failed", `failed to write ${plan.output}`, { cause: err });
+    if (err instanceof ZipKitError && err.code.startsWith("write.")) throw err;
+    throw new ZipKitError("write.failed", `failed to write ${plan.output}`, { cause: err });
   }
 }

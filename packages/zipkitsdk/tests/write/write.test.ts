@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WriteError, ZipKit } from "../../src/index.js";
+import { ZipKit, ZipKitError } from "../../src/index.js";
 import { Volume } from "../../src/internal/volume.js";
 import { createLogger } from "../../src/log/logger.js";
 import { writeArchive } from "../../src/write/write.js";
@@ -48,8 +48,8 @@ async function expectSourceChanged(run: Promise<unknown>): Promise<void> {
     () => null,
     (e: unknown) => e,
   );
-  expect(err).toBeInstanceOf(WriteError);
-  expect(err).toMatchObject({ code: "write.source-changed", path: "data.txt" });
+  expect(err).toBeInstanceOf(ZipKitError);
+  expect(err).toMatchObject({ code: "write.source-changed", subject: "data.txt" });
   expect(existsSync(output)).toBe(false);
   expect(readdirSync(dir)).toEqual(["proj"]); // no temp left behind
 }

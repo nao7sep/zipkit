@@ -9,8 +9,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PolicyError, ZipKit } from "../src/index.js";
+import { ZipKit } from "../src/index.js";
 import type { LogEvent } from "../src/index.js";
+import { invalidError } from "./helpers/errors.js";
 
 let root: string;
 let logDir: string;
@@ -177,7 +178,7 @@ describe("SDK without a session log", () => {
   });
 
   it("rejects a logDir that is not a non-empty string", () => {
-    expect(() => new ZipKit({ logDir: "" })).toThrow(PolicyError);
-    expect(() => new ZipKit({ logDir: 5 as never })).toThrow(PolicyError);
+    expect(() => new ZipKit({ logDir: "" })).toThrow(invalidError);
+    expect(() => new ZipKit({ logDir: 5 as never })).toThrow(invalidError);
   });
 });

@@ -7,7 +7,7 @@ import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
-import { AbortError, StallError, ZipKit } from "zipkitsdk";
+import { ZipKit } from "zipkitsdk";
 import { nodeFileSystem, Volume, type FileSystemPort } from "zipkitsdk/testing";
 import { SAVE } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
@@ -141,7 +141,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     if (!cancel && phase === "write") await vi.advanceTimersByTimeAsync(1_000);
     await firstFailed.promise;
     vi.useRealTimers();
-    expect(writeErrors[0]).toBeInstanceOf(cancel ? AbortError : StallError);
+    expect(writeErrors[0]).toMatchObject({ code: cancel ? "aborted" : "io.stalled" });
     expect(physical).toBeDefined();
     expect(physicallySettled).toBe(false);
 

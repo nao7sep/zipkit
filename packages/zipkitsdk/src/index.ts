@@ -62,16 +62,7 @@ export type {
   ZipKitOptions,
 } from "./types.js";
 
-export {
-  AbortError,
-  PolicyError,
-  ReadError,
-  ScanError,
-  StallError,
-  WriteError,
-  ZipKitError,
-} from "./errors.js";
-
-export type { ZipKitErrorType } from "./errors.js";
+export { ERROR_CODES, isZipKitError, ZipKitError } from "./errors.js";
+export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.js";
 
 export type { Volume, VolumeFile } from "./internal/volume.js";

@@ -1,7 +1,7 @@
 /**
  * Robustness of the ZIP reader against malformed input — the path behind
  * "validate any ZIP". Each case crafts a deliberately broken archive on disk and
- * asserts the specific ReadError code, so a corrupt or truncated file fails
+ * asserts the specific read error code, so a corrupt or truncated file fails
  * cleanly and diagnosably rather than mis-parsing.
  */
 

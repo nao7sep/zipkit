@@ -7,9 +7,10 @@
 
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { PolicyError } from "../../src/errors.js";
+
 import { resolveOutputPath } from "../../src/scan/output.js";
 import type { ResolvedInput } from "../../src/plan/arcname.js";
+import { invalidError } from "../helpers/errors.js";
 
 const cwd = path.resolve("/work");
 const input = (p: string): ResolvedInput => ({ path: path.resolve(cwd, p) });
@@ -46,10 +47,10 @@ describe("resolveOutputPath", () => {
     const inputs = [input("one/a"), input("two/b")];
     expect(resolveOutputPath({ outputDir: "/out" }, inputs, [true, true], cwd)).toBe(path.resolve("/out/a.zip"));
     expect(resolveOutputPath({ outputName: "both" }, inputs, [true, true], cwd)).toBe(at("one", "both.zip"));
-    expect(() => resolveOutputPath({}, inputs, [true, true], cwd)).toThrow(PolicyError);
+    expect(() => resolveOutputPath({}, inputs, [true, true], cwd)).toThrow(invalidError);
   });
 
   it("refuses to infer from an empty input list", () => {
-    expect(() => resolveOutputPath({}, [], [], cwd)).toThrow(PolicyError);
+    expect(() => resolveOutputPath({}, [], [], cwd)).toThrow(invalidError);
   });
 });

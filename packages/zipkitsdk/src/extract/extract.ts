@@ -17,13 +17,13 @@
  *
  * Every filesystem call goes through the run's bounded {@link Volume}, so an
  * archive or destination on a stalled volume fails the run with a
- * `StallError` instead of hanging it.
+ * `io.stalled` error instead of hanging it.
  */
 
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { nanoid } from "nanoid";
-import { ReadError, StallError, throwIfAborted, toAbortError, ZipKitError } from "../errors.js";
+import { isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.js";
 import { buildMatcher } from "../filter/match.js";
 import { resolveSegments, toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
@@ -186,7 +186,7 @@ async function loadManifest(
 ): Promise<{ entry: ReadEntry; records: ManifestRecord[] }> {
   const inside = entries.find((e) => e.archivePath === name);
   if (!inside) {
-    throw new ReadError(
+    throw new ZipKitError(
       "read.manifest-missing",
       `metadata validation requested but no manifest '${name}' is embedded in the archive`,
     );
@@ -206,24 +206,24 @@ async function loadManifest(
     // A stall, a cancel or a damaged archive keeps its own code; only the
     // document itself failing to parse is an invalid manifest.
     if (err instanceof ZipKitError) throw err;
-    throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
+    throw new ZipKitError("read.manifest-invalid", `manifest ${name} is not valid JSON`, {
       cause: err,
     });
   }
   const formatVersion = reading.formatVersion;
   if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {
-    throw new ReadError("read.manifest-invalid", `manifest ${name} has no valid formatVersion`);
+    throw new ZipKitError("read.manifest-invalid", `manifest ${name} has no valid formatVersion`);
   }
   if (formatVersion > MANIFEST_FORMAT_VERSION) {
-    throw new ReadError(
+    throw new ZipKitError(
       "read.manifest-newer",
       `manifest ${name} has format version ${formatVersion}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
     );
   }
   if (!reading.hasEntries) {
-    throw new ReadError("read.manifest-invalid", `manifest ${name} has no entries list`);
+    throw new ZipKitError("read.manifest-invalid", `manifest ${name} has no entries list`);
   }
-  if (reading.problem !== null) throw new ReadError("read.manifest-invalid", reading.problem);
+  if (reading.problem !== null) throw new ZipKitError("read.manifest-invalid", reading.problem);
   return { entry: inside, records: reading.records as ManifestRecord[] };
 }
 
@@ -249,7 +249,7 @@ export async function readManifest(volume: Volume, archivePath: string, name: st
     archive = await volume.open(archivePath, "r");
   } catch (err) {
     if (err instanceof ZipKitError) throw err;
-    throw new ReadError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+    throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
   }
   try {
     let fileSize: number;
@@ -257,7 +257,7 @@ export async function readManifest(volume: Volume, archivePath: string, name: st
       fileSize = Number((await archive.stat()).size);
     } catch (err) {
       if (err instanceof ZipKitError) throw err;
-      throw new ReadError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+      throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
     }
     const parsed = await parseZip(archive, fileSize);
     return (await loadManifest(archive, parsed.entries, name)).records;
@@ -307,7 +307,7 @@ async function verifyEntry(
     return { crcOk: true, sha: checkSha ? (storedSha ? "ok" : "absent") : undefined };
   }
   if (captureLink && entry.uncompSize > MAX_SYMLINK_TARGET_BYTES) {
-    throw new ReadError(
+    throw new ZipKitError(
       "read.entry-too-large",
       `${entry.archivePath} exceeds the symlink target size limit`,
     );
@@ -315,7 +315,14 @@ async function verifyEntry(
 
   const hasher = checkSha ? createHash("sha256") : null;
   const linkChunks: Buffer[] = [];
-  const out = stageTo ? await volume.createTemp(stageTo) : null;
+  let out: Awaited<ReturnType<Volume["createTemp"]>> | null = null;
+  if (stageTo) {
+    try { out = await volume.createTemp(stageTo); }
+    catch (err) {
+      if (err instanceof ZipKitError) throw err;
+      throw new ZipKitError("read.write-failed", `cannot stage ${entry.archivePath}`, { cause: err, subject: entry.archivePath });
+    }
+  }
 
   const sink = async (chunk: Buffer): Promise<void> => {
     throwIfAborted(signal);
@@ -475,7 +482,7 @@ export async function extractArchive(
 
   const write = spec.dryRun !== true;
   if (write && (spec.dest === undefined || spec.dest === "")) {
-    throw new ReadError(
+    throw new ZipKitError(
       "read.no-dest",
       "extract requires a destination directory unless dryRun is set",
     );
@@ -499,18 +506,20 @@ export async function extractArchive(
     archive = await volume.open(spec.archive, "r");
   } catch (err) {
     if (err instanceof ZipKitError) throw err;
-    throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, {
+    throw new ZipKitError("read.open-failed", `cannot read archive ${spec.archive}`, {
       cause: err,
     });
   }
 
+  // Once a file is written, whatever stops the run leaves its effect unknown.
+  let wroteAny = false;
   try {
     let fileSize: number;
     try {
       fileSize = Number((await archive.stat()).size);
     } catch (err) {
       if (err instanceof ZipKitError) throw err;
-      throw new ReadError("read.open-failed", `cannot read archive ${spec.archive}`, {
+      throw new ZipKitError("read.open-failed", `cannot read archive ${spec.archive}`, {
         cause: err,
       });
     }
@@ -530,7 +539,7 @@ export async function extractArchive(
     );
     const collision = findTargetCollision(parsed.entries);
     if (collision) {
-      throw new ReadError(
+      throw new ZipKitError(
         "read.target-collision",
         `entries '${collision[0]}' and '${collision[1]}' resolve to colliding extraction targets`,
       );
@@ -582,7 +591,7 @@ export async function extractArchive(
       ),
     );
     const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
-    const failure = failures.find((f) => f instanceof StallError) ?? failures[0];
+    const failure = failures.find((f) => isStall(f)) ?? failures[0];
     if (failure !== undefined) throw failure;
     if (deferredLinks) {
       for (const [index, entry] of parsed.entries.entries()) {
@@ -594,7 +603,7 @@ export async function extractArchive(
       }
     }
     if (abort.entry) {
-      throw new ReadError(
+      throw new ZipKitError(
         "read.unsafe-path",
         `entry '${abort.entry.archivePath}' escapes the destination directory`,
       );
@@ -611,9 +620,9 @@ export async function extractArchive(
      *  read.write-failed (exit 5); a stall first, since a stalled publication
      *  may still land. */
     function writeFailure(entry: ReadEntry, err: unknown): unknown {
-      if (err instanceof StallError) return err;
+      if (isStall(err)) return err;
       if (signal?.aborted) return toAbortError(signal.reason);
-      return new ReadError("read.write-failed", `cannot write ${entry.archivePath}`, { cause: err });
+      return new ZipKitError("read.write-failed", `cannot write ${entry.archivePath}`, { cause: err });
     }
 
     async function processEntry(entry: ReadEntry, deferLink: boolean): Promise<ExtractEntryResult | null> {
@@ -745,6 +754,7 @@ export async function extractArchive(
           }
           if (outcome === "written") {
             didWrite = true;
+            wroteAny = true;
             outputPath = target;
             if (entry.type === "dir") writtenDirs.push({ entry, target });
           } else if (outcome === "exists" || outcome === "unchanged") {
@@ -897,6 +907,8 @@ export async function extractArchive(
       extra,
       findings,
     };
+  } catch (err) {
+    throw wroteAny ? withUnknownEffect(err) : err;
   } finally {
     await archive.release();
   }

@@ -1,6 +1,6 @@
 /**
  * Render a `ZodError` into a compact, human-readable string for a
- * `PolicyError` message. Each issue becomes `path: message`, dotted-path
+ * `ZipKitError` of kind `invalid` message. Each issue becomes `path: message`, dotted-path
  * style, joined with semicolons.
  */
 

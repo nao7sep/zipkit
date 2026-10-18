@@ -1,6 +1,6 @@
 import type { Writable } from "node:stream";
 
-import { AbortError } from "../errors.js";
+import { toAbortError } from "../errors.js";
 
 /**
  * Wait for a writable stream's backpressure to clear.
@@ -27,7 +27,7 @@ export function awaitDrain(stream: Writable, signal?: AbortSignal): Promise<void
     };
     const onDrain = (): void => settle(resolve);
     const onError = (err: Error): void => settle(() => reject(err));
-    const onAbort = (): void => settle(() => reject(new AbortError()));
+    const onAbort = (): void => settle(() => reject(toAbortError(undefined)));
 
     stream.once("drain", onDrain);
     stream.once("error", onError);

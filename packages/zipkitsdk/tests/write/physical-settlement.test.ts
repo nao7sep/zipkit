@@ -80,7 +80,7 @@ it("write delivers its settlement observer before rejection and retains a late c
     }).catch((error: unknown) => { order.push("rejection"); return error; });
     await Promise.race([opened.promise, outcome.then(() => { throw new Error("write ended before claiming its output"); })]);
     controller.abort();
-    expect(await outcome).toMatchObject({ name: "AbortError" });
+    expect(await outcome).toMatchObject({ code: "aborted" });
     expect(order).toEqual(["observer", "rejection"]);
     expect(settlement).toBeDefined();
     expect(settled).toBe(false);

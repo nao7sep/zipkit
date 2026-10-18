@@ -2,8 +2,8 @@
  * Stalled volumes: every filesystem call the scan, write, and extract edges make
  * is bounded by the SDK's per-operation budget and answers to the run's signal.
  * A fake filesystem holds chosen calls forever (a dropped network share, a
- * removed drive); each edge must fail with a `StallError` naming the path once
- * the budget elapses, or with an `AbortError` on cancel, clean up its temp
+ * removed drive); each edge must fail with an `io.stalled` error naming the path once
+ * the budget elapses, or with the `aborted` error on cancel, clean up its temp
  * output, and — when the held call is finally let through — publish nothing.
  *
  * Time is fake and only the test moves it, so no real call is ever expired by a
@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AbortError, PolicyError, StallError, ZipKit } from "../src/index.js";
+import { ZipKit, type ZipKitError } from "../src/index.js";
 import { extractArchive } from "../src/extract/extract.js";
 import { matcherFor } from "../src/filter/match.js";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.js";
@@ -27,6 +27,7 @@ import { resolvePolicy } from "../src/policy.js";
 import { scan } from "../src/scan/scan.js";
 import { writeArchive } from "../src/write/write.js";
 import { stallingFileSystem, type StallingFileSystem } from "./helpers/volume.js";
+import { invalidError } from "./helpers/errors.js";
 
 const BUDGET = 150;
 
@@ -94,9 +95,9 @@ function leftovers(where: string, expected: string[] = []): string[] {
 
 describe("the time budget", () => {
   it("is validated at the SDK boundary", () => {
-    expect(() => new ZipKit({ ioTimeoutMs: 0 })).toThrow(PolicyError);
-    expect(() => new ZipKit({ ioTimeoutMs: 1.5 })).toThrow(PolicyError);
-    expect(() => new ZipKit({ ioTimeoutMs: 2 ** 31 })).toThrow(PolicyError);
+    expect(() => new ZipKit({ ioTimeoutMs: 0 })).toThrow(invalidError);
+    expect(() => new ZipKit({ ioTimeoutMs: 1.5 })).toThrow(invalidError);
+    expect(() => new ZipKit({ ioTimeoutMs: 2 ** 31 })).toThrow(invalidError);
     expect(() => new ZipKit({ ioTimeoutMs: 5_000 })).not.toThrow();
   });
 
@@ -139,7 +140,7 @@ describe("the time budget", () => {
 });
 
 describe("scan on a stalled source", () => {
-  it("fails when the budget elapses with a StallError naming the directory", async () => {
+  it("fails when the budget elapses with an io.stalled error naming the directory", async () => {
     const proj = await makeTree();
     const sub = path.join(proj, "sub");
     const fs = stallingFileSystem((op, p) => op === "readdir" && p === sub);
@@ -152,12 +153,12 @@ describe("scan on a stalled source", () => {
     vi.advanceTimersByTime(1);
     const err = await run.error;
 
-    expect(err).toBeInstanceOf(StallError);
-    expect(err).toMatchObject({ errorType: "stall", code: "io.stalled", operation: "readdir", path: sub });
+    expect(err).toMatchObject({ code: "io.stalled" });
+    expect(err).toMatchObject({ code: "io.stalled", subject: sub, details: expect.objectContaining({ operation: "readdir" }) });
     await fs.release();
   });
 
-  it("fails with an AbortError when cancelled during the stall", async () => {
+  it("fails with the aborted error when cancelled during the stall", async () => {
     const proj = await makeTree();
     const fs = stallingFileSystem((op) => op === "readdir");
     const controller = new AbortController();
@@ -166,7 +167,7 @@ describe("scan on a stalled source", () => {
     await untilHeld(fs);
     controller.abort();
 
-    expect(await run.error).toBeInstanceOf(AbortError);
+    expect(await run.error).toMatchObject({ code: "aborted" });
     await fs.release();
   });
 });
@@ -190,7 +191,7 @@ describe("write on a stalled volume", () => {
     vi.advanceTimersByTime(BUDGET);
     const err = await run.error;
 
-    expect(err).toMatchObject({ errorType: "stall", operation: "read", path: source, committing: false });
+    expect(err).toMatchObject({ code: "io.stalled", subject: source, effect: "none", details: expect.objectContaining({ operation: "read" }) });
     expect(leftovers(dir, ["proj"])).toEqual([]); // no archive, no temp
 
     await fs.release();
@@ -211,8 +212,8 @@ describe("write on a stalled volume", () => {
     vi.advanceTimersByTime(BUDGET);
     const err = await run.error;
 
-    expect(err).toMatchObject({ errorType: "stall", operation: "write" });
-    expect((err as StallError).path).toMatch(/out-.+\.tmp$/);
+    expect(err).toMatchObject({ code: "io.stalled", details: expect.objectContaining({ operation: "write" }) });
+    expect((err as ZipKitError).subject).toMatch(/out-.+\.tmp$/);
     expect(leftovers(dir, ["proj"])).toEqual([]);
 
     await fs.release();
@@ -220,7 +221,7 @@ describe("write on a stalled volume", () => {
     expect(leftovers(dir, ["proj"])).toEqual([]);
   });
 
-  it("fails with an AbortError when cancelled during a stalled read", async () => {
+  it("fails with the aborted error when cancelled during a stalled read", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "out.zip");
     const plan = await planFor(proj, output);
@@ -238,7 +239,7 @@ describe("write on a stalled volume", () => {
     await untilHeld(fs);
     controller.abort();
 
-    expect(await run.error).toBeInstanceOf(AbortError);
+    expect(await run.error).toMatchObject({ code: "aborted" });
     expect(leftovers(dir, ["proj"])).toEqual([]);
     await fs.release();
   });
@@ -260,7 +261,7 @@ describe("write on a stalled volume", () => {
     );
     await untilHeld(fs);
     controller.abort();
-    expect(await run.error).toBeInstanceOf(AbortError);
+    expect(await run.error).toMatchObject({ code: "aborted" });
 
     // The abandoned create lands now and makes the file; the Volume removes it.
     await fs.release();
@@ -285,8 +286,8 @@ describe("write on a stalled volume", () => {
     vi.advanceTimersByTime(BUDGET);
     const err = await run.error;
 
-    expect(err).toMatchObject({ errorType: "stall", operation: "publish", path: output, committing: true });
-    expect((err as StallError).message).toContain("may still complete");
+    expect(err).toMatchObject({ code: "io.stalled", subject: output, effect: "unknown", details: expect.objectContaining({ operation: "publish" }) });
+    expect((err as ZipKitError).message).toContain("may still complete");
     await fs.release();
   });
 });
@@ -324,7 +325,7 @@ describe("extract on a stalled volume", () => {
     await untilHeld(fs);
     vi.advanceTimersByTime(BUDGET);
 
-    expect(await run.error).toMatchObject({ errorType: "stall", operation: "read", path: archive });
+    expect(await run.error).toMatchObject({ code: "io.stalled", subject: archive, details: expect.objectContaining({ operation: "read" }) });
     await fs.release();
   });
 
@@ -340,7 +341,7 @@ describe("extract on a stalled volume", () => {
     vi.advanceTimersByTime(BUDGET);
     const err = await run.error;
 
-    expect(err).toMatchObject({ errorType: "stall", operation: "write" });
+    expect(err).toMatchObject({ code: "io.stalled", details: expect.objectContaining({ operation: "write" }) });
     expect(written(dest)).toEqual([]);
 
     await fs.release();
@@ -348,7 +349,7 @@ describe("extract on a stalled volume", () => {
     expect(written(dest)).toEqual([]);
   });
 
-  it("fails with an AbortError when cancelled during a stalled write", async () => {
+  it("fails with the aborted error when cancelled during a stalled write", async () => {
     const archive = await archiveOf(2);
     const dest = path.join(dir, "out");
     const fs = stallingFileSystem((op, p) => op === "write" && path.basename(p).startsWith(".zk-"));
@@ -360,7 +361,7 @@ describe("extract on a stalled volume", () => {
     await untilHeld(fs);
     controller.abort();
 
-    expect(await run.error).toBeInstanceOf(AbortError);
+    expect(await run.error).toMatchObject({ code: "aborted" });
     expect(written(dest)).toEqual([]);
     await fs.release();
   });
@@ -376,7 +377,7 @@ describe("extract on a stalled volume", () => {
     );
     await untilHeld(fs);
     controller.abort();
-    expect(await run.error).toBeInstanceOf(AbortError);
+    expect(await run.error).toMatchObject({ code: "aborted" });
 
     // The abandoned creates land now and make their files; the Volume removes them.
     await fs.release();

@@ -16,7 +16,7 @@ import { constants as bufferConstants } from "node:buffer";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import zlib from "node:zlib";
-import { ReadError, ZipKitError } from "../errors.js";
+import { ZipKitError } from "../errors.js";
 import type { VolumeFile } from "../internal/volume.js";
 
 const EOCD_SIG = 0x06054b50;
@@ -42,13 +42,13 @@ async function readExact(file: VolumeFile, position: number, length: number): Pr
     length < 0 ||
     length > bufferConstants.MAX_LENGTH
   ) {
-    throw new ReadError("read.malformed", "archive byte range is not safely addressable");
+    throw new ZipKitError("read.malformed", "archive byte range is not safely addressable");
   }
   const buf = Buffer.alloc(length);
   let got = 0;
   while (got < length) {
     const n = await file.read(buf, got, length - got, position + got);
-    if (n === 0) throw new ReadError("read.malformed", "unexpected end of archive");
+    if (n === 0) throw new ZipKitError("read.malformed", "unexpected end of archive");
     got += n;
   }
   return buf;
@@ -56,7 +56,7 @@ async function readExact(file: VolumeFile, position: number, length: number): Pr
 
 function safeNumber(value: bigint, field: string): number {
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new ReadError("read.malformed", `${field} exceeds the safe integer range`);
+    throw new ZipKitError("read.malformed", `${field} exceeds the safe integer range`);
   }
   return Number(value);
 }
@@ -64,7 +64,7 @@ function safeNumber(value: bigint, field: string): number {
 function safeAdd(left: number, right: number, field: string): number {
   const sum = left + right;
   if (!Number.isSafeInteger(sum) || sum < 0) {
-    throw new ReadError("read.malformed", `${field} exceeds the safe integer range`);
+    throw new ZipKitError("read.malformed", `${field} exceeds the safe integer range`);
   }
   return sum;
 }
@@ -118,7 +118,7 @@ function findEocdInTail(tail: Buffer): number {
       return i;
     }
   }
-  throw new ReadError("read.not-zip", "end-of-central-directory record not found");
+  throw new ZipKitError("read.not-zip", "end-of-central-directory record not found");
 }
 
 async function locateCentralDir(
@@ -150,19 +150,19 @@ async function locateCentralDir(
     if (z64 >= 0 && minimumRecordEnd <= locatorOffset) {
       const record = await readExact(file, z64, 56);
       if (record.readUInt32LE(0) !== ZIP64_EOCD_SIG) {
-        throw new ReadError("read.malformed", "Zip64 end-of-central-directory not found");
+        throw new ZipKitError("read.malformed", "Zip64 end-of-central-directory not found");
       }
       const recordSize = safeNumber(record.readBigUInt64LE(4), "Zip64 end-record length");
       const recordEnd = safeAdd(z64, 12 + recordSize, "Zip64 end-record range");
       if (recordSize < 44 || recordEnd !== locatorOffset) {
-        throw new ReadError("read.malformed", "invalid Zip64 end-of-central-directory length");
+        throw new ZipKitError("read.malformed", "invalid Zip64 end-of-central-directory length");
       }
       count = safeNumber(record.readBigUInt64LE(32), "Zip64 entry count");
       cdOffset = safeNumber(record.readBigUInt64LE(48), "Zip64 central-directory offset");
       return { count, cdOffset, cdEnd: z64, zip64: true };
     }
   }
-  throw new ReadError("read.malformed", "Zip64 end-of-central-directory not found");
+  throw new ZipKitError("read.malformed", "Zip64 end-of-central-directory not found");
 }
 
 function parseCentral(cd: Buffer, count: number): ReadEntry[] {
@@ -170,7 +170,7 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
   let p = 0;
   for (let n = 0; n < count; n++) {
     if (p + 46 > cd.length || cd.readUInt32LE(p) !== CENTRAL_SIG) {
-      throw new ReadError("read.malformed", `malformed central directory at offset ${p}`);
+      throw new ZipKitError("read.malformed", `malformed central directory at offset ${p}`);
     }
     const gpFlag = cd.readUInt16LE(p + 8);
     const method = cd.readUInt16LE(p + 10);
@@ -186,7 +186,7 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
     let localOffset = cd.readUInt32LE(p + 42);
     const recordEnd = p + 46 + nameLen + extraLen + commentLen;
     if (!Number.isSafeInteger(recordEnd) || recordEnd > cd.length) {
-      throw new ReadError("read.malformed", `truncated central-directory record at offset ${p}`);
+      throw new ZipKitError("read.malformed", `truncated central-directory record at offset ${p}`);
     }
     const rawName = cd.toString("utf8", p + 46, p + 46 + nameLen);
     const extra = cd.subarray(p + 46 + nameLen, p + 46 + nameLen + extraLen);
@@ -198,7 +198,7 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
         (compSize === U32 ? 8 : 0) +
         (localOffset === U32 ? 8 : 0);
       if (!z || z.length < required) {
-        throw new ReadError("read.malformed", `missing or truncated Zip64 extra for ${rawName}`);
+        throw new ZipKitError("read.malformed", `missing or truncated Zip64 extra for ${rawName}`);
       }
       let off = 0;
       if (uncompSize === U32) {
@@ -244,7 +244,7 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
  * and decode each record. Nothing but the directory ever enters memory.
  */
 export async function parseZip(file: VolumeFile, fileSize: number): Promise<ParsedZip> {
-  if (fileSize < EOCD_MIN) throw new ReadError("read.not-zip", "file is too small to be a ZIP");
+  if (fileSize < EOCD_MIN) throw new ZipKitError("read.not-zip", "file is too small to be a ZIP");
   const tailLen = Math.min(fileSize, MAX_EOCD_SEARCH);
   const tailStart = fileSize - tailLen;
   const tail = await readExact(file, tailStart, tailLen);
@@ -268,7 +268,7 @@ export async function parseZip(file: VolumeFile, fileSize: number): Promise<Pars
     cdLen < 0 ||
     cdEnd > fileSize
   ) {
-    throw new ReadError("read.malformed", "central directory location is out of range");
+    throw new ZipKitError("read.malformed", "central directory location is out of range");
   }
   const cd = await readExact(file, cdOffset, cdLen);
   return { entries: parseCentral(cd, count), zip64 };
@@ -278,7 +278,7 @@ export async function parseZip(file: VolumeFile, fileSize: number): Promise<Pars
 async function entryDataOffset(file: VolumeFile, entry: ReadEntry): Promise<number> {
   const header = await readExact(file, entry.localOffset, 30);
   if (header.readUInt32LE(0) !== LOCAL_SIG) {
-    throw new ReadError("read.malformed", `bad local header for ${entry.archivePath}`);
+    throw new ZipKitError("read.malformed", `bad local header for ${entry.archivePath}`);
   }
   const nameLen = header.readUInt16LE(26);
   const extraLen = header.readUInt16LE(28);
@@ -309,7 +309,7 @@ export async function readEntryData(
 ): Promise<EntryReadResult> {
   if (entry.type === "dir") return { crc32: 0, uncompressedSize: 0 };
   if (entry.method !== 0 && entry.method !== 8) {
-    throw new ReadError(
+    throw new ZipKitError(
       "read.unsupported-method",
       `unsupported compression method ${entry.method} for ${entry.archivePath}`,
     );
@@ -319,7 +319,7 @@ export async function readEntryData(
   // short-circuit. CRC-32 over no bytes is 0, which matches the stored value.
   if (entry.compSize === 0) {
     if (entry.uncompSize !== 0) {
-      throw new ReadError(
+      throw new ZipKitError(
         "read.size-mismatch",
         `uncompressed size does not match the declared size for ${entry.archivePath}`,
       );
@@ -335,7 +335,7 @@ export async function readEntryData(
     crc = zlib.crc32(chunk, crc);
     uncompressedSize += chunk.length;
     if (!Number.isSafeInteger(uncompressedSize) || uncompressedSize > entry.uncompSize) {
-      throw new ReadError(
+      throw new ZipKitError(
         "read.size-mismatch",
         `uncompressed size exceeds the declared size for ${entry.archivePath}`,
       );
@@ -361,16 +361,16 @@ export async function readEntryData(
         },
       );
     } catch (err) {
-      // An already-classified failure (abort, stall, the sink's own ReadError)
+      // An already-classified failure (abort, stall, the sink's own read error)
       // propagates unwrapped; a genuine inflate/read failure is a corrupt stream.
       if (err instanceof ZipKitError) throw err;
-      throw new ReadError("read.inflate-failed", `cannot inflate ${entry.archivePath}`, {
+      throw new ZipKitError("read.inflate-failed", `cannot inflate ${entry.archivePath}`, {
         cause: err,
       });
     }
   }
   if (uncompressedSize !== entry.uncompSize) {
-    throw new ReadError(
+    throw new ZipKitError(
       "read.size-mismatch",
       `uncompressed size does not match the declared size for ${entry.archivePath}`,
     );
@@ -390,7 +390,7 @@ async function* compressedChunks(
     const length = Math.min(chunkSize, endExclusive - position);
     const buf = Buffer.allocUnsafe(length);
     const bytesRead = await file.read(buf, 0, length, position);
-    if (bytesRead === 0) throw new ReadError("read.malformed", "unexpected end of archive");
+    if (bytesRead === 0) throw new ZipKitError("read.malformed", "unexpected end of archive");
     position += bytesRead;
     yield bytesRead === length ? buf : buf.subarray(0, bytesRead);
   }

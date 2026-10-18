@@ -10,7 +10,7 @@
  */
 
 import path from "node:path";
-import { PolicyError } from "../errors.js";
+import { ZipKitError } from "../errors.js";
 import { toForwardSlash, trimSlashes } from "../internal/path.js";
 import type { ArchiveInput } from "../types.js";
 
@@ -54,7 +54,7 @@ export function checkAnchorCollisions(inputs: ResolvedInput[], anchors: string[]
     if (anchor === "") continue;
     const prev = seen.get(anchor);
     if (prev !== undefined) {
-      throw new PolicyError(
+      throw new ZipKitError(
         "input.prefix-collision",
         `inputs "${inputs[prev]?.path}" and "${inputs[i]?.path}" resolve to the same archive prefix "${anchor}"`,
       );

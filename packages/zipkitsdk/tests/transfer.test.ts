@@ -8,7 +8,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { exportPlan, importPlan, PolicyError, ZipKit, type PlanData } from "../src/index.js";
+import { exportPlan, importPlan, ZipKit, type PlanData } from "../src/index.js";
+import { invalidError } from "./helpers/errors.js";
 
 let dir: string;
 beforeEach(async () => { dir = await mkdtemp(path.join(tmpdir(), "zipkit-transfer-")); });
@@ -33,8 +34,8 @@ describe("exportPlan and importPlan", () => {
   });
 
   it("refuse a plan that did not come from plan(), and anything exportPlan did not make", () => {
-    expect(() => exportPlan({ mode: "plan" } as unknown as PlanData)).toThrow(PolicyError);
-    expect(() => importPlan({ format: "something-else", plan: {}, internals: {} } as never)).toThrow(PolicyError);
-    expect(() => importPlan(null as never)).toThrow(PolicyError);
+    expect(() => exportPlan({ mode: "plan" } as unknown as PlanData)).toThrow(invalidError);
+    expect(() => importPlan({ format: "something-else", plan: {}, internals: {} } as never)).toThrow(invalidError);
+    expect(() => importPlan(null as never)).toThrow(invalidError);
   });
 });

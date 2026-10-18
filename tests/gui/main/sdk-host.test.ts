@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSdkClient, type HostProcess } from "../../../src/gui/main/sdk-client.js";
 import { createSdkHost, type HostReply, type HostRequest } from "../../../src/gui/main/sdk-host.js";
-import { exportPlan, importPlan } from "zipkitsdk";
+import { exportPlan, importPlan, isZipKitError } from "zipkitsdk";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { LogEvent, ProgressCounts } from "../../../src/gui/shared/api.js";
 
@@ -105,12 +105,11 @@ describe("the SDK host", () => {
     await expect(sdk.call("deletePath", [path.join(root, "missing")])).rejects.toMatchObject({ message: expect.stringContaining("ENOENT") });
   });
 
-  it("carries an SDK failure's type, code and path back to main", async () => {
+  it("carries an SDK failure back to main as the SDK's own data, which its guard still recognizes", async () => {
     const sdk = createSdkClient(inProcessHost);
-    await expect(sdk.call("plan", [[path.join(root, "missing")], { ...DEFAULT_OPTIONS }])).rejects.toMatchObject({
-      errorType: "scan",
-      code: "scan.input-missing",
-    });
+    const failed = await sdk.call("plan", [[path.join(root, "missing")], { ...DEFAULT_OPTIONS }]).catch((err: unknown) => err);
+    expect(failed).toMatchObject({ code: "scan.input-missing", kind: "unavailable", effect: "none" });
+    expect(isZipKitError(failed)).toBe(true);
   });
 
   it("cancels a running call when main asks", async () => {
@@ -122,6 +121,6 @@ describe("the SDK host", () => {
     host.handle({ type: "call", id: 7, op: "plan", args: [[input], { ...DEFAULT_OPTIONS }] });
     host.handle({ type: "cancel", id: 7 });
     await vi.waitFor(() => expect(replies.some((r) => r.type === "failed" || r.type === "done")).toBe(true));
-    expect(replies.find((r) => r.id === 7 && r.type !== "event")).toMatchObject({ type: "failed", error: { errorType: "abort" } });
+    expect(replies.find((r) => r.id === 7 && r.type !== "event")).toMatchObject({ type: "failed", error: { code: "aborted", kind: "cancelled" } });
   });
 });

@@ -47,7 +47,7 @@ it("a late temp open retains cleanup ownership until physical close settles", as
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
     work = owner.createTemp(file);
-    const failed = expect(work).rejects.toMatchObject({ name: "StallError" });
+    const failed = expect(work).rejects.toMatchObject({ code: "io.stalled" });
     await openSeen;
     await vi.advanceTimersByTimeAsync(50);
     await failed;

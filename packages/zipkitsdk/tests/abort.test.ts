@@ -1,7 +1,7 @@
 /**
  * Abort propagation through the SDK: the signal actually flowing through the
  * scan → write pipeline — an already-aborted signal stops plan() at the scan
- * edge, and an abort raised mid-write rejects with AbortError and leaves no
+ * edge, and an abort raised mid-write rejects with the aborted error and leaves no
  * output behind.
  */
 
@@ -11,7 +11,7 @@ import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AbortError, ZipKit } from "../src/index.js";
+import { ZipKit } from "../src/index.js";
 import { ZipWriter } from "../src/write/zipWriter.js";
 import { parseZip, readEntryData } from "../src/extract/zipReader.js";
 import pLimit from "p-limit";
@@ -21,6 +21,7 @@ import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/vol
 import { createLogger } from "../src/log/logger.js";
 import { buildZipFile } from "./helpers/writeZip.js";
 import { openRead, realVolume } from "./helpers/volume.js";
+import { toAbortError } from "../src/errors.js";
 
 let dir: string;
 
@@ -48,7 +49,7 @@ describe("abort propagation", () => {
 
     await expect(
       new ZipKit().plan({ inputs: [proj] }, { signal: controller.signal }),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).rejects.toMatchObject({ code: "aborted" });
   });
 
   it("rejects write() when the signal is already aborted", async () => {
@@ -63,7 +64,7 @@ describe("abort propagation", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(zip.write(plan, { signal: controller.signal })).rejects.toBeInstanceOf(AbortError);
+    await expect(zip.write(plan, { signal: controller.signal })).rejects.toMatchObject({ code: "aborted" });
     expect(existsSync(output)).toBe(false);
   });
 
@@ -85,7 +86,7 @@ describe("abort propagation", () => {
           },
         },
       ),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).rejects.toMatchObject({ code: "aborted" });
     expect(existsSync(output)).toBe(false);
   });
 
@@ -113,7 +114,7 @@ describe("abort propagation", () => {
           },
         },
       ),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).rejects.toMatchObject({ code: "aborted" });
     expect(existsSync(output)).toBe(false);
   });
 
@@ -153,7 +154,7 @@ describe("abort propagation", () => {
         { archive, dest },
         { limit: pLimit(1), logger: createLogger(), chunkSize, signal: controller.signal, volume: new Volume(port, 30_000, controller.signal) },
       ),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).rejects.toMatchObject({ code: "aborted" });
     expect(stagedWrites).toBe(1);
     expect(readdirSync(dest)).toEqual([]);
   });
@@ -198,7 +199,7 @@ describe("abort propagation", () => {
     await holding;
     controller.abort();
 
-    expect(await outcome).toBeInstanceOf(AbortError);
+    expect(await outcome).toMatchObject({ code: "aborted" });
     release();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(readdirSync(dir).sort()).toEqual(["big"]);
@@ -224,9 +225,7 @@ describe("abort boundaries (unit)", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(writer.finalize(false, undefined, controller.signal)).rejects.toBeInstanceOf(
-      AbortError,
-    );
+    await expect(writer.finalize(false, undefined, controller.signal)).rejects.toMatchObject({ code: "aborted" });
     expect(existsSync(output)).toBe(false);
     await writer.abort(); // remove the orphaned temp file
   });
@@ -252,9 +251,9 @@ describe("abort boundaries (unit)", () => {
       let calls = 0;
       const sink = async (): Promise<void> => {
         calls++;
-        throw new AbortError();
+        throw toAbortError(undefined);
       };
-      await expect(readEntryData(file, entry!, sink, chunkSize)).rejects.toBeInstanceOf(AbortError);
+      await expect(readEntryData(file, entry!, sink, chunkSize)).rejects.toMatchObject({ code: "aborted" });
       expect(calls).toBeLessThan(8); // tore down at the aborting chunk, not 256
 
       // The archive handle is shared across concurrent entries: the teardown

@@ -11,9 +11,10 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PolicyError, WriteError, ZipKit } from "../src/index.js";
+import { ZipKit, ZipKitError } from "../src/index.js";
 import { readZip } from "./helpers/readZip.js";
 import { createFileLink, fileSymlinksSupported } from "./helpers/symlink.js";
+import { invalidError } from "./helpers/errors.js";
 
 let dir: string;
 
@@ -263,13 +264,13 @@ describe("plan / inspect / write flow", () => {
 
 describe("options validation", () => {
   it("rejects a non-positive or fractional concurrency at construction (the SDK owns the bound)", () => {
-    expect(() => new ZipKit({ concurrency: 0 })).toThrow(PolicyError);
-    expect(() => new ZipKit({ concurrency: -2 })).toThrow(PolicyError);
-    expect(() => new ZipKit({ concurrency: 1.5 })).toThrow(PolicyError);
+    expect(() => new ZipKit({ concurrency: 0 })).toThrow(invalidError);
+    expect(() => new ZipKit({ concurrency: -2 })).toThrow(invalidError);
+    expect(() => new ZipKit({ concurrency: 1.5 })).toThrow(invalidError);
   });
 
   it("rejects a non-positive chunkSize at construction", () => {
-    expect(() => new ZipKit({ chunkSize: 0 })).toThrow(PolicyError);
+    expect(() => new ZipKit({ chunkSize: 0 })).toThrow(invalidError);
   });
 
   it("accepts a valid concurrency", () => {
@@ -283,7 +284,7 @@ describe("overwrite gate", () => {
     const output = path.join(dir, "gate.zip");
     await new ZipKit().create({ inputs: [proj], output });
 
-    await expect(new ZipKit().create({ inputs: [proj], output })).rejects.toBeInstanceOf(WriteError);
+    await expect(new ZipKit().create({ inputs: [proj], output })).rejects.toBeInstanceOf(ZipKitError);
     await expect(
       new ZipKit().create({ inputs: [proj], output, overwrite: true }),
     ).resolves.toMatchObject({ output });
@@ -296,7 +297,7 @@ describe("overwrite gate", () => {
     const plan = await zip.plan({ inputs: [proj], output });
     await writeFile(output, "another process won");
 
-    await expect(zip.write(plan)).rejects.toBeInstanceOf(WriteError);
+    await expect(zip.write(plan)).rejects.toBeInstanceOf(ZipKitError);
     expect(await readFile(output, "utf8")).toBe("another process won");
   });
 
@@ -365,8 +366,8 @@ describe("skipPaths", () => {
   });
 
   it("rejects anything but a list of non-empty strings", () => {
-    expect(() => new ZipKit({ skipPaths: [""] })).toThrow(PolicyError);
-    expect(() => new ZipKit({ skipPaths: "x" as never })).toThrow(PolicyError);
+    expect(() => new ZipKit({ skipPaths: [""] })).toThrow(invalidError);
+    expect(() => new ZipKit({ skipPaths: "x" as never })).toThrow(invalidError);
   });
 });
 
@@ -379,8 +380,8 @@ describe("outputDir and outputName", () => {
     await mkdir(out);
     const plan = await new ZipKit().plan({ inputs: [proj], outputDir: out, outputName: "delivery" });
     expect(plan.output).toBe(path.join(out, "delivery.zip"));
-    await expect(new ZipKit().plan({ inputs: [proj], outputDir: out, outputName: "a/b" })).rejects.toThrow(PolicyError);
-    await expect(new ZipKit().plan({ inputs: [proj], outputName: ".." })).rejects.toThrow(PolicyError);
-    await expect(new ZipKit().plan({ inputs: [proj], output: path.join(out, "x.zip"), outputDir: out })).rejects.toThrow(PolicyError);
+    await expect(new ZipKit().plan({ inputs: [proj], outputDir: out, outputName: "a/b" })).rejects.toThrow(invalidError);
+    await expect(new ZipKit().plan({ inputs: [proj], outputName: ".." })).rejects.toThrow(invalidError);
+    await expect(new ZipKit().plan({ inputs: [proj], output: path.join(out, "x.zip"), outputDir: out })).rejects.toThrow(invalidError);
   });
 });

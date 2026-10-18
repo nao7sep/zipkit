@@ -47,8 +47,8 @@ describe("createSdkClient", () => {
     const call = sdk.call("plan", [["/a"], {} as never], { signal: controller.signal });
     controller.abort();
     expect(host.sent.at(-1)).toEqual({ type: "cancel", id: 1 });
-    host.reply({ type: "failed", id: 1, error: { name: "AbortError", message: "aborted", errorType: "abort", code: "abort" } });
-    await expect(call).rejects.toMatchObject({ name: "AbortError", errorType: "abort", code: "abort" });
+    host.reply({ type: "failed", id: 1, error: { name: "ZipKitError", message: "aborted", code: "aborted", kind: "cancelled", effect: "none" } });
+    await expect(call).rejects.toMatchObject({ name: "ZipKitError", code: "aborted", kind: "cancelled", effect: "none" });
     await expect(sdk.call("verify", ["/x", true], { signal: controller.signal })).rejects.toBeDefined();
   });
 
@@ -77,7 +77,7 @@ describe("createSdkClient", () => {
     hosts[0]!.reply({ type: "physical", id: 1 });
     const plan = sdk.call("plan", [["/a"], {} as never]);
     hosts[0]!.exit(134);
-    await expect(write).rejects.toMatchObject({ errorType: "host", code: "host.exited" });
+    await expect(write).rejects.toMatchObject({ code: "host.exited", kind: "unavailable", effect: "unknown" });
     await expect(plan).rejects.toMatchObject({ code: "host.exited" });
     await settlement;
     const again = sdk.call("verify", ["/a.zip", true]);

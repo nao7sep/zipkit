@@ -7,7 +7,8 @@
 
 import { BrowserWindow } from "electron";
 import type { GuiError, Job, JobAction, JobCounts, JobEvent, LogEvent, ProgressCounts } from "../shared/api.js";
-import { message, type Message } from "../shared/i18n/translate.js";
+import { message } from "../shared/i18n/translate.js";
+import { isZipKitError } from "zipkitsdk";
 import { createAppLog } from "./log.js";
 
 /** The app's records for this launch. */
@@ -104,19 +105,15 @@ export function sendQueueSaved(saved: boolean): void {
   liveWindow()?.webContents.send("zipkit:queueSaved", saved);
 }
 
-/** SDK failures reach main from the SDK host as plain fields (./sdk-client). */
+/** SDK failures reach main from the SDK host with their fields
+ *  (./sdk-client); the window gets the code, its kind and the app's copy. */
 export function toGuiError(err: unknown): GuiError {
-  const fields = (err ?? {}) as { errorType?: unknown; code?: unknown; path?: unknown };
-  if (typeof fields.errorType !== "string" || typeof fields.code !== "string") {
-    return { type: "unknown", code: "unknown", presentation: guiErrorPresentation("unknown") };
+  if ((err as { code?: unknown } | null)?.code === "host.exited") {
+    return { kind: "unavailable", code: "host.exited", presentation: message("error.hostExited") };
   }
-  if (fields.errorType === "stall" && typeof fields.path === "string") {
-    return { type: fields.errorType, code: fields.code, presentation: message("error.stalled", { path: fields.path }) };
+  if (!isZipKitError(err)) return { kind: "internal", code: "unknown", presentation: message("error.verifyIncomplete") };
+  if (err.code === "io.stalled" && err.subject !== undefined) {
+    return { kind: err.kind, code: err.code, presentation: message("error.stalled", { path: err.subject }) };
   }
-  if (fields.code === "host.exited") return { type: fields.errorType, code: fields.code, presentation: message("error.hostExited") };
-  return { type: fields.errorType, code: fields.code, presentation: guiErrorPresentation(fields.errorType) };
-}
-
-function guiErrorPresentation(type: string): Message {
-  return message(type === "read" ? "error.readFailed" : "error.verifyIncomplete");
+  return { kind: err.kind, code: err.code, presentation: message(err.code.startsWith("read.") ? "error.readFailed" : "error.verifyIncomplete") };
 }

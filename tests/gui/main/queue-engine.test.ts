@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
-import { createPathClaims, StallError, WriteError, type RemovalCheck, type SourceComparison } from "zipkitsdk";
+import { createPathClaims, ZipKitError, type RemovalCheck, type SourceComparison } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
@@ -319,7 +319,7 @@ describe("queue engine", () => {
   it("names the stalled path when a write stops responding", async () => {
     const { deps } = makeDeps({
       write: async () => {
-        throw new StallError("write", "/Volumes/NAS/out-x.tmp", 30_000, false);
+        throw new ZipKitError("io.stalled", "write did not respond", { subject: "/Volumes/NAS/out-x.tmp", details: { operation: "write", timeoutMs: 30_000 } });
       },
     });
     const engine = createQueueEngine(deps);
@@ -407,7 +407,7 @@ describe("queue engine", () => {
   it("names the source file that changed while the archive was written", async () => {
     const { deps } = makeDeps({
       write: async () => {
-        throw new WriteError("write.source-changed", "source changed", { path: "docs/notes.txt" });
+        throw new ZipKitError("write.source-changed", "source changed", { subject: "docs/notes.txt" });
       },
     });
     const engine = createQueueEngine(deps);
@@ -424,7 +424,7 @@ describe("queue engine", () => {
     let stall = false;
     const { deps } = makeDeps({
       plan: async (inputs) => {
-        if (stall) throw new StallError("readdir", "/Volumes/NAS/src", 30_000, false);
+        if (stall) throw new ZipKitError("io.stalled", "readdir did not respond", { subject: "/Volumes/NAS/src", details: { operation: "readdir", timeoutMs: 30_000 } });
         return planData(inputs[0] !== "bad");
       },
     });
@@ -443,7 +443,7 @@ describe("queue engine", () => {
   it("keeps the originals and names the stalled path when verification stops responding", async () => {
     const { deps, calls } = makeDeps({
       verify: async () => {
-        throw new StallError("read", "/tmp/out.zip", 30_000, false);
+        throw new ZipKitError("io.stalled", "read did not respond", { subject: "/tmp/out.zip", details: { operation: "read", timeoutMs: 30_000 } });
       },
     });
     const engine = createQueueEngine(deps);
@@ -526,13 +526,10 @@ describe("queue engine", () => {
     });
   });
 
-  it("captures the SDK error code (errorType + code) on a plan that throws", async () => {
+  it("captures the SDK error code on a plan that throws", async () => {
     const { deps } = makeDeps({
       plan: async () => {
-        throw Object.assign(new Error("inputs live in different parents"), {
-          errorType: "policy",
-          code: "output.ambiguous",
-        });
+        throw new ZipKitError("output.ambiguous", "inputs live in different parents");
       },
     });
     const engine = createQueueEngine(deps);
@@ -1604,7 +1601,9 @@ describe("removing a job's archive", () => {
 
 describe("a write that stalls", () => {
   function stall(committing: boolean): Error {
-    return Object.assign(new Error("stalled"), { errorType: "stall", path: "/Volumes/Share/out.zip", committing });
+    return new ZipKitError("io.stalled", "stalled", {
+      subject: "/Volumes/Share/out.zip", effect: committing ? "unknown" : "none", details: { operation: "publish", timeoutMs: 30_000 },
+    });
   }
 
   async function failedWith(error: Error): Promise<string> {

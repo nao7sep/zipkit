@@ -18,7 +18,7 @@
  * folder leaves out ZipKit's settings, queue, records and live logs.
  *
  * Every filesystem call goes through the run's bounded {@link Volume}, so a
- * source on a stalled volume fails the scan with a `StallError` naming the
+ * source on a stalled volume fails the scan with a `io.stalled` error naming the
  * path instead of hanging it. The places that deliberately tolerate a failed
  * call (an unreadable link, a broken link, an unreadable subdirectory) tolerate
  * only a filesystem refusal, never a stall or a cancel.
@@ -26,7 +26,7 @@
 
 import type { BigIntStats } from "node:fs";
 import path from "node:path";
-import { ScanError, throwIfAborted, ZipKitError } from "../errors.js";
+import { throwIfAborted, ZipKitError } from "../errors.js";
 import type { FilterMatcher } from "../filter/match.js";
 import { toForwardSlash } from "../internal/path.js";
 import { machineTimeZone } from "../internal/timeZone.js";
@@ -253,7 +253,7 @@ async function processPath(
     st = await ctx.volume.lstat(abs);
   } catch (err) {
     rethrowClassified(err);
-    throw new ScanError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
+    throw new ZipKitError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err });
   }
   // This run's own output archive, reached under any casing: skip it so the
   // archive can never contain itself.
@@ -304,7 +304,7 @@ async function walkTree(
           } catch (err) {
             rethrowClassified(err);
             if (dir === absDir) {
-              throw new ScanError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err });
+              throw new ZipKitError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err });
             }
             ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, dir))));
             return { dir, entries: [] };
@@ -387,7 +387,7 @@ export async function scan(
       link = await deps.volume.lstat(input.path);
     } catch (err) {
       rethrowClassified(err);
-      throw new ScanError("scan.input-missing", `cannot stat input: ${input.path}`, {
+      throw new ZipKitError("scan.input-missing", `cannot stat input: ${input.path}`, {
         cause: err,
       });
     }
@@ -397,7 +397,7 @@ export async function scan(
         real = await deps.volume.realpath(input.path);
       } catch (err) {
         rethrowClassified(err);
-        throw new ScanError("scan.input-missing", `cannot resolve symlink input: ${input.path}`, {
+        throw new ZipKitError("scan.input-missing", `cannot resolve symlink input: ${input.path}`, {
           cause: err,
         });
       }
@@ -406,7 +406,7 @@ export async function scan(
         resolved = await deps.volume.stat(real);
       } catch (err) {
         rethrowClassified(err);
-        throw new ScanError("scan.input-missing", `cannot stat symlink target: ${input.path}`, {
+        throw new ZipKitError("scan.input-missing", `cannot stat symlink target: ${input.path}`, {
           cause: err,
         });
       }
@@ -435,7 +435,7 @@ export async function scan(
     const outputId = fileId(outputStats);
     const sameInput = inputStats.findIndex((input) => fileId(input) === outputId);
     if (sameInput !== -1) {
-      throw new ScanError(
+      throw new ZipKitError(
         "scan.output-is-input",
         `output archive is the same physical file as input: ${inputs[sameInput]?.path ?? output}`,
       );
@@ -444,7 +444,7 @@ export async function scan(
   } catch (err) {
     rethrowClassified(err);
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw new ScanError("scan.output-stat-failed", `cannot inspect output path: ${output}`, {
+      throw new ZipKitError("scan.output-stat-failed", `cannot inspect output path: ${output}`, {
         cause: err,
       });
     }
@@ -525,7 +525,7 @@ export async function scan(
         fileStats = await deps.volume.stat(real);
       } catch (err) {
         rethrowClassified(err);
-        throw new ScanError("scan.input-missing", `cannot stat input file: ${real}`, {
+        throw new ZipKitError("scan.input-missing", `cannot stat input file: ${real}`, {
           cause: err,
         });
       }

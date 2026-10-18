@@ -27,7 +27,7 @@ it.each(lanes)("%s publication keeps its complete archive when cancellation acco
   try {
     await writeFile(input, "preserved original");
     const plan = await zip.plan({ inputs: [input], output, overwrite: lane === "rename" });
-    await expect(zip.write(plan, { signal: controller.signal })).rejects.toMatchObject({ code: "write.durability", path: output, cause: error });
+    await expect(zip.write(plan, { signal: controller.signal })).rejects.toMatchObject({ code: "write.durability", effect: "unknown", subject: output, cause: error });
     expect(await readFile(input, "utf8")).toBe("preserved original");
     // Read with the normal SDK, proving the public output is a complete ZIP.
     expect((await new ZipKit().extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
@@ -57,7 +57,7 @@ it.each(lanes)("%s publication ignores cancellation during its flush and retains
     await Promise.race([entered.promise, outcome.then(() => { throw new Error("write stopped before publication flush"); })]);
     controller.abort();
     await vi.advanceTimersByTimeAsync(50);
-    expect(await outcome).toMatchObject({ code: "io.stalled", committing: true, path: output });
+    expect(await outcome).toMatchObject({ code: "io.stalled", effect: "unknown", subject: output });
     expect(physicallySettled).toBe(false);
     expect(settlement).toBeDefined();
     flush.release(); await settlement;

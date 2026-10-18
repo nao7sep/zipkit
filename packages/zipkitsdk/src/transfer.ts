@@ -13,7 +13,7 @@
  */
 
 import { attachInternals, readInternals, type PlanInternals } from "./internal/carrier.js";
-import { PolicyError } from "./errors.js";
+import { ZipKitError } from "./errors.js";
 import type { PlanData } from "./zipkit.js";
 
 const FORMAT = "zipkit.plan-transfer/1";
@@ -31,7 +31,7 @@ export interface PlanTransfer {
 export function exportPlan(plan: PlanData): PlanTransfer {
   const internals = readInternals(plan);
   if (internals === undefined) {
-    throw new PolicyError("plan.not-exportable", "only a plan returned by plan() can be exported");
+    throw new ZipKitError("plan.not-exportable", "only a plan returned by plan() can be exported");
   }
   return { format: FORMAT, plan, internals };
 }
@@ -39,7 +39,7 @@ export function exportPlan(plan: PlanData): PlanTransfer {
 /** Rebuild a plan from `exportPlan`'s package, ready for `write()`. */
 export function importPlan(transfer: PlanTransfer): PlanData {
   if (transfer === null || typeof transfer !== "object" || transfer.format !== FORMAT || typeof transfer.internals !== "object" || transfer.internals === null) {
-    throw new PolicyError("plan.transfer-invalid", "not a plan exported by exportPlan()");
+    throw new ZipKitError("plan.transfer-invalid", "not a plan exported by exportPlan()");
   }
   attachInternals(transfer.plan, transfer.internals as PlanInternals);
   return transfer.plan;

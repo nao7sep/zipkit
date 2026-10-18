@@ -6,13 +6,14 @@
 
 import { describe, expect, it } from "vitest";
 import path from "node:path";
-import { PolicyError } from "../../src/errors.js";
+
 import {
   checkAnchorCollisions,
   computeAnchor,
   joinArchivePath,
   normalizeInputs,
 } from "../../src/plan/arcname.js";
+import { invalidError } from "../helpers/errors.js";
 
 describe("normalizeInputs", () => {
   it("resolves string inputs against the cwd", () => {
@@ -54,7 +55,7 @@ describe("joinArchivePath", () => {
 describe("checkAnchorCollisions", () => {
   it("rejects two inputs that resolve to the same non-empty prefix", () => {
     const inputs = normalizeInputs(["/a/src", "/b/src"], "/");
-    expect(() => checkAnchorCollisions(inputs, ["src", "src"])).toThrow(PolicyError);
+    expect(() => checkAnchorCollisions(inputs, ["src", "src"])).toThrow(invalidError);
   });
 
   it("allows distinct prefixes and ignores root-level merges", () => {

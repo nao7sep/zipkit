@@ -1,6 +1,6 @@
 /**
  * Spec and policy validation at the SDK boundary. Malformed input is rejected
- * with a `PolicyError` rather than allowed to fail deep inside a pass. Filter
+ * with a `ZipKitError` of kind `invalid` rather than allowed to fail deep inside a pass. Filter
  * rules gain their `match`/`target` defaults here, so every rule that reaches
  * the engine is complete. A spec is pure serializable data — cancellation is
  * per-call control on {@link ZipKitCallOptions}, not a spec field — so the whole
@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { PolicyError } from "./errors.js";
+import { ZipKitError } from "./errors.js";
 import { resolveSegments, toForwardSlash } from "./internal/path.js";
 import { formatZodError } from "./internal/zodError.js";
 import { fullFixSegment } from "./plan/nameFix.js";
@@ -155,7 +155,7 @@ const specSchema = z.strictObject({
 export function validateSpec(spec: ArchiveSpec): ArchiveSpec {
   const result = specSchema.safeParse(spec);
   if (!result.success) {
-    throw new PolicyError("spec.invalid", `invalid archive spec: ${formatZodError(result.error)}`);
+    throw new ZipKitError("spec.invalid", `invalid archive spec: ${formatZodError(result.error)}`);
   }
   return result.data as ArchiveSpec;
 }
@@ -190,7 +190,7 @@ const extractSpecSchema = z.strictObject({
 export function validateExtractSpec(spec: ExtractSpec): ExtractSpec {
   const result = extractSpecSchema.safeParse(spec);
   if (!result.success) {
-    throw new PolicyError(
+    throw new ZipKitError(
       "spec.invalid",
       `invalid extract spec: ${formatZodError(result.error)}`,
     );
@@ -205,7 +205,7 @@ export function validateExtractSpec(spec: ExtractSpec): ExtractSpec {
  */
 export function validateChunkSize(chunkSize: number): number {
   if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
-    throw new PolicyError(
+    throw new ZipKitError(
       "options.invalid",
       `chunkSize must be a positive integer number of bytes (got ${chunkSize})`,
     );
@@ -223,7 +223,7 @@ const MAX_TIMER_MS = 2_147_483_647;
  */
 export function validateIoTimeout(ioTimeoutMs: number): number {
   if (!Number.isInteger(ioTimeoutMs) || ioTimeoutMs <= 0 || ioTimeoutMs > MAX_TIMER_MS) {
-    throw new PolicyError(
+    throw new ZipKitError(
       "options.invalid",
       `ioTimeoutMs must be a positive integer number of milliseconds up to ${MAX_TIMER_MS} (got ${ioTimeoutMs})`,
     );
@@ -239,7 +239,7 @@ export function validateIoTimeout(ioTimeoutMs: number): number {
  */
 export function validateConcurrency(concurrency: number): number {
   if (!Number.isInteger(concurrency) || concurrency <= 0) {
-    throw new PolicyError(
+    throw new ZipKitError(
       "options.invalid",
       `concurrency must be a positive integer (got ${concurrency})`,
     );
@@ -251,7 +251,7 @@ export function validateConcurrency(concurrency: number): number {
 export function validateLogDir(logDir: unknown): string | null {
   if (logDir === undefined) return null;
   if (typeof logDir !== "string" || logDir.trim() === "") {
-    throw new PolicyError("options.invalid", `logDir must be a non-empty string (got ${String(logDir)})`);
+    throw new ZipKitError("options.invalid", `logDir must be a non-empty string (got ${String(logDir)})`);
   }
   return logDir;
 }
@@ -259,7 +259,7 @@ export function validateLogDir(logDir: unknown): string | null {
 /** Validate the debug switch: a boolean when given (`false` when unset). */
 export function validateDebug(debug: unknown): boolean {
   if (debug === undefined) return false;
-  if (typeof debug !== "boolean") throw new PolicyError("options.invalid", `debug must be a boolean (got ${String(debug)})`);
+  if (typeof debug !== "boolean") throw new ZipKitError("options.invalid", `debug must be a boolean (got ${String(debug)})`);
   return debug;
 }
 
@@ -267,7 +267,7 @@ export function validateDebug(debug: unknown): boolean {
 export function validateSkipPaths(skipPaths: unknown): string[] {
   if (skipPaths === undefined) return [];
   if (!Array.isArray(skipPaths) || skipPaths.some((p) => typeof p !== "string" || p.trim() === "")) {
-    throw new PolicyError("options.invalid", "skipPaths must be a list of non-empty strings");
+    throw new ZipKitError("options.invalid", "skipPaths must be a list of non-empty strings");
   }
   return [...skipPaths] as string[];
 }
@@ -276,7 +276,7 @@ export function validateSkipPaths(skipPaths: unknown): string[] {
 export function validatePolicy(policy: DeepPartial<ArchivePolicy>): DeepPartial<ArchivePolicy> {
   const result = partialPolicySchema.safeParse(policy);
   if (!result.success) {
-    throw new PolicyError("policy.invalid", `invalid policy: ${formatZodError(result.error)}`);
+    throw new ZipKitError("policy.invalid", `invalid policy: ${formatZodError(result.error)}`);
   }
   return result.data as DeepPartial<ArchivePolicy>;
 }

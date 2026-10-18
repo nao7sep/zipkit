@@ -45,7 +45,7 @@ it.runIf(fileSymlinksSupported).each([
       expect(await outcome).toMatchObject({ result: { wrote: true } });
     } else {
       expect(await outcome).toMatchObject({ error: cancel
-        ? { errorType: "abort" } : { errorType: "stall", committing: !overwrite } });
+        ? { code: "aborted" } : { code: "io.stalled", effect: overwrite ? "none" : "unknown" } });
       expect(volumeWorkPending()).toBe(true);
       release();
     }

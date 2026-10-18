@@ -17,7 +17,7 @@
  */
 
 import path from "node:path";
-import { PolicyError } from "../errors.js";
+import { ZipKitError } from "../errors.js";
 import type { ResolvedInput } from "../plan/arcname.js";
 
 /** Where the caller asked the archive to go. */
@@ -48,7 +48,7 @@ export function resolveOutputPath(
 ): string {
   if (request.output !== undefined) return path.resolve(cwd, request.output);
   const first = inputs[0];
-  if (!first) throw new PolicyError("output.ambiguous", "no inputs to infer an output path from");
+  if (!first) throw new ZipKitError("output.ambiguous", "no inputs to infer an output path from");
   const parents = new Set(inputs.map((input) => path.dirname(input.path)));
   const shared = parents.size === 1 ? path.dirname(first.path) : null;
 
@@ -63,7 +63,7 @@ export function resolveOutputPath(
   else if (shared !== null) dir = shared;
   else if (request.outputName !== undefined) dir = path.dirname(first.path);
   else {
-    throw new PolicyError(
+    throw new ZipKitError(
       "output.ambiguous",
       "cannot infer the output path: inputs live in different parents; pass an output, an outputDir or an outputName",
     );

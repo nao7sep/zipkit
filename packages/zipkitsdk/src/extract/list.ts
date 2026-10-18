@@ -4,7 +4,7 @@
  * on any ZIP; only the manifest needs one ZipKit made.
  */
 
-import { ReadError, ZipKitError } from "../errors.js";
+import { ZipKitError } from "../errors.js";
 import { machineTimeZone } from "../internal/timeZone.js";
 import type { Volume, VolumeFile } from "../internal/volume.js";
 import { METADATA_DEFAULTS } from "../policy.js";
@@ -19,7 +19,7 @@ async function withArchive<T>(volume: Volume, archivePath: string, use: (archive
     archive = await volume.open(archivePath, "r");
   } catch (err) {
     if (err instanceof ZipKitError) throw err;
-    throw new ReadError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+    throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
   }
   try {
     let fileSize: number;
@@ -27,7 +27,7 @@ async function withArchive<T>(volume: Volume, archivePath: string, use: (archive
       fileSize = Number((await archive.stat()).size);
     } catch (err) {
       if (err instanceof ZipKitError) throw err;
-      throw new ReadError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
+      throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err });
     }
     return await use(archive, await parseZip(archive, fileSize));
   } finally {
@@ -64,29 +64,29 @@ export async function listArchive(volume: Volume, archivePath: string, timeZone 
 export async function readArchiveManifest(volume: Volume, archivePath: string, name = METADATA_DEFAULTS.name): Promise<Metadata> {
   return withArchive(volume, archivePath, async (archive, parsed) => {
     const inside = parsed.entries.find((entry) => entry.archivePath === name);
-    if (!inside) throw new ReadError("read.manifest-missing", `no manifest '${name}' is embedded in the archive`);
+    if (!inside) throw new ZipKitError("read.manifest-missing", `no manifest '${name}' is embedded in the archive`);
     const chunks: Buffer[] = [];
     await readEntryData(archive, inside, async (chunk) => { chunks.push(chunk); }, 65536);
     let document: unknown;
     try {
       document = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
     } catch (err) {
-      throw new ReadError("read.manifest-invalid", `manifest ${name} is not valid JSON`, { cause: err });
+      throw new ZipKitError("read.manifest-invalid", `manifest ${name} is not valid JSON`, { cause: err });
     }
     if (typeof document !== "object" || document === null || Array.isArray(document)) {
-      throw new ReadError("read.manifest-invalid", `manifest ${name} is not a JSON object`);
+      throw new ZipKitError("read.manifest-invalid", `manifest ${name} is not a JSON object`);
     }
     const { formatVersion, entries } = document as Record<string, unknown>;
     if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {
-      throw new ReadError("read.manifest-invalid", `manifest ${name} has no valid formatVersion`);
+      throw new ZipKitError("read.manifest-invalid", `manifest ${name} has no valid formatVersion`);
     }
     if (formatVersion > MANIFEST_FORMAT_VERSION) {
-      throw new ReadError(
+      throw new ZipKitError(
         "read.manifest-newer",
         `manifest ${name} has format version ${formatVersion}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
       );
     }
-    if (!Array.isArray(entries)) throw new ReadError("read.manifest-invalid", `manifest ${name} has no entries list`);
+    if (!Array.isArray(entries)) throw new ZipKitError("read.manifest-invalid", `manifest ${name} has no entries list`);
     return document as Metadata;
   });
 }

@@ -23,7 +23,7 @@
  *   destination). Refused before it starts under the same rules as `work`, but
  *   once started a cancel no longer abandons it: publication is the commit point,
  *   and abandoning it would leave its outcome unknown. Only the budget does, and
- *   the resulting {@link StallError} says the file may still appear.
+ *   the resulting `io.stalled` error says the file may still appear.
  * - `cleanup` — closing handles and removing this run's own temp files after a
  *   failure. Always attempted, bounded by the budget, never stopped by the
  *   cancel or an earlier stall that triggered it.
@@ -38,7 +38,7 @@
 import type { BigIntStats } from "node:fs";
 import * as fsp from "node:fs/promises";
 import path from "node:path";
-import { StallError, WriteError, toAbortError } from "../errors.js";
+import { stallError, toAbortError, ZipKitError } from "../errors.js";
 import { syncDirectory } from "./sync-directory.js";
 
 /** A directory entry as the walker needs it. */
@@ -152,7 +152,7 @@ export class Volume {
   readonly #timeoutMs: number;
   readonly #signal: AbortSignal | undefined;
   /** The first stall this run hit; later work and commit calls fail with it. */
-  #stall: StallError | undefined;
+  #stall: ZipKitError<"io.stalled"> | undefined;
 
   constructor(port: FileSystemPort, timeoutMs: number, signal?: AbortSignal) {
     this.#port = port;
@@ -274,7 +274,7 @@ export class Volume {
   async #syncPublication(output: string): Promise<void> {
     try { await this.#port.syncDirectory(path.dirname(output)); }
     catch (cause) {
-      throw new WriteError("write.durability", `Archive published but its save could not be confirmed: ${output}`, { cause, path: output });
+      throw new ZipKitError("write.durability", `Archive published but its save could not be confirmed: ${output}`, { cause, subject: output, effect: "unknown" });
     }
   }
 
@@ -372,7 +372,7 @@ export class Volume {
           reject(err);
         });
       const timer = setTimeout(() => {
-        const stall = new StallError(operation, path, this.#timeoutMs, mode === "commit", physical.then(() => {}, () => {}));
+        const stall = stallError(operation, path, this.#timeoutMs, mode === "commit", physical.then(() => {}, () => {}));
         if (mode !== "cleanup") this.#stall ??= stall;
         abandon(stall);
       }, this.#timeoutMs);

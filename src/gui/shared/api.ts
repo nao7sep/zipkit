@@ -78,7 +78,8 @@ export const JOB_EVENT_LIMIT = 2000;
  * by main as a catalogue message; arbitrary exception prose has no field on
  * this boundary. */
 export interface GuiError {
-  type: string;
+  /** The SDK error's kind (`internal` for a failure the SDK did not classify). */
+  kind: string;
   code: string;
   presentation: Message;
 }

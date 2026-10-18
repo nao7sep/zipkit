@@ -28,7 +28,7 @@
 import os from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
-import { ZipKitError, type ZipKitErrorType } from "./errors.js";
+import { toAbortError, ZipKitError } from "./errors.js";
 import { matcherFor } from "./filter/match.js";
 import { reportFindings } from "./log/findings.js";
 import { createLogger, type LogSink } from "./log/logger.js";
@@ -218,7 +218,7 @@ export class ZipKit {
           onProgress: options.onProgress,
         });
       } catch (err) {
-        this.#reportError(logger, err);
+        this.#reportError(logger, err, "extract");
         throw err;
       }
     });
@@ -317,7 +317,7 @@ export class ZipKit {
    * The SDK's bounded file access, for a caller that must touch the same user
    * volumes outside a verb (checking an input or an output location). Each call
    * is bounded by this instance's `ioTimeoutMs` and answers to `signal`, and
-   * fails with a `StallError` naming the path when the volume stops responding.
+   * fails with a `io.stalled` error naming the path when the volume stops responding.
    */
   volume(signal?: AbortSignal): Volume {
     return new Volume(nodeFileSystem, this.#ioTimeoutMs, signal);
@@ -383,7 +383,15 @@ export class ZipKit {
         chunkSize: this.#chunkSize,
       });
     }
-    const result = (await fn(logger)) as U & { log: string | null };
+    let result: U & { log: string | null };
+    try { result = (await fn(logger)) as U & { log: string | null }; }
+    catch (err) {
+      // Every failure a verb reports is a ZipKitError; anything else that
+      // escapes is a gap in the SDK's own classification.
+      if (err instanceof ZipKitError) throw err;
+      if (options.signal?.aborted) throw toAbortError(options.signal.reason);
+      throw new ZipKitError("internal.unexpected", err instanceof Error ? err.message : String(err), { cause: err });
+    }
     result.log = this.#sessionPath;
     return result;
   }
@@ -422,7 +430,7 @@ export class ZipKit {
     try {
       return await writeArchive(plan, deps);
     } catch (err) {
-      this.#reportError(deps.logger, err);
+      this.#reportError(deps.logger, err, "write");
       throw err;
     }
   }
@@ -430,11 +438,10 @@ export class ZipKit {
   /** Emit a terminal error event so the session log (and any `onEvent` hook)
    *  records the failure instead of going silent mid-stream. Best-effort: the
    *  logger swallows its own faults, and the original error is always rethrown
-   *  by the caller. The stage comes from the fault's `errorType` — the typed
-   *  error's own domain, never a code-string prefix — so the log stage and the
-   *  error a caller branches on can never disagree. */
-  #reportError(logger: Logger, err: unknown): void {
-    const stage: LogStage = err instanceof ZipKitError ? STAGE_FOR_ERROR_TYPE[err.errorType] : "plan";
+   *  by the caller. The stage is the domain the error's code names (a scan
+   *  failure inside a plan is recorded under scan), else the verb's own. */
+  #reportError(logger: Logger, err: unknown, verbStage: LogStage = "plan"): void {
+    const stage: LogStage = err instanceof ZipKitError ? STAGE_FOR_CODE_DOMAIN[err.code.split(".")[0]!] ?? verbStage : verbStage;
     const code = err instanceof ZipKitError ? err.code : "unknown";
     const message = err instanceof Error ? err.message : String(err);
     const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
@@ -479,14 +486,11 @@ export class ZipKit {
   }
 }
 
-/** Map a fault's domain (`errorType`) to the log stage its terminal event is
- *  recorded under. Keyed off the typed error's domain — never a code-string
- *  prefix — so the two views of a fault stay in agreement. */
-const STAGE_FOR_ERROR_TYPE: Record<ZipKitErrorType, LogStage> = {
+/** The log stage of the domain an error code names; codes outside these
+ *  domains (a policy, a stall, a cancellation) are recorded under the verb's
+ *  own stage. */
+const STAGE_FOR_CODE_DOMAIN: Record<string, LogStage> = {
   scan: "scan",
-  policy: "plan",
   write: "write",
   read: "extract",
-  abort: "plan",
-  stall: "plan",
 };

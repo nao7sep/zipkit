@@ -118,7 +118,7 @@ describe("GUI error presentation", () => {
     );
 
     expect(result).toEqual({
-      type: "unknown",
+      kind: "internal",
       code: "unknown",
       presentation: { key: "error.verifyIncomplete" },
     });
@@ -126,23 +126,23 @@ describe("GUI error presentation", () => {
   });
 
   it("names the path that stopped responding for a stalled volume", () => {
-    const stalled = new SdkHostError({ name: "StallError", message: "read did not respond", errorType: "stall", code: "io.stalled", path: "/Volumes/NAS/a.zip" });
+    const stalled = new SdkHostError({ name: "ZipKitError", message: "read did not respond", code: "io.stalled", kind: "unavailable", effect: "none", subject: "/Volumes/NAS/a.zip" });
     expect(toGuiError(stalled)).toEqual({
-      type: "stall",
+      kind: "unavailable",
       code: "io.stalled",
       presentation: { key: "error.stalled", values: { path: "/Volumes/NAS/a.zip" } },
     });
   });
 
   it("presents an SDK failure by its kind, without its text", () => {
-    const read = new SdkHostError({ name: "ReadError", message: "EACCES /private/HOSTILE", errorType: "read", code: "read.open-failed" });
-    expect(toGuiError(read)).toEqual({ type: "read", code: "read.open-failed", presentation: { key: "error.readFailed" } });
-    const write = new SdkHostError({ name: "WriteError", message: "x", errorType: "write", code: "write.failed" });
+    const read = new SdkHostError({ name: "ZipKitError", message: "EACCES /private/HOSTILE", code: "read.open-failed", kind: "unavailable", effect: "none" });
+    expect(toGuiError(read)).toEqual({ kind: "unavailable", code: "read.open-failed", presentation: { key: "error.readFailed" } });
+    const write = new SdkHostError({ name: "ZipKitError", message: "x", code: "write.failed", kind: "unavailable", effect: "none" });
     expect(toGuiError(write).presentation).toEqual({ key: "error.verifyIncomplete" });
   });
 
   it("explains a host process that ended during the work", () => {
-    const ended = new SdkHostError({ name: "SdkHostExited", message: "ended", errorType: "host", code: "host.exited" });
-    expect(toGuiError(ended)).toEqual({ type: "host", code: "host.exited", presentation: { key: "error.hostExited" } });
+    const ended = new SdkHostError({ name: "SdkHostExited", message: "ended", code: "host.exited", kind: "unavailable", effect: "unknown" });
+    expect(toGuiError(ended)).toEqual({ kind: "unavailable", code: "host.exited", presentation: { key: "error.hostExited" } });
   });
 });
