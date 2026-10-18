@@ -6,6 +6,7 @@
 import path from "node:path";
 import type { Volume } from "./internal/volume.ts";
 import { aliasUnprovable, foldedName } from "./internal/name-equivalence.ts";
+import { fsFailure } from "./errors.ts";
 
 /** A path as a claim compares it (see `ZipKit.pathResources`). */
 export interface PathResource {
@@ -79,9 +80,9 @@ export function createPathClaims(): PathClaims {
 async function canonicalPrefix(file: string, volume: Volume): Promise<{ location: string; existing: string }> {
   try { const location = await volume.realpath(file); return { location, existing: location }; }
   catch (error) {
-    if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+    if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw fsFailure(error, file);
     const parent = path.dirname(file);
-    if (parent === file) throw error;
+    if (parent === file) throw fsFailure(error, file);
     const prefix = await canonicalPrefix(parent, volume);
     return { location: path.join(prefix.location, path.basename(file)), existing: prefix.existing };
   }
@@ -95,7 +96,7 @@ export async function pathResources(files: readonly string[], volume: Volume): P
     const location = path.join(prefix.location, path.basename(file));
     let identity: string | null = null;
     try { const st = await volume.lstat(file); identity = `${st.dev}:${st.ino}`; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw fsFailure(error, file); }
     resources.push({ location, identity, existingPrefix: prefix.existing });
     if (identity !== null) {
       try {
@@ -104,7 +105,7 @@ export async function pathResources(files: readonly string[], volume: Volume): P
           const st = await volume.stat(file);
           resources.push({ location: canonical, identity: `${st.dev}:${st.ino}`, existingPrefix: canonical });
         }
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw fsFailure(error, file); }
     }
   }
   return resources;

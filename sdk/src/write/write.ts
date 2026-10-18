@@ -193,7 +193,7 @@ async function streamPieces(
 }
 
 export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<WriteData> {
-  const internals = readInternals(plan);
+  const internals = plan !== null && typeof plan === "object" ? readInternals(plan) : undefined;
   if (!internals) {
     throw new ZipKitError(
       "write.no-internals",

@@ -36,6 +36,9 @@ export const ERROR_CODES = {
   "plan.not-exportable": "invalid",
   "plan.transfer-invalid": "invalid",
   "path.not-absolute": "invalid",
+  "path.missing": "unavailable",
+  "path.denied": "unavailable",
+  "io.failed": "unavailable",
   "scan.input-missing": "unavailable",
   "scan.output-is-input": "invalid",
   "scan.output-stat-failed": "unavailable",
@@ -163,6 +166,18 @@ export function withUnknownEffect(err: unknown): unknown {
   if (err.details !== undefined) options.details = err.details as never;
   if (err.settlement !== undefined) options.settlement = err.settlement;
   return new ZipKitError(err.code, err.message, options);
+}
+
+/** A file-system failure at `subject` as a ZipKit error, by what the system
+ *  reported: the path is missing, access was denied, or the operation failed
+ *  otherwise. A ZipKit error is returned as it is. */
+export function fsFailure(err: unknown, subject: string): ZipKitError {
+  if (err instanceof ZipKitError) return err;
+  const code = (err as { code?: unknown } | null)?.code;
+  const message = err instanceof Error ? err.message : String(err);
+  if (code === "ENOENT" || code === "ENOTDIR") return new ZipKitError("path.missing", message, { cause: err, subject });
+  if (code === "EACCES" || code === "EPERM") return new ZipKitError("path.denied", message, { cause: err, subject });
+  return new ZipKitError("io.failed", message, { cause: err, subject });
 }
 
 /** Whether `err` is a stalled-volume failure. */

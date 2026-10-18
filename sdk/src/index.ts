@@ -53,6 +53,7 @@ export type {
   RemovalCheck,
   RemovalOptions,
   RemovalRefusal,
+  VerifyReport,
   Severity,
   SourceComparison,
   Transformation,

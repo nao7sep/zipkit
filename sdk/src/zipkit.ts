@@ -58,6 +58,11 @@ import {
   validateDebug,
   validateLogDir,
   requireAbsolute,
+  requireAbsoluteList,
+  validateCallOptions,
+  validateInstanceOptionKeys,
+  validateManifestName,
+  validateTimeZoneName,
   validateSkipPaths,
   validateSpec,
 } from "./validate.ts";
@@ -140,6 +145,7 @@ export class ZipKit {
   readonly #skipPaths: readonly string[];
 
   constructor(options: ZipKitOptions = {}) {
+    validateInstanceOptionKeys(options);
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
     this.#concurrency =
       options.concurrency !== undefined
@@ -277,7 +283,8 @@ export class ZipKit {
    * `timeZone` (the host's by default). Bounded like every look at a user volume.
    */
   async list(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { timeZone?: string } = {}): Promise<ArchiveListing> {
-    return listArchive(this.volume(options.signal), requireAbsolute(archive, "archive"), options.timeZone);
+    return this.#guard(options, () =>
+      listArchive(this.volume(options.signal), requireAbsolute(archive, "archive"), validateTimeZoneName(options.timeZone)));
   }
 
   /**
@@ -289,32 +296,46 @@ export class ZipKit {
    * `checkMetadata`, which streams it.
    */
   async readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { name?: string } = {}): Promise<Metadata> {
-    return readArchiveManifest(this.volume(options.signal), requireAbsolute(archive, "archive"), options.name);
+    return this.#guard(options, () =>
+      readArchiveManifest(this.volume(options.signal), requireAbsolute(archive, "archive"), validateManifestName(options.name)));
   }
 
   /**
    * Whether the originals `archive` was made from can be removed without
-   * losing data, checked in order: the archive is the one expected (when
-   * `fingerprint` is given), it does not sit at or inside an input, it
-   * verifies against its manifest, and a fresh scan of `spec`'s inputs still
-   * matches that manifest. `spec` is the one the archive was created with,
-   * its inputs only those still to be removed. Removes nothing; a check that
-   * cannot finish refuses, naming its step, rather than throwing.
+   * losing data, checked in order: the archive does not sit at or inside an
+   * input, it verifies against its manifest, and a fresh scan of `spec`'s
+   * inputs still matches that manifest. `spec` is the one the archive was
+   * created with, its inputs only those still to be removed; `removed` names
+   * inputs an earlier partial removal already took. Removes nothing. A check
+   * that cannot finish refuses, naming its step and carrying its error; a
+   * cancellation is thrown.
    */
   async checkRemoval(spec: ArchiveSpec, archive: string, options: RemovalOptions = {}): Promise<RemovalCheck> {
-    requireAbsolute(archive, "archive");
-    for (const removed of options.removed ?? []) requireAbsolute(removed, "each removed input");
-    const { removed = [], fingerprint, ...call } = options;
-    // The archive is the output, so the fresh scan never counts the archive
-    // itself when it sits beside the inputs.
-    const { outputDir: _dir, outputName: _name, ...rest } = spec;
-    const rescan: ArchiveSpec = { ...rest, output: archive };
-    return checkRemoval({
-      state: () => this.pathState(archive, call),
-      inside: () => outputInsideInputs(archive, spec.inputs, this.volume(call.signal)),
-      verify: async () => (await this.extract({ archive, dryRun: true, checkMetadata: true }, call)).reportOk,
-      compare: () => this.compareSources(rescan, archive, call),
-    }, spec.inputs, removed, fingerprint);
+    return this.#guard(options, async () => {
+      const validated = validateSpec(spec);
+      requireAbsolute(archive, "archive");
+      const { removed: removedOption, ...call } = options;
+      const removed = removedOption === undefined ? [] : requireAbsoluteList(removedOption, "removed");
+      const metadata = resolvePolicy(this.#policy, validated.policy).metadata;
+      // The archive is the output, so the fresh scan never counts the archive
+      // itself when it sits beside the inputs.
+      const { outputDir: _dir, outputName: _name, ...rest } = validated;
+      const rescan: ArchiveSpec = { ...rest, output: archive };
+      const check = await checkRemoval({
+        state: () => this.pathState(archive, call),
+        inside: () => outputInsideInputs(archive, validated.inputs, this.volume(call.signal)),
+        verify: async () => {
+          const data = await this.extract({
+            archive, dryRun: true, checkMetadata: true,
+            ...(metadata !== false ? { metadataName: metadata.name } : {}),
+          }, call);
+          return { ok: data.reportOk, report: { summary: data.summary, missing: data.missing, extra: data.extra, findings: data.findings } };
+        },
+        compare: () => this.compareSources(rescan, archive, call),
+      }, archive, validated.inputs, removed);
+      call.signal?.throwIfAborted();
+      return check;
+    });
   }
 
   /**
@@ -334,19 +355,19 @@ export class ZipKit {
    * file put in its place. Bounded like every look at a user volume.
    */
   async pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
-    return pathState(requireAbsolute(target, "path"), this.volume(options.signal));
+    return this.#guard(options, () => pathState(requireAbsolute(target, "path"), this.volume(options.signal)));
   }
 
   /** Each path as a path claim compares it (see `createPathClaims`), resolved
    *  through links and folder aliases; a path that is a link to a file also
    *  yields the file it points to. Bounded like every look at a user volume. */
   async pathResources(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathResource[]> {
-    return pathResources(paths.map((p) => requireAbsolute(p, "each path")), this.volume(options.signal));
+    return this.#guard(options, () => pathResources(requireAbsoluteList(paths, "paths"), this.volume(options.signal)));
   }
 
   /** What each path is on disk now, in order (see `PathKind`). */
   async classify(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
-    return classifyPaths(paths.map((p) => requireAbsolute(p, "each path")), this.volume(options.signal));
+    return this.#guard(options, () => classifyPaths(requireAbsoluteList(paths, "paths"), this.volume(options.signal)));
   }
 
   /** The instance's session log, opened lazily on first use so an instance that
@@ -369,6 +390,7 @@ export class ZipKit {
     options: ZipKitCallOptions,
     fn: (logger: Logger) => Promise<U>,
   ): Promise<U & { log: string | null }> {
+    validateCallOptions(options);
     const sinks: LogSink[] = [];
     if (this.#sessionPath !== null) sinks.push(this.#sessionLog(this.#sessionPath).sink);
     if (options.onEvent) sinks.push(options.onEvent);
@@ -389,15 +411,18 @@ export class ZipKit {
     }
     let result: U & { log: string | null };
     try { result = (await fn(logger)) as U & { log: string | null }; }
-    catch (err) {
-      // Every failure a verb reports is a ZipKitError; anything else that
-      // escapes is a gap in the SDK's own classification.
-      if (err instanceof ZipKitError) throw err;
-      if (options.signal?.aborted) throw toAbortError(options.signal.reason);
-      throw new ZipKitError("internal.unexpected", err instanceof Error ? err.message : String(err), { cause: err });
-    }
+    catch (err) { throw classified(err, options.signal); }
     result.log = this.#sessionPath;
     return result;
+  }
+
+  /** The seam for the methods that only look (a path's state, an archive's
+   *  listing): the same option checks and error classification as `#run`,
+   *  without a run's events or log. */
+  async #guard<T>(options: object, fn: () => Promise<T>): Promise<T> {
+    validateCallOptions(options);
+    try { return await fn(); }
+    catch (err) { throw classified(err, (options as ZipKitCallOptions).signal); }
   }
 
   /** The shared plan path. `plan()` and `create()` both route through it with
@@ -488,6 +513,15 @@ export class ZipKit {
       writable: plan.writable,
     });
   }
+}
+
+/** Every failure a verb reports is a ZipKitError: a cancellation as the
+ *  cancelled error, and anything else that escapes as a gap in the SDK's own
+ *  classification. */
+function classified(err: unknown, signal: AbortSignal | undefined): ZipKitError {
+  if (err instanceof ZipKitError) return err;
+  if (signal?.aborted) return toAbortError(signal.reason);
+  return new ZipKitError("internal.unexpected", err instanceof Error ? err.message : String(err), { cause: err });
 }
 
 /** The log stage of the domain an error code names; codes outside these

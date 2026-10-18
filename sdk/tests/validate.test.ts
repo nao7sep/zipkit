@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { validateExtractSpec, validatePolicy, validateSpec } from "../src/validate.ts";
-import { ZipKit } from "../src/index.ts";
+import { exportPlan, importPlan, ZipKit } from "../src/index.ts";
 import { invalidError } from "./helpers/errors.ts";
 
 describe("validateSpec", () => {
@@ -167,5 +167,24 @@ describe("locations", () => {
     await expect(zip.pathResources(["a.zip"])).rejects.toMatchObject(relative);
     await expect(zip.compareSources({ inputs: ["/a"] }, "a.zip")).rejects.toMatchObject(relative);
     await expect(zip.checkRemoval({ inputs: ["/a"] }, "a.zip")).rejects.toMatchObject(relative);
+  });
+});
+
+describe("call options and arguments", () => {
+  it("are checked at every method, so a wrong value fails as an invalid call, never deep in a file operation", async () => {
+    const zip = new ZipKit();
+    const invalid = { name: "ZipKitError", kind: "invalid" };
+    expect(() => new ZipKit({ logdir: "/tmp" } as never)).toThrow(invalidError);
+    await expect(zip.plan({ inputs: ["/a"] }, { signal: { aborted: false } as never })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.extract({ archive: "/a.zip", dryRun: true }, { onEvent: "log" as never })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.pathState("/a", { signal: {} as never })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.classify("abc" as never)).rejects.toMatchObject(invalid);
+    await expect(zip.pathResources(null as never)).rejects.toMatchObject(invalid);
+    await expect(zip.readManifest("/a.zip", { name: "../x" })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.list("/a.zip", { timeZone: "Bogus/Zone" })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.write(null as never)).rejects.toMatchObject({ code: "write.no-internals", kind: "invalid" });
+    await expect(zip.checkRemoval({ inputs: ["/a"] }, "/a.zip", { removed: 5 as never })).rejects.toMatchObject(invalid);
+    expect(() => exportPlan(null as never)).toThrow(invalidError);
+    expect(() => importPlan({ format: "zipkit.plan-transfer/1", internals: {}, plan: null } as never)).toThrow(invalidError);
   });
 });

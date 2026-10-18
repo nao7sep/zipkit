@@ -29,7 +29,7 @@ export interface PlanTransfer {
 
 /** Package a plan from `plan()` to hand to another process for `write()`. */
 export function exportPlan(plan: PlanData): PlanTransfer {
-  const internals = readInternals(plan);
+  const internals = plan !== null && typeof plan === "object" ? readInternals(plan) : undefined;
   if (internals === undefined) {
     throw new ZipKitError("plan.not-exportable", "only a plan returned by plan() can be exported");
   }
@@ -38,7 +38,8 @@ export function exportPlan(plan: PlanData): PlanTransfer {
 
 /** Rebuild a plan from `exportPlan`'s package, ready for `write()`. */
 export function importPlan(transfer: PlanTransfer): PlanData {
-  if (transfer === null || typeof transfer !== "object" || transfer.format !== FORMAT || typeof transfer.internals !== "object" || transfer.internals === null) {
+  if (transfer === null || typeof transfer !== "object" || transfer.format !== FORMAT || typeof transfer.internals !== "object" || transfer.internals === null ||
+    typeof transfer.plan !== "object" || transfer.plan === null) {
     throw new ZipKitError("plan.transfer-invalid", "not a plan exported by exportPlan()");
   }
   attachInternals(transfer.plan, transfer.internals as PlanInternals);

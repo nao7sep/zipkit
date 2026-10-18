@@ -5,12 +5,12 @@
  * so the boundary cases and the order of the checks are pinned.
  */
 
-import { appendFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { checkRemoval, explainRemoved, outputInsideInputs as check, type RemovalSteps } from "../src/removal.ts";
-import { ZipKit } from "../src/index.ts";
+import { ZipKit, ZipKitError } from "../src/index.ts";
 import { realVolume } from "./helpers/volume.ts";
 
 const outputInsideInputs = (output: string, inputs: string[]): Promise<boolean> =>
@@ -74,41 +74,43 @@ describe("outputInsideInputs", () => {
 
 describe("checkRemoval", () => {
   const same = { matches: true, added: [], missing: [], changed: [], unlisted: [] };
+  const report = { summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0 }, missing: [], extra: [], findings: [] };
   const steps = (over: Partial<RemovalSteps> = {}, ran: string[] = []): RemovalSteps => ({
     state: async () => (ran.push("state"), { kind: "present", fingerprint: "f1" }),
     inside: async () => (ran.push("inside"), false),
-    verify: async () => (ran.push("verify"), true),
+    verify: async () => (ran.push("verify"), { ok: true, report }),
     compare: async () => (ran.push("compare"), same),
     ...over,
   });
+  const check = (s: RemovalSteps) => checkRemoval(s, "/out/a.zip", ["/in"], []);
 
   it("runs every check in order and passes with the fingerprint that verified", async () => {
     const ran: string[] = [];
-    expect(await checkRemoval(steps({}, ran), ["/in"], [])).toEqual({ refusal: null, verified: { fingerprint: "f1" } });
+    expect(await check(steps({}, ran))).toEqual({ refusal: null, verified: { fingerprint: "f1" } });
     expect(ran).toEqual(["state", "inside", "verify", "compare"]);
   });
 
-  it("stops at the first refusal, and refuses rather than throws when a check cannot finish", async () => {
+  it("stops at the first refusal, carrying what failed, and refuses with a ZipKit error when a check cannot finish", async () => {
     const ran: string[] = [];
-    expect(await checkRemoval(steps({ inside: async () => true }, ran), ["/in"], [])).toEqual({ refusal: { reason: "inside" }, verified: null });
+    expect(await check(steps({ inside: async () => true }, ran))).toEqual({ refusal: { reason: "inside" }, verified: null });
     expect(ran).toEqual(["state"]);
-    expect((await checkRemoval(steps({ verify: async () => false }), ["/in"], [])).refusal).toEqual({ reason: "verify-failed" });
-    const stalled = new Error("stalled");
-    expect(await checkRemoval(steps({ verify: async () => { throw stalled; } }), ["/in"], []))
+    expect((await check(steps({ verify: async () => ({ ok: false, report }) }))).refusal).toEqual({ reason: "verify-failed", report });
+    const stalled = new ZipKitError("io.stalled", "stalled", { subject: "/out/a.zip", details: { operation: "read", timeoutMs: 1 } });
+    expect(await check(steps({ verify: async () => { throw stalled; } })))
       .toEqual({ refusal: { reason: "error", step: "verify", error: stalled }, verified: null });
-    expect((await checkRemoval(steps({ inside: async () => { throw stalled; } }), ["/in"], [])).refusal)
-      .toMatchObject({ reason: "error", step: "location" });
+    // A raw file-system failure arrives classified, naming the archive.
+    const missing = Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    expect((await check(steps({ inside: async () => { throw missing; } }))).refusal)
+      .toMatchObject({ reason: "error", step: "location", error: { code: "path.missing", kind: "unavailable", subject: "/out/a.zip" } });
     // A later refusal still says the archive verified.
-    expect(await checkRemoval(steps({ compare: async () => { throw stalled; } }), ["/in"], []))
+    expect(await check(steps({ compare: async () => { throw stalled; } })))
       .toEqual({ refusal: { reason: "error", step: "recheck", error: stalled }, verified: { fingerprint: "f1" } });
   });
 
-  it("refuses another file at the archive's path when told which file to expect", async () => {
-    const ran: string[] = [];
-    expect((await checkRemoval(steps({}, ran), ["/in"], [], "f0")).refusal).toEqual({ reason: "replaced" });
-    expect(ran).toEqual(["state"]);
-    expect((await checkRemoval(steps({ state: async () => ({ kind: "gone" }) }), ["/in"], [], "f1")).refusal).toEqual({ reason: "replaced" });
-    expect((await checkRemoval(steps(), ["/in"], [], "f1")).refusal).toBeNull();
+  it("throws a cancellation from any step instead of answering", async () => {
+    const aborted = new ZipKitError("aborted", "stop");
+    await expect(check(steps({ state: async () => { throw aborted; } }))).rejects.toBe(aborted);
+    await expect(check(steps({ verify: async () => { throw aborted; } }))).rejects.toBe(aborted);
   });
 
   it("does not count as missing what came from an input already removed, unless another input shares its name", () => {
@@ -130,26 +132,35 @@ describe("ZipKit.checkRemoval", () => {
     await zip.create({ inputs: [a, b], output: archive });
     const passed = await zip.checkRemoval({ inputs: [a, b] }, archive);
     expect(passed.refusal).toBeNull();
-    const fingerprint = passed.verified!.fingerprint!;
-    expect(fingerprint).toEqual(expect.any(String));
+    expect(passed.verified?.fingerprint).toEqual(expect.any(String));
     // Only `a` is left to remove, `b` already went: its entries are expected.
     await rm(b, { recursive: true });
-    expect((await zip.checkRemoval({ inputs: [a] }, archive, { removed: [b], fingerprint })).refusal).toBeNull();
+    expect((await zip.checkRemoval({ inputs: [a] }, archive, { removed: [b] })).refusal).toBeNull();
     expect((await zip.checkRemoval({ inputs: [a] }, archive)).refusal).toMatchObject({ reason: "changed", comparison: { missing: ["b/2.txt"] } });
     await writeFile(path.join(a, "late.txt"), "late");
     expect((await zip.checkRemoval({ inputs: [a] }, archive, { removed: [b] })).refusal)
       .toMatchObject({ reason: "changed", comparison: { added: ["a/late.txt"] } });
     await rm(path.join(a, "late.txt"));
-    // Damaged in place, the archive is still the one expected but cannot be read.
+    // Damaged, the archive can no longer be read.
     await appendFile(archive, "trailing");
-    expect((await zip.checkRemoval({ inputs: [a] }, archive, { removed: [b], fingerprint })).refusal)
-      .toMatchObject({ reason: "error", step: "verify" });
-    // Another file put in its place is not the one expected.
-    // (Made while the first still exists, so it cannot reuse its inode.)
-    const other = path.join(root, "other.zip");
-    await zip.create({ inputs: [a], output: other });
-    await rename(other, archive);
-    expect((await zip.checkRemoval({ inputs: [a] }, archive, { removed: [b], fingerprint })).refusal).toEqual({ reason: "replaced" });
+    expect((await zip.checkRemoval({ inputs: [a] }, archive, { removed: [b] })).refusal)
+      .toMatchObject({ reason: "error", step: "verify", error: { kind: "invalid" } });
+  });
+
+  it("verifies against a manifest made under another name, refuses relative inputs, and throws when cancelled", async () => {
+    const root = await fixture();
+    const input = path.join(root, "proj");
+    await mkdir(input);
+    await writeFile(path.join(input, "a.txt"), "a");
+    const zip = new ZipKit();
+    const archive = path.join(root, "proj.zip");
+    const policy = { metadata: { name: "files.json" } };
+    await zip.create({ inputs: [input], output: archive, policy });
+    expect((await zip.checkRemoval({ inputs: [input], policy }, archive)).refusal).toBeNull();
+    await expect(zip.checkRemoval({ inputs: ["proj"] }, archive)).rejects.toMatchObject({ kind: "invalid" });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(zip.checkRemoval({ inputs: [input] }, archive, { signal: controller.signal })).rejects.toMatchObject({ code: "aborted", kind: "cancelled" });
   });
 
   it("refuses an archive inside an input, and ignores how the spec would have named it", async () => {

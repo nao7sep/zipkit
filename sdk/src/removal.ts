@@ -7,9 +7,9 @@
  */
 
 import path from "node:path";
-import { sameFile } from "./paths.ts";
+import { fsFailure, type ZipKitError } from "./errors.ts";
 import type { Volume } from "./internal/volume.ts";
-import type { PathState, PlannedEntry, RemovalCheck, SourceComparison, Unarchived } from "./types.ts";
+import type { PathState, PlannedEntry, RemovalCheck, SourceComparison, Unarchived, VerifyReport } from "./types.ts";
 
 /** Whether `output` resolves to a location at or inside any of `inputs`. Both
  *  sides are resolved to their physical identities, so a link cannot hide the
@@ -56,45 +56,53 @@ export interface RemovalSteps {
   state(): Promise<PathState>;
   /** Whether the archive sits at or inside an input. */
   inside(): Promise<boolean>;
-  /** Whether the archive verifies against its manifest. */
-  verify(): Promise<boolean>;
+  /** The archive verified against its manifest: whether it passed, and what failed. */
+  verify(): Promise<{ ok: boolean; report: VerifyReport }>;
   /** A fresh scan of the inputs still present, compared with the manifest. */
   compare(): Promise<SourceComparison>;
 }
 
+/** A step's failure as the refusal carries it, or thrown as it is when it
+ *  is a cancellation, which ends the check rather than answering it. */
+function stepFailure(error: unknown, subject: string): ZipKitError {
+  const failure = fsFailure(error, subject);
+  if (failure.kind === "cancelled") throw failure;
+  return failure;
+}
+
 /**
  * Run the checks in order and stop at the first that refuses. A check that
- * cannot finish refuses too, naming its step, so this never throws for one.
- * `fingerprint`, when given, is the archive as it was made or last verified:
- * another file at its path refuses with `replaced`.
+ * cannot finish refuses too, naming its step and carrying its error; a
+ * cancellation is thrown instead, since it answers nothing.
  */
 export async function checkRemoval(
   steps: RemovalSteps,
+  archive: string,
   inputs: readonly string[],
   removed: readonly string[],
-  fingerprint?: string,
 ): Promise<RemovalCheck> {
   const refuse = (refusal: NonNullable<RemovalCheck["refusal"]>, verified: RemovalCheck["verified"] = null): RemovalCheck =>
     ({ refusal, verified });
   let seen: PathState | null = null;
-  try { seen = await steps.state(); } catch { /* unknown: verify says whether the archive is there */ }
-  if (fingerprint !== undefined && (seen?.kind !== "present" || !sameFile(seen.fingerprint, fingerprint))) return refuse({ reason: "replaced" });
+  // Unknown is an answer here: the verification says whether the archive is there.
+  try { seen = await steps.state(); } catch (error) { stepFailure(error, archive); }
   try {
     if (await steps.inside()) return refuse({ reason: "inside" });
   } catch (error) {
-    return refuse({ reason: "error", step: "location", error });
+    return refuse({ reason: "error", step: "location", error: stepFailure(error, archive) });
   }
   try {
-    if (!(await steps.verify())) return refuse({ reason: "verify-failed" });
+    const verification = await steps.verify();
+    if (!verification.ok) return refuse({ reason: "verify-failed", report: verification.report });
   } catch (error) {
-    return refuse({ reason: "error", step: "verify", error });
+    return refuse({ reason: "error", step: "verify", error: stepFailure(error, archive) });
   }
   const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
   try {
     const comparison = explainRemoved(await steps.compare(), inputs, removed);
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
   } catch (error) {
-    return refuse({ reason: "error", step: "recheck", error }, verified);
+    return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive) }, verified);
   }
   return { refusal: null, verified };
 }

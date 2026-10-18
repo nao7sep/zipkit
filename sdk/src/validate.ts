@@ -295,3 +295,54 @@ export function requireAbsolute(value: string, what: string): string {
   }
   return value;
 }
+
+const CALL_HOOKS = ["onEvent", "onProgress", "onPhysicalSettlement"] as const;
+
+/** Per-call options: a signal that is a real AbortSignal and hooks that are
+ *  functions, so a wrong value fails as an invalid call rather than deep in
+ *  a file operation. */
+export function validateCallOptions(options: unknown): void {
+  if (options === null || typeof options !== "object") {
+    throw new ZipKitError("options.invalid", "call options must be an object");
+  }
+  const o = options as Record<string, unknown>;
+  if (o.signal !== undefined && !(o.signal instanceof AbortSignal)) {
+    throw new ZipKitError("options.invalid", "signal must be an AbortSignal");
+  }
+  for (const hook of CALL_HOOKS) {
+    if (o[hook] !== undefined && typeof o[hook] !== "function") throw new ZipKitError("options.invalid", `${hook} must be a function`);
+  }
+}
+
+const INSTANCE_OPTIONS = new Set(["policy", "concurrency", "chunkSize", "ioTimeoutMs", "logDir", "debug", "skipPaths"]);
+
+/** Instance options hold no key the SDK does not know, as specs do not. */
+export function validateInstanceOptionKeys(options: unknown): void {
+  if (options === null || typeof options !== "object") throw new ZipKitError("options.invalid", "options must be an object");
+  const unknown = Object.keys(options).filter((key) => !INSTANCE_OPTIONS.has(key));
+  if (unknown.length > 0) throw new ZipKitError("options.invalid", `unknown option: ${unknown.join(", ")}`);
+}
+
+/** The name of an embedded manifest: one safe path component. */
+export function validateManifestName(name: unknown): string | undefined {
+  if (name === undefined) return undefined;
+  if (typeof name !== "string" || !isSafePathComponent(name)) {
+    throw new ZipKitError("options.invalid", "a manifest name must be a single path component (no slashes, not '.' or '..')");
+  }
+  return name;
+}
+
+/** An IANA time zone name, when one is given. */
+export function validateTimeZoneName(zone: unknown): string | undefined {
+  if (zone === undefined) return undefined;
+  if (typeof zone !== "string" || !isValidTimeZone(zone)) {
+    throw new ZipKitError("options.invalid", "timeZone must be a valid IANA time zone name (e.g. 'Asia/Tokyo', 'UTC')");
+  }
+  return zone;
+}
+
+/** A list of absolute paths, as a verb that takes several paths needs. */
+export function requireAbsoluteList(values: unknown, what: string): string[] {
+  if (!Array.isArray(values)) throw new ZipKitError("options.invalid", `${what} must be a list of absolute paths`);
+  return values.map((value) => requireAbsolute(value as string, `each of ${what}`));
+}

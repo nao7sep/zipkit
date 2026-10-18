@@ -1,3 +1,5 @@
+import type { ZipKitErrorData } from "./errors.ts";
+
 /**
  * The committed public type surface. Every record's keys follow the
  * object-key role sequence: identity, provenance, classification,
@@ -662,17 +664,25 @@ export interface Unarchived {
 /** Why the originals may not be removed: the first check of
  *  `ZipKit.checkRemoval` that refused. */
 export type RemovalRefusal =
-  /** Another file is at the archive's path: not the one expected. */
-  | { reason: "replaced" }
   /** The archive sits at or inside an input, so removing it would take the archive along. */
   | { reason: "inside" }
-  /** The archive does not verify against its manifest. */
-  | { reason: "verify-failed" }
+  /** The archive does not verify against its manifest: what failed. */
+  | { reason: "verify-failed"; report: VerifyReport }
   /** The inputs no longer match what the archive holds. */
   | { reason: "changed"; comparison: SourceComparison }
-  /** A check could not finish, such as on a stalled drive or when cancelled:
-   *  the error it ended with, and which check it was. */
-  | { reason: "error"; step: "location" | "verify" | "recheck"; error: unknown };
+  /** A check could not finish, such as on a stalled drive: the error it
+   *  ended with, and which check it was. A cancellation is thrown instead. */
+  | { reason: "error"; step: "location" | "verify" | "recheck"; error: ZipKitErrorData };
+
+/** What a verification found, without every entry's result. */
+export interface VerifyReport {
+  summary: ExtractData["summary"];
+  /** In the manifest but absent from the archive. */
+  missing: string[];
+  /** In the archive but absent from the manifest. */
+  extra: string[];
+  findings: Finding[];
+}
 
 /** The answer of `ZipKit.checkRemoval`. */
 export interface RemovalCheck {
@@ -690,9 +700,6 @@ export interface RemovalOptions extends ZipKitCallOptions {
    *  partial removal: what the archive holds from them is not counted as
    *  missing, and only the rest are checked. */
   removed?: readonly string[];
-  /** The archive's fingerprint as made or last verified (see `pathState`):
-   *  another file at its path refuses with `replaced`. */
-  fingerprint?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -77,7 +77,7 @@ export interface EngineDeps {
     options: GuiOptions,
     signal: AbortSignal,
     onEvent: (e: LogEvent) => void,
-  ): Promise<RemovalCheck>;
+  ): Promise<AppRemovalCheck>;
   /** Classify input paths on disk (dir/file/missing) for the job's `entries`. */
   classify(paths: string[]): Promise<InputEntry[]>;
   /** Move each path independently to the OS Trash and report the exact outcome.
@@ -209,9 +209,19 @@ function archiveRemovable(job: Job): boolean {
   return job.state === "failed" && (job.intent.originals !== "delete" || originalsIntact(job));
 }
 
+/** The SDK's removal check as the engine receives it: a check that could not
+ *  finish carries whatever ended it, the SDK's error or the host's own. */
+export type AppRemovalCheck = Omit<RemovalCheck, "refusal"> & {
+  refusal: Exclude<RemovalRefusal, { reason: "error" }> | { reason: "error"; step: "location" | "verify" | "recheck"; error: unknown } | null;
+};
+
+/** Why the originals may not be removed: the SDK's refusals, and the app's own
+ *  finding that another file is at the archive's path. */
+type TrashRefusal = NonNullable<AppRemovalCheck["refusal"]> | { reason: "replaced" };
+
 /** The message for a refused Trash; only the location sentence differs between
  *  a Move-to-Trash run and the command on a finished job. */
-function refusalMessage(refusal: RemovalRefusal, insideKey: MessageKey): Message {
+function refusalMessage(refusal: TrashRefusal, insideKey: MessageKey): Message {
   switch (refusal.reason) {
     case "inside":
       return message(insideKey);
@@ -420,11 +430,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     signal: AbortSignal,
     onEvent: (e: LogEvent) => void,
     removed: string[] = [],
-  ): Promise<RemovalRefusal | null> {
+  ): Promise<TrashRefusal | null> {
     const id = rec.job.id;
     set(rec, { originalsChanges: undefined });
     if (!(await publicationCurrent(rec, output, signal))) return { reason: "replaced" };
-    let check: RemovalCheck;
+    let check: AppRemovalCheck;
     try {
       check = await deps.checkRemoval(output, inputs, removed, rec.job.options, signal, onEvent);
     } catch (error) {
@@ -452,9 +462,6 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
       case "error":
         deps.log.error(`trash blocked: ${refusal.step} check errored; originals kept`, { jobId: id, error: errorInfo(refusal.error) });
-        break;
-      case "replaced":
-        deps.log.error("trash blocked: another file at the archive's path", { jobId: id, output });
         break;
     }
     return refusal;

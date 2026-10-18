@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
-import { createPathClaims, ZipKitError, type RemovalCheck, type SourceComparison } from "zipkitsdk";
+import { createQueueEngine, type AppRemovalCheck, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
+import { createPathClaims, ZipKitError, type SourceComparison, type VerifyReport } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
@@ -45,6 +45,10 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
     entries: [],
   };
 }
+
+const FAILED_REPORT: VerifyReport = {
+  summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0 }, missing: [], extra: [], findings: [],
+};
 
 /** The SDK's removal check's own steps, faked one by one: the engine's fake
  *  `checkRemoval` runs them in the SDK's order, and like it, refuses at the
@@ -93,13 +97,13 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
     progress: () => () => {},
     newId: () => `job-${++idN}`,
     log: nullLog,
-    checkRemoval: async (output, inputs, _removed, options, signal, onEvent): Promise<RemovalCheck> => {
+    checkRemoval: async (output, inputs, _removed, options, signal, onEvent): Promise<AppRemovalCheck> => {
       const seen = await deps.pathState(output, signal).catch(() => null);
       try {
         if (await fakes.outputInsideInputs(output, inputs, signal)) return { refusal: { reason: "inside" }, verified: null };
       } catch (error) { return { refusal: { reason: "error", step: "location", error }, verified: null }; }
       try {
-        if (!(await deps.verify(output, signal, onEvent, true))) return { refusal: { reason: "verify-failed" }, verified: null };
+        if (!(await deps.verify(output, signal, onEvent, true))) return { refusal: { reason: "verify-failed", report: FAILED_REPORT }, verified: null };
       } catch (error) { return { refusal: { reason: "error", step: "verify", error }, verified: null }; }
       const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
       try {
