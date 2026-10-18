@@ -227,14 +227,9 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   // only forces Zip64 on when the estimate already requires it.
   const zip64Needed = plan.summary.zip64;
 
-  // Every entry the archive will hold, its manifest included, as a read of it
-  // counts them; the bytes are the content as on disk (`sourceBytes`).
   const meter = new Meter(
     "write",
-    {
-      entries: writeEntries.length + (policy.metadata !== false ? 1 : 0),
-      bytes: writeEntries.reduce((sum, entry) => sum + contentBytes(entry), 0),
-    },
+    { entries: writeEntries.length, bytes: writeEntries.reduce((sum, entry) => sum + contentBytes(entry), 0) },
     deps.onProgress,
   );
   const writer = new ZipWriter(
@@ -300,8 +295,6 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     // nothing behind — the catch's writer.abort() discards the temp file.
     throwIfAborted(signal);
 
-    meter.flush();
-
     // The structured record is always built and returned — it is the run's full
     // state. Embedding it as `zipkit.json` is the only part gated by policy.
     const metadataEntries: MetadataEntryInput[] = streamed.map((s) => {
@@ -346,7 +339,6 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
         deps.chunkSize,
         level,
       );
-      meter.entry();
     }
 
     const final = await writer.finalize(zip64Needed, comment, signal);

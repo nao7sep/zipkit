@@ -932,6 +932,17 @@ function entryRow(entry: PlannedEntry, renamed: boolean): Pick<ReportRow, "path"
   return { path: shown.join(sep), from: entry.diskPath };
 }
 
+/** Where a path the archive's manifest traces to (an input's own name, then
+ *  the path inside it) is on disk, from the job's inputs; the traced path
+ *  itself when no input has that name. */
+export function sourceOnDisk(source: string, inputs: readonly string[]): string {
+  const [first = "", ...rest] = source.split("/");
+  const input = inputs.find((p) => nameOf(p) === first);
+  if (input === undefined) return source;
+  const sep = separatorOf(input);
+  return [input.replace(/[\\/]+$/, ""), ...rest].join(sep);
+}
+
 const LEVEL_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
 
 /** The Details pane's cards for a job: one per kind of finding, one per reason
@@ -985,16 +996,18 @@ export function detailsCards(
     }
   }
   const pathRows = (paths: readonly string[]): ReportRow[] => paths.map((path) => ({ path, changes: [] }));
+  // The originals by where they are, or were, on disk.
+  const sourceRows = (paths: readonly string[]): ReportRow[] => pathRows(paths.map((p) => sourceOnDisk(p, job.inputs)));
   if (verify && verify.missing.length > 0) card("verify:missing", t.t("report.missing"), "error").rows.push(...pathRows(verify.missing));
   if (verify && verify.extra.length > 0) card("verify:extra", t.t("report.extra"), "warning").rows.push(...pathRows(verify.extra));
   // How the originals differ from the archive, a card per way, so each lists
   // names alone like every other card.
   const changes = job.originalsChanges;
   if (changes) {
-    card("originals:missing", t.t("details.originalsMissing"), "error").rows.push(...pathRows(changes.missing));
-    card("originals:added", t.t("details.originalsAdded"), "error").rows.push(...pathRows(changes.added));
-    card("originals:changed", t.t("details.originalsModified"), "error").rows.push(...pathRows(changes.changed));
-    card("originals:unlisted", t.t("details.originalsUnreadable"), "error").rows.push(...pathRows(changes.unlisted));
+    card("originals:missing", t.t("details.originalsMissing"), "error").rows.push(...sourceRows(changes.missing));
+    card("originals:added", t.t("details.originalsAdded"), "error").rows.push(...sourceRows(changes.added));
+    card("originals:changed", t.t("details.originalsModified"), "error").rows.push(...sourceRows(changes.changed));
+    card("originals:unlisted", t.t("details.originalsUnreadable"), "error").rows.push(...sourceRows(changes.unlisted));
   }
 
   // What is left out leaves with the originals when they are removed.

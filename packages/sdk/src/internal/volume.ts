@@ -131,6 +131,17 @@ interface RunOptions<T> {
   onLateValue?: (value: T) => void | Promise<unknown>;
 }
 
+let pendingOperations = 0;
+/** Physical SDK calls and their late cleanup, including abandoned caller waits.
+ * Used only at final process exit; it never changes the SDK's wait budgets. */
+export function volumeWorkPending(): boolean { return pendingOperations > 0; }
+function trackPhysical<T>(work: Promise<T>): Promise<T> {
+  pendingOperations++;
+  const settled = () => { pendingOperations--; };
+  void work.then(settled, settled);
+  return work;
+}
+
 /**
  * The bounded owner of one verb run's file access. Built per run with the
  * run's budget and signal; see the module comment for the modes.
@@ -152,7 +163,7 @@ export class Volume {
   trackPhysical<T>(work: Promise<T>): Promise<T> {
     this.#physical.add(work);
     void work.then(() => this.#physical.delete(work), () => this.#physical.delete(work));
-    return work;
+    return trackPhysical(work);
   }
   /** The run is physically settled only after its late continuations finish. */
   async whenSettled(): Promise<void> {

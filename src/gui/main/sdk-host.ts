@@ -11,7 +11,7 @@
  */
 
 import { rm } from "node:fs/promises";
-import { exportPlan, importPlan, ZipKit, type PathResource, type PathState, type PlanTransfer, type RemovalCheck, type RemovalStep } from "zipkit";
+import { exportPlan, importPlan, ZipKit, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "zipkit";
 import type { LogEvent, ProgressCounts } from "zipkit/types";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
@@ -47,7 +47,7 @@ export interface RemoteFailure {
 
 /** A removal check as it crosses: a check that errored carries its failure. */
 export type RemoteRemovalCheck = Omit<RemovalCheck, "refusal"> & {
-  refusal: Exclude<RemovalCheck["refusal"], { reason: "error" }> | { reason: "error"; step: RemovalStep; error: RemoteFailure };
+  refusal: Exclude<RemovalCheck["refusal"], { reason: "error" }> | { reason: "error"; step: "location" | "verify" | "recheck"; error: RemoteFailure };
 };
 
 export type HostReply =

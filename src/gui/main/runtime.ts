@@ -51,14 +51,11 @@ let lastRun = 0;
  *  records are the only durable copy of the SDK's events. Run ids count up in
  *  the launch, and a record's session tells launches apart. */
 /** The steps that begin without counts or with their own: the counts of the
- *  step before stop showing when one of them starts, as they do when a run
- *  starts. */
+ *  step before stop showing when one of them starts. */
 const STEP_STARTS = new Set(["scan.start", "write.start", "extract.start"]);
 
 export function startProgressRun(jobId: string, action: JobAction): (event: LogEvent) => void {
   const run = String(++lastRun);
-  // A new run shows none of the last one's counts while it starts.
-  sendCounts(jobId, null);
   return (event) => {
     sendEvent(log.jobEvent(jobId, event, action, run));
     if (STEP_STARTS.has(event.event)) sendCounts(jobId, null);

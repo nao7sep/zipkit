@@ -121,13 +121,6 @@ const partialPolicySchema = z.strictObject({
     .optional(),
 });
 
-/** Whether a file name the caller gives can be created as written: on
- *  Windows, a name the name-fix rules would change cannot be (`:` names an
- *  NTFS stream, `?` and its kind are refused, `CON` is a device). */
-export function creatableName(name: string, platform: NodeJS.Platform = process.platform): boolean {
-  return platform !== "win32" || fullFixSegment(name.trim(), "_") === name.trim();
-}
-
 const specSchema = z.strictObject({
   inputs: z.array(z.string().refine((input) => input !== "", { error: "input paths must not be empty" })).min(1),
   output: z.string().optional(),
@@ -137,9 +130,6 @@ const specSchema = z.strictObject({
     .string()
     .refine((n) => n.trim() !== "" && !/[\\/]/.test(n) && n.trim() !== "." && n.trim() !== "..", {
       error: "outputName must be a single file name (no slashes, not '.' or '..')",
-    })
-    .refine((n) => creatableName(n), {
-      error: "outputName holds a character or name Windows cannot use in a file name",
     })
     .optional(),
   overwrite: z.boolean().optional(),
@@ -280,47 +270,6 @@ export function validateSkipPaths(skipPaths: unknown): string[] {
     throw new PolicyError("options.invalid", "skipPaths must be a list of non-empty strings");
   }
   return [...skipPaths] as string[];
-}
-
-/** Validate a path a verb is given: a non-empty string. */
-export function validatePath(value: unknown, label: string): string {
-  if (typeof value !== "string" || value === "") throw new PolicyError("spec.invalid", `${label} must be a non-empty path`);
-  return value;
-}
-
-/** Validate the paths a verb is given: a list of non-empty strings. */
-export function validatePaths(value: unknown, label: string): string[] {
-  if (!Array.isArray(value) || value.some((p) => typeof p !== "string" || p === "")) {
-    throw new PolicyError("spec.invalid", `${label} must be a list of non-empty paths`);
-  }
-  return [...value] as string[];
-}
-
-/** Validate an IANA time-zone option, when given. */
-export function validateTimeZone(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !isValidTimeZone(value)) {
-    throw new PolicyError("options.invalid", `timeZone must be an IANA time zone such as "Asia/Tokyo" (got ${String(value)})`);
-  }
-  return value;
-}
-
-/** Validate a manifest name option, when given: one safe file name. */
-export function validateManifestName(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !isSafePathComponent(value)) {
-    throw new PolicyError("options.invalid", `name must be a single safe file name (got ${String(value)})`);
-  }
-  return value;
-}
-
-/** Validate an archive fingerprint option, when given: one `pathState` made. */
-export function validateFingerprint(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !/^[^:]+:[^:]+:[^:]+:[^:]+$/.test(value)) {
-    throw new PolicyError("options.invalid", "fingerprint must be one that pathState reported");
-  }
-  return value;
 }
 
 /** Validate an instance-level policy, applying filter-rule defaults. */

@@ -7,4 +7,4 @@
  */
 
 export { nodeFileSystem, Volume } from "./internal/volume.js";
-export type { DirEntry, FileHandlePort, FileSystemPort } from "./internal/volume.js";
+export type { FileSystemPort } from "./internal/volume.js";

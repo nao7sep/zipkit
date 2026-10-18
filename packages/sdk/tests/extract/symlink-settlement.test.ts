@@ -2,10 +2,9 @@ import { lstat, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pLimit from "p-limit";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it, vi, onTestFinished } from "vitest";
 import { extractArchive } from "../../src/extract/extract.js";
-import { nodeFileSystem, Volume } from "../../src/internal/volume.js";
-import { settledNow } from "../helpers/volume.js";
+import { nodeFileSystem, Volume, volumeWorkPending } from "../../src/internal/volume.js";
 import { createLogger } from "../../src/log/logger.js";
 import { buildZipFile } from "../helpers/writeZip.js";
 import { fileSymlinksSupported } from "../helpers/symlink.js";
@@ -47,14 +46,14 @@ it.runIf(fileSymlinksSupported).each([
     } else {
       expect(await outcome).toMatchObject({ error: cancel
         ? { errorType: "abort" } : { errorType: "stall", committing: !overwrite } });
-      expect(await settledNow([volume])).toBe(false);
+      expect(volumeWorkPending()).toBe(true);
       release();
     }
-    await volume.whenSettled();
+    await vi.waitFor(() => expect(volumeWorkPending()).toBe(false));
     expect(await readdir(dest)).toEqual(["link"]);
     expect((await lstat(target)).isSymbolicLink()).toBe(!overwrite);
   } finally {
     release(); await outcome;
-    await volume.whenSettled();
+    await vi.waitFor(() => expect(volumeWorkPending()).toBe(false));
   }
 });

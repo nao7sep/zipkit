@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../src/index.js";
-import { compareWithManifest, placeOnDisk } from "../../src/compare/sources.js";
+import { compareWithManifest } from "../../src/compare/sources.js";
 import { scanEntry } from "../helpers/synthetic.js";
 
 let dir: string;
@@ -38,7 +38,7 @@ describe("compareSources", () => {
   it("matches an untouched tree, even after junk lands and folder times move", async () => {
     await writeFile(path.join(proj, ".DS_Store"), "finder");
     await utimes(path.join(proj, "sub"), new Date(2001, 0, 1), new Date(2001, 0, 1));
-    expect(await compare()).toEqual({ matches: true, added: [], missing: [], changed: [], unlisted: [], onDisk: {} });
+    expect(await compare()).toEqual({ matches: true, added: [], missing: [], changed: [], unlisted: [] });
   });
 
   it("reports a file added, one removed and one edited since archiving", async () => {
@@ -51,12 +51,6 @@ describe("compareSources", () => {
       missing: ["proj/a.txt"],
       changed: ["proj/sub/b.txt"],
       unlisted: [],
-      // Where each is, or was, on disk: the gone one from the input's name.
-      onDisk: {
-        "proj/new.txt": path.join(proj, "new.txt"),
-        "proj/a.txt": path.join(proj, "a.txt"),
-        "proj/sub/b.txt": path.join(proj, "sub", "b.txt"),
-      },
     });
   });
 
@@ -106,15 +100,5 @@ describe("compareWithManifest", () => {
 
   it("ignores folder records", () => {
     expect(compareWithManifest([], [], [record("d", 0, "dir")]).matches).toBe(true);
-  });
-});
-
-describe("placeOnDisk", () => {
-  const comparison = (missing: string[]) => ({ matches: false, added: [], missing, changed: [], unlisted: [], onDisk: {} });
-  it("places a missing path in the input of its name, or in a root input, and leaves an unknown one out", () => {
-    const root = path.parse(process.cwd()).root;
-    expect(placeOnDisk(comparison(["a/x.txt", "b/y.txt"]), new Map(), [path.join(root, "w", "a")]).onDisk)
-      .toEqual({ "a/x.txt": path.join(root, "w", "a", "x.txt") });
-    expect(placeOnDisk(comparison(["b/y.txt"]), new Map(), [root]).onDisk).toEqual({ "b/y.txt": path.join(root, "b", "y.txt") });
   });
 });

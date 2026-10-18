@@ -21,18 +21,11 @@ function union(name: string): string[] {
 
 describe("docs/rules.md", () => {
   const rules = doc("rules.md");
-  it("lists every plan rule, read rule, exclusion code, removal refusal and path kind", () => {
+  it("lists every plan rule, read rule and exclusion code", () => {
     expect(missing(rules, Object.keys(RULE_REGISTRY))).toEqual([]);
     expect(union("ExtractRuleId")).toHaveLength(6);
     expect(missing(rules, union("ExtractRuleId"))).toEqual([]);
     expect(missing(rules, union("ExcludeCode"))).toEqual([]);
-    expect(missing(rules, union("RemovalStep"))).toEqual([]);
-    expect(missing(rules, union("PathKind"))).toEqual([]);
-    // Its members hold `;`, so the declaration runs to the blank line after it.
-    const refusals = /export type RemovalRefusal =([\s\S]+?)\n\n/.exec(types)?.[1] ?? "";
-    const reasons = [...refusals.matchAll(/reason: "([^"]+)"/g)].map((m) => m[1]!);
-    expect(reasons.length).toBeGreaterThan(4);
-    expect(missing(rules, reasons)).toEqual([]);
   });
 
   it("lists every error code the SDK throws", () => {

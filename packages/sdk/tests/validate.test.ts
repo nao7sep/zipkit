@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { PolicyError } from "../src/errors.js";
-import { creatableName, validatePolicy, validateSpec } from "../src/validate.js";
+import { validatePolicy, validateSpec } from "../src/validate.js";
 
 describe("validateSpec", () => {
   it("accepts a minimal spec", () => {
@@ -146,15 +146,5 @@ describe("new configuration surface", () => {
   it("accepts an archive comment and rejects one over 65535 bytes", () => {
     expect(() => validateSpec({ inputs: ["a"], comment: "release build" })).not.toThrow();
     expect(() => validateSpec({ inputs: ["a"], comment: "x".repeat(65536) })).toThrow(PolicyError);
-  });
-});
-
-describe("creatableName", () => {
-  it("refuses on Windows a name it cannot create as written, and accepts it elsewhere", () => {
-    for (const name of ["Meeting 10:30", "Q3?", "a*b", "CON", "nul.txt", "trailing.", "a|b"]) {
-      expect(creatableName(name, "win32"), name).toBe(false);
-      expect(creatableName(name, "darwin"), name).toBe(true);
-    }
-    for (const name of ["delivery", "Q3 report", "café", "a_b"]) expect(creatableName(name, "win32"), name).toBe(true);
   });
 });

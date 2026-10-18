@@ -43,8 +43,7 @@ describe("the SDK host", () => {
     });
     expect(bytes).toBeGreaterThan(0);
     // How far the write got crosses too, to its last byte.
-    // The file and the manifest, the entries the archive holds.
-    expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 2, entriesTotal: 2, bytesDone: 5, bytesTotal: 5 });
+    expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 1, entriesTotal: 1, bytesDone: 5, bytesTotal: 5 });
     await Promise.all(settlements);
     expect(await sdk.call("verify", [plan.output, true])).toBe(true);
     const report = await sdk.call("inspect", [plan.output, true]);
