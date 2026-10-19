@@ -8,238 +8,238 @@
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Finder’s view settings for a folder, rebuilt when it is opened"
+        "note": "Finder’s view settings for a folder. Finder creates it again."
       },
       {
         "pattern": "._*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Mac file details stored as separate files on drives that aren’t Mac-formatted"
+        "note": "Mac-only data saved beside a file on a drive that isn’t Mac-formatted. ZipKit doesn’t keep such data."
       },
       {
         "pattern": "__MACOSX/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "Mac file details left behind by unzipping a Mac-made ZIP"
+        "note": "Mac-only data left over from unzipping a ZIP made on a Mac. Not part of the files themselves."
       },
       {
         "pattern": "Icon\r",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A custom folder icon, whose image a ZIP can’t hold"
+        "note": "A folder’s custom icon in Finder. A ZIP can’t hold its image."
       },
       {
         "pattern": ".localized",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Finder’s marker for a folder shown under a translated name"
+        "note": "Tells Finder to show the folder’s name translated. Without it, the folder shows its own name."
       },
       {
         "pattern": ".Trashes",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s Trash (macOS)"
+        "note": "A drive’s Trash (macOS). Holds what was deleted from that drive."
       },
       {
         "pattern": ".Spotlight-V100",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s Spotlight search index (macOS)"
+        "note": "A drive’s Spotlight search index. macOS rebuilds it."
       },
       {
         "pattern": ".fseventsd",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s log of file changes (macOS)"
+        "note": "macOS’s record of changes on a drive. Rebuilt as needed."
       },
       {
         "pattern": ".TemporaryItems",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s temporary files (macOS)"
+        "note": "Temporary files macOS keeps on a drive."
       },
       {
         "pattern": ".DocumentRevisions-V100",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s database of saved document versions (macOS)"
+        "note": "Older versions of documents macOS saved on a drive. Only macOS can read them."
       },
       {
         "pattern": ".MobileBackups/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "A drive’s local Time Machine snapshots (older macOS)"
+        "note": "Time Machine snapshots kept on the Mac itself (older macOS). Only Time Machine can use them."
       },
       {
         "pattern": ".VolumeIcon.icns",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s custom icon (macOS)"
+        "note": "A drive’s custom icon in Finder. It belongs to the drive, not the files."
       },
       {
         "pattern": ".com.apple.timemachine.donotpresent",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Time Machine’s marker on a backup drive"
+        "note": "Marks a drive as a Time Machine backup disk. Not a file of yours."
       },
       {
         "pattern": ".AppleDouble/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "Mac file details kept by a file server or a drive that isn’t Mac-formatted"
+        "note": "Mac-only data kept by a file server or a drive that isn’t Mac-formatted. ZipKit doesn’t keep such data."
       },
       {
         "pattern": ".apdisk",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A shared drive’s AirPort Disk settings"
+        "note": "Settings an AirPort base station saved on a shared drive."
       },
       {
         "pattern": ".AppleDB",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "An old Apple file server’s own database"
+        "note": "An old Apple file server’s own records. Not files of yours."
       },
       {
         "pattern": ".AppleDesktop",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "An old Apple file server’s own database"
+        "note": "An old Apple file server’s own records. Not files of yours."
       },
       {
         "pattern": "Desktop DB",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s desktop database (classic Mac OS)"
+        "note": "Classic Mac OS’s record of a drive’s files and icons. The system rebuilds it."
       },
       {
         "pattern": "Desktop DF",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s desktop database (classic Mac OS)"
+        "note": "Classic Mac OS’s record of a drive’s files and icons. The system rebuilds it."
       },
       {
         "pattern": "Thumbs.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Windows’ thumbnail cache"
+        "note": "Windows’ thumbnail cache for a folder. Windows creates it again."
       },
       {
         "pattern": "desktop.ini",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A folder’s display settings, added by Windows and sync apps"
+        "note": "A folder’s icon and display name, set by Windows or a sync app. The files don’t need it."
       },
       {
         "pattern": "$RECYCLE.BIN/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "A drive’s Recycle Bin (Windows)"
+        "note": "A drive’s Recycle Bin. Holds what was deleted from that drive."
       },
       {
         "pattern": "RECYCLER/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "A drive’s Recycle Bin (older Windows)"
+        "note": "A drive’s Recycle Bin from older Windows. Holds what was deleted from that drive."
       },
       {
         "pattern": "RECYCLED/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "A drive’s Recycle Bin (older Windows)"
+        "note": "A drive’s Recycle Bin from older Windows. Holds what was deleted from that drive."
       },
       {
         "pattern": "System Volume Information/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "A drive’s restore points and search index (Windows)"
+        "note": "Windows’ restore points and search index for a drive. Only Windows can use them."
       },
       {
         "pattern": "pagefile.sys",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s Windows memory or hibernation file"
+        "note": "Windows’ memory or hibernation file, often several gigabytes. Windows creates it again at startup."
       },
       {
         "pattern": "hiberfil.sys",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s Windows memory or hibernation file"
+        "note": "Windows’ memory or hibernation file, often several gigabytes. Windows creates it again at startup."
       },
       {
         "pattern": "swapfile.sys",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s Windows memory or hibernation file"
+        "note": "Windows’ memory or hibernation file, often several gigabytes. Windows creates it again at startup."
       },
       {
         "pattern": "ehthumbs.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Windows Media Center’s thumbnail cache"
+        "note": "Windows Media Center’s thumbnail cache. Rebuilt when needed."
       },
       {
         "pattern": "ehthumbs_vista.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Windows Media Center’s thumbnail cache"
+        "note": "Windows Media Center’s thumbnail cache. Rebuilt when needed."
       },
       {
         "pattern": ".directory",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A folder’s display settings in KDE (Linux)"
+        "note": "A folder’s icon and view settings in KDE. The files don’t need it."
       },
       {
         "pattern": ".Trash-*/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "A drive’s Trash (Linux)"
+        "note": "A drive’s Trash (Linux). Holds what was deleted from that drive."
       },
       {
         "pattern": ".nfs*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A file deleted on a network share while still open"
+        "note": "A file deleted on a network share while still open. It disappears once closed."
       },
       {
         "pattern": ".fuse_hidden*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A file deleted while still open (Linux)"
+        "note": "A file deleted while still open (Linux). It disappears once closed."
       }
     ],
     "emptyFiles": "keep",
@@ -448,7 +448,7 @@
       "archivePath": ".DS_Store",
       "originalPath": ".DS_Store",
       "type": "file",
-      "reason": "pattern .DS_Store (Finder’s view settings for a folder, rebuilt when it is opened)"
+      "reason": "pattern .DS_Store (Finder’s view settings for a folder. Finder creates it again.)"
     }
   ],
   "findings": [

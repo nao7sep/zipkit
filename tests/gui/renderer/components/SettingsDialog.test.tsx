@@ -357,14 +357,14 @@ describe("SettingsDialog exclusion patterns", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
     const panel = screen.getByRole("tabpanel", { name: "Exclusion patterns" });
     const note = within(panel).getByLabelText("Note on pattern 1") as HTMLTextAreaElement;
-    expect(note.value).toBe("Finder’s view settings for a folder, rebuilt when it is opened");
+    expect(note.value).toBe("Finder’s view settings for a folder. Finder creates it again.");
     // Changing how the pattern matches keeps its description.
     fireEvent.click(within(panel).getAllByLabelText("Any case")[0]!);
-    expect(note.value).toBe("Finder’s view settings for a folder, rebuilt when it is opened");
+    expect(note.value).toBe("Finder’s view settings for a folder. Finder creates it again.");
     fireEvent.change(within(panel).getByLabelText("Note on pattern 2"), { target: { value: "  Mine  " } });
     fireEvent.click(screen.getByText("Save"));
     const saved = onSave.mock.calls[0]![0].defaults.exclusions;
-    expect(saved[0]).toEqual({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: false, note: "Finder’s view settings for a folder, rebuilt when it is opened" });
+    expect(saved[0]).toEqual({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: false, note: "Finder’s view settings for a folder. Finder creates it again." });
     expect(saved[1].note).toBe("Mine");
   });
 

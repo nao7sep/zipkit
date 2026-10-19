@@ -11,8 +11,8 @@ describe("built-in exclusion notes", () => {
   const english = BUILT_IN_EXCLUSIONS[0]!.note!;
 
   it("are stored in English and shown in the interface language", () => {
-    expect(english).toBe("Finder’s view settings for a folder, rebuilt when it is opened");
-    expect(noteShown(english, t)).toBe("Finder のフォルダ表示設定（開くと作り直されます）");
+    expect(english).toBe("Finder’s view settings for a folder. Finder creates it again.");
+    expect(noteShown(english, t)).toBe("Finder のフォルダ表示設定。Finder が作り直します。");
     expect(noteShown(undefined, t)).toBe("");
   });
 
