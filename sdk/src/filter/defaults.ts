@@ -4,15 +4,15 @@
  * file. They are an ordinary list, not a preset: a caller shows it, edits it,
  * resets it and passes it whole as `policy.exclusions`. It is plain data with
  * no Node imports, so a window loads it too (`zipkitsdk/defaults`). Each matches in any
- * case, since the casing varies by file system, and carries a label naming
+ * case, since the casing varies by file system, and carries a note naming
  * where it comes from. A trailing slash marks a folder-only pattern.
  */
 
 import type { ExclusionPattern } from "../types.ts";
 
-function os(label: string, pattern: string): ExclusionPattern {
+function os(note: string, pattern: string): ExclusionPattern {
   const folder = pattern.endsWith("/");
-  return { pattern, match: "glob", target: folder ? "dir" : "both", ignoreCase: true, label };
+  return { pattern, match: "glob", target: folder ? "dir" : "both", ignoreCase: true, note };
 }
 
 export const DEFAULT_EXCLUSIONS: readonly ExclusionPattern[] = Object.freeze([

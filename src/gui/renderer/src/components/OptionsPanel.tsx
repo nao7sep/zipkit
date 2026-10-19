@@ -9,7 +9,7 @@
  * into responsive columns so the whole set stays visible without a tall scroll.
  */
 
-import type { CSSProperties, ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import type { ArchiveParameters } from "../../../shared/spec";
 import { useI18n } from "../i18n/I18nContext";
 import { singleLine } from "../../../shared/textCleanup";
@@ -25,6 +25,8 @@ export function OptionsPanel({
   disabled: boolean;
 }) {
   const { t, rich } = useI18n();
+  const manifestNameMissing = options.manifest && options.manifestName.trim() === "";
+  const manifestIssueId = useId();
   const set = <K extends keyof ArchiveParameters>(key: K, value: ArchiveParameters[K]) =>
     onChange({ ...options, [key]: value });
 
@@ -59,18 +61,23 @@ export function OptionsPanel({
         <Check checked={options.manifest} onChange={(v) => set("manifest", v)}>
           {rich("options.embedManifest", { file: <code>{options.manifestName}</code> })}
         </Check>
-        {/* The name the manifest takes inside the archive; the SDK refuses an
-            entry that would take it, and a name that is not one safe file name. */}
+        {/* The name the manifest takes inside the archive, shown as real text
+            (config-sets conventions: an empty field is not the default). The
+            SDK refuses an entry that would take it, and a name that is not
+            one safe file name. */}
         <Field label={t("options.manifestName")}>
           <input
             value={options.manifestName}
             disabled={!options.manifest}
             spellCheck={false}
+            aria-invalid={manifestNameMissing ? true : undefined}
+            aria-describedby={manifestNameMissing ? manifestIssueId : undefined}
             onChange={(e) => set("manifestName", e.target.value)}
-            onBlur={(e) => set("manifestName", singleLine(e.target.value) || "zipkit.json")}
+            onBlur={(e) => set("manifestName", singleLine(e.target.value))}
             style={S.nameInput}
           />
         </Field>
+        {manifestNameMissing && <p id={manifestIssueId} className="inline-issue" style={S.issue}>{t("options.manifestNameMissing")}</p>}
         <Check checked={options.hash} disabled={!options.manifest} onChange={(v) => set("hash", v)}>
           {t("options.hash")}
         </Check>
@@ -178,4 +185,5 @@ const S: Record<string, CSSProperties> = {
   // A select can then shrink below its longest option instead of overflowing.
   select: { minWidth: 0, maxWidth: "100%" },
   nameInput: { minWidth: 0, width: "12rem", maxWidth: "100%" },
+  issue: { margin: 0 },
 };

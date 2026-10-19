@@ -46,9 +46,9 @@ export interface ExclusionPattern {
   target: "file" | "dir" | "both";
   /** Match regardless of case. Defaults to `false`. */
   ignoreCase: boolean;
-  /** A short name for where the pattern comes from or what it is for, such
-   *  as `macOS`; shown beside it, never matched. */
-  label?: string;
+  /** A note on where the pattern comes from or what it is for, such as
+   *  `macOS`; shown beside it, never matched. */
+  note?: string;
 }
 
 export interface CompressionPolicy {

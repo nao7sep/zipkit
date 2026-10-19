@@ -277,6 +277,17 @@ button.danger-confirm:active:not(:disabled) {
 
 /* A committed receiver result must not read like low-priority helper text, and
  * its palette must match its meaning instead of making information look failed. */
+/* A problem shown where it happened, under a field or row or in a dialog: the
+ * error tint of the app's other results (.receiver-result--error, ShellNotice)
+ * in a quieter size. */
+.inline-issue {
+  padding: 0.35rem 0.55rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--status-error) 10%, var(--surface-2));
+  border: 1px solid var(--status-error);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
 .receiver-result {
   margin: 0.5rem 0 0;
   padding: 0.45rem 0.55rem;

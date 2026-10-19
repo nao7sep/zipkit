@@ -45,7 +45,7 @@ const exclusionSchema = z
     match: z.enum(["glob", "regex"]).default("glob"),
     target: z.enum(["file", "dir", "both"]).default("both"),
     ignoreCase: z.boolean().default(false),
-    label: z.string().optional(),
+    note: z.string().optional(),
   })
   .refine(
     (rule) => {

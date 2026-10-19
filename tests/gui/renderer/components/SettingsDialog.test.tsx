@@ -323,7 +323,7 @@ describe("SettingsDialog tabs", () => {
 });
 
 describe("SettingsDialog exclusion patterns", () => {
-  it("edits the whole list, holds Save for a pattern that cannot be used, and resets to the built-in list", () => {
+  it("edits the whole list, drops a blank row, and holds Save for a regex that does not compile", () => {
     const onSave = renderDialog();
     fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
     const panel = screen.getByRole("tabpanel", { name: "Exclusion patterns" });
@@ -333,16 +333,22 @@ describe("SettingsDialog exclusion patterns", () => {
     const count = within(panel).getAllByLabelText(/^Pattern \d+$/).length;
     for (let i = count; i > 1; i--) fireEvent.click(within(panel).getByRole("button", { name: `Remove pattern ${i}` }));
     fireEvent.click(within(panel).getByRole("button", { name: "Add pattern" }));
-    fireEvent.change(within(panel).getByLabelText("Pattern 2"), { target: { value: "(" } });
-    fireEvent.change(within(panel).getByLabelText("Kind of pattern 2"), { target: { value: "regex" } });
-    expect(within(panel).getByRole("alert").textContent).toBe("Pattern 2 is not a valid regular expression.");
+    // A blank row is no pattern: it is no error, and it is not saved.
+    expect(within(panel).queryByText("Not a valid regular expression.")).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Add pattern" }));
+    fireEvent.change(within(panel).getByLabelText("Pattern 3"), { target: { value: "(" } });
+    fireEvent.change(within(panel).getByLabelText("Kind of pattern 3"), { target: { value: "regex" } });
+    const field = within(panel).getByLabelText("Pattern 3");
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(field.getAttribute("aria-describedby")!)?.textContent).toBe("Not a valid regular expression.");
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(within(panel).getByLabelText("Pattern 2"), { target: { value: "\\.log$" } });
+    fireEvent.change(within(panel).getByLabelText("Pattern 3"), { target: { value: " \\.log$ " } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Move pattern 3 up" }));
     fireEvent.click(within(panel).getByRole("button", { name: "Move pattern 2 up" }));
     fireEvent.click(screen.getByText("Save"));
     expect(onSave.mock.calls[0]![0].defaults.exclusions).toEqual([
       { pattern: "\\.log$", match: "regex", target: "both", ignoreCase: false },
-      expect.objectContaining({ pattern: ".DS_Store", label: "macOS" }),
+      expect.objectContaining({ pattern: ".DS_Store", note: "macOS" }),
     ]);
   });
 

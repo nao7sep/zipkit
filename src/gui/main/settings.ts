@@ -30,7 +30,7 @@ function isExclusion(value: unknown): boolean {
   const p = value as Record<string, unknown>;
   if (typeof p.pattern !== "string" || p.pattern === "" || (p.match !== "glob" && p.match !== "regex")) return false;
   if (p.target !== "file" && p.target !== "dir" && p.target !== "both") return false;
-  if (typeof p.ignoreCase !== "boolean" || (p.label !== undefined && typeof p.label !== "string")) return false;
+  if (typeof p.ignoreCase !== "boolean" || (p.note !== undefined && typeof p.note !== "string")) return false;
   if (p.match === "regex") {
     try { new RegExp(p.pattern); } catch { return false; }
   }

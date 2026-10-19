@@ -127,7 +127,7 @@ function policyStringBytes(policy: ArchivePolicy): number {
   let bytes = jsonStringBytes(policy.names.invalidCharReplacement);
   if (policy.timeZone !== undefined) bytes += jsonStringBytes(policy.timeZone);
   if (policy.manifest !== false) bytes += jsonStringBytes(policy.manifest.name);
-  for (const p of policy.exclusions) bytes += MANIFEST_FILTER_FIXED + jsonStringBytes(p.pattern) + (p.label === undefined ? 0 : jsonStringBytes(p.label));
+  for (const p of policy.exclusions) bytes += MANIFEST_FILTER_FIXED + jsonStringBytes(p.pattern) + (p.note === undefined ? 0 : jsonStringBytes(p.note));
   for (const ext of policy.compression.store) bytes += jsonStringBytes(ext);
   return bytes;
 }

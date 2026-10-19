@@ -22,7 +22,7 @@
 
 import { useEffect, useState } from "react";
 import { DEFAULT_EXCLUSIONS } from "zipkitsdk/defaults";
-import { ExclusionList, patternIssue } from "./ExclusionList";
+import { cleanExclusions, ExclusionList, patternInvalid } from "./ExclusionList";
 import { useTablist } from "../useTablist";
 import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
@@ -61,7 +61,7 @@ function builtInFontStack(): string {
  *  manifest name and the exclusion patterns. */
 function isValid(o: ArchiveParameters): boolean {
   return Number.isInteger(o.level) && o.level >= 1 && o.level <= 9 &&
-    o.manifestName.trim() !== "" && o.exclusions.every((p) => patternIssue(p) === null);
+    o.manifestName.trim() !== "" && !o.exclusions.some(patternInvalid);
 }
 
 const TABS = ["general", "parameters", "exclusions"] as const;
@@ -100,7 +100,10 @@ export function SettingsDialog({
   useEffect(() => { setSaveError(false); },
     [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone, settings.confirmJobRemoval, settings.cardRowLimit]);
 
-  const dirty = Object.keys(changedSettings(settings, draft)).length > 0;
+  // What Save would store: blank pattern rows dropped and the rest trimmed, so
+  // a row added and left blank neither dirties the draft nor reaches disk.
+  const saved: GuiSettings = { ...draft, defaults: { ...draft.defaults, exclusions: cleanExclusions(draft.defaults.exclusions) } };
+  const dirty = Object.keys(changedSettings(settings, saved)).length > 0;
   // Quit asks before discarding unsaved edits, so main follows whether there are any.
   useEffect(() => { window.zipkit.reportSettingsDraft(dirty); }, [dirty]);
   useEffect(() => () => window.zipkit.reportSettingsDraft(false), []);
@@ -110,7 +113,7 @@ export function SettingsDialog({
     setSaving(true);
     setSaveError(false);
     try {
-      await onSave(draft);
+      await onSave(saved);
       onClose();
     } catch (err) {
       window.zipkit.reportError("save settings", reportableError(err));
@@ -163,7 +166,7 @@ export function SettingsDialog({
     <ModalShell
       title={t("settings.title")}
       onClose={() => void requestClose()}
-      maxWidth="44rem"
+      width="min(44rem, calc(100vw - 2rem))"
       footer={
         // Initial focus is named on Cancel (modal-dialog conventions), never Save.
         <>
@@ -317,7 +320,7 @@ export function SettingsDialog({
           </button>
         </div>
       </div>
-      {saveError && <p role="alert" style={S.error}>{t("settings.saveFailed")}</p>}
+      {saveError && <p role="alert" className="inline-issue" style={S.error}>{t("settings.saveFailed")}</p>}
     </ModalShell>
   );
 }
@@ -344,5 +347,5 @@ const S: Record<string, CSSProperties> = {
   check: { display: "flex", alignItems: "center", gap: "0.45rem", marginBottom: "1rem" },
   inlineField: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.35rem 0.75rem" },
   limitInput: { width: "5rem" },
-  error: { color: "var(--status-error)", marginBottom: 0 },
+  error: { margin: "1rem 0 0" },
 };

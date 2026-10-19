@@ -38,7 +38,7 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "records.details",
   ],
   es: ["exclusions.glob", "settings.tabGeneral", "nativeMenu.zoom", "log.error", "event.errors", "jobs.countErrors", "shortcuts.general"],
-  fr: ["exclusions.glob", 
+  fr: ["exclusions.notePlaceholder", "exclusions.glob", 
     "details.archive",
     "details.factFormat",
     "nativeMenu.services",

@@ -65,9 +65,9 @@ function compileTest(pattern: ExclusionPattern): (path: string) => boolean {
   }
 }
 
-/** How an exclusion is described: the pattern, and its label when it has one. */
+/** How an exclusion is described: the pattern, and its note when it has one. */
 export function describePattern(pattern: ExclusionPattern): string {
-  return pattern.label === undefined ? `pattern ${pattern.pattern}` : `pattern ${pattern.pattern} (${pattern.label})`;
+  return pattern.note === undefined ? `pattern ${pattern.pattern}` : `pattern ${pattern.pattern} (${pattern.note})`;
 }
 
 function applies(target: CompiledRule["target"], isDir: boolean): boolean {

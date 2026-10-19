@@ -19,7 +19,7 @@ function matcherFor(path: string, rule: CompiledRule): FilterMatcher {
 
 describe("applyFilter", () => {
   it("excludes a match with an info finding naming the pattern", () => {
-    const pattern = { pattern: ".DS_Store", match: "glob" as const, target: "both" as const, ignoreCase: true, label: "macOS" };
+    const pattern = { pattern: ".DS_Store", match: "glob" as const, target: "both" as const, ignoreCase: true, note: "macOS" };
     const rule: CompiledRule = { target: "file", test: () => true, pattern, describe: describePattern(pattern) };
     const item = workItem({ archivePath: ".DS_Store" });
     applyFilter([item], matcherFor(".DS_Store", rule));

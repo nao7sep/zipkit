@@ -8,182 +8,182 @@
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": "__MACOSX/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": "._*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".AppleDouble/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": "Icon\r",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".Spotlight-V100",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".DocumentRevisions-V100",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".TemporaryItems",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".Trashes",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".fseventsd",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".apdisk",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".com.apple.timemachine.donotpresent",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".VolumeIcon.icns",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".localized",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".AppleDB",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": ".AppleDesktop",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "macOS"
+        "note": "macOS"
       },
       {
         "pattern": "Thumbs.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "Windows"
+        "note": "Windows"
       },
       {
         "pattern": "ehthumbs.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "Windows"
+        "note": "Windows"
       },
       {
         "pattern": "ehthumbs_vista.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "Windows"
+        "note": "Windows"
       },
       {
         "pattern": "desktop.ini",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "Windows"
+        "note": "Windows"
       },
       {
         "pattern": "$RECYCLE.BIN/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "label": "Windows"
+        "note": "Windows"
       },
       {
         "pattern": "System Volume Information/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "label": "Windows"
+        "note": "Windows"
       },
       {
         "pattern": ".Trash-*/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "label": "Linux"
+        "note": "Linux"
       },
       {
         "pattern": ".directory",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "Linux"
+        "note": "Linux"
       },
       {
         "pattern": ".nfs*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "Linux"
+        "note": "Linux"
       },
       {
         "pattern": ".fuse_hidden*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "label": "Linux"
+        "note": "Linux"
       }
     ],
     "emptyFiles": "keep",

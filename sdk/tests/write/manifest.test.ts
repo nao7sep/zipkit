@@ -254,7 +254,7 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
 
     const policy = resolvePolicy(undefined, {
       exclusions: [
-        { pattern: `**/${"p".repeat(120)}`, match: "glob", target: "both", ignoreCase: false, label: "l".repeat(40) },
+        { pattern: `**/${"p".repeat(120)}`, match: "glob", target: "both", ignoreCase: false, note: "l".repeat(40) },
         { pattern: "a".repeat(90), match: "regex", target: "file", ignoreCase: true },
       ],
       compression: { store: [".aaa", ".bbb", ".ccc"] },
