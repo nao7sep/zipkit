@@ -184,6 +184,10 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
     compression: { level: o.level },
     manifest: o.manifest ? { name: o.manifestName, hash: o.hash } : false,
   };
+  // `timeZone` is left to the SDK, which writes each entry's DOS time in the
+  // computer's current zone, as Finder and Explorer do. A setting for it would
+  // confuse more than it helps: the archive also carries every time in UTC, and
+  // a reader that relies on the zone-less DOS field alone is rare in 2026.
   policy.names = { invalidCharStyle: o.invalidChars };
   if (o.strict) {
     const e: NameAction = "error";
