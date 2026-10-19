@@ -517,7 +517,7 @@
   "exclusions.notePlaceholder": "Nota",
   "exclusions.match": "Tipo do padrão {number}",
   "exclusions.glob": "Glob",
-  "exclusions.regex": "Expressão regular",
+  "exclusions.regex": "Regex",
   "exclusions.target": "A que o padrão {number} se aplica",
   "exclusions.targetBoth": "Arquivos e pastas",
   "exclusions.targetFiles": "Arquivos",

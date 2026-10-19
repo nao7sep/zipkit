@@ -517,7 +517,7 @@
   "exclusions.notePlaceholder": "Nota",
   "exclusions.match": "Tipo del modello {number}",
   "exclusions.glob": "Glob",
-  "exclusions.regex": "Espressione regolare",
+  "exclusions.regex": "Regex",
   "exclusions.target": "A cosa si applica il modello {number}",
   "exclusions.targetBoth": "File e cartelle",
   "exclusions.targetFiles": "File",

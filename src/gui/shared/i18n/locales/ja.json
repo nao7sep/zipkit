@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "ファイルとフォルダ",
   "exclusions.targetFiles": "ファイル",
   "exclusions.targetFolders": "フォルダ",
-  "exclusions.ignoreCase": "大文字小文字を区別しない",
+  "exclusions.ignoreCase": "大文字小文字を無視",
   "exclusions.moveUp": "パターン {number} を上へ",
   "exclusions.moveDown": "パターン {number} を下へ",
   "exclusions.remove": "パターン {number} を削除",

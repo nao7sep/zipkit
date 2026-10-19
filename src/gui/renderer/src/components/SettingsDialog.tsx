@@ -166,7 +166,7 @@ export function SettingsDialog({
     <ModalShell
       title={t("settings.title")}
       onClose={() => void requestClose()}
-      width="min(44rem, calc(100vw - 2rem))"
+      width="min(770px, calc(100vw - 2rem))"
       footer={
         // Initial focus is named on Cancel (modal-dialog conventions), never Save.
         <>

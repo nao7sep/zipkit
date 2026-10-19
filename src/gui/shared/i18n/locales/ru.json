@@ -517,7 +517,7 @@
   "exclusions.notePlaceholder": "Заметка",
   "exclusions.match": "Вид шаблона {number}",
   "exclusions.glob": "Glob",
-  "exclusions.regex": "Регулярное выражение",
+  "exclusions.regex": "Regex",
   "exclusions.target": "К чему применяется шаблон {number}",
   "exclusions.targetBoth": "Файлы и папки",
   "exclusions.targetFiles": "Файлы",

@@ -1,9 +1,9 @@
 /**
  * The exclusion-pattern editor on Settings' Exclusion patterns tab: the whole
  * list new jobs leave out, in the order it is checked. Each row's first line
- * holds the pattern, its dialect, what it applies to and the row's buttons;
- * its second line holds an optional note, growing to more lines only when its
- * text needs them, and whether case matters. A note is never matched; a built-in
+ * holds the pattern, its dialect, what it applies to, whether case matters and
+ * the row's buttons; its second line holds an optional note alone, across the
+ * full width, growing to more lines only when its text needs them. A note is never matched; a built-in
  * note shows as real text in the interface language. Rows are added, moved and removed, and the list resets to the
  * one ZipKit ships with. Under the config-sets conventions' typed-list rule, a
  * blank row is not a pattern and is dropped on save ({@link cleanExclusions}),
@@ -81,9 +81,8 @@ export function ExclusionList({
           const issueId = `${idBase}-issue-${row}`;
           return (
             <li key={row} style={S.row}>
-              {/* First line: the pattern, its dialect and target, and the
-                  row's buttons; second line: its note, as wide as the row
-                  leaves, and whether case matters. */}
+              {/* First line: the pattern and how it matches, with the row's
+                  buttons; second line: its note alone, across the full width. */}
               <div style={S.line}>
                 <input
                   style={S.pattern}
@@ -116,6 +115,15 @@ export function ExclusionList({
                   <option value="file">{t("exclusions.targetFiles")}</option>
                   <option value="dir">{t("exclusions.targetFolders")}</option>
                 </select>
+                <label style={S.check}>
+                  <input
+                    type="checkbox"
+                    checked={p.ignoreCase}
+                    disabled={disabled}
+                    onChange={(e) => update(row, { ignoreCase: e.target.checked })}
+                  />
+                  {t("exclusions.ignoreCase")}
+                </label>
                 <span style={S.buttons}>
                   <button type="button" style={S.icon} disabled={disabled || row === 0}
                     aria-label={t("exclusions.moveUp", { number })} title={t("exclusions.moveUp", { number })}
@@ -134,32 +142,21 @@ export function ExclusionList({
                   </button>
                 </span>
               </div>
-              <div style={S.line}>
-                {/* One line of text that takes a second line, and more, only
-                    when the note needs them: a text area sized to its content,
-                    with Enter and pasted line breaks kept out, since a note is
-                    a single line. A built-in note shows in the interface
-                    language as real text (see shared/exclusions). */}
-                <textarea
-                  style={S.note}
-                  rows={1}
-                  value={noteShown(p.note, t)}
-                  placeholder={t("exclusions.notePlaceholder")}
-                  disabled={disabled}
-                  aria-label={t("exclusions.note", { number })}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault(); }}
-                  onChange={(e) => update(row, { note: noteStored(e.target.value.replace(/[\r\n]+/g, " "), t) })}
-                />
-                <label style={S.check}>
-                  <input
-                    type="checkbox"
-                    checked={p.ignoreCase}
-                    disabled={disabled}
-                    onChange={(e) => update(row, { ignoreCase: e.target.checked })}
-                  />
-                  {t("exclusions.ignoreCase")}
-                </label>
-              </div>
+              {/* One line of text that takes a second line, and more, only
+                  when the note needs them: a text area sized to its content,
+                  with Enter and pasted line breaks kept out, since a note is
+                  a single line. A built-in note shows in the interface
+                  language as real text (see shared/exclusions). */}
+              <textarea
+                style={S.note}
+                rows={1}
+                value={noteShown(p.note, t)}
+                placeholder={t("exclusions.notePlaceholder")}
+                disabled={disabled}
+                aria-label={t("exclusions.note", { number })}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault(); }}
+                onChange={(e) => update(row, { note: noteStored(e.target.value.replace(/[\r\n]+/g, " "), t) })}
+              />
               {/* Tied to its field, not announced on every keystroke
                   (operation-result conventions, field association). */}
               {issue && <p id={issueId} className="inline-issue" style={S.issue}>{t("exclusions.issueRegex")}</p>}
@@ -182,11 +179,11 @@ const S: Record<string, CSSProperties> = {
   empty: { margin: 0, color: "var(--text-2)" },
   rows: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.5rem" },
   row: { display: "grid", gap: "0.35rem", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" },
-  line: { display: "flex", alignItems: "flex-start", gap: "0.4rem", minWidth: 0 },
+  line: { display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0 },
   pattern: { flex: "1 1 8rem", minWidth: 0, fontFamily: "var(--font-mono)" },
   // `field-sizing: content` grows the area to its text or, when empty, its
   // placeholder; one line is its least.
-  note: { flex: "1 1 auto", minWidth: 0, boxSizing: "border-box", resize: "none", minHeight: "var(--control-h)", fieldSizing: "content" } as CSSProperties,
+  note: { width: "100%", minWidth: 0, boxSizing: "border-box", resize: "none", minHeight: "var(--control-h)", fieldSizing: "content" } as CSSProperties,
   check: { display: "flex", alignItems: "center", gap: "0.35rem", flexShrink: 0, minHeight: "var(--control-h)", whiteSpace: "nowrap" },
   select: { flexShrink: 0 },
   buttons: { display: "flex", gap: "0.25rem", flexShrink: 0 },

@@ -23,7 +23,7 @@ const translations = LANGUAGES.filter((language) => language !== "en");
 
 // Keys whose text is the same word in that language as in English.
 const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
-  de: ["exclusions.glob", 
+  de: ["exclusions.regex", "exclusions.glob", 
     "messageDialog.ok",
     "details.factManifest",
     "details.showList",
@@ -37,8 +37,8 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "about.repository",
     "records.details",
   ],
-  es: ["exclusions.glob", "settings.tabGeneral", "nativeMenu.zoom", "log.error", "event.errors", "jobs.countErrors", "shortcuts.general"],
-  fr: ["exclusions.notePlaceholder", "exclusions.glob", 
+  es: ["exclusions.regex", "exclusions.glob", "settings.tabGeneral", "nativeMenu.zoom", "log.error", "event.errors", "jobs.countErrors", "shortcuts.general"],
+  fr: ["exclusions.regex", "exclusions.notePlaceholder", "exclusions.glob", 
     "details.archive",
     "details.factFormat",
     "nativeMenu.services",
@@ -49,7 +49,7 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "log.info",
     "about.version",
   ],
-  it: ["exclusions.glob", 
+  it: ["exclusions.regex", "exclusions.glob", 
     "nativeMenu.file",
     "nativeMenu.zoom",
     "messageDialog.ok",
@@ -60,8 +60,8 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "about.repository",
   ],
   ja: ["messageDialog.ok"],
-  "pt-BR": ["exclusions.glob", "nativeMenu.zoom", "messageDialog.ok", "header.menu", "jobs.countItems"],
-  ru: ["exclusions.glob"],
+  "pt-BR": ["exclusions.regex", "exclusions.glob", "nativeMenu.zoom", "messageDialog.ok", "header.menu", "jobs.countItems"],
+  ru: ["exclusions.regex", "exclusions.glob"],
 };
 
 // The hidden-character-conventions set, plus the no-break spaces, figure space,

@@ -517,7 +517,7 @@
   "exclusions.notePlaceholder": "Note",
   "exclusions.match": "Kind of pattern {number}",
   "exclusions.glob": "Glob",
-  "exclusions.regex": "Regular expression",
+  "exclusions.regex": "Regex",
   "exclusions.target": "What pattern {number} applies to",
   "exclusions.targetBoth": "Files and folders",
   "exclusions.targetFiles": "Files",
