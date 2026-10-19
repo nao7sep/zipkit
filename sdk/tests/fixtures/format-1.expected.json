@@ -11,13 +11,6 @@
         "note": "Finder’s view settings for a folder, rebuilt when it is opened"
       },
       {
-        "pattern": "__MACOSX/",
-        "match": "glob",
-        "target": "dir",
-        "ignoreCase": true,
-        "note": "Mac file details left behind by unzipping a Mac-made ZIP"
-      },
-      {
         "pattern": "._*",
         "match": "glob",
         "target": "both",
@@ -25,11 +18,11 @@
         "note": "Mac file details stored as separate files on drives that aren’t Mac-formatted"
       },
       {
-        "pattern": ".AppleDouble/",
+        "pattern": "__MACOSX/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "Mac file details kept by a file server or a drive that isn’t Mac-formatted"
+        "note": "Mac file details left behind by unzipping a Mac-made ZIP"
       },
       {
         "pattern": "Icon\r",
@@ -39,25 +32,11 @@
         "note": "A custom folder icon, whose image a ZIP can’t hold"
       },
       {
-        "pattern": ".Spotlight-V100",
+        "pattern": ".localized",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s Spotlight search index (macOS)"
-      },
-      {
-        "pattern": ".DocumentRevisions-V100",
-        "match": "glob",
-        "target": "both",
-        "ignoreCase": true,
-        "note": "A drive’s database of saved document versions (macOS)"
-      },
-      {
-        "pattern": ".TemporaryItems",
-        "match": "glob",
-        "target": "both",
-        "ignoreCase": true,
-        "note": "A drive’s temporary files (macOS)"
+        "note": "Finder’s marker for a folder shown under a translated name"
       },
       {
         "pattern": ".Trashes",
@@ -67,6 +46,13 @@
         "note": "A drive’s Trash (macOS)"
       },
       {
+        "pattern": ".Spotlight-V100",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "A drive’s Spotlight search index (macOS)"
+      },
+      {
         "pattern": ".fseventsd",
         "match": "glob",
         "target": "both",
@@ -74,18 +60,25 @@
         "note": "A drive’s log of file changes (macOS)"
       },
       {
-        "pattern": ".apdisk",
+        "pattern": ".TemporaryItems",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "A shared drive’s AirPort Disk settings"
+        "note": "A drive’s temporary files (macOS)"
       },
       {
-        "pattern": ".com.apple.timemachine.donotpresent",
+        "pattern": ".DocumentRevisions-V100",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Time Machine’s marker on a backup drive"
+        "note": "A drive’s database of saved document versions (macOS)"
+      },
+      {
+        "pattern": ".MobileBackups/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "note": "A drive’s local Time Machine snapshots (older macOS)"
       },
       {
         "pattern": ".VolumeIcon.icns",
@@ -95,11 +88,25 @@
         "note": "A drive’s custom icon (macOS)"
       },
       {
-        "pattern": ".localized",
+        "pattern": ".com.apple.timemachine.donotpresent",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Finder’s marker for a folder shown under a translated name"
+        "note": "Time Machine’s marker on a backup drive"
+      },
+      {
+        "pattern": ".AppleDouble/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "note": "Mac file details kept by a file server or a drive that isn’t Mac-formatted"
+      },
+      {
+        "pattern": ".apdisk",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "A shared drive’s AirPort Disk settings"
       },
       {
         "pattern": ".AppleDB",
@@ -116,25 +123,25 @@
         "note": "An old Apple file server’s own database"
       },
       {
+        "pattern": "Desktop DB",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "A drive’s desktop database (classic Mac OS)"
+      },
+      {
+        "pattern": "Desktop DF",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "A drive’s desktop database (classic Mac OS)"
+      },
+      {
         "pattern": "Thumbs.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
         "note": "Windows’ thumbnail cache"
-      },
-      {
-        "pattern": "ehthumbs.db",
-        "match": "glob",
-        "target": "both",
-        "ignoreCase": true,
-        "note": "Windows Media Center’s thumbnail cache"
-      },
-      {
-        "pattern": "ehthumbs_vista.db",
-        "match": "glob",
-        "target": "both",
-        "ignoreCase": true,
-        "note": "Windows Media Center’s thumbnail cache"
       },
       {
         "pattern": "desktop.ini",
@@ -151,6 +158,20 @@
         "note": "A drive’s Recycle Bin (Windows)"
       },
       {
+        "pattern": "RECYCLER/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "note": "A drive’s Recycle Bin (older Windows)"
+      },
+      {
+        "pattern": "RECYCLED/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "note": "A drive’s Recycle Bin (older Windows)"
+      },
+      {
         "pattern": "System Volume Information/",
         "match": "glob",
         "target": "dir",
@@ -158,11 +179,39 @@
         "note": "A drive’s restore points and search index (Windows)"
       },
       {
-        "pattern": ".Trash-*/",
+        "pattern": "pagefile.sys",
         "match": "glob",
-        "target": "dir",
+        "target": "both",
         "ignoreCase": true,
-        "note": "A drive’s Trash (Linux)"
+        "note": "A drive’s Windows memory or hibernation file"
+      },
+      {
+        "pattern": "hiberfil.sys",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "A drive’s Windows memory or hibernation file"
+      },
+      {
+        "pattern": "swapfile.sys",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "A drive’s Windows memory or hibernation file"
+      },
+      {
+        "pattern": "ehthumbs.db",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "Windows Media Center’s thumbnail cache"
+      },
+      {
+        "pattern": "ehthumbs_vista.db",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "note": "Windows Media Center’s thumbnail cache"
       },
       {
         "pattern": ".directory",
@@ -170,6 +219,13 @@
         "target": "both",
         "ignoreCase": true,
         "note": "A folder’s display settings in KDE (Linux)"
+      },
+      {
+        "pattern": ".Trash-*/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "note": "A drive’s Trash (Linux)"
       },
       {
         "pattern": ".nfs*",

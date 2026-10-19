@@ -42,6 +42,14 @@ const DESCRIPTIONS: Readonly<Record<string, MessageKey>> = {
   ".directory": "exclusionNote.kdeDirectory",
   ".nfs*": "exclusionNote.nfs",
   ".fuse_hidden*": "exclusionNote.fuseHidden",
+  "pagefile.sys": "exclusionNote.windowsMemory",
+  "hiberfil.sys": "exclusionNote.windowsMemory",
+  "swapfile.sys": "exclusionNote.windowsMemory",
+  "RECYCLER/": "exclusionNote.oldRecycleBin",
+  "RECYCLED/": "exclusionNote.oldRecycleBin",
+  "Desktop DB": "exclusionNote.classicDesktop",
+  "Desktop DF": "exclusionNote.classicDesktop",
+  ".MobileBackups/": "exclusionNote.mobileBackups",
 };
 
 /** The description of a pattern that is one of the built-ins exactly (same

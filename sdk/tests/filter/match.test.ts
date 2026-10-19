@@ -191,6 +191,15 @@ describe("the default list, ordering, and the inclusive default", () => {
     expect(m.match(".trash-1000", true)).not.toBeNull();
   });
 
+  it("matches what an old drive holds: memory files, older Recycle Bins and classic Mac OS databases", () => {
+    const m = matcher([], true);
+    for (const name of ["pagefile.sys", "hiberfil.sys", "swapfile.sys", "Desktop DB", "Desktop DF"]) expect(m.match(name, false), name).not.toBeNull();
+    for (const name of ["RECYCLER", "RECYCLED", ".MobileBackups"]) {
+      expect(m.match(name, true), name).not.toBeNull();
+      expect(m.match(name, false), name).toBeNull();
+    }
+  });
+
   it("matches AppleDouble files", () => {
     const m = matcher([], true);
     expect(m.match("._payload", false)).not.toBeNull();
