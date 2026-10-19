@@ -9,42 +9,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - The SDK is a package of its own, `zipkitsdk` in [sdk/](sdk), which the app bundles from its source; its changes are in [its changelog](sdk/CHANGELOG.md).
+- Settings has three tabs: General, New job parameters and Exclusion patterns. The exclusion patterns are one list, edited whole: each is a glob or a regular expression, applies to files, folders or both, can match in any case, and carries a note. The list ZipKit starts with holds 34 patterns, among them what old drives keep (Windows' memory files, older Recycle Bins, the classic Mac OS desktop database), each described in the interface language. A new job takes the list Settings has when the job is added.
+- The manifest's file name is a job parameter (`zipkit.json` by default).
+- Before the originals are moved to the Trash or deleted, every one of them is read again and compared with what the archive recorded (its SHA-256, or its CRC-32 when no hash was recorded), so a file changed without changing its size or modification time keeps the originals in place. A refusal lists what changed where it is on disk.
+- Writing, verifying and the recheck before removal fill the status bar by bytes; the archive card says how much of the originals' size the archive takes; Details lists items where they are on disk.
 
 ### Changed
 
-
-- The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `app`, `version`, `repository`, `createdAtUtc` and `formatVersion`, replacing `tool` and `createdUtc`. Verify looks for `zipkit.json` only. A 0.1.0 manifest (`_metadata.json`) carries no `formatVersion`, so checking an archive against it fails with `read.manifest-invalid`; the CRC-32 check without `checkMetadata` still verifies such an archive.
+- The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `app`, `version`, `repository`, `createdAtUtc`, `format` (`zipkit.manifest`) and `formatVersion`, replacing `tool` and `createdUtc`. Verify looks for the job's manifest name only. A 0.1.0 manifest (`_metadata.json`) carries no `formatVersion`, so checking an archive against it fails with `manifest.invalid`; the check without the manifest still verifies such an archive.
+- "Drop OS junk files" is now "Leave out what the exclusion patterns match", and what it leaves out is the editable list in Settings.
+- A name ZipKit gives an archive from the folder it archives is fixed like the names inside it, so a folder named `Q1: Plans?` gives `Q1 Plans.zip`; a name you type is kept and warned about when Windows cannot hold it.
+- The warning for paths too long for Windows counts the folder Windows' Extract All makes, named after the archive, and room for where it is put.
+- Verify checks each entry's local header against the archive's directory, as tools that read local headers see it, and reports an entry whose data cannot be read (an unsupported method, a wrong size, a broken stream) instead of stopping.
 - The environment variable that moves ZipKit's data folder is now `ZIPKIT_DATA_DIR` (was `ZIPKIT_HOME`). `ZIPKIT_HOME` is no longer read: a ZipKit started with only it set uses `~/.zipkit`, and the folder it named is left as it is.
+- A folder holding ZipKit's data folder, such as the home folder, is archived like any other; when one of ZipKit's own files there changes while the archive is written, the archive fails as changed.
 - `queue.json` and `layout.json` no longer carry a `version` key; one left by 0.1.0 is ignored and dropped at the next save. A file ZipKit cannot read is never overwritten. Running an older ZipKit on files a newer one wrote is not supported.
 - The backup history in `backups.sqlite3` keeps one copy of the settings file per launch, the last one saved in that launch, instead of one per save, and no longer keeps copies of the job list. Copies already kept stay as earlier history.
-- An SDK session log is named `yyyymmdd-hhmmss-utc-<id>.log` (was `yyyymmdd-hhmmss-fff-utc.log`) and created exclusively, so instances started at the same moment never write into one file. ZipKit's own fallback log is named to the second.
+- ZipKit's own fallback log file is named to the second.
 - The questions ZipKit asks when quitting use its own dialog, on the main window when one is open, with sentence-case buttons like the rest of the app, and the busy-job question no longer says the archive is going to the Trash when it is the originals.
 - The Records window's combined level filter is called "Warnings and errors" (was "Needs attention"); it shows the same records.
 - Arrow keys move a pane divider 16 pixels at a time (was 10), and a keyboard resize is saved once, when the key is released.
 - A damaged `layout.json` puts the panes back at their default widths without a message, and a failed pane layout save is only logged.
-- Verify refuses an embedded manifest whose `formatVersion` is newer than the running build reads, with the error code `read.manifest-newer`, and one without `formatVersion` with `read.manifest-invalid`.
-- ZipKit no longer rewrites its queue or layout file when nothing in it changed, and extraction with overwrite leaves a file or symlink that already holds the entry's content as it is, reporting the entry as skipped with `unchanged`.
-- Every folder an archive keeps is written as its own entry, not only empty ones, so its modification time is stored and extraction restores it.
-- Archives store each file's Unix permissions, and extraction applies them to every file it creates; a file it replaces keeps its own. Creation times, extended attributes and Finder tags are still not restored.
-- Verify and the source check before deleting originals refuse an embedded manifest with a malformed or repeated entry record with `read.manifest-invalid`, instead of skipping the checks that record could not support.
+- Verify refuses an embedded manifest whose `formatVersion` is newer than the running build reads, with the error code `manifest.newer`, one without `formatVersion` with `manifest.invalid`, and one that names another format.
+- ZipKit no longer rewrites its queue or layout file when nothing in it changed.
+- Every folder an archive keeps is written as its own entry, not only empty ones, so its modification time is stored.
+- Archives store each file's Unix permissions.
+- Verify and the recheck before removing originals refuse an embedded manifest with a malformed or repeated entry record with `manifest.invalid`, instead of skipping the checks that record could not support.
+
+### Removed
+
+- The Help dialog. What ZipKit fixes and checks is to be explained on a page.
 
 ### Fixed
 
 - The "before 1980" and "after 2107" warnings are judged in the time zone the archive's DOS times are written in, so they appear exactly when a time is clamped.
-- Extraction restores folder modification times, once each folder's files are written.
-- Extraction restores file and folder times below the millisecond from the NTFS time field, which stores them to 100 ns; it no longer drops the digits after the millisecond.
-- Extraction ignores another tool's NTFS time field when it is malformed or unset, and uses the next stored time instead.
-- Extracting a symlink with overwrite onto an existing file keeps that file when the link cannot be created, as on Windows without symlink rights.
-- Saving an archive or extracting a file without overwrite on a FAT volume that refuses hard links no longer fails as if the file already existed.
-- Archiving a folder that holds ZipKit's own data folder (`~/.zipkit` or `ZIPKIT_DATA_DIR`), such as the home folder, leaves that data folder out, as does an input or followed link inside it.
-- Extraction writes each file's temporary copy in the file's own folder, so extracting into a folder that holds a mounted volume no longer fails there.
+- Saving an archive without overwrite on a FAT volume that refuses hard links no longer fails as if the file already existed.
+- Names longer than 255 bytes of UTF-8, which Linux file systems refuse, are flagged as too long; names that differ only by Greek final and medial sigma are caught as a case collision; `CON .txt` and the like are treated as reserved; entries are planned and written in the same order on every run.
 - The message after an unreadable settings or queue file was set aside names the `.invalid` file it was kept as.
 - A saved queue with some jobs that cannot be read restores the jobs it can read; the whole file, with every job in it, is set aside and reported.
 - One invalid saved default job option resets only itself; the comment, output folder and file name saved beside it are kept.
 - Changing a job's options and then selecting another job no longer loses the change: boxes, choices and folders are sent as soon as they change, and typing still waiting is sent when another job is selected. Quitting within about a quarter-second of typing can still lose those last characters.
-- On Windows, extraction renames a name Windows cannot hold, such as `CON`, `aux.txt`, a name containing `:` or one ending in a dot or space, the way ZipKit fixes names when it creates an archive, and reports where it wrote it. Before, such an entry could be lost, written as a hidden NTFS stream, or written under a name Windows had silently changed. Two entries that would land on one renamed name are refused like any other collision.
-- Extraction refuses a link whose target climbs with `..` after naming a folder, such as `s/../../x`, and skips it as unsafe. Through another link restored from the same archive, such a target could lead outside the destination although its text stayed inside.
-- Archiving a folder on a case-sensitive volume no longer leaves out a folder whose name differs from ZipKit's data folder only in case, such as `~/.ZipKit` beside `~/.zipkit`. Before, Move originals to Trash could then send that folder to the Trash although the archive did not hold it.
 - Writing an archive to a slow destination, such as a USB drive or network share, no longer holds the compressed data waiting for it in memory; ZipKit compresses only as fast as the destination takes the bytes.
 - A destination that stops responding while the finished archive is being saved into place is reported as the archive possibly still appearing at its path, not as an archive that could not be written.
 - Move archive to Trash works like Move originals to Trash: the job offers only Cancel until it ends, a second click, Retry, Move originals and removing the job wait for it, and Cancel or quitting stops the wait and says the archive may still reach the Trash. Quitting while either is in progress asks first, and says that files already sent to the Trash may still arrive there.
@@ -56,7 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A Windows logoff, restart or shutdown saves the queue before ZipKit ends, and on macOS a job still running at logout is cancelled without asking. Every quit step has a bound, so quitting ends within about 4 seconds instead of waiting up to 10 seconds a step, and a pane layout write still in progress at quit lands first.
 - On Windows, closing the main window while a job runs or after a failed queue save keeps it open when you choose to keep working or cancel.
 - A failed save of the settings, queue or layout no longer leaves a temporary file in ZipKit's data folder.
-- Overwriting an archive or an extracted file, and saving ZipKit's own settings, queue and layout, keep the replaced file's permissions.
+- Overwriting an archive, and saving ZipKit's own settings, queue and layout, keep the replaced file's permissions.
 
 ## [0.1.0] - 2026-07-08
 
