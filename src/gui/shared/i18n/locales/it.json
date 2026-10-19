@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "File e cartelle",
   "exclusions.targetFiles": "File",
   "exclusions.targetFolders": "Cartelle",
-  "exclusions.matchCase": "Distingui maiuscole nel modello {number}",
+  "exclusions.ignoreCase": "Senza distinguere maiuscole",
   "exclusions.moveUp": "Sposta su il modello {number}",
   "exclusions.moveDown": "Sposta giù il modello {number}",
   "exclusions.remove": "Rimuovi il modello {number}",

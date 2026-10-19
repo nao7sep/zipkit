@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "Archivos y carpetas",
   "exclusions.targetFiles": "Archivos",
   "exclusions.targetFolders": "Carpetas",
-  "exclusions.matchCase": "Distinguir mayúsculas en el patrón {number}",
+  "exclusions.ignoreCase": "Sin distinguir mayúsculas",
   "exclusions.moveUp": "Subir el patrón {number}",
   "exclusions.moveDown": "Bajar el patrón {number}",
   "exclusions.remove": "Quitar el patrón {number}",

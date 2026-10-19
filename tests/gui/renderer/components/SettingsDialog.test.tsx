@@ -348,23 +348,24 @@ describe("SettingsDialog exclusion patterns", () => {
     fireEvent.click(screen.getByText("Save"));
     expect(onSave.mock.calls[0]![0].defaults.exclusions).toEqual([
       { pattern: "\\.log$", match: "regex", target: "both", ignoreCase: false },
-      { pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true },
+      expect.objectContaining({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true }),
     ]);
   });
 
-  it("describes a built-in pattern in the note's placeholder, and saves a note typed over it", () => {
+  it("shows a built-in note as real text in the interface language, kept through other edits, and saves a note typed over it", () => {
     const onSave = renderDialog();
     fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
     const panel = screen.getByRole("tabpanel", { name: "Exclusion patterns" });
-    const note = within(panel).getByLabelText("Note on pattern 1") as HTMLInputElement;
-    expect(note.value).toBe("");
-    expect(note.placeholder).toBe("Finder’s view settings for a folder, rebuilt when it is opened");
-    // A pattern changed from its built-in form is the user's own: no description.
-    fireEvent.change(within(panel).getByLabelText("Pattern 2"), { target: { value: "__MACOSX_old/" } });
-    expect((within(panel).getByLabelText("Note on pattern 2") as HTMLInputElement).placeholder).toBe("Note");
-    fireEvent.change(note, { target: { value: "  Finder clutter  " } });
+    const note = within(panel).getByLabelText("Note on pattern 1") as HTMLTextAreaElement;
+    expect(note.value).toBe("Finder’s view settings for a folder, rebuilt when it is opened");
+    // Changing how the pattern matches keeps its description.
+    fireEvent.click(within(panel).getAllByLabelText("Any case")[0]!);
+    expect(note.value).toBe("Finder’s view settings for a folder, rebuilt when it is opened");
+    fireEvent.change(within(panel).getByLabelText("Note on pattern 2"), { target: { value: "  Mine  " } });
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave.mock.calls[0]![0].defaults.exclusions[0]).toEqual({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true, note: "Finder clutter" });
+    const saved = onSave.mock.calls[0]![0].defaults.exclusions;
+    expect(saved[0]).toEqual({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: false, note: "Finder’s view settings for a folder, rebuilt when it is opened" });
+    expect(saved[1].note).toBe("Mine");
   });
 
   it("resets the patterns alone to the list ZipKit ships with", () => {

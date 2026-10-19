@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "Файлы и папки",
   "exclusions.targetFiles": "Файлы",
   "exclusions.targetFolders": "Папки",
-  "exclusions.matchCase": "Учитывать регистр в шаблоне {number}",
+  "exclusions.ignoreCase": "Без учёта регистра",
   "exclusions.moveUp": "Переместить шаблон {number} вверх",
   "exclusions.moveDown": "Переместить шаблон {number} вниз",
   "exclusions.remove": "Удалить шаблон {number}",

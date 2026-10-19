@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "Fichiers et dossiers",
   "exclusions.targetFiles": "Fichiers",
   "exclusions.targetFolders": "Dossiers",
-  "exclusions.matchCase": "Respecter la casse du motif {number}",
+  "exclusions.ignoreCase": "Sans tenir compte de la casse",
   "exclusions.moveUp": "Monter le motif {number}",
   "exclusions.moveDown": "Descendre le motif {number}",
   "exclusions.remove": "Retirer le motif {number}",

@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "Arquivos e pastas",
   "exclusions.targetFiles": "Arquivos",
   "exclusions.targetFolders": "Pastas",
-  "exclusions.matchCase": "Diferenciar maiúsculas no padrão {number}",
+  "exclusions.ignoreCase": "Sem diferenciar maiúsculas",
   "exclusions.moveUp": "Subir o padrão {number}",
   "exclusions.moveDown": "Descer o padrão {number}",
   "exclusions.remove": "Remover o padrão {number}",

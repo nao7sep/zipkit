@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "Dateien und Ordner",
   "exclusions.targetFiles": "Dateien",
   "exclusions.targetFolders": "Ordner",
-  "exclusions.matchCase": "Groß-/Kleinschreibung bei Muster {number} beachten",
+  "exclusions.ignoreCase": "Groß-/Kleinschreibung egal",
   "exclusions.moveUp": "Muster {number} nach oben",
   "exclusions.moveDown": "Muster {number} nach unten",
   "exclusions.remove": "Muster {number} entfernen",

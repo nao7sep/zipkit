@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "Files and folders",
   "exclusions.targetFiles": "Files",
   "exclusions.targetFolders": "Folders",
-  "exclusions.matchCase": "Match case of pattern {number}",
+  "exclusions.ignoreCase": "Any case",
   "exclusions.moveUp": "Move pattern {number} up",
   "exclusions.moveDown": "Move pattern {number} down",
   "exclusions.remove": "Remove pattern {number}",

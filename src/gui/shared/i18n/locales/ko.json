@@ -522,7 +522,7 @@
   "exclusions.targetBoth": "파일과 폴더",
   "exclusions.targetFiles": "파일",
   "exclusions.targetFolders": "폴더",
-  "exclusions.matchCase": "패턴 {number}의 대소문자 구분",
+  "exclusions.ignoreCase": "대소문자 구분 안 함",
   "exclusions.moveUp": "패턴 {number} 위로",
   "exclusions.moveDown": "패턴 {number} 아래로",
   "exclusions.remove": "패턴 {number} 제거",
