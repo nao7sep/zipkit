@@ -17,7 +17,7 @@
  * finally the nested transformation list.
  */
 
-import type { Unlogged, WriteEntry } from "../internal/types.ts";
+import type { WriteEntry } from "../internal/types.ts";
 import type {
   ArchivePolicy,
   CreateData,
@@ -40,7 +40,7 @@ export const MANIFEST_FORMAT_VERSION = 1;
 /** The `mode:"plan"` member of {@link CreateData} — the planning view the
  *  manifest document is built from (entries, summary, findings). The manifest
  *  builder never reads `log`, so it takes the logging-agnostic shape. */
-type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
+type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 export interface ManifestEntryInput {
   writeEntry: WriteEntry;

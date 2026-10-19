@@ -36,6 +36,7 @@ export function scanResult(entries: ScanEntry[], over: Partial<ScanResult> = {})
     unlistedDirs: over.unlistedDirs ?? [],
     output: over.output ?? "/tmp/zipkit-test/out.zip",
     outputExists: over.outputExists ?? false,
+    outputNaming: over.outputNaming ?? { before: over.output ?? "/tmp/zipkit-test/out.zip", issues: [] },
     overwrite: over.overwrite ?? false,
     timeZone: over.timeZone ?? "UTC",
   };

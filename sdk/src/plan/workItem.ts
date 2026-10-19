@@ -4,12 +4,12 @@
  * {@link WriteEntry}. A work item starts as a raw scan entry and accumulates
  * resolved name, exclusion state, method, findings, and transformations as the
  * passes run. The public entry omits the absolute source path; the write entry
- * keeps it (carried out of band, never serialized).
+ * keeps it for the plan's instructions.
  */
 
 import { finding } from "../registry.ts";
 import type { ScanEntry, ScanResult, SkipKind, Transformation, WriteEntry } from "../internal/types.ts";
-import type { ExcludeCode, Finding, PlannedEntry } from "../types.ts";
+import type { ExcludeCode, Finding, PlannedEntry, UnsupportedKind } from "../types.ts";
 
 export interface WorkItem {
   scan: ScanEntry;
@@ -19,6 +19,7 @@ export interface WorkItem {
   excluded: boolean;
   excludeCode?: ExcludeCode;
   excludeReason?: string;
+  unsupportedKind?: UnsupportedKind;
   method: "store" | "deflate";
   /** Whether the writer emits an explicit ZIP entry (files, preserved
    *  symlinks, kept empty directories) versus leaving it implied by children. */
@@ -90,6 +91,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       excluded: true,
       excludeCode: "unsupported",
       excludeReason: message,
+      unsupportedKind: skipped.kind,
       method: "store",
       emitExplicit: false,
       findings: [finding("entry.unsupported", skipped.archivePath, message)],
@@ -139,6 +141,7 @@ export function toPlannedEntry(item: WorkItem): PlannedEntry {
       excluded: item.excluded,
       ...(item.excludeCode ? { excludeCode: item.excludeCode } : {}),
       excludeReason: item.excludeReason,
+      ...(item.unsupportedKind ? { unsupportedKind: item.unsupportedKind } : {}),
       findings: item.findings,
     };
   }

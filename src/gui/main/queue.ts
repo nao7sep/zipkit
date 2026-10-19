@@ -15,7 +15,7 @@ import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
 import { SdkHostError } from "./sdk-client.js";
-import { createPathClaims, exportPlan, importPlan } from "zipkitsdk";
+import { createPathClaims } from "zipkitsdk";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
@@ -58,8 +58,8 @@ function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved
 
 // Every look at the user's files runs in the SDK host's utility process
 // (./sdk-host); the engine supplies a job-tagging `onEvent`, so progress
-// reaches the right job's Progress stream. A plan crosses each way packaged by
-// the SDK's exportPlan, so it can still be written on the other side.
+// reaches the right job's Progress stream. A plan is plain data, so it crosses
+// each way as it is and can still be written on the other side.
 /** The call's own outcome, or "aborted" once `signal` aborts first. The call
  *  itself goes on; only the wait ends. */
 function untilAborted<T>(call: Promise<T>, signal: AbortSignal): Promise<T | "aborted"> {
@@ -93,9 +93,9 @@ const engine = createQueueEngine({
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
   inspect: (output, signal, onEvent, manifest) =>
     sdk.call("inspect", [output, manifest], { signal, onEvent, onProgress: countsFor(onEvent) }),
-  plan: async (inputs, options, signal, onEvent) => importPlan(await sdk.call("plan", [inputs, options], { signal, onEvent })),
+  plan: (inputs, options, signal, onEvent) => sdk.call("plan", [inputs, options], { signal, onEvent }),
   write: (plan, signal, onEvent, onPhysicalSettlement) =>
-    sdk.call("write", [exportPlan(plan)], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
+    sdk.call("write", [plan], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
   verify: (output, signal, onEvent, manifest) =>
     sdk.call("verify", [output, manifest], { signal, onEvent, onProgress: countsFor(onEvent) }),
   checkRemoval: async (output, inputs, removed, options, signal, onEvent) => {

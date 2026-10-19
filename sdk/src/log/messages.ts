@@ -1,9 +1,8 @@
 /**
  * Derives the convention envelope's `message` — a short, stable, human-readable
- * line — from a typed {@link LogEventBody}. The logger calls this once per event
- * so every consumer (the per-session log and the `onEvent` hook) sees the
- * same rendered string while the typed `event` fields
- * ride alongside untouched. The switch is exhaustive over the union, so adding a
+ * line — from a typed {@link LogEventBody}. The logger calls this once per
+ * event so every `onEvent` hook sees the same rendered string while the typed
+ * `event` fields ride alongside untouched. The switch is exhaustive over the union, so adding a
  * new event variant is a compile error here until it is given a message.
  */
 

@@ -11,7 +11,7 @@
  * Pattern dialects follow gitignore conventions: a glob without a leading slash
  * is unanchored and matches at any depth; a leading slash (or any interior
  * slash) anchors to the root; `**` spans segments; a regex matches anywhere
- * unless anchored with `^`/`$`; literal is a plain path comparison. The
+ * unless anchored with `^`/`$`. The
  * trailing-slash directory convention is expressed through each rule's `target`,
  * set by the caller, not re-derived here. User exclude rules match
  * case-sensitively; the junk preset matches case-insensitively.
@@ -58,30 +58,12 @@ function compileGlob(pattern: string, nocase: boolean): (path: string) => boolea
   return (path) => isMatch(path);
 }
 
-function compileLiteral(pattern: string, nocase: boolean): (path: string) => boolean {
-  let body = stripTrailingSlash(pattern);
-  const anchored = isAnchored(body);
-  if (body.startsWith("/")) body = body.slice(1);
-  if (nocase) {
-    const want = body.toLowerCase();
-    if (anchored) return (path) => path.toLowerCase() === want;
-    return (path) => {
-      const p = path.toLowerCase();
-      return p === want || p.endsWith(`/${want}`);
-    };
-  }
-  if (anchored) return (path) => path === body;
-  return (path) => path === body || path.endsWith(`/${body}`);
-}
-
 function compileTest(rule: FilterRule, nocase: boolean): (path: string) => boolean {
   switch (rule.match) {
     case "regex": {
       const re = new RegExp(rule.pattern, nocase ? "i" : "");
       return (path) => re.test(path);
     }
-    case "literal":
-      return compileLiteral(rule.pattern, nocase);
     case "glob":
       return compileGlob(rule.pattern, nocase);
   }

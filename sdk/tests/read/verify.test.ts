@@ -392,15 +392,11 @@ describe("large-file streaming", () => {
 });
 
 describe("per-failure logging", () => {
-  /** Parse the lone session log under `logDir` into its JSONL event objects. */
-  async function sessionEvents(logDir: string): Promise<Array<Record<string, unknown>>> {
-    const files = (await readdir(logDir)).filter((f) => f.endsWith(".log"));
-    expect(files).toHaveLength(1);
-    return (await readFile(path.join(logDir, files[0]!), "utf8"))
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  /** Run `verify` and collect what reaches its `onEvent`, as plain data. */
+  async function verifyWithEvents(archive: string, manifest: boolean) {
+    const events: Array<Record<string, unknown>> = [];
+    const report = await new ZipKit().verify(archive, { manifest, onEvent: (e) => events.push({ ...e }) });
+    return { report, events };
   }
 
   it("emits an error line per CRC failure and unreadable entry, naming each failed entry", async () => {
@@ -415,11 +411,9 @@ describe("per-failure logging", () => {
     await corrupt(archive, "CORRUPTME");
     await patchCentral(archive, 24, 999);
 
-    const logDir = path.join(dir, "logs-crc");
-    const report = await new ZipKit({ logDir }).verify(archive);
+    const { report, events } = await verifyWithEvents(archive, false);
     expect(report.ok).toBe(false);
 
-    const events = await sessionEvents(logDir);
     const flagged = events.filter((e) => e.event === "entry.flagged");
 
     expect(flagged.find((e) => e.rule === "verify.crc32-mismatch")).toMatchObject({
@@ -458,11 +452,10 @@ describe("per-failure logging", () => {
       fileEntry("zipkit.json", JSON.stringify(manifest)),
     ]);
 
-    const logDir = path.join(dir, "logs-meta");
-    const report = await new ZipKit({ logDir }).verify(archive, { manifest: true });
+    const { report, events } = await verifyWithEvents(archive, true);
     expect(report.ok).toBe(false);
 
-    const flagged = (await sessionEvents(logDir)).filter((e) => e.event === "entry.flagged");
+    const flagged = events.filter((e) => e.event === "entry.flagged");
     expect(flagged.find((e) => e.rule === "verify.sha256-mismatch")).toMatchObject({
       stage: "verify",
       level: "error",

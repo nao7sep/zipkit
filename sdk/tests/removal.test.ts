@@ -9,7 +9,8 @@ import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { checkRemoval, explainRemoved, outputInsideInputs as check, type RemovalSteps } from "../src/removal.ts";
+import { checkRemoval, outputInsideInputs as check, type RemovalSteps } from "../src/removal.ts";
+import { explainRemoved, onDisk } from "../src/compare/sources.ts";
 import { ZipKit, ZipKitError } from "../src/index.ts";
 import { realVolume } from "./helpers/volume.ts";
 
@@ -82,7 +83,7 @@ describe("checkRemoval", () => {
     compare: async () => (ran.push("compare"), same),
     ...over,
   });
-  const check = (s: RemovalSteps) => checkRemoval(s, "/out/a.zip", ["/in"], []);
+  const check = (s: RemovalSteps) => checkRemoval(s, "/out/a.zip");
 
   it("runs every check in order and passes with the fingerprint that verified", async () => {
     const ran: string[] = [];
@@ -119,6 +120,20 @@ describe("checkRemoval", () => {
     expect(explainRemoved({ ...comparison, missing: ["b/x.txt"] }, ["/one/a"], ["/two/b"]).matches).toBe(true);
     expect(explainRemoved({ ...comparison, missing: ["a/x.txt"] }, ["/one/a"], ["/two/a"]).matches).toBe(false);
   });
+
+  it("names places on disk: where an item was found, or the input its recorded path starts with", () => {
+    const comparison = { matches: false, added: ["a/new.txt"], missing: ["a/gone.txt", "b/old.txt"], changed: ["a/x.txt"], unlisted: [] };
+    const found = new Map([["a/new.txt", ["/one/a/new.txt"]], ["a/x.txt", ["/one/a/x.txt", "/two/a/x.txt"]]]);
+    expect(onDisk(comparison, found, ["/one/a"], ["/gone/b"])).toEqual({
+      matches: false,
+      added: ["/one/a/new.txt"],
+      missing: ["/gone/b/old.txt", "/one/a/gone.txt"],
+      changed: ["/one/a/x.txt", "/two/a/x.txt"],
+      unlisted: [],
+    });
+    // An input still present wins over a removed one of the same name.
+    expect(onDisk({ ...comparison, added: [], changed: [], missing: ["a/y.txt"] }, new Map(), ["/one/a"], ["/old/a"]).missing).toEqual(["/one/a/y.txt"]);
+  });
 });
 
 describe("ZipKit.checkRemoval", () => {
@@ -139,7 +154,7 @@ describe("ZipKit.checkRemoval", () => {
     expect((await zip.checkRemoval({ inputs: [a] }, archive)).refusal).toMatchObject({ reason: "changed", comparison: { missing: ["b/2.txt"] } });
     await writeFile(path.join(a, "late.txt"), "late");
     expect((await zip.checkRemoval({ inputs: [a] }, archive, { removed: [b] })).refusal)
-      .toMatchObject({ reason: "changed", comparison: { added: ["a/late.txt"] } });
+      .toMatchObject({ reason: "changed", comparison: { added: [path.join(a, "late.txt")] } });
     await rm(path.join(a, "late.txt"));
     // Damaged, the archive can no longer be read.
     await appendFile(archive, "trailing");

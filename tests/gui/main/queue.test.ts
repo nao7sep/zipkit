@@ -48,7 +48,6 @@ vi.mock("../../../src/gui/main/queue-engine.js", () => ({
 }));
 
 import { shell } from "electron";
-import { exportPlan, type PlanData } from "zipkitsdk";
 import { flushQueue, restoreQueue, saveQueueBeforeSessionEnd } from "../../../src/gui/main/queue.js";
 import type { SavedJob } from "../../../src/gui/shared/queue.js";
 import { SAVE } from "../../helpers/intents.js";
@@ -263,20 +262,17 @@ describe("the SDK host wiring", () => {
   const wired = () => mocks.deps as unknown as Wired;
   beforeEach(() => mocks.sdkCall.mockReset());
 
-  it("rebuilds the host's packaged plan for the engine, and packages it again to be written", async () => {
-    const internals = { writeEntries: [{ archivePath: "a" }], policy: {}, overwrite: false, timeZone: "UTC" };
-    const plan = { mode: "plan", output: "/out.zip", writable: true };
-    mocks.sdkCall.mockResolvedValueOnce({ format: "zipkit.plan-transfer/1", plan, internals }).mockResolvedValueOnce(42);
+  it("passes the host's plan to the engine and back to be written, as plain data", async () => {
+    const plan = { mode: "plan", output: "/out.zip", writable: true, instructions: { entries: [{ archivePath: "a" }] } };
+    mocks.sdkCall.mockResolvedValueOnce(plan).mockResolvedValueOnce(42);
     const signal = new AbortController().signal;
     const onEvent = vi.fn();
     const planned = await wired().plan(["/in"], { level: 6 }, signal, onEvent);
     expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }], { signal, onEvent });
-    // The public plan alone, as the SDK's own plans are: the writer's instructions travel hidden.
-    expect(Object.keys(planned)).not.toContain("internals");
+    expect(planned).toBe(plan);
     const onSettlement = vi.fn();
     await expect(wired().write(planned, signal, onEvent, onSettlement)).resolves.toBe(42);
-    expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [exportPlan(planned as PlanData)], { signal, onEvent, onPhysicalSettlement: onSettlement });
-    expect(exportPlan(planned as PlanData).internals).toBe(internals);
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [plan], { signal, onEvent, onPhysicalSettlement: onSettlement });
   });
 
   it("asks the SDK host to verify and classify", async () => {

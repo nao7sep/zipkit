@@ -8,28 +8,27 @@
  * The order matters: paths are rooted before selection so the matcher sees a
  * clean path; names are fixed before collision so substitution-induced clashes
  * are caught; empty files are skipped before empty directories are pruned. The
- * writer's instructions are computed alongside the public entries and attached
- * to the plan out of band (see `carrier.ts`).
+ * writer's instructions are computed alongside the public entries and carried
+ * on the plan as plain data (see `instructions.ts`).
  */
 
 import { matcherFor } from "../filter/match.ts";
-import { attachInternals } from "../internal/carrier.ts";
-import type { ScanResult, Unlogged } from "../internal/types.ts";
+import { toInstructions } from "../internal/instructions.ts";
+import type { ScanResult } from "../internal/types.ts";
 import { finding } from "../registry.ts";
 import type { ArchivePolicy, CreateData, Finding } from "../types.ts";
 
-/** The `mode:"plan"` member of {@link CreateData} — the plan payload and the
- *  writer's input. The carrier (writer instructions) rides on it out of band.
- *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
-type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
+/** The `mode:"plan"` member of {@link CreateData}: the plan payload and the
+ *  writer's input. */
+type PlanData = Extract<CreateData, { mode: "plan" }>;
 import { applyCollision } from "./collision.ts";
 import { applyCompression } from "./compression.ts";
 import { applyDedup } from "./dedup.ts";
 import { applyEmptyDirs } from "./emptyDirs.ts";
 import { applyEmptyFiles } from "./emptyFiles.ts";
 import { applyFilter } from "./filterPass.ts";
-import { applyNameFix } from "./nameFix.ts";
-import { applyPathFix } from "./pathFix.ts";
+import { applyNameFix, nameMessage } from "./nameFix.ts";
+import { applyPathFix, windowsPathBudget } from "./pathFix.ts";
 import { buildSummary } from "./summary.ts";
 import { applySymlinks } from "./symlinks.ts";
 import { applyTimestamps } from "./timestamps.ts";
@@ -43,7 +42,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   // writes and records its entries in the same order.
   const items = buildWorkItems(scan).sort((a, b) => comparePaths(a.archivePath, b.archivePath));
 
-  applyPathFix(items);
+  applyPathFix(items, windowsPathBudget(scan.output));
   applyFilter(items, matcher);
   applySymlinks(items, policy);
   applyEmptyFiles(items, policy);
@@ -65,6 +64,13 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   // The output pre-existing without an authorized overwrite blocks the write —
   // recorded as an error finding so it surfaces with a reason and so `writable`
   // derives from one place (the findings).
+  // The archive's own name, reported against the name it would have had.
+  for (const issue of scan.outputNaming.issues) {
+    globalFindings.push(finding(issue.rule, scan.outputNaming.before, `archive name: ${nameMessage(issue.rule, issue.applied)}`, {
+      severity: issue.severity,
+      ...(issue.applied ? { fix: { kind: "rename" as const, to: scan.output } } : {}),
+    }));
+  }
   if (scan.outputExists && !scan.overwrite) {
     globalFindings.push(
       finding("output.exists", scan.output, "output archive already exists; authorize overwrite to replace it"),
@@ -105,14 +111,14 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
     summary,
     findings,
     entries,
+    instructions: toInstructions({
+      writeEntries,
+      policy,
+      overwrite: scan.overwrite,
+      timeZone: scan.timeZone,
+      comment: scan.comment,
+    }),
   };
-  attachInternals(plan, {
-    writeEntries,
-    policy,
-    overwrite: scan.overwrite,
-    timeZone: scan.timeZone,
-    comment: scan.comment,
-  });
   return plan;
 }
 

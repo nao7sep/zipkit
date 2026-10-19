@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSdkClient, type HostProcess } from "../../../src/gui/main/sdk-client.js";
 import { createSdkHost, type HostReply, type HostRequest } from "../../../src/gui/main/sdk-host.js";
-import { exportPlan, importPlan, isZipKitError } from "zipkitsdk";
+import { isZipKitError } from "zipkitsdk";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { LogEvent, ProgressCounts } from "../../../src/gui/shared/api.js";
 
@@ -32,12 +32,12 @@ describe("the SDK host", () => {
     await writeFile(path.join(input, "a.txt"), "hello");
     const sdk = createSdkClient(inProcessHost);
     const events: LogEvent[] = [];
-    // The plan crosses packaged by exportPlan; importPlan makes it writable again.
-    const plan = importPlan(await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onEvent: (e) => events.push(e) }));
+    // The plan crosses as plain data and is writable on the other side.
+    const plan = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onEvent: (e) => events.push(e) });
     expect(plan.writable).toBe(true);
     const settlements: Promise<void>[] = [];
     const counts: ProgressCounts[] = [];
-    const bytes = await sdk.call("write", [exportPlan(plan)], {
+    const bytes = await sdk.call("write", [plan], {
       onPhysicalSettlement: (p) => settlements.push(p),
       onProgress: (c) => counts.push(c),
     });
@@ -58,14 +58,13 @@ describe("the SDK host", () => {
     await mkdir(input);
     await writeFile(path.join(input, "note.txt"), "hello");
     const sdk = createSdkClient(inProcessHost);
-    const transfer = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }]);
-    const plan = transfer.plan;
-    await sdk.call("write", [transfer]);
+    const plan = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }]);
+    await sdk.call("write", [plan]);
     const check = await sdk.call("checkRemoval", [plan.output, [input], [], { ...DEFAULT_OPTIONS }]);
     expect(check).toEqual({ refusal: null, verified: { fingerprint: expect.any(String) } });
     await writeFile(path.join(input, "late.txt"), "added after the archive");
     expect((await sdk.call("checkRemoval", [plan.output, [input], [], { ...DEFAULT_OPTIONS }])).refusal)
-      .toMatchObject({ reason: "changed", comparison: { added: ["docs/late.txt"] } });
+      .toMatchObject({ reason: "changed", comparison: { added: [path.join(input, "late.txt")] } });
     // An error crosses as the fields main reads.
     const missing = await sdk.call("checkRemoval", [path.join(root, "none.zip"), [input], [], { ...DEFAULT_OPTIONS }]);
     expect(missing.refusal).toMatchObject({ reason: "error", step: "location", error: { name: expect.any(String), message: expect.any(String) } });

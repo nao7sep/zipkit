@@ -15,7 +15,7 @@
  */
 
 import type { InputAdmission } from "./input-admission.js";
-import type { ArchiveSpec, Finding, LogEvent, PlanData, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison, VerifyData } from "zipkitsdk/types";
+import type { ArchiveSpec, Finding, LogEvent, PlanData, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison, UnsupportedKind, VerifyData } from "zipkitsdk/types";
 import type { PlanReport } from "./plan-report.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
@@ -40,7 +40,7 @@ export type GuiPlatform =
   | "cygwin"
   | "netbsd";
 
-export type { ArchiveSpec, PlanData, VerifyData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, SourceComparison };
+export type { ArchiveSpec, PlanData, VerifyData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, SourceComparison, UnsupportedKind };
 export type { LanguageEnvironment, Message, PaneLayout };
 
 /** The action that started a Progress run: a background plan, Create (its

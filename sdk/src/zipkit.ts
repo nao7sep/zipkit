@@ -6,42 +6,26 @@
  * plan carries the resolved output and the overwrite intent, so `write(plan)`
  * is self-contained. The per-call policy is merged over the instance policy.
  *
- * **One instance is one logging session.** An instance given a `logDir` opens a
- * single per-session log — `<logDir>/yyyymmdd-hhmmss-utc-<id>.log`, JSON Lines —
- * lazily on its first verb call, and every verb on the instance appends its
- * events there; each result's `log` field names the file. Lines are appended
- * synchronously, so there is no descriptor to close and nothing to flush. An
- * instance without a `logDir` writes no file and its results' `log` is `null`;
- * its events reach only each call's `onEvent`, for a caller that records
- * them itself. The SDK reads no environment variables, writes nothing outside
- * the paths it is given, and writes nothing to stdout or stderr — events go
- * only to a per-call `onEvent` hook and progress to `onProgress`.
- * A log-sink failure is deliberately silent so logging cannot break a verb.
- *
- * The session spans the instance's lifetime: a caller that builds one `ZipKit`
- * per run gets a log that is exactly that run. A long-lived or shared instance
- * keeps appending to the one file (logs are never rotated), and verbs invoked
- * concurrently on the same instance interleave their lines. Construct a fresh
- * `ZipKit` per logical run when you want one self-contained session log.
+ * Events go only to each call's `onEvent` hook and progress to `onProgress`:
+ * the SDK writes no log file, reads no environment variable, writes nothing
+ * outside the paths it is given, and writes nothing to stdout or stderr. The
+ * caller records events wherever it keeps its own. An instance emits one
+ * `session.start` event, with the version and runtime configuration, before
+ * its first verb's events. A failing hook is deliberately silent so it cannot
+ * break a verb.
  */
 
 import os from "node:os";
-import path from "node:path";
 import pLimit from "p-limit";
 import { toAbortError, ZipKitError } from "./errors.ts";
 import { matcherFor } from "./filter/match.ts";
 import { reportFindings } from "./log/findings.ts";
 import { createLogger, type LogSink } from "./log/logger.ts";
 import type { Logger } from "./log/logger.ts";
-import {
-  openSessionLog,
-  sessionLogName,
-  type SessionLog,
-} from "./log/session.ts";
 import { recheckContent } from "./compare/content.ts";
-import { compareWithManifest } from "./compare/sources.ts";
+import { compareWithManifest, explainRemoved, onDisk } from "./compare/sources.ts";
 import { readManifestRecords, verifyArchive } from "./read/verify.ts";
-import { readInternals } from "./internal/carrier.ts";
+import { fromInstructions } from "./internal/instructions.ts";
 import { classifyPaths, pathState } from "./paths.ts";
 import { checkRemoval, outputInsideInputs } from "./removal.ts";
 import { pathResources, type PathResource } from "./claims.ts";
@@ -55,19 +39,16 @@ import {
   validateIoTimeout,
   validatePolicy,
   validateDebug,
-  validateLogDir,
   requireAbsolute,
   requireAbsoluteList,
   validateCallOptions,
   validateFlag,
   validateInstanceOptionKeys,
   validateManifestName,
-  validateSkipPaths,
   validateSpec,
 } from "./validate.ts";
 import { writeArchive, type WriteDeps } from "./write/write.ts";
 import { VERSION } from "./version.ts";
-import type { Unlogged } from "./internal/types.ts";
 import type {
   ArchivePolicy,
   ArchiveSpec,
@@ -123,18 +104,10 @@ export class ZipKit {
   readonly #concurrency: number;
   readonly #chunkSize: number;
   readonly #ioTimeoutMs: number;
-  /** This session's log path, stamped at construction (the session start);
-   *  `null` when the instance was built without a `logDir`. */
-  readonly #sessionPath: string | null;
-  /** The session log, opened lazily on the first verb call and reused so its
-   *  directory is created once and its degrade state is shared across verbs. */
-  #session: SessionLog | undefined;
-  /** Whether the once-per-session startup line has been emitted yet. */
+  /** Whether the once-per-instance startup event has been emitted yet. */
   #startupLogged = false;
   /** Whether `debug` events reach the sinks. */
   readonly #debug: boolean;
-  /** Folders a scan leaves out entirely. */
-  readonly #skipPaths: readonly string[];
 
   constructor(options: ZipKitOptions = {}) {
     validateInstanceOptionKeys(options);
@@ -147,27 +120,20 @@ export class ZipKit {
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
     this.#ioTimeoutMs =
       options.ioTimeoutMs !== undefined ? validateIoTimeout(options.ioTimeoutMs) : DEFAULT_IO_TIMEOUT_MS;
-    const logDir = validateLogDir(options.logDir);
-    this.#sessionPath = logDir === null ? null : path.join(logDir, sessionLogName());
     this.#debug = validateDebug(options.debug);
-    this.#skipPaths = validateSkipPaths(options.skipPaths);
   }
 
   /**
-   * Scan and plan; writes nothing. Returns the `mode:"plan"` payload, which is a
-   * **live handle**: pass the *same* object to {@link ZipKit.write}. It is safe to
-   * inspect and `JSON.stringify` (its only absolute paths are `output` and each
-   * entry's `diskPath`), but the
-   * writer's instructions ride on it out of band, so a cloned or re-serialized
-   * copy cannot be written — inspect freely, but write from the original.
+   * Scan and plan; writes nothing. Returns the `mode:"plan"` payload, plain
+   * data that {@link ZipKit.write} takes as it is or after a structured clone
+   * or JSON round trip, such as in another process.
    */
   async plan(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<PlanData> {
     return this.#run(options, (logger) => this.#plan(spec, logger, options.signal, this.volume(options.signal)));
   }
 
-  /** Execute a plan produced by {@link ZipKit.plan}. Must be the exact object
-   *  `plan()` returned — not a clone or a re-serialized copy, which drops the
-   *  out-of-band writer instructions and fails with `write.no-internals`. */
+  /** Execute a plan produced by {@link ZipKit.plan}, or a copy of one. A plan
+   *  whose instructions are missing or malformed fails with `plan.invalid`. */
   async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData> {
     const volume = this.volume(options.signal);
     try {
@@ -185,7 +151,7 @@ export class ZipKit {
   async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData | PlanData> {
     const volume = this.volume(options.signal);
     try {
-      return await this.#run<Unlogged<WriteData> | Unlogged<PlanData>>(options, async (logger) => {
+      return await this.#run<WriteData | PlanData>(options, async (logger) => {
         const plan = await this.#plan(spec, logger, options.signal, volume);
         if (!plan.writable) return plan;
         return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onProgress: options.onProgress });
@@ -248,17 +214,19 @@ export class ZipKit {
    * `archive` (see {@link SourceComparison}), the last check before the
    * originals an archive was made from are removed. `spec` is the one the
    * archive was created with, so the same entries are included and excluded.
-   * When nothing was added, changed by type, size or time, or left unlisted,
-   * every file and link is read again and compared by content. Writes nothing;
-   * emits the scan's events but not a plan's findings, since this plan is
-   * never written.
+   * What inputs already removed (`removed`) took is not a difference. When
+   * nothing was added, changed by type, size or time, or left unlisted, every
+   * file and link is read again and compared by content. The answer names
+   * places on disk. Writes nothing; emits the scan's events but not a plan's
+   * findings, since this plan is never written.
    */
   async #compareSources(
     spec: ArchiveSpec,
     archive: string,
+    removed: readonly string[],
     options: ZipKitCallOptions,
   ): Promise<SourceComparison> {
-    const result = await this.#run(options, async (logger) => {
+    return this.#run(options, async (logger) => {
       try {
         const validated = validateSpec(spec);
         const policy = resolvePolicy(this.#policy, validated.policy);
@@ -270,32 +238,39 @@ export class ZipKit {
           logger,
           signal: options.signal,
           volume,
-          skipPaths: this.#skipPaths,
         });
         const plan = planArchive(scanned, policy);
         const name = policy.manifest !== false ? policy.manifest.name : MANIFEST_DEFAULTS.name;
         const records = await readManifestRecords(volume, archive, name, this.#chunkSize);
         const unlistedDirs = new Set(scanned.unlistedDirs);
-        const unlisted = scanned.entries
-          .filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath))
-          .map((e) => e.sourcePath);
-        const fresh = readInternals(plan)?.writeEntries ?? [];
-        const comparison = compareWithManifest(fresh, unlisted, records);
-        // Entries missing from the manifest's view may be explained by inputs
-        // already removed, so only additions, changes and unlisted folders
-        // make reading the content pointless.
-        if (comparison.added.length > 0 || comparison.changed.length > 0 || comparison.unlisted.length > 0) return comparison;
-        const changed = await recheckContent(fresh, records, {
-          volume, limit, chunkSize: this.#chunkSize, signal: options.signal, onProgress: options.onProgress,
-        });
-        return changed.length === 0 ? comparison : { ...comparison, matches: false, changed };
+        const unlisted = scanned.entries.filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath));
+        const fresh = fromInstructions(plan.instructions)?.writeEntries ?? [];
+        // Where each source path was found now, for the answer.
+        const diskPathOf = new Map(plan.entries.map((e) => [e.archivePath, e.diskPath]));
+        const found = new Map<string, string[]>();
+        const note = (sourcePath: string, diskPath: string | undefined): void => {
+          if (diskPath === undefined) return;
+          const list = found.get(sourcePath);
+          if (list) list.push(diskPath);
+          else found.set(sourcePath, [diskPath]);
+        };
+        for (const e of fresh) if (e.type !== "dir") note(e.sourcePath, diskPathOf.get(e.archivePath));
+        for (const e of unlisted) note(e.sourcePath, e.diskPath);
+
+        let comparison = explainRemoved(
+          compareWithManifest(fresh, unlisted.map((e) => e.sourcePath), records), validated.inputs, removed);
+        if (comparison.matches) {
+          const changed = await recheckContent(fresh, records, {
+            volume, limit, chunkSize: this.#chunkSize, signal: options.signal, onProgress: options.onProgress,
+          });
+          if (changed.length > 0) comparison = { ...comparison, matches: false, changed };
+        }
+        return onDisk(comparison, found, validated.inputs, removed);
       } catch (err) {
         this.#reportError(logger, err);
         throw err;
       }
     });
-    const { log: _log, ...comparison } = result;
-    return comparison;
   }
 
   /**
@@ -330,8 +305,8 @@ export class ZipKit {
           });
           return { ok: data.ok, report: { summary: data.summary, missing: data.missing, extra: data.extra, findings: data.findings } };
         },
-        compare: () => this.#compareSources(rescan, archive, call),
-      }, archive, validated.inputs, removed);
+        compare: () => this.#compareSources(rescan, archive, removed, call),
+      }, archive);
       call.signal?.throwIfAborted();
       return check;
     });
@@ -369,34 +344,19 @@ export class ZipKit {
     return this.#guard(options, () => classifyPaths(requireAbsoluteList(paths, "paths"), this.volume(options.signal)));
   }
 
-  /** The instance's session log, opened lazily on first use so an instance that
-   *  never runs a verb writes no file. */
-  #sessionLog(sessionPath: string): SessionLog {
-    if (this.#session === undefined) this.#session = openSessionLog(sessionPath);
-    return this.#session;
-  }
-
   /**
-   * The one seam every verb runs through. Builds the run's logger from the two
-   * sinks a run has — the session log (when there is a `logDir`) and the
-   * optional per-call `onEvent` hook — runs the verb, then stamps the
-   * session-log path (or `null`) onto the result the boundary owns. The stamp is
-   * a mutation, not a spread: a {@link PlanData} carries non-enumerable writer
-   * instructions (`src/internal/carrier.ts`) that an object spread would
-   * silently drop.
+   * The one seam every verb runs through: checks the call options, builds the
+   * run's logger on the per-call `onEvent` hook, runs the verb and classifies
+   * whatever it throws.
    */
-  async #run<U extends object>(
-    options: ZipKitCallOptions,
-    fn: (logger: Logger) => Promise<U>,
-  ): Promise<U & { log: string | null }> {
+  async #run<U>(options: ZipKitCallOptions, fn: (logger: Logger) => Promise<U>): Promise<U> {
     validateCallOptions(options);
     const sinks: LogSink[] = [];
-    if (this.#sessionPath !== null) sinks.push(this.#sessionLog(this.#sessionPath).sink);
     if (options.onEvent) sinks.push(options.onEvent);
     const logger = createLogger(sinks, this.#debug);
-    // Startup line, once per session: the tool version and the effective runtime
-    // configuration, so a session log is always tied to a version and the knobs
-    // it ran with (the logging convention's startup-coverage rule).
+    // Startup event, once per instance: the tool version and the effective
+    // runtime configuration, so a caller's record is tied to a version and the
+    // knobs it ran with (the logging convention's startup-coverage rule).
     if (!this.#startupLogged) {
       this.#startupLogged = true;
       logger.emit({
@@ -408,11 +368,8 @@ export class ZipKit {
         chunkSize: this.#chunkSize,
       });
     }
-    let result: U & { log: string | null };
-    try { result = (await fn(logger)) as U & { log: string | null }; }
+    try { return await fn(logger); }
     catch (err) { throw classified(err, options.signal); }
-    result.log = this.#sessionPath;
-    return result;
   }
 
   /** The seam for the methods that only look (a path's state, an archive's
@@ -431,14 +388,14 @@ export class ZipKit {
     logger: Logger,
     signal: AbortSignal | undefined,
     volume: Volume,
-  ): Promise<Unlogged<PlanData>> {
+  ): Promise<PlanData> {
     try {
       const validated = validateSpec(spec);
       const policy = resolvePolicy(this.#policy, validated.policy);
       const matcher = matcherFor(policy);
       const limit = pLimit(this.#concurrency);
 
-      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal, volume, skipPaths: this.#skipPaths });
+      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal, volume });
       const plan = planArchive(scanResult, policy);
       this.#reportPlan(logger, plan);
       return plan;
@@ -452,9 +409,9 @@ export class ZipKit {
    *  propagates. `#plan()` reports its own failures, so `create()` does not
    *  double-report when its inner plan throws. */
   async #runWrite(
-    plan: Unlogged<PlanData>,
+    plan: PlanData,
     deps: WriteDeps,
-  ): Promise<Unlogged<WriteData>> {
+  ): Promise<WriteData> {
     try {
       return await writeArchive(plan, deps);
     } catch (err) {
@@ -463,10 +420,9 @@ export class ZipKit {
     }
   }
 
-  /** Emit a terminal error event so the session log (and any `onEvent` hook)
-   *  records the failure instead of going silent mid-stream. Best-effort: the
-   *  logger swallows its own faults, and the original error is always rethrown
-   *  by the caller. The stage is the domain the error's code names (a scan
+  /** Emit a terminal error event so the `onEvent` hook records the failure
+   *  instead of going silent mid-stream. Best-effort: the logger swallows its
+   *  own faults, and the original error is always rethrown by the caller. The stage is the domain the error's code names (a scan
    *  failure inside a plan is recorded under scan), else the verb's own. */
   #reportError(logger: Logger, err: unknown, verbStage: LogStage = "plan"): void {
     const stage: LogStage = err instanceof ZipKitError ? STAGE_FOR_CODE_DOMAIN[err.code.split(".")[0]!] ?? verbStage : verbStage;
@@ -480,7 +436,7 @@ export class ZipKit {
     );
   }
 
-  #reportPlan(logger: Logger, plan: Unlogged<PlanData>): void {
+  #reportPlan(logger: Logger, plan: PlanData): void {
     for (const entry of plan.entries) {
       if (entry.excluded) {
         logger.emit(

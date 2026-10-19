@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZipKit } from "../../src/index.ts";
-import { readInternals } from "../../src/internal/carrier.ts";
+import { fromInstructions } from "../../src/internal/instructions.ts";
 import { planArchive } from "../../src/plan/plan.ts";
 import { resolvePolicy } from "../../src/policy.ts";
 import { buildManifest, manifestText } from "../../src/write/manifest.ts";
@@ -23,7 +23,7 @@ const write = (plan: ReturnType<typeof planArchive>) => writeArchive(plan, {
   logger: createLogger(), chunkSize: 65536, volume: realVolume(),
 });
 function document(plan: ReturnType<typeof planArchive>) {
-  return buildManifest(plan, policy, readInternals(plan)!.writeEntries.map((writeEntry) => ({
+  return buildManifest(plan, policy, fromInstructions(plan.instructions)!.writeEntries.map((writeEntry) => ({
     writeEntry, crc32: 0, compressedSize: 0,
   })), Y2020_NS, "UTC");
 }
@@ -44,7 +44,7 @@ describe("manifests of any size", () => {
       archivePath: `project/src/components/entry-${String(i).padStart(5, "0")}.ts`, size: 1024,
     }));
     const plan = planArchive(scanResult(entries), policy);
-    const metadata = buildManifest(plan, policy, readInternals(plan)!.writeEntries.map((writeEntry) => ({
+    const metadata = buildManifest(plan, policy, fromInstructions(plan.instructions)!.writeEntries.map((writeEntry) => ({
       writeEntry, crc32: 0xffffffff, compressedSize: 512, sha256: "a".repeat(64),
     })), Y2020_NS, "UTC", "a comment");
     expect([...manifestText(metadata)].join("")).toBe(JSON.stringify(metadata, null, 2));

@@ -119,7 +119,7 @@ const RESERVED = new Set<string>([
 
 /** A name issue detected on a segment: its rule, the tier the action assigned,
  *  and whether the fix was actually applied (only `fix` applies). */
-interface SegmentIssue {
+export interface SegmentIssue {
   rule: RuleId;
   severity: Severity;
   applied: boolean;
@@ -226,7 +226,7 @@ export function fullFixSegment(segment: string, replacement: string): string {
   return processSegment(segment, { ...ALL_FIX, invalidCharReplacement: replacement }).segment;
 }
 
-function messageFor(rule: RuleId, applied: boolean): string {
+export function nameMessage(rule: RuleId, applied: boolean): string {
   switch (rule) {
     case "name.nfd":
       return applied ? "name normalized from NFD to NFC" : "name is not in NFC form";
@@ -283,7 +283,7 @@ export function applyNameFix(items: WorkItem[], policy: ArchivePolicy): void {
         // A repaired name carries the rename target; a left-as-is name does not.
         if (issue.applied) opts.fix = { kind: "rename", to: item.archivePath };
         item.findings.push(
-          finding(issue.rule, item.originalPath, messageFor(issue.rule, issue.applied), opts),
+          finding(issue.rule, item.originalPath, nameMessage(issue.rule, issue.applied), opts),
         );
       }
     }

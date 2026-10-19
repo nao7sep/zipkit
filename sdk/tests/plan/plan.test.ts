@@ -12,7 +12,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readInternals } from "../../src/internal/carrier.ts";
 import { planArchive } from "../../src/plan/plan.ts";
 import { resolvePolicy } from "../../src/policy.ts";
 import type { ArchivePolicy, DeepPartial, Finding } from "../../src/types.ts";
@@ -28,7 +27,7 @@ function rules(findings: Finding[]): string[] {
 }
 
 function written(p: ReturnType<typeof plan>): string[] {
-  return (readInternals(p)?.writeEntries ?? []).map((e) => e.archivePath).sort();
+  return p.instructions.entries.map((e) => e.archivePath).sort();
 }
 
 describe("baseline", () => {

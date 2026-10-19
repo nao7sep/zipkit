@@ -40,12 +40,13 @@ function nameFor(input: string, isDir: boolean): string {
   return `${ext ? base.slice(0, -ext.length) : base}.zip`;
 }
 
+/** Where the archive goes, and whether its name was inferred rather than given. */
 export function resolveOutputPath(
   request: OutputRequest,
   inputs: ResolvedInput[],
   isDir: boolean[],
-): string {
-  if (request.output !== undefined) return path.normalize(request.output);
+): { path: string; inferred: boolean } {
+  if (request.output !== undefined) return { path: path.normalize(request.output), inferred: false };
   const first = inputs[0];
   if (!first) throw new ZipKitError("output.ambiguous", "no inputs to infer an output path from");
   const parents = new Set(inputs.map((input) => path.dirname(input.path)));
@@ -67,5 +68,5 @@ export function resolveOutputPath(
       "cannot infer the output path: inputs live in different parents; pass an output, an outputDir or an outputName",
     );
   }
-  return path.join(dir, name);
+  return { path: path.join(dir, name), inferred: request.outputName === undefined };
 }

@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { validatePolicy, validateSpec } from "../src/validate.ts";
-import { exportPlan, importPlan, ZipKit } from "../src/index.ts";
+import { ZipKit } from "../src/index.ts";
 import { invalidError } from "./helpers/errors.ts";
 
 describe("validateSpec", () => {
@@ -154,8 +154,6 @@ describe("locations", () => {
     expect(() => validateSpec({ inputs: ["relative"] })).toThrow(invalidError);
     expect(() => validateSpec({ inputs: ["/a"], output: "out.zip" })).toThrow(invalidError);
     expect(() => validateSpec({ inputs: ["/a"], outputDir: "out" })).toThrow(invalidError);
-    expect(() => new ZipKit({ logDir: "logs" })).toThrow(invalidError);
-    expect(() => new ZipKit({ skipPaths: ["data"] })).toThrow(invalidError);
     const zip = new ZipKit();
     const relative = { code: "path.not-absolute", kind: "invalid", subject: "a.zip" };
     await expect(zip.verify("a.zip")).rejects.toMatchObject(relative);
@@ -170,7 +168,7 @@ describe("call options and arguments", () => {
   it("are checked at every method, so a wrong value fails as an invalid call, never deep in a file operation", async () => {
     const zip = new ZipKit();
     const invalid = { name: "ZipKitError", kind: "invalid" };
-    expect(() => new ZipKit({ logdir: "/tmp" } as never)).toThrow(invalidError);
+    expect(() => new ZipKit({ logDir: "/tmp" } as never)).toThrow(invalidError);
     await expect(zip.plan({ inputs: ["/a"] }, { signal: { aborted: false } as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.verify("/a.zip", { onEvent: "log" as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.verify("/a.zip", { manifest: "yes" as never })).rejects.toMatchObject({ code: "options.invalid" });
@@ -178,9 +176,8 @@ describe("call options and arguments", () => {
     await expect(zip.pathState("/a", { signal: {} as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.classify("abc" as never)).rejects.toMatchObject(invalid);
     await expect(zip.pathResources(null as never)).rejects.toMatchObject(invalid);
-    await expect(zip.write(null as never)).rejects.toMatchObject({ code: "write.no-internals", kind: "invalid" });
+    await expect(zip.write(null as never)).rejects.toMatchObject({ code: "plan.invalid", kind: "invalid" });
+    await expect(zip.write({ mode: "plan", writable: true, instructions: { entries: "x" } } as never)).rejects.toMatchObject({ code: "plan.invalid" });
     await expect(zip.checkRemoval({ inputs: ["/a"] }, "/a.zip", { removed: 5 as never })).rejects.toMatchObject(invalid);
-    expect(() => exportPlan(null as never)).toThrow(invalidError);
-    expect(() => importPlan({ format: "zipkit.plan-transfer/1", internals: {}, plan: null } as never)).toThrow(invalidError);
   });
 });

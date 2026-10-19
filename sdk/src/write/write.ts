@@ -4,9 +4,9 @@
  * file flows through deflate (or a store pass-through) in `chunkSize` pieces, so
  * an arbitrarily large file is archived in bounded memory; its CRC-32 and
  * SHA-256 are computed incrementally as it streams. The manifest file is built
- * from the streamed results and injected as the final entry. The writer
- * instructions ride on the plan (see `carrier.ts`), so `write(plan)` needs no
- * second argument.
+ * from the streamed results and injected as the final entry. The writer's
+ * instructions are part of the plan (see `instructions.ts`), so `write(plan)`
+ * needs no second argument.
  *
  * `writable` is the gate: a non-writable plan throws `write.not-writable`, with no
  * override for the error tier. The output is written to a temp file in its own
@@ -16,22 +16,21 @@
 import { createHash, type Hash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
 import { fsFailure, isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
-import { readInternals } from "../internal/carrier.ts";
+import { fromInstructions } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
-import type { Unlogged, WriteEntry } from "../internal/types.ts";
+import type { WriteEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
 import type { CreateData, ProgressCounts } from "../types.ts";
 import { contentBytes } from "../plan/summary.ts";
 import { Meter } from "../progress.ts";
 
-/** The `mode:"plan"` member of {@link CreateData} — the writer's input, carrying
- *  the resolved output, the writable gate, summary, findings, and (out of band,
- *  via `carrier.ts`) the writer's instructions. The writer never reads `log`. */
-type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
+/** The `mode:"plan"` member of {@link CreateData}: the writer's input, carrying
+ *  the resolved output, the writable gate, summary, findings and the writer's
+ *  instructions. */
+type PlanData = Extract<CreateData, { mode: "plan" }>;
 
-/** The `mode:"write"` member of {@link CreateData}; the writer's success shape.
- *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
-type WriteData = Unlogged<Extract<CreateData, { mode: "write" }>>;
+/** The `mode:"write"` member of {@link CreateData}; the writer's success shape. */
+type WriteData = Extract<CreateData, { mode: "write" }>;
 import { buildManifest, manifestText } from "./manifest.ts";
 import type { ManifestEntryInput } from "./manifest.ts";
 import { EntryCompressor, ZipWriter } from "./zipWriter.ts";
@@ -190,13 +189,8 @@ async function streamPieces(
 }
 
 export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<WriteData> {
-  const internals = plan !== null && typeof plan === "object" ? readInternals(plan) : undefined;
-  if (!internals) {
-    throw new ZipKitError(
-      "write.no-internals",
-      "this plan was not produced by ZipKit.plan(); a re-serialized plan cannot be written",
-    );
-  }
+  const internals = plan !== null && typeof plan === "object" ? fromInstructions(plan.instructions) : undefined;
+  if (!internals) throw new ZipKitError("plan.invalid", "not a plan returned by plan(): its instructions are missing or malformed");
   if (!plan.writable) {
     throw new ZipKitError(
       "write.not-writable",

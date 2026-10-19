@@ -360,10 +360,10 @@ describe("mounted run consent across queue projection changes", () => {
       plan: vi.fn(async (): Promise<PlanData> => ({
         mode: "plan",
         output: "/out/consent.zip",
-        log: "",
         writable: true,
         summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
         findings: [],
+        instructions: { policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
         entries: [],
       })),
       write: vi.fn(async () => 123),

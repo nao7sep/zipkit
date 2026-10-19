@@ -123,8 +123,8 @@ export function secureStorageRoot(root: string): void {
   }
 }
 
-/** `<root>/logs`: where ZipKit keeps its app log and, in development, the SDK
- *  host's session logs. Created on the first write if missing. */
+/** `<root>/logs`: where ZipKit keeps its app log. Created on the first write
+ *  if missing. */
 export function defaultLogDir(): string {
   return path.join(storageRoot(), "logs");
 }

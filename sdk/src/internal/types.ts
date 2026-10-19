@@ -8,16 +8,9 @@
  * writer's edge.
  */
 
+import type { SegmentIssue } from "../plan/nameFix.ts";
 import type { RuleId } from "../registry.ts";
-
-/**
- * A verb result before the SDK boundary stamps the session-log path onto it. The
- * pure builders (`planArchive`, `writeArchive`, `verifyArchive`) produce
- * everything a result holds *except* `log`; {@link import("../zipkit.ts").ZipKit}
- * adds it where it owns the per-session log, so the builders stay
- * logging-agnostic.
- */
-export type Unlogged<T> = Omit<T, "log">;
+import type { UnsupportedKind } from "../types.ts";
 
 /** Raw metadata for one filesystem object, produced by the scan layer. */
 export interface ScanEntry {
@@ -76,7 +69,7 @@ export interface PrunedDir {
 
 /** Why the walk left an object out that it found: ZIP stores only files,
  *  folders and links, and a link under `follow` must lead to one of those. */
-export type SkipKind = "socket" | "fifo" | "device" | "broken-link" | "external-link" | "unreadable-link";
+export type SkipKind = UnsupportedKind;
 
 /** An object the walk found and left out, recorded so the plan can report it. */
 export interface SkippedEntry {
@@ -97,6 +90,9 @@ export interface ScanResult {
   unlistedDirs: string[];
   output: string;
   outputExists: boolean;
+  /** The archive's name as resolved, before any fix, and what its check found
+   *  (see `plan/outputName.ts`). */
+  outputNaming: { before: string; issues: SegmentIssue[] };
   overwrite: boolean;
   /** The IANA zone the DOS local-time fields are rendered in: the policy's
    *  zone or, without one, the host's. Resolved once here so the plan's DOS-range
@@ -116,8 +112,8 @@ export interface Transformation {
 /**
  * An entry the writer will emit. Produced by the planner alongside the public
  * {@link import("../types.ts").PlannedEntry}, but retaining the absolute source
- * path and raw attributes the writer and manifest builder need. Carried out of
- * band on the plan (see `carrier.ts`) so it never reaches serialization.
+ * path and raw attributes the writer and manifest builder need. A plan carries
+ * it as plain data (see `instructions.ts`).
  */
 export interface WriteEntry {
   archivePath: string; // final, NFC, forward-slash, relative

@@ -62,16 +62,16 @@ describe("the source check", () => {
     await writeFile(path.join(proj, "sub", "b.txt"), "BETA!");
     expect(await compare()).toEqual({
       matches: false,
-      added: ["proj/new.txt"],
-      missing: ["proj/a.txt"],
-      changed: ["proj/sub/b.txt"],
+      added: [path.join(proj, "new.txt")],
+      missing: [path.join(proj, "a.txt")],
+      changed: [path.join(proj, "sub", "b.txt")],
       unlisted: [],
     });
   });
 
   it("reports a same-size edit whose modification time was kept, by its SHA-256", async () => {
     await editKeepingTime(path.join(proj, "sub", "b.txt"), "BETA");
-    expect(await compare()).toEqual({ ...SAME, matches: false, changed: ["proj/sub/b.txt"] });
+    expect(await compare()).toEqual({ ...SAME, matches: false, changed: [path.join(proj, "sub", "b.txt")] });
   });
 
   it("compares by CRC-32 when the archive recorded no SHA-256", async () => {
@@ -80,12 +80,12 @@ describe("the source check", () => {
     await new ZipKit().create({ inputs: [proj], output: crcOnly, policy });
     expect(await compare(crcOnly, { inputs: [proj], policy } as never)).toEqual(SAME);
     await editKeepingTime(path.join(proj, "a.txt"), "ALPHA");
-    expect((await compare(crcOnly, { inputs: [proj], policy } as never)).changed).toEqual(["proj/a.txt"]);
+    expect((await compare(crcOnly, { inputs: [proj], policy } as never)).changed).toEqual([path.join(proj, "a.txt")]);
   });
 
   it("reports a file whose modification time alone changed", async () => {
     await utimes(path.join(proj, "a.txt"), new Date(2001, 0, 1), new Date(2001, 0, 1));
-    expect((await compare()).changed).toEqual(["proj/a.txt"]);
+    expect((await compare()).changed).toEqual([path.join(proj, "a.txt")]);
   });
 
   // POSIX permissions decide whether a folder can be listed; root lists anything.
@@ -95,7 +95,7 @@ describe("the source check", () => {
       await chmod(path.join(proj, "sub"), 0o000);
       const result = await compare();
       expect(result.matches).toBe(false);
-      expect(result.unlisted).toEqual(["proj/sub"]);
+      expect(result.unlisted).toEqual([path.join(proj, "sub")]);
     },
   );
 

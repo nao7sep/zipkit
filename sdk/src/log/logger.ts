@@ -1,19 +1,18 @@
 /**
  * The one log/progress seam. A single `EmittedEvent` stream from the SDK core is
- * stamped, gated, and fanned out in one place; the `onEvent` hook
- * and the instance's per-session log are both just sinks. The logger is the edge
+ * stamped, gated, and fanned out in one place; the `onEvent` hook is a sink.
+ * The logger is the edge
  * that turns a typed body into a convention {@link LogEvent}, in order:
  *
  * 1. **gate `debug`** — dropped unless the instance was built with
- *    `debug: true`, so the developer firehose reaches no sink (and never an
- *    end-user's session log);
+ *    `debug: true`, so the developer firehose reaches no sink;
  * 2. **stamp the envelope** — `time` (UTC ISO-8601 ms) and a `message` derived
  *    from the typed `event`;
  * 3. **fan out** — to every sink, each isolated, so one sink's failure never
  *    starves the others or aborts the run it is reporting on.
  *
- * With no sinks the logger does no work, so a pure SDK call with no `onEvent`
- * and no open session file is silent and free.
+ * With no sinks the logger does no work, so an SDK call with no `onEvent` is
+ * silent and free.
  */
 
 import { messageFor } from "./messages.ts";

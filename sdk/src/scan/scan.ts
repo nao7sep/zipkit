@@ -13,10 +13,6 @@
  * against escaping the input tree unless `followExternal` is set. A symlink
  * given directly as a top-level input is always followed, as it is explicit.
  *
- * The folders the caller names in `skipPaths` are never archived: the walk does
- * not descend into them, and an input or followed link inside one is skipped,
- * so an app can keep its own data out of an archive of the home folder.
- *
  * Every filesystem call goes through the run's bounded {@link Volume}, so a
  * source on a stalled volume fails the scan with a `io.stalled` error naming the
  * path instead of hanging it. The places that deliberately tolerate a failed
@@ -40,6 +36,7 @@ import {
   normalizeInputs,
 } from "../plan/arcname.ts";
 import { resolveOutputPath } from "./output.ts";
+import { checkOutputName } from "../plan/outputName.ts";
 import type { ArchivePolicy, ArchiveSpec } from "../types.ts";
 
 export interface ScanDeps {
@@ -49,8 +46,6 @@ export interface ScanDeps {
   signal: AbortSignal | undefined;
   /** The run's bounded file access, built with the same signal. */
   volume: Volume;
-  /** Folders the scan leaves out entirely, wherever an input reaches them. */
-  skipPaths: readonly string[];
 }
 
 interface ScanContext {
@@ -79,8 +74,6 @@ interface ScanContext {
    * `archive.zip.20240604`, which is the worse failure.
    */
   artifactIds: Set<string>;
-  /** The canonical paths of the folders the caller asked to leave out. */
-  skipRoots: string[];
   entries: ScanEntry[];
   prunedDirs: PrunedDir[];
   skipped: SkippedEntry[];
@@ -152,18 +145,6 @@ function isWithin(root: string, target: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-/** Whether canonical `target` is a folder to leave out or inside one. Both sides
- *  already carry their on-disk case (the folders and every input come through
- *  realpath, walked names through readdir), so they compare exactly: folding
- *  case would also match a distinct folder that differs only in case on a
- *  case-sensitive volume, leaving it out of the archive. */
-function skipped(ctx: ScanContext, target: string): boolean {
-  return ctx.skipRoots.some((root) => {
-    const rel = path.relative(root, target);
-    return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
-  });
-}
-
 /** Rethrow a stall or a cancel from a call whose ordinary failure is tolerated. */
 function rethrowClassified(err: unknown): void {
   if (err instanceof ZipKitError) throw err;
@@ -205,9 +186,6 @@ async function handleSymlink(
     skip(ctx, paths, "broken-link"); // nothing to follow
     return;
   }
-
-  // A folder the caller skips, reached through a link. Silent, like the output archive.
-  if (skipped(ctx, real)) return;
 
   const root = ctx.inputRoots[inputIndex] ?? "";
   if (!ctx.followExternal && !isWithin(root, real)) {
@@ -280,13 +258,11 @@ const WALK_BATCH = 16;
  * is `handleSymlink`'s decision. A subdirectory that cannot be listed is
  * recorded in `unlistedDirs` and its contents are missing, while a stall or a
  * cancel ends the scan. Only the input root itself failing to list is a scan
- * fault. `canonicalDir` is `absDir`'s real path, against which the folders
- * the caller skips are left out without being listed.
+ * fault.
  */
 async function walkTree(
   ctx: ScanContext,
   absDir: string,
-  canonicalDir: string,
   anchors: EntryPaths,
 ): Promise<string[]> {
   const found: string[] = [];
@@ -314,7 +290,6 @@ async function walkTree(
         for (const entry of entries) {
           const abs = path.join(dir, entry.name);
           if (entry.isDirectory()) {
-            if (skipped(ctx, path.join(canonicalDir, path.relative(absDir, abs)))) continue;
             const archive = joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, abs)));
             const rule = archive === "" ? null : ctx.matcher.match(archive, true);
             if (rule) {
@@ -341,11 +316,10 @@ async function walkTree(
 async function crawlDirectory(
   ctx: ScanContext,
   absDir: string,
-  canonicalDir: string,
   anchors: EntryPaths,
   inputIndex: number,
 ): Promise<void> {
-  const results = await walkTree(ctx, absDir, canonicalDir, anchors);
+  const results = await walkTree(ctx, absDir, anchors);
 
   const tasks: Promise<void>[] = [];
   for (const abs of results) {
@@ -359,7 +333,7 @@ async function crawlDirectory(
     // awaiting them, including when every slot discovers a followed directory.
     tasks.push(ctx.limit(() => processPath(ctx, abs, { archive, source, disk }, inputIndex))
       .then(async (followed) => {
-        if (followed) await crawlDirectory(ctx, followed.real, followed.real, followed.paths, followed.inputIndex);
+        if (followed) await crawlDirectory(ctx, followed.real, followed.paths, followed.inputIndex);
       }));
   }
   await Promise.all(tasks);
@@ -412,7 +386,9 @@ export async function scan(
   const anchors = inputs.map((input, i) => computeAnchor(input, isDir[i] ?? false, inputs.length));
   checkAnchorCollisions(inputs, anchors);
 
-  const output = resolveOutputPath(spec, inputs, isDir);
+  const resolved = resolveOutputPath(spec, inputs, isDir);
+  const outputName = checkOutputName(resolved.path, resolved.inferred, policy.names);
+  const output = outputName.path;
   // The identities of this run's own output files, used to exclude them from the
   // walk by file identity rather than by name (see `ScanContext.artifactIds`).
   const artifactIds = new Set<string>();
@@ -455,17 +431,6 @@ export async function scan(
     }
   }
 
-  // The folders to leave out, in the same canonical space. One that is absent
-  // or unresolvable has nothing in it to leave out.
-  const skipRoots: string[] = [];
-  for (const skip of deps.skipPaths) {
-    try {
-      skipRoots.push(await deps.volume.realpath(path.normalize(skip)));
-    } catch (err) {
-      rethrowClassified(err);
-    }
-  }
-
   const ctx: ScanContext = {
     matcher: deps.matcher,
     symlinks: policy.symlinks,
@@ -475,7 +440,6 @@ export async function scan(
     logger: deps.logger,
     volume: deps.volume,
     artifactIds,
-    skipRoots,
     entries: [],
     prunedDirs: [],
     skipped: [],
@@ -499,11 +463,9 @@ export async function scan(
       source: path.basename(inputs[i]?.path ?? real),
       disk: inputs[i]?.path ?? real,
     };
-    // An input that is a folder the caller skips, or inside one.
-    if (skipped(ctx, canonicalRoots[i] as string)) continue;
     if (isDir[i]) {
       ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: real });
-      await crawlDirectory(ctx, real, canonicalRoots[i] as string, anchorPaths, i);
+      await crawlDirectory(ctx, real, anchorPaths, i);
     } else {
       let fileStats: BigIntStats;
       try {
@@ -532,6 +494,7 @@ export async function scan(
     unlistedDirs: ctx.unlistedDirs,
     output,
     outputExists,
+    outputNaming: { before: resolved.path, issues: outputName.issues },
     overwrite: spec.overwrite === true,
     timeZone: policy.timeZone ?? machineTimeZone(),
   };

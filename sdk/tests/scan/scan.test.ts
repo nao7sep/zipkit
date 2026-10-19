@@ -18,7 +18,7 @@ import { resolvePolicy } from "../../src/policy.ts";
 import { scan } from "../../src/scan/scan.ts";
 import type { ArchivePolicy, ArchiveSpec } from "../../src/types.ts";
 import { realVolume } from "../helpers/volume.ts";
-import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.ts";
+import { nodeFileSystem, Volume } from "../../src/internal/volume.ts";
 import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../helpers/symlink.ts";
 
 let dir: string;
@@ -38,13 +38,12 @@ function deps(policy: ArchivePolicy) {
     logger: createLogger(),
     signal: undefined,
     volume: realVolume(),
-    skipPaths: [] as string[],
   };
 }
 
-async function runScan(spec: ArchiveSpec, partial: Partial<ArchivePolicy> = {}, volume?: Volume, skipPaths: string[] = []) {
+async function runScan(spec: ArchiveSpec, partial: Partial<ArchivePolicy> = {}, volume?: Volume) {
   const policy = resolvePolicy(undefined, partial);
-  return scan(spec, policy, { ...deps(policy), skipPaths, ...(volume ? { volume } : {}) });
+  return scan(spec, policy, { ...deps(policy), ...(volume ? { volume } : {}) });
 }
 
 function names(result: { entries: { archivePath: string }[] }): string[] {
@@ -273,74 +272,14 @@ describe("scan over a real tree", () => {
   });
 });
 
-describe("a folder the caller asks the scan to leave out (an app's own data folder)", () => {
-  let home: string;
-  let skip: string[];
-
-  beforeEach(async () => {
-    home = path.join(dir, "home");
+describe("folders whose names start with a dot", () => {
+  it("are walked like any other: nothing is skipped by its name (the junk list is applied when planning)", async () => {
+    const home = path.join(dir, "home");
     await mkdir(path.join(home, ".zipkit", "logs"), { recursive: true });
-    await writeFile(path.join(home, ".zipkit", "queue.json"), "{}");
+    await mkdir(path.join(home, ".config"));
     await writeFile(path.join(home, ".zipkit", "logs", "session.log"), "live");
-    await writeFile(path.join(home, "notes.txt"), "mine");
-    skip = [path.join(home, ".zipkit")];
+    await writeFile(path.join(home, ".config", "app.toml"), "x = 1");
+    await writeFile(path.join(home, ".DS_Store"), "finder");
+    expect(names(await runScan({ inputs: [home] }))).toEqual([".DS_Store", ".config", ".config/app.toml", ".zipkit", ".zipkit/logs", ".zipkit/logs/session.log"]);
   });
-
-  it("leaves nothing out unless asked: the SDK knows no app folder of its own", async () => {
-    expect(names(await runScan({ inputs: [home] }))).toContain(".zipkit/queue.json");
-  });
-
-  it("is left out of a folder that contains it", async () => {
-    expect(names(await runScan({ inputs: [home] }, {}, undefined, skip))).toEqual(["notes.txt"]);
-  });
-
-  it("is left out when it is an input, or an input lies inside it", async () => {
-    const root = path.join(home, ".zipkit");
-    const result = await runScan({ inputs: [root, path.join(root, "queue.json"), path.join(home, "notes.txt")], output: path.join(dir, "out.zip") }, {}, undefined, skip);
-    expect(names(result)).toEqual(["notes.txt"]);
-  });
-
-  it.runIf(fileSymlinksSupported)("is left out when a followed link reaches it", async () => {
-    const proj = path.join(dir, "proj");
-    await mkdir(proj);
-    await writeFile(path.join(proj, "a.txt"), "a");
-    await createDirectoryLink(path.join(home, ".zipkit"), path.join(proj, "data"));
-    await createFileLink(path.join(home, ".zipkit", "queue.json"), path.join(proj, "queue.json"));
-
-    const result = await runScan({ inputs: [proj] }, { symlinks: "follow", followExternal: true }, undefined, skip);
-
-    expect(names(result)).toEqual(["a.txt"]);
-  });
-
-  it("keeps a distinct folder whose name differs from it only in case, as a case-sensitive volume holds one", async () => {
-    // The real folder `user-folder` is presented as `.ZipKit` beside the real `.zipkit`, the way a
-    // case-sensitive volume lists two folders that a case-insensitive one cannot hold together.
-    const real = path.join(home, "user-folder");
-    const shown = path.join(home, ".ZipKit");
-    await mkdir(real);
-    await writeFile(path.join(real, "kept.txt"), "mine");
-    const inward = (p: string): string => (p === shown || p.startsWith(shown + path.sep) ? real + p.slice(shown.length) : p);
-    const outward = (p: string): string => (p === real || p.startsWith(real + path.sep) ? shown + p.slice(real.length) : p);
-    const port: FileSystemPort = {
-      ...nodeFileSystem,
-      open: (p, flags, mode) => nodeFileSystem.open(inward(p), flags, mode),
-      stat: (p) => nodeFileSystem.stat(inward(p)),
-      lstat: (p) => nodeFileSystem.lstat(inward(p)),
-      realpath: async (p) => outward(await nodeFileSystem.realpath(inward(p))),
-      readlink: (p) => nodeFileSystem.readlink(inward(p)),
-      readdir: async (p) => (await nodeFileSystem.readdir(inward(p))).map((entry) =>
-        p === home && entry.name === "user-folder" ? { name: ".ZipKit", isDirectory: () => entry.isDirectory() } : entry),
-    };
-
-    const result = await runScan({ inputs: [home] }, {}, new Volume(port, 30_000), skip);
-
-    expect(names(result)).toEqual([".ZipKit", ".ZipKit/kept.txt", "notes.txt"]);
-  });
-
-  it.runIf(process.platform === "darwin" || process.platform === "win32")(
-    "is left out when the caller names it in another case",
-    async () => {
-      expect(names(await runScan({ inputs: [home] }, {}, undefined, [path.join(home, ".ZIPKIT")]))).toEqual(["notes.txt"]);
-    },
-  );
 });

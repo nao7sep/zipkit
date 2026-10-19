@@ -42,7 +42,7 @@ function isSafePathComponent(name: string): boolean {
 const filterRuleSchema = z
   .strictObject({
     pattern: z.string(),
-    match: z.enum(["glob", "regex", "literal"]).default("glob"),
+    match: z.enum(["glob", "regex"]).default("glob"),
     target: z.enum(["file", "dir", "both"]).default("both"),
   })
   .refine(
@@ -215,29 +215,11 @@ export function validateConcurrency(concurrency: number): number {
   return concurrency;
 }
 
-/** Validate the session-log folder: a non-empty string when given. */
-export function validateLogDir(logDir: unknown): string | null {
-  if (logDir === undefined) return null;
-  if (typeof logDir !== "string" || !path.isAbsolute(logDir)) {
-    throw new ZipKitError("options.invalid", `logDir must be an absolute path (got ${String(logDir)})`);
-  }
-  return logDir;
-}
-
 /** Validate the debug switch: a boolean when given (`false` when unset). */
 export function validateDebug(debug: unknown): boolean {
   if (debug === undefined) return false;
   if (typeof debug !== "boolean") throw new ZipKitError("options.invalid", `debug must be a boolean (got ${String(debug)})`);
   return debug;
-}
-
-/** Validate the folders a scan leaves out: a list of non-empty strings. */
-export function validateSkipPaths(skipPaths: unknown): string[] {
-  if (skipPaths === undefined) return [];
-  if (!Array.isArray(skipPaths) || skipPaths.some((p) => typeof p !== "string" || !path.isAbsolute(p))) {
-    throw new ZipKitError("options.invalid", "skipPaths must be a list of absolute paths");
-  }
-  return [...skipPaths] as string[];
 }
 
 /** Validate an instance-level policy, applying filter-rule defaults. */
@@ -276,7 +258,7 @@ export function validateCallOptions(options: unknown): void {
   }
 }
 
-const INSTANCE_OPTIONS = new Set(["policy", "concurrency", "chunkSize", "ioTimeoutMs", "logDir", "debug", "skipPaths"]);
+const INSTANCE_OPTIONS = new Set(["policy", "concurrency", "chunkSize", "ioTimeoutMs", "debug"]);
 
 /** Instance options hold no key the SDK does not know, as specs do not. */
 export function validateInstanceOptionKeys(options: unknown): void {

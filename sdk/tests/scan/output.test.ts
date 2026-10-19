@@ -18,47 +18,47 @@ const at = (...parts: string[]) => path.join(cwd, ...parts);
 
 describe("resolveOutputPath", () => {
   it("honors an explicit output, resolved against cwd", () => {
-    expect(resolveOutputPath({ output: at("out/archive.zip") }, [input("proj")], [true]))
+    expect(resolveOutputPath({ output: at("out/archive.zip") }, [input("proj")], [true]).path)
       .toBe(at("out/archive.zip"));
   });
 
   it("writes <dirname>.zip beside a single folder, and <stem>.zip beside a single file", () => {
-    expect(resolveOutputPath({}, [input("proj")], [true]))
+    expect(resolveOutputPath({}, [input("proj")], [true]).path)
       .toBe(at("proj.zip"));
-    expect(resolveOutputPath({}, [input("notes.txt")], [false]))
+    expect(resolveOutputPath({}, [input("notes.txt")], [false]).path)
       .toBe(at("notes.zip"));
-    expect(resolveOutputPath({}, [input("README")], [false]))
+    expect(resolveOutputPath({}, [input("README")], [false]).path)
       .toBe(at("README.zip"));
-    expect(resolveOutputPath({}, [input("photos.v2")], [true]))
+    expect(resolveOutputPath({}, [input("photos.v2")], [true]).path)
       .toBe(at("photos.v2.zip"));
   });
 
   it("never names an archive of a .zip as the .zip itself", () => {
-    expect(resolveOutputPath({}, [input("foo.zip")], [false]))
+    expect(resolveOutputPath({}, [input("foo.zip")], [false]).path)
       .toBe(at("foo.zip.zip"));
   });
 
   it("writes <parent>.zip when several inputs share one parent", () => {
-    expect(resolveOutputPath({}, [input("bundle/a"), input("bundle/b.txt")], [true, false]))
+    expect(resolveOutputPath({}, [input("bundle/a"), input("bundle/b.txt")], [true, false]).path)
       .toBe(at("bundle", "bundle.zip"));
   });
 
   it("takes a given folder and name, adding .zip to a name without it", () => {
-    expect(resolveOutputPath({ outputDir: "/out", outputName: "delivery" }, [input("proj")], [true]))
+    expect(resolveOutputPath({ outputDir: "/out", outputName: "delivery" }, [input("proj")], [true]).path)
       .toBe(path.resolve("/out/delivery.zip"));
-    expect(resolveOutputPath({ outputDir: "/out", outputName: "Delivery.ZIP" }, [input("proj")], [true]))
+    expect(resolveOutputPath({ outputDir: "/out", outputName: "Delivery.ZIP" }, [input("proj")], [true]).path)
       .toBe(path.resolve("/out/Delivery.ZIP"));
-    expect(resolveOutputPath({ outputDir: "/out" }, [input("strategy.md")], [false]))
+    expect(resolveOutputPath({ outputDir: "/out" }, [input("strategy.md")], [false]).path)
       .toBe(path.resolve("/out/strategy.zip"));
-    expect(resolveOutputPath({ outputName: "delivery" }, [input("proj")], [true]))
+    expect(resolveOutputPath({ outputName: "delivery" }, [input("proj")], [true]).path)
       .toBe(at("delivery.zip"));
   });
 
   it("archives inputs in different parents into a given folder or, given only a name, beside the first", () => {
     const inputs = [input("one/a"), input("two/b")];
-    expect(resolveOutputPath({ outputDir: "/out" }, inputs, [true, true]))
+    expect(resolveOutputPath({ outputDir: "/out" }, inputs, [true, true]).path)
       .toBe(path.resolve("/out/a.zip"));
-    expect(resolveOutputPath({ outputName: "both" }, inputs, [true, true]))
+    expect(resolveOutputPath({ outputName: "both" }, inputs, [true, true]).path)
       .toBe(at("one", "both.zip"));
     expect(() => resolveOutputPath({}, inputs, [true, true])) .toThrow(invalidError);
   });

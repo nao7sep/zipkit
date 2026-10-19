@@ -16,7 +16,7 @@
 import { diffChars } from "diff";
 import { JOB_EVENT_LIMIT } from "../../shared/api";
 import { manifestRequiredButMissing, originalsIntact, present, removesOriginals, scanBlocksRemoval } from "../../shared/queue";
-import type { Finding, InputEntry, Job, PlannedEntry, JobAction, JobEvent, JobIntent, LogEvent, PathKind, ProgressCounts, Severity } from "../../shared/api";
+import type { Finding, InputEntry, Job, PlannedEntry, JobAction, JobEvent, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, UnsupportedKind } from "../../shared/api";
 import { renamedItself, type PlanReport } from "../../shared/plan-report";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { Translator } from "../../shared/i18n/translate";
@@ -389,7 +389,8 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
  *  for a rule the GUI does not know (shown as the SDK wrote it). A symlink
  *  finding reads from the plan whether the link was kept or dropped: the SDK
  *  excludes the entry it ignores. */
-export function findingKey(f: Finding, excluded = false): MessageKey | null {
+export function findingKey(f: Finding, excluded = false, unsupportedKind?: UnsupportedKind): MessageKey | null {
+  if (f.rule === "entry.unsupported" && unsupportedKind) return UNSUPPORTED_FINDINGS[unsupportedKind];
   const name = NAME_FINDINGS[f.rule];
   if (name) return f.fix?.kind === "rename" ? name.fixed : name.found;
   if (f.rule === "entry.symlink") {
@@ -398,10 +399,20 @@ export function findingKey(f: Finding, excluded = false): MessageKey | null {
   return RULE_FINDINGS[f.rule] ?? null;
 }
 
+/** What an unsupported item is, keyed on the SDK's stable kind. */
+const UNSUPPORTED_FINDINGS: Record<UnsupportedKind, MessageKey> = {
+  socket: "unsupported.socket",
+  fifo: "unsupported.fifo",
+  device: "unsupported.device",
+  "broken-link": "unsupported.brokenLink",
+  "external-link": "unsupported.externalLink",
+  "unreadable-link": "unsupported.unreadableLink",
+};
+
 /** A finding as a human sentence; one the GUI does not know reads as the SDK
  *  wrote it. */
-function findingText(f: Finding, t: Translator, excluded = false): string {
-  const key = findingKey(f, excluded);
+function findingText(f: Finding, t: Translator, excluded = false, unsupportedKind?: UnsupportedKind): string {
+  const key = findingKey(f, excluded, unsupportedKind);
   return key ? t.t(key) : humanSentence(f.message);
 }
 
@@ -465,7 +476,7 @@ export function planReport(plan: PlanReport, t: Translator): ReportGroup[] {
   for (const entry of plan.entries) {
     const findings = entry.findings;
     for (const f of findings) onEntries.add(findingId(f));
-    const changes = [...new Set(findings.map((f) => findingText(f, t, entry.excluded)))];
+    const changes = [...new Set(findings.map((f) => findingText(f, t, entry.excluded, entry.unsupportedKind)))];
     if (entry.excluded && !findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
       changes.push(excludedText(entry, t));
     }
@@ -918,17 +929,6 @@ function entryRow(entry: PlannedEntry, renamed: boolean): Pick<ReportRow, "path"
   return { path: shown.join(sep), from: entry.diskPath };
 }
 
-/** Where a path the archive's manifest traces to (an input's own name, then
- *  the path inside it) is on disk, from the job's inputs; the traced path
- *  itself when no input has that name. */
-export function sourceOnDisk(source: string, inputs: readonly string[]): string {
-  const [first = "", ...rest] = source.split("/");
-  const input = inputs.find((p) => nameOf(p) === first);
-  if (input === undefined) return source;
-  const sep = separatorOf(input);
-  return [input.replace(/[\\/]+$/, ""), ...rest].join(sep);
-}
-
 const LEVEL_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
 
 /** The Details pane's cards for a job: one per kind of finding, one per reason
@@ -961,7 +961,7 @@ export function detailsCards(
       for (const f of entry.findings) {
         onEntries.add(findingId(f));
         const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, KIND_INFO[f.rule]);
-        c.rows.push({ ...entryRow(entry, f.fix?.kind === "rename"), changes: [findingText(f, t, entry.excluded)], ...dir });
+        c.rows.push({ ...entryRow(entry, f.fix?.kind === "rename"), changes: [findingText(f, t, entry.excluded, entry.unsupportedKind)], ...dir });
         // A duplicate is archived through another input, so it is not lost
         // with the originals (the SDK's `unarchived`).
         if (entry.excluded && entry.excludeCode !== "duplicate" && EXCLUDING_RULES.has(f.rule)) {
@@ -983,17 +983,17 @@ export function detailsCards(
   }
   const pathRows = (paths: readonly string[]): ReportRow[] => paths.map((path) => ({ path, changes: [] }));
   // The originals by where they are, or were, on disk.
-  const sourceRows = (paths: readonly string[]): ReportRow[] => pathRows(paths.map((p) => sourceOnDisk(p, job.inputs)));
+
   if (verify && verify.missing.length > 0) card("verify:missing", t.t("report.missing"), "error").rows.push(...pathRows(verify.missing));
   if (verify && verify.extra.length > 0) card("verify:extra", t.t("report.extra"), "warning").rows.push(...pathRows(verify.extra));
   // How the originals differ from the archive, a card per way, so each lists
   // names alone like every other card.
   const changes = job.originalsChanges;
   if (changes) {
-    card("originals:missing", t.t("details.originalsMissing"), "error").rows.push(...sourceRows(changes.missing));
-    card("originals:added", t.t("details.originalsAdded"), "error").rows.push(...sourceRows(changes.added));
-    card("originals:changed", t.t("details.originalsModified"), "error").rows.push(...sourceRows(changes.changed));
-    card("originals:unlisted", t.t("details.originalsUnreadable"), "error").rows.push(...sourceRows(changes.unlisted));
+    card("originals:missing", t.t("details.originalsMissing"), "error").rows.push(...pathRows(changes.missing));
+    card("originals:added", t.t("details.originalsAdded"), "error").rows.push(...pathRows(changes.added));
+    card("originals:changed", t.t("details.originalsModified"), "error").rows.push(...pathRows(changes.changed));
+    card("originals:unlisted", t.t("details.originalsUnreadable"), "error").rows.push(...pathRows(changes.unlisted));
   }
 
   // What is left out leaves with the originals when they are removed.

@@ -9,17 +9,17 @@ import { buildManifest } from "../../src/write/manifest.ts";
 import type { ManifestEntryInput } from "../../src/write/manifest.ts";
 import { estimateManifestSize } from "../../src/plan/zip64.ts";
 import type { ManifestContent } from "../../src/plan/zip64.ts";
-import type { Unlogged, WriteEntry } from "../../src/internal/types.ts";
+import type { WriteEntry } from "../../src/internal/types.ts";
 import type { CreateData, Finding, PlannedEntry } from "../../src/types.ts";
 
-// The metadata builder is logging-agnostic, so the plan it takes carries no `log`.
-const plan: Unlogged<Extract<CreateData, { mode: "plan" }>> = {
+const plan: Extract<CreateData, { mode: "plan" }> = {
   mode: "plan",
   output: "out.zip",
   writable: true,
   summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
   findings: [],
   entries: [],
+  instructions: { policy: resolvePolicy(undefined, {}), overwrite: false, timeZone: "UTC", entries: [] },
 };
 
 const symlink: WriteEntry = {
@@ -259,7 +259,7 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
       timeZone: "Asia/Tokyo",
     });
 
-    const planDoc: Unlogged<Extract<CreateData, { mode: "plan" }>> = {
+    const planDoc: Extract<CreateData, { mode: "plan" }> = {
       mode: "plan",
       output: "out.zip",
       writable: true,
@@ -267,6 +267,7 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
       summary: { total: 99999, included: 99999, excluded: 99999, renamed: 99999, warnings: 99999, errors: 0, zip64: false, sourceBytes: 0 },
       findings,
       entries: [excludedPlanned],
+      instructions: { policy, overwrite: false, timeZone: "UTC", entries: [] },
     };
 
     // Build the real document with maximum-width write-time fields (crc32 at its

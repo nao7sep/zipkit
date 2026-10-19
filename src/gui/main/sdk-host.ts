@@ -11,19 +11,18 @@
  */
 
 import { rm } from "node:fs/promises";
-import { exportPlan, importPlan, ZipKit, ZipKitError, type ErrorEffect, type ErrorKind, type PathResource, type PathState, type PlanTransfer, type RemovalCheck } from "zipkitsdk";
+import { ZipKit, ZipKitError, type ErrorEffect, type ErrorKind, type PathResource, type PathState, type PlanData, type RemovalCheck } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
 import { outputRequest } from "./output.js";
-import { storageRoot } from "./storage.js";
 
 export interface SdkOps {
   resources(paths: string[]): PathResource[];
   pathState(path: string): PathState;
-  plan(inputs: string[], options: GuiOptions): PlanTransfer;
-  write(transfer: PlanTransfer): number;
+  plan(inputs: string[], options: GuiOptions): PlanData;
+  write(plan: PlanData): number;
   verify(output: string, manifest: boolean): boolean;
   deletePath(path: string): void;
   inspect(archive: string, manifest: boolean): VerifyReport;
@@ -69,11 +68,10 @@ export function failure(err: unknown): RemoteFailure {
   return { name: err.name, message: err.message };
 }
 
-/** The SDK as the app runs it: ZipKit's own data folder is never archived,
- *  and debug events follow the app's own switch. Main records every event
- *  itself, so the SDK keeps no session log. */
+/** The SDK as the app runs it: debug events follow the app's own switch, and
+ *  main records every event itself. */
 export function appZipKit(): ZipKit {
-  return new ZipKit({ skipPaths: [storageRoot()], debug: process.env.ZIPKIT_DEBUG === "1" });
+  return new ZipKit({ debug: process.env.ZIPKIT_DEBUG === "1" });
 }
 
 export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = appZipKit()) {
@@ -93,11 +91,11 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     plan: (inputs: string[], options: GuiOptions) => async (signal, onEvent) => {
       const spec = buildSpec(inputs, options);
       Object.assign(spec, outputRequest(options.outputDir, options.fileName));
-      const plan = await zip.plan(spec, { signal, onEvent });
-      return exportPlan(plan);
+      // A plan is plain data, so it crosses to main and back as it is.
+      return zip.plan(spec, { signal, onEvent });
     },
-    write: (transfer: PlanTransfer) => async (signal, onEvent, id, onProgress) => {
-      const written = await zip.write(importPlan(transfer), {
+    write: (plan: PlanData) => async (signal, onEvent, id, onProgress) => {
+      const written = await zip.write(plan, {
         signal,
         onEvent,
         onProgress,

@@ -16,7 +16,6 @@
 
 import { createHash } from "node:crypto";
 import { fsFailure, isStall, throwIfAborted, ZipKitError } from "../errors.ts";
-import type { Unlogged } from "../internal/types.ts";
 import type { Volume, VolumeFile } from "../internal/volume.ts";
 import { reportFindings } from "../log/findings.ts";
 import type { Logger } from "../log/logger.ts";
@@ -207,7 +206,7 @@ async function readEntry(
   };
 }
 
-export async function verifyArchive(request: VerifyRequest, deps: VerifyDeps): Promise<Unlogged<VerifyData>> {
+export async function verifyArchive(request: VerifyRequest, deps: VerifyDeps): Promise<VerifyData> {
   const signal = deps.signal;
   throwIfAborted(signal);
   return withArchive(deps.volume, request.archive, async (archive, parsed) => {

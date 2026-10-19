@@ -10,7 +10,7 @@ describe("toPlanReport", () => {
     // An untouched file, and one renamed only because its folder was, add no row.
     const flagged: Finding = { rule: "name.nfd", severity: "info" as const, path: "b", message: "m" };
     const plan = {
-      mode: "plan", output: "/out.zip", log: null, writable: true,
+      mode: "plan", output: "/out.zip", writable: true,
       summary: { total: 5, included: 4, excluded: 1, renamed: 1, warnings: 0, errors: 0, zip64: false },
       findings: [flagged],
       entries: [

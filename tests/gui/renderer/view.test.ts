@@ -17,7 +17,6 @@ import {
   detailsCards,
   namesOf,
   rowsByPath,
-  sourceOnDisk,
   jobCommands,
   jobCounts,
   label,
@@ -1003,12 +1002,6 @@ describe("Details pane sections and orders", () => {
     const notes = Object.fromEntries(cards.map((card) => [card.key, card.note]));
     expect(filtered.note).toBe("These go to the Trash with the originals, without being archived.");
     expect(notes["rule:entry.duplicate"]).toBeUndefined();
-  });
-
-  it("finds where an original traced by the manifest is on disk from the job's inputs", () => {
-    expect(sourceOnDisk("proj/a/b.txt", ["/Users/me/other", "/Users/me/proj"])).toBe("/Users/me/proj/a/b.txt");
-    expect(sourceOnDisk("proj/a.txt", ["C:\\data\\proj\\"])).toBe("C:\\data\\proj\\a.txt");
-    expect(sourceOnDisk("gone/a.txt", ["/Users/me/proj"])).toBe("gone/a.txt");
   });
 
   it("lists a card's names once each, with how many rows carry them, and orders paths as the locale does", () => {

@@ -39,7 +39,7 @@ export type DeepPartial<T> = T extends ReadonlyArray<unknown>
 export interface FilterRule {
   pattern: string;
   /** Pattern dialect. Defaults to `"glob"`. */
-  match: "glob" | "regex" | "literal";
+  match: "glob" | "regex";
   /** Which entry kinds the rule excludes. Defaults to `"both"`. */
   target: "file" | "dir" | "both";
 }
@@ -181,28 +181,10 @@ export interface ZipKitOptions {
   policy?: DeepPartial<ArchivePolicy>;
   concurrency?: number;
   /**
-   * A folder for this instance's session log; without one the instance writes
-   * no log file, and each result's `log` is `null`. One `ZipKit` instance is one
-   * logging session: a single `yyyymmdd-hhmmss-utc-<id>.log` (JSON Lines) is
-   * opened lazily on the first verb call, every verb on the instance writes to
-   * it, and the path is returned on each result's `log`. The random id after
-   * the seconds stamp, and the file's exclusive creation, keep the logs of runs
-   * that start in the same second — zipkit is built to fan out — apart. Every
-   * event also reaches each call's `onEvent`, whether or not there is a log.
-   */
-  logDir?: string;
-  /**
-   * Whether `debug` events reach the session log and `onEvent`. Off by
+   * Whether `debug` events reach `onEvent`. Off by
    * default: they are a developer's firehose, not an end user's record.
    */
   debug?: boolean;
-  /**
-   * Folders a scan leaves out entirely, wherever an input reaches them, as if
-   * they were not there: an app's own data folder, say, so archiving a home
-   * folder never takes the app's logs or databases with it. Resolved like
-   * inputs; one that does not exist leaves nothing out.
-   */
-  skipPaths?: string[];
   /**
    * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
    * read/inflate/deflate/write streams. A runtime/performance concern, not a
@@ -227,13 +209,9 @@ export interface ZipKitOptions {
  * per-instance, so each verb call decides where its events and progress go
  * and which cancellation it answers to.
  *
- * `onEvent` is the event hook: a per-call destination for the live event
- * stream, so each call decides where its events go. With no hook the SDK
- * writes nothing to stdout or stderr; the durable record still goes to the
- * instance's per-session log file (see {@link ZipKitOptions.logDir}), unless the
- * instance was built without a `logDir`. The same
- * structured `LogEvent` stream feeds this hook and that session log — one
- * producer, many sinks.
+ * `onEvent` is the event hook: the one destination of the live event stream.
+ * The SDK keeps no log of its own and writes nothing to stdout or stderr, so a
+ * caller that wants a record writes these events where it keeps its own.
  *
  * `signal` is the cancellation signal. Every method that touches the disk
  * honors it, stopping cleanly at the next boundary (a phase edge, a
@@ -343,9 +321,16 @@ export interface PathEntry {
  * - `duplicate`: the same source reached through more than one input;
  * - `path-traversal`: its path would point outside the archive;
  * - `symlink`: a symbolic link, ignored by policy;
- * - `unsupported`: a socket, pipe, device or link that cannot be followed.
+ * - `unsupported`: a socket, pipe, device or link that cannot be followed;
+ *   which of these is its {@link UnsupportedKind}.
  */
 export type ExcludeCode = "junk" | "filter" | "empty-dir" | "empty-file" | "duplicate" | "path-traversal" | "symlink" | "unsupported";
+
+/** What an `unsupported` item is: ZIP stores only files, folders and links,
+ *  and under `follow` a link must lead to one of those inside the inputs
+ *  (`external-link` unless `followExternal`), exist (`broken-link`) and be
+ *  readable (`unreadable-link`). */
+export type UnsupportedKind = "socket" | "fifo" | "device" | "broken-link" | "external-link" | "unreadable-link";
 
 export interface Finding {
   /** What was found: a plan rule (`RuleId`) or, from verification, a
@@ -371,6 +356,8 @@ export interface PlannedEntry {
   excludeCode?: ExcludeCode;
   /** The same, in English words that may change: for display, never to key on. */
   excludeReason?: string;
+  /** What it is, present exactly when `excludeCode` is `unsupported`. */
+  unsupportedKind?: UnsupportedKind;
   findings: Finding[]; // nested detail
 }
 
@@ -399,21 +386,24 @@ export interface PlanSummary {
  * returns the `"write"` member; `create()` returns the `"write"` member, or the
  * `"plan"` member when the plan blocks (such as on an existing output without
  * `overwrite`), and throws only on an operational fault.
+ *
+ * A plan is plain data: a structured clone or a JSON round trip of it is
+ * still writable, so an app can plan in one process and write in another.
  */
 export type CreateData =
   | {
       mode: "plan"; // planned, nothing written
       output: string; // resolved output path (the intended target)
-      log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
       writable: boolean; // the gate
       summary: PlanSummary;
       findings: Finding[]; // SSOT
       entries: PlannedEntry[]; // pre-write view (no crc/sha)
+      /** What `write` reads and how; see {@link PlanInstructions}. */
+      instructions: PlanInstructions;
     }
   | {
       mode: "write"; // actual create
       output: string;
-      log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
       bytes: number; // final on-disk size
       zip64: boolean;
       summary: PlanSummary;
@@ -422,6 +412,42 @@ export type CreateData =
        *  sizes, times), embedded unless the policy turned the manifest off. */
       manifest: Manifest;
     };
+
+/**
+ * The writer's instructions a plan carries: the resolved policy, whether an
+ * existing output may be replaced, the zone the DOS times are rendered in, the
+ * archive comment, and every included entry with the absolute path it is read
+ * from and its times as decimal nanosecond strings. They are for `write`, not
+ * for the caller to change; `write` refuses instructions of the wrong shape
+ * (`plan.invalid`). They hold absolute source paths, so a plan is for crossing
+ * between an app's own processes, never for sending off the machine.
+ */
+export interface PlanInstructions {
+  policy: ArchivePolicy;
+  overwrite: boolean;
+  timeZone: string;
+  comment?: string;
+  entries: InstructionEntry[];
+}
+
+/** One included entry in {@link PlanInstructions}. */
+export interface InstructionEntry {
+  archivePath: string;
+  originalPath: string;
+  sourcePath: string;
+  type: "file" | "dir" | "symlink";
+  method: "store" | "deflate";
+  /** Where it is read from; empty for a folder entry the plan adds. */
+  absolutePath: string;
+  size: number;
+  mtimeNs: string;
+  atimeNs: string;
+  ctimeNs: string;
+  birthtimeNs: string;
+  mode: number;
+  linkTarget?: string;
+  transformations: Transformation[];
+}
 
 /** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns. */
 export type PlanData = Extract<CreateData, { mode: "plan" }>;
@@ -560,7 +586,6 @@ export interface VerifiedEntry {
  */
 export interface VerifyData {
   archive: string; // identity
-  log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
   ok: boolean; // verdict
   /** The embedded manifest used, under `manifest`. */
   manifest: { name: string } | null;
@@ -586,10 +611,11 @@ export interface VerifyData {
 
 /**
  * How an archive's inputs on disk compare with its manifest, as the removal
- * check's `changed` refusal carries it. Paths are the manifest's
- * input-relative source paths. `matches` is the delete gate: true only when
- * every included file and symlink is as archived, by content too, and the
- * fresh scan listed every folder.
+ * check's `changed` refusal carries it. Each list names absolute places on
+ * disk: where an item is now, or for one only the manifest records, where it
+ * was. `matches` is the delete gate: true only when every included file and
+ * symlink is as archived, by content too, and the fresh scan listed every
+ * folder.
  */
 export interface SourceComparison {
   matches: boolean;

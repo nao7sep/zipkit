@@ -24,32 +24,6 @@ export async function outputInsideInputs(output: string, inputs: readonly string
   });
 }
 
-/** An input's own name: the first segment of every manifest source path it
- *  contributed. */
-function inputName(input: string): string {
-  return input.split(/[\\/]/).filter((s) => s !== "").pop() ?? "";
-}
-
-/**
- * A comparison of only the inputs still present, after some were already
- * removed: the manifest entries the removed inputs contributed are missing by
- * design, so they are not a difference. A removed input that shares its name
- * with one still present explains nothing, since their entries cannot be told
- * apart.
- */
-export function explainRemoved(comparison: SourceComparison, present: readonly string[], removed: readonly string[]): SourceComparison {
-  if (removed.length === 0) return comparison;
-  const presentNames = new Set(present.map(inputName));
-  const removedNames = new Set(removed.map(inputName).filter((name) => !presentNames.has(name)));
-  const missing = comparison.missing.filter((p) => !removedNames.has(p.split("/")[0] ?? ""));
-  const matches =
-    comparison.added.length === 0 &&
-    missing.length === 0 &&
-    comparison.changed.length === 0 &&
-    comparison.unlisted.length === 0;
-  return { ...comparison, missing, matches };
-}
-
 /** The steps {@link checkRemoval} runs, each a look at the disk. */
 export interface RemovalSteps {
   /** What is at the archive's path now. */
@@ -58,7 +32,8 @@ export interface RemovalSteps {
   inside(): Promise<boolean>;
   /** The archive verified against its manifest: whether it passed, and what failed. */
   verify(): Promise<{ ok: boolean; report: VerifyReport }>;
-  /** A fresh scan of the inputs still present, compared with the manifest. */
+  /** A fresh scan of the inputs still present, compared with the manifest,
+   *  with what inputs already removed took explained. */
   compare(): Promise<SourceComparison>;
 }
 
@@ -75,12 +50,7 @@ function stepFailure(error: unknown, subject: string): ZipKitError {
  * cannot finish refuses too, naming its step and carrying its error; a
  * cancellation is thrown instead, since it answers nothing.
  */
-export async function checkRemoval(
-  steps: RemovalSteps,
-  archive: string,
-  inputs: readonly string[],
-  removed: readonly string[],
-): Promise<RemovalCheck> {
+export async function checkRemoval(steps: RemovalSteps, archive: string): Promise<RemovalCheck> {
   const refuse = (refusal: NonNullable<RemovalCheck["refusal"]>, verified: RemovalCheck["verified"] = null): RemovalCheck =>
     ({ refusal, verified });
   let seen: PathState | null = null;
@@ -99,7 +69,7 @@ export async function checkRemoval(
   }
   const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
   try {
-    const comparison = explainRemoved(await steps.compare(), inputs, removed);
+    const comparison = await steps.compare();
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
   } catch (error) {
     return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive) }, verified);

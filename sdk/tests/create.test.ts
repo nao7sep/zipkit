@@ -5,7 +5,7 @@
  * overwrite gate, deterministic output, and content round-trip.
  */
 
-import { chmod, link, mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, mkdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -357,22 +357,55 @@ describe("symlink preservation and empty directories", () => {
   });
 });
 
-describe("skipPaths", () => {
-  it("leaves the named folders out of a plan, wherever an input reaches them", async () => {
-    const proj = path.join(dir, "home");
-    await mkdir(path.join(proj, "app-data"), { recursive: true });
-    await writeFile(path.join(proj, "app-data", "queue.json"), "{}");
-    await writeFile(path.join(proj, "notes.txt"), "mine");
-    const output = path.join(dir, "out.zip");
-    const kept = await new ZipKit().plan({ inputs: [proj], output });
-    const skipped = await new ZipKit({ skipPaths: [path.join(proj, "app-data")] }).plan({ inputs: [proj], output });
-    expect(kept.entries.map((e) => e.archivePath)).toContain("app-data/queue.json");
-    expect(skipped.entries.map((e) => e.archivePath).filter((p) => p.includes("app-data"))).toEqual([]);
+// A name POSIX allows and Windows does not cannot be made on Windows.
+describe.skipIf(process.platform === "win32")("the archive's own name", () => {
+  it("is fixed when inferred from a folder, and reported as the entries' names are", async () => {
+    const proj = path.join(dir, "Q1: Plans?");
+    await mkdir(proj);
+    await writeFile(path.join(proj, "a.txt"), "a");
+    const plan = await new ZipKit().plan({ inputs: [proj] });
+    expect(plan.output).toBe(path.join(dir, "Q1 Plans.zip"));
+    expect(plan.findings).toContainEqual(expect.objectContaining({
+      rule: "name.invalid-char", severity: "info", path: path.join(dir, "Q1: Plans?.zip"), fix: { kind: "rename", to: plan.output },
+    }));
+    expect(plan.writable).toBe(true);
   });
 
-  it("rejects anything but a list of non-empty strings", () => {
-    expect(() => new ZipKit({ skipPaths: [""] })).toThrow(invalidError);
-    expect(() => new ZipKit({ skipPaths: "x" as never })).toThrow(invalidError);
+  it("is kept as given, with a warning, and blocks only when the policy says error", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    await writeFile(path.join(proj, "a.txt"), "a");
+    const given = await new ZipKit().plan({ inputs: [proj], outputName: "CON" });
+    expect(given.output).toBe(path.join(dir, "CON.zip"));
+    expect(given.findings).toContainEqual(expect.objectContaining({ rule: "name.reserved", severity: "warning" }));
+    expect(given.writable).toBe(true);
+    const strict = await new ZipKit().plan({ inputs: [proj], outputName: "CON", policy: { names: { reserved: "error" } } });
+    expect(strict.writable).toBe(false);
+  });
+});
+
+describe("Windows' path limit", () => {
+  it("counts the folder an archive is extracted into, named after it", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    // 200 characters fit 260 alone, but not with a 40-character location and the archive's folder.
+    const name = `${"n".repeat(196)}.txt`;
+    await writeFile(path.join(proj, name), "a");
+    const short = await new ZipKit().plan({ inputs: [proj], outputName: "p" });
+    expect(short.findings.map((f) => f.rule)).not.toContain("path.too-long");
+    const long = await new ZipKit().plan({ inputs: [proj], outputName: "x".repeat(30) });
+    expect(long.findings).toContainEqual(expect.objectContaining({ rule: "path.too-long", severity: "warning", path: name }));
+  });
+});
+
+describe("unsupported items", () => {
+  it.skipIf(process.platform === "win32")("say what they are", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    await writeFile(path.join(proj, "a.txt"), "a");
+    await symlink(path.join(dir, "nowhere"), path.join(proj, "dangling"));
+    const plan = await new ZipKit().plan({ inputs: [proj], policy: { symlinks: "follow" } });
+    expect(plan.entries.find((e) => e.archivePath === "dangling")).toMatchObject({ excludeCode: "unsupported", unsupportedKind: "broken-link" });
   });
 });
 

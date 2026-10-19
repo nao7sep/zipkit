@@ -1,9 +1,9 @@
 /**
  * Exclusion engine tests — exercised hard, because archive paths are full of
  * edge cases. Covers gitignore-flavoured glob anchoring, the `**` span, glob
- * metacharacters, regex and literal dialects, dotfiles, case sensitivity,
+ * metacharacters, the regex dialect, dotfiles, case sensitivity,
  * target applicability, the junk preset, ordering/reporting, and the inclusive
- * default. The same engine backs both `create` and `extract`.
+ * default.
  */
 
 import { describe, expect, it } from "vitest";
@@ -103,7 +103,7 @@ describe("dotfiles and case", () => {
   });
 });
 
-describe("regex and literal dialects", () => {
+describe("the regex dialect", () => {
   it("matches a regex anywhere unless anchored", () => {
     const m = matcher([rule({ pattern: "\\.log$", match: "regex" })]);
     expect(hit(m, "a.log")).toBe(true);
@@ -115,19 +115,6 @@ describe("regex and literal dialects", () => {
     const m = matcher([rule({ pattern: "^cache/.*\\.bin$", match: "regex" })]);
     expect(hit(m, "cache/x.bin")).toBe(true);
     expect(hit(m, "app/cache/x.bin")).toBe(false);
-  });
-
-  it("matches a literal path exactly when anchored by an interior slash", () => {
-    const m = matcher([rule({ pattern: "exact/name", match: "literal" })]);
-    expect(hit(m, "exact/name")).toBe(true);
-    expect(hit(m, "x/exact/name")).toBe(false);
-  });
-
-  it("matches an unanchored literal as a trailing component", () => {
-    const m = matcher([rule({ pattern: "name", match: "literal" })]);
-    expect(hit(m, "name")).toBe(true);
-    expect(hit(m, "a/name")).toBe(true);
-    expect(hit(m, "named")).toBe(false);
   });
 });
 
