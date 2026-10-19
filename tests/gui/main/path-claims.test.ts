@@ -109,7 +109,7 @@ async function fixture() {
     verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
-    classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
+    pathKinds: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       for (const file of paths) await rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
       return { moved: paths, failed: [], unconfirmed: [] };

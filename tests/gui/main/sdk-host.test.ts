@@ -68,7 +68,7 @@ describe("the SDK host", () => {
     // An error crosses as the fields main reads.
     const missing = await sdk.call("checkRemoval", [path.join(root, "none.zip"), [input], [], { ...DEFAULT_OPTIONS }]);
     expect(missing.refusal).toMatchObject({ reason: "error", step: "location", error: { name: expect.any(String), message: expect.any(String) } });
-    expect(await sdk.call("classify", [[input, path.join(root, "gone")]])).toEqual([
+    expect(await sdk.call("pathKinds", [[input, path.join(root, "gone")]])).toEqual([
       { path: input, kind: "directory" },
       { path: path.join(root, "gone"), kind: "missing" },
     ]);

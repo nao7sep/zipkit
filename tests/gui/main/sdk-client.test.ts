@@ -24,11 +24,11 @@ describe("createSdkClient", () => {
     const sdk = createSdkClient(spawn);
     expect(spawn).not.toHaveBeenCalled();
     const onEvent = vi.fn();
-    const first = sdk.call("classify", [["/a"]], { onEvent });
+    const first = sdk.call("pathKinds", [["/a"]], { onEvent });
     const second = sdk.call("verify", ["/a.zip", "zipkit.json"]);
     expect(spawn).toHaveBeenCalledOnce();
     expect(host.sent).toEqual([
-      { type: "call", id: 1, op: "classify", args: [["/a"]] },
+      { type: "call", id: 1, op: "pathKinds", args: [["/a"]] },
       { type: "call", id: 2, op: "verify", args: ["/a.zip", "zipkit.json"] },
     ]);
     const event = { stage: "plan", level: "info", event: "plan.done" } as never;

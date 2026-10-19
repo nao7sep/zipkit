@@ -5,7 +5,7 @@
  * suspicious-character flagging — and each class is governed by its own policy
  * action (`names.*`):
  *
- * - `fix`   repair the segment, record an `info` finding and a transformation;
+ * - `fix`   repair the segment, record an `info` finding and a name fix;
  * - `warn`  leave it, record a `warning` finding;
  * - `error` leave it, record an `error` finding (which fails the run);
  * - `none`  leave it, record nothing.
@@ -17,14 +17,14 @@
  * `fullFixSegment` applies every fix unconditionally and is what the validation
  * boundary holds names to. A fix is attributed to the node whose leaf segment
  * it is: when an entry's path is repaired, only the leaf segment produces
- * findings and transformations on that entry, because every parent segment is
+ * findings and name fixes on that entry, because every parent segment is
  * the leaf of its own directory node. This keeps each defect reported once while
  * every entry's full path is corrected consistently.
  */
 
 import { finding } from "../registry.ts";
 import type { RuleId } from "../registry.ts";
-import type { Transformation } from "../internal/types.ts";
+import type { NameFix } from "../internal/types.ts";
 import type { ArchivePolicy, NameAction, NameRules, Severity } from "../types.ts";
 import type { WorkItem } from "./workItem.ts";
 
@@ -128,7 +128,7 @@ export interface SegmentIssue {
 export interface SegmentFix {
   segment: string;
   issues: SegmentIssue[];
-  transformations: Transformation[];
+  nameFixes: NameFix[];
 }
 
 /** The all-`fix` action set (minus the replacement) used by `fullFixSegment`. */
@@ -173,7 +173,7 @@ function suffixReserved(segment: string): string {
 
 export function processSegment(segment: string, names: NameRules): SegmentFix {
   const issues: SegmentIssue[] = [];
-  const transformations: Transformation[] = [];
+  const nameFixes: NameFix[] = [];
   let s = segment;
 
   // Detect one class: if `after` differs, the class is present. The action then
@@ -181,7 +181,7 @@ export function processSegment(segment: string, names: NameRules): SegmentFix {
   const step = (rule: RuleId, action: NameAction, after: string): void => {
     if (after === s) return;
     if (action === "fix") {
-      transformations.push({ rule, before: s, after });
+      nameFixes.push({ rule, before: s, after });
       issues.push({ rule, severity: "info", applied: true });
       s = after;
     } else if (action === "warn") {
@@ -204,7 +204,7 @@ export function processSegment(segment: string, names: NameRules): SegmentFix {
   // Nor may a fix leave only dots or white space: "." and ".." would point at
   // the folder itself or its parent, and Windows drops such a name to nothing.
   // A name that came in that way is the path pass's to judge, not changed here.
-  if (transformations.length > 0 && /^[.\s]+$/u.test(s)) s = names.invalidCharReplacement;
+  if (nameFixes.length > 0 && /^[.\s]+$/u.test(s)) s = names.invalidCharReplacement;
 
   if (hasSuspicious(s)) {
     if (names.suspicious === "warn") {
@@ -214,7 +214,7 @@ export function processSegment(segment: string, names: NameRules): SegmentFix {
     }
   }
 
-  return { segment: s, issues, transformations };
+  return { segment: s, issues, nameFixes };
 }
 
 /**
@@ -273,8 +273,8 @@ export function applyNameFix(items: WorkItem[], policy: ArchivePolicy): void {
       }
       const fix = fixes[i];
       if (!fix) continue;
-      for (const transformation of fix.transformations) {
-        item.transformations.push(transformation);
+      for (const nameFix of fix.nameFixes) {
+        item.nameFixes.push(nameFix);
       }
       for (const issue of fix.issues) {
         const opts: { severity: Severity; fix?: { kind: "rename"; to: string } } = {

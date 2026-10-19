@@ -84,7 +84,7 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
       calls.verify++;
       return true;
     },
-    classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
+    pathKinds: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       calls.trash.push(paths);
       return { moved: paths, failed: [], unconfirmed: [] };
@@ -891,7 +891,7 @@ describe("queue engine", () => {
 
   it("does not move a finished job's archive to Trash once an original is gone", async () => {
     let gone = false;
-    const { deps, calls } = makeDeps({ classify: async (paths) => paths.map((path) => ({ path, kind: gone ? "missing" as const : "file" as const })) });
+    const { deps, calls } = makeDeps({ pathKinds: async (paths) => paths.map((path) => ({ path, kind: gone ? "missing" as const : "file" as const })) });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/data"], DEFAULT_OPTIONS, SAVE);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
@@ -1208,7 +1208,7 @@ describe("queue engine", () => {
           ? { moved: ["/x/a"], failed: [{ path: "/x/b", message: "busy" }], unconfirmed: [] }
           : { moved: paths, failed: [], unconfirmed: [] };
       },
-      classify: async (paths) => paths.map((path) => ({ path, kind: trashCall > 0 && path === "/x/a" ? "missing" as const : "file" as const })),
+      pathKinds: async (paths) => paths.map((path) => ({ path, kind: trashCall > 0 && path === "/x/a" ? "missing" as const : "file" as const })),
       // What the archive holds from a moved input is the SDK's to forgive.
       checkRemoval: async (_output, inputs, removed) => {
         checked = { inputs, removed };
@@ -1307,7 +1307,7 @@ describe("queue engine", () => {
 
   it("classifies inputs on add, storing them as entries", async () => {
     const { deps } = makeDeps({
-      classify: async (paths) =>
+      pathKinds: async (paths) =>
         paths.map((path) => ({ path, kind: path.endsWith("/") ? "directory" : "file" })),
     });
     const engine = createQueueEngine(deps);
@@ -1751,7 +1751,7 @@ describe("the archive's recorded state and the job's history", () => {
   it("keeps a job whose originals are gone finished when its archive goes too, with nothing left to offer", async () => {
     let trashed = false;
     const { deps, archive } = withArchive({
-      classify: async (paths) => paths.map((path) => ({ path, kind: trashed ? "missing" as const : "file" as const })),
+      pathKinds: async (paths) => paths.map((path) => ({ path, kind: trashed ? "missing" as const : "file" as const })),
       trash: async (paths) => { trashed = true; return { moved: paths, failed: [], unconfirmed: [] }; },
     });
     const engine = createQueueEngine(deps);
@@ -1822,7 +1822,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
   it("reads the originals again after a run moves them to Trash, and offers them again once they are put back", async () => {
     let onDisk = true;
     const { deps, calls } = makeDeps({
-      classify: async (paths) => paths.map((path) => ({ path, kind: onDisk ? "file" as const : "missing" as const })),
+      pathKinds: async (paths) => paths.map((path) => ({ path, kind: onDisk ? "file" as const : "missing" as const })),
       trash: async (paths) => { onDisk = false; calls.trash.push(paths); return { moved: paths, failed: [], unconfirmed: [] }; },
     });
     const engine = createQueueEngine(deps);
@@ -1843,7 +1843,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
 
   it("removes the originals still there when some were deleted outside ZipKit, saying how many were already gone", async () => {
     const { deps, calls } = makeDeps({
-      classify: async (paths) => paths.map((path) => ({ path, kind: path === "/b" ? "missing" as const : "file" as const })),
+      pathKinds: async (paths) => paths.map((path) => ({ path, kind: path === "/b" ? "missing" as const : "file" as const })),
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, SAVE);
@@ -1858,7 +1858,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
 
   it("removes nothing while an original is out of reach", async () => {
     const { deps, calls } = makeDeps({
-      classify: async (paths) => paths.map((path) => ({ path, kind: path === "/b" ? "unavailable" as const : "file" as const })),
+      pathKinds: async (paths) => paths.map((path) => ({ path, kind: path === "/b" ? "unavailable" as const : "file" as const })),
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, SAVE);
@@ -1909,7 +1909,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
 
   it("reads a waiting job's inputs again, so one deleted outside ZipKit shows before Create", async () => {
     let gone = false;
-    const { deps } = makeDeps({ classify: async (paths) => paths.map((path) => ({ path, kind: gone ? "missing" as const : "file" as const })) });
+    const { deps } = makeDeps({ pathKinds: async (paths) => paths.map((path) => ({ path, kind: gone ? "missing" as const : "file" as const })) });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
     try {

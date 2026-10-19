@@ -34,7 +34,7 @@ it("presents a real publication flush failure safely and keeps originals out of 
     verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
-    classify: async (paths) => paths.map((location) => ({ path: location, kind: "file" as const })),
+    pathKinds: async (paths) => paths.map((location) => ({ path: location, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {

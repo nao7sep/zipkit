@@ -16,11 +16,7 @@ import { matcherFor } from "../filter/match.ts";
 import { toInstructions } from "../internal/instructions.ts";
 import type { ScanResult } from "../internal/types.ts";
 import { finding } from "../registry.ts";
-import type { ArchivePolicy, CreateData, Finding } from "../types.ts";
-
-/** The `mode:"plan"` member of {@link CreateData}: the plan payload and the
- *  writer's input. */
-type PlanData = Extract<CreateData, { mode: "plan" }>;
+import type { ArchivePolicy, Finding, PlanData } from "../types.ts";
 import { applyCollision } from "./collision.ts";
 import { applyCompression } from "./compression.ts";
 import { applyDedup } from "./dedup.ts";

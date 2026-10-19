@@ -8,7 +8,7 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { classifyPaths, mountPointOf, pathState, sameFile } from "../src/paths.ts";
+import { pathKinds, mountPointOf, pathState, sameFile } from "../src/paths.ts";
 import { ZipKit } from "../src/index.ts";
 import { nodeFileSystem, Volume } from "../src/internal/volume.ts";
 
@@ -64,7 +64,7 @@ describe("pathState", () => {
   });
 });
 
-describe("classifyPaths", () => {
+describe("pathKinds", () => {
   it("classifies each path in order: a folder, a file, a link whose target is gone, a missing path, and one on a drive that is not connected", async () => {
     const file = path.join(root, "a.txt");
     await writeFile(file, "x");
@@ -72,16 +72,16 @@ describe("classifyPaths", () => {
     await mkdir(folder);
     const link = path.join(root, "dangling");
     await symlink(path.join(root, "nowhere"), link);
-    const entries = await classifyPaths([folder, file, link, path.join(root, "gone.txt"), "/Volumes/ZipKitNoSuchDrive/a.txt"], volume, "darwin");
+    const entries = await pathKinds([folder, file, link, path.join(root, "gone.txt"), "/Volumes/ZipKitNoSuchDrive/a.txt"], volume, "darwin");
     expect(entries.map((entry) => entry.kind)).toEqual(["directory", "file", "other", "missing", "unavailable"]);
-    expect(await classifyPaths([], volume)).toEqual([]);
+    expect(await pathKinds([], volume)).toEqual([]);
   });
 
-  it("is what ZipKit.classify and ZipKit.pathState answer", async () => {
+  it("is what ZipKit.pathKinds and ZipKit.pathState answer", async () => {
     const file = path.join(root, "a.txt");
     await writeFile(file, "x");
     const zip = new ZipKit();
-    expect(await zip.classify([file])).toEqual([{ path: file, kind: "file" }]);
+    expect(await zip.pathKinds([file])).toEqual([{ path: file, kind: "file" }]);
     expect((await zip.pathState(file)).kind).toBe("present");
     expect(await zip.pathState(path.join(root, "missing"))).toEqual({ kind: "missing" });
   });

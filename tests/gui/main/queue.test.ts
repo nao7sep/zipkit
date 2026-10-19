@@ -257,7 +257,7 @@ describe("the SDK host wiring", () => {
     plan(inputs: string[], options: unknown, signal: AbortSignal, onEvent: () => void): Promise<object>;
     write(plan: object, signal: AbortSignal, onEvent: () => void, onSettlement: () => void): Promise<number | null>;
     verify(output: string, signal: AbortSignal, onEvent: () => void): Promise<boolean>;
-    classify(paths: string[]): Promise<unknown>;
+    pathKinds(paths: string[]): Promise<unknown>;
   };
   const wired = () => mocks.deps as unknown as Wired;
   beforeEach(() => mocks.sdkCall.mockReset());
@@ -275,12 +275,12 @@ describe("the SDK host wiring", () => {
     expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [plan], { signal, onEvent, onPhysicalSettlement: onSettlement });
   });
 
-  it("asks the SDK host to verify and classify", async () => {
+  it("asks the SDK host to verify and pathKinds", async () => {
     mocks.sdkCall.mockResolvedValueOnce(true).mockResolvedValueOnce([{ path: "/in", kind: "directory" }]);
     const signal = new AbortController().signal;
     await expect(wired().verify("/out.zip", signal, vi.fn())).resolves.toBe(true);
-    await expect(wired().classify(["/in"])).resolves.toEqual([{ path: "/in", kind: "directory" }]);
-    expect(mocks.sdkCall.mock.calls.map(([op]) => op)).toEqual(["verify", "classify"]);
+    await expect(wired().pathKinds(["/in"])).resolves.toEqual([{ path: "/in", kind: "directory" }]);
+    expect(mocks.sdkCall.mock.calls.map(([op]) => op)).toEqual(["verify", "pathKinds"]);
   });
 });
 

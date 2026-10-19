@@ -9,8 +9,7 @@
  */
 
 import type { SegmentIssue } from "../plan/nameFix.ts";
-import type { RuleId } from "../registry.ts";
-import type { UnsupportedKind } from "../types.ts";
+import type { NameFix, UnsupportedKind } from "../types.ts";
 
 /** Raw metadata for one filesystem object, produced by the scan layer. */
 export interface ScanEntry {
@@ -101,11 +100,7 @@ export interface ScanResult {
 }
 
 /** One name fix applied to an entry, recorded for the manifest file. */
-export interface Transformation {
-  rule: RuleId;
-  before: string;
-  after: string;
-}
+export type { NameFix } from "../types.ts";
 
 /**
  * An entry the writer will emit. Produced by the planner alongside the public
@@ -127,5 +122,5 @@ export interface WriteEntry {
   birthtimeNs: bigint;
   mode: number;
   linkTarget?: string;
-  transformations: Transformation[];
+  nameFixes: NameFix[];
 }

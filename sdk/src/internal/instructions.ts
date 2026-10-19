@@ -46,7 +46,7 @@ export function toInstructions(internals: PlanInternals): PlanInstructions {
         ctimeNs: e.ctimeNs.toString(),
         birthtimeNs: e.birthtimeNs.toString(),
         mode: e.mode,
-        transformations: e.transformations,
+        nameFixes: e.nameFixes,
       };
       if (e.linkTarget !== undefined) entry.linkTarget = e.linkTarget;
       return entry;
@@ -68,7 +68,7 @@ function isEntry(value: unknown): value is InstructionEntry {
     Number.isSafeInteger(e.size) && (e.size as number) >= 0 && Number.isInteger(e.mode) &&
     [e.mtimeNs, e.atimeNs, e.ctimeNs, e.birthtimeNs].every((t) => typeof t === "string" && NS.test(t)) &&
     (e.linkTarget === undefined || typeof e.linkTarget === "string") &&
-    Array.isArray(e.transformations);
+    Array.isArray(e.nameFixes);
 }
 
 /** The writer's instructions from a plan's `instructions`, or `undefined` when

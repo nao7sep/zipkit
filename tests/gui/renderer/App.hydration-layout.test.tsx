@@ -369,7 +369,7 @@ describe("mounted run consent across queue projection changes", () => {
       write: vi.fn(async () => 123),
       verify: vi.fn(async () => true),
       checkRemoval: vi.fn(async () => ({ refusal: null, verified: { fingerprint: null } })),
-      classify: vi.fn(async (paths: string[]) => paths.map((path) => ({ path, kind: "file" as const }))),
+      pathKinds: vi.fn(async (paths: string[]) => paths.map((path) => ({ path, kind: "file" as const }))),
       trash: vi.fn(async (paths) => ({ moved: paths, failed: [], unconfirmed: [] })),
       deleteOriginals: vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] })),
       pathState: vi.fn(async (target: string) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` })),

@@ -292,7 +292,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     },
     {
       "archivePath": "café.txt",
@@ -308,7 +308,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": [
+      "nameFixes": [
         {
           "rule": "name.nfd",
           "before": "café.txt",
@@ -328,7 +328,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     },
     {
       "archivePath": "docs/notes_v1.txt",
@@ -344,7 +344,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": [
+      "nameFixes": [
         {
           "rule": "name.invalid-char",
           "before": "notes:v1.txt",
@@ -366,7 +366,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     },
     {
       "archivePath": "photos",
@@ -380,7 +380,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     },
     {
       "archivePath": "photos/photo.jpg",
@@ -396,7 +396,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     },
     {
       "archivePath": "sub",
@@ -410,7 +410,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     },
     {
       "archivePath": "sub/deep",
@@ -424,7 +424,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     },
     {
       "archivePath": "sub/deep/data.bin",
@@ -440,7 +440,7 @@
         "ns": "1767323045000000000",
         "iso": "2026-01-02T03:04:05.000Z"
       },
-      "transformations": []
+      "nameFixes": []
     }
   ],
   "excluded": [

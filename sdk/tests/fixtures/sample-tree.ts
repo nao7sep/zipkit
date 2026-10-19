@@ -59,7 +59,7 @@ export function manifestEssentials(manifest: Record<string, unknown>): unknown {
     entries: m.entries.map((e) => ({
       archivePath: e.archivePath, originalPath: e.originalPath, sourcePath: e.sourcePath, type: e.type,
       method: e.method, size: e.type === "dir" ? undefined : e.size, compressedSize: e.compressedSize,
-      crc32: e.crc32, sha256: e.sha256, mtime: e.mtime, transformations: e.transformations,
+      crc32: e.crc32, sha256: e.sha256, mtime: e.mtime, nameFixes: e.nameFixes,
     })).sort(byPath),
     excluded: [...(m.excluded as Array<{ archivePath: string }>)].sort(byPath),
     findings: m.findings.map((f) => ({ rule: f.rule, severity: f.severity, path: f.path }))

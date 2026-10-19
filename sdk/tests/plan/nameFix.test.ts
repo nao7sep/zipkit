@@ -133,15 +133,15 @@ describe("processSegment (all fix)", () => {
     });
   }
 
-  it("records a transformation chain for the metadata", () => {
+  it("records a nameFix chain for the metadata", () => {
     const result = processSegment("a:b. ", allFix());
-    expect(result.transformations.map((t) => t.rule)).toEqual([
+    expect(result.nameFixes.map((t) => t.rule)).toEqual([
       "name.invalid-char",
       "name.trailing-dot-space",
     ]);
-    expect(result.transformations[0]?.before).toBe("a:b. ");
-    expect(result.transformations[0]?.after).toBe("a_b. ");
-    expect(result.transformations[1]?.after).toBe("a_b");
+    expect(result.nameFixes[0]?.before).toBe("a:b. ");
+    expect(result.nameFixes[0]?.after).toBe("a_b. ");
+    expect(result.nameFixes[1]?.after).toBe("a_b");
   });
 
   it("a fix issue is info severity and applied", () => {
@@ -154,7 +154,7 @@ describe("processSegment actions", () => {
   it("warn leaves the name and reports a warning", () => {
     const result = processSegment("a:b", { ...allFix(), invalidChars: "warn" });
     expect(result.segment).toBe("a:b");
-    expect(result.transformations).toEqual([]);
+    expect(result.nameFixes).toEqual([]);
     expect(result.issues).toEqual([
       { rule: "name.invalid-char", severity: "warning", applied: false },
     ]);

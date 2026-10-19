@@ -65,7 +65,7 @@ export function sameFile(a: string, b: string): boolean {
 
 /** What each path is on disk now, in order: a folder, a file, something else,
  *  missing, or out of reach. A vanished path is reported, never dropped. */
-export async function classifyPaths(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform): Promise<PathEntry[]> {
+export async function pathKinds(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform): Promise<PathEntry[]> {
   return Promise.all(paths.map(async (target): Promise<PathEntry> => {
     const state = await pathState(target, volume, platform);
     if (state.kind === "missing") return { path: target, kind: "missing" };

@@ -110,7 +110,7 @@ describe("the source check", () => {
 describe("compareWithManifest", () => {
   const fresh = (sourcePath: string, size = 5) => {
     const e = scanEntry({ archivePath: sourcePath, sourcePath, size });
-    return { ...e, method: "store" as const, originalPath: e.archivePath, transformations: [] };
+    return { ...e, method: "store" as const, originalPath: e.archivePath, nameFixes: [] };
   };
   const record = (sourcePath: string, size = 5, type: "file" | "dir" = "file") => ({
     archivePath: sourcePath,

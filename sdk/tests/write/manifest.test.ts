@@ -10,9 +10,9 @@ import type { ManifestEntryInput } from "../../src/write/manifest.ts";
 import { estimateManifestSize } from "../../src/plan/zip64.ts";
 import type { ManifestContent } from "../../src/plan/zip64.ts";
 import type { WriteEntry } from "../../src/internal/types.ts";
-import type { CreateData, Finding, PlannedEntry } from "../../src/types.ts";
+import type { Finding, PlanData, PlannedEntry } from "../../src/types.ts";
 
-const plan: Extract<CreateData, { mode: "plan" }> = {
+const plan: PlanData = {
   mode: "plan",
   output: "out.zip",
   writable: true,
@@ -35,7 +35,7 @@ const symlink: WriteEntry = {
   ctimeNs: 1_577_836_800_000_000_000n,
   birthtimeNs: 1_577_836_800_000_000_000n,
   mode: 0o120777,
-  transformations: [],
+  nameFixes: [],
   linkTarget: "target",
 };
 
@@ -52,7 +52,7 @@ const dirEntry: WriteEntry = {
   ctimeNs: 0n,
   birthtimeNs: 0n,
   mode: 0,
-  transformations: [],
+  nameFixes: [],
 };
 
 function fileAt(archivePath: string, mtimeNs: bigint): WriteEntry {
@@ -69,7 +69,7 @@ function fileAt(archivePath: string, mtimeNs: bigint): WriteEntry {
     ctimeNs: mtimeNs,
     birthtimeNs: mtimeNs,
     mode: 0o644,
-    transformations: [],
+    nameFixes: [],
   };
 }
 
@@ -208,7 +208,7 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
       ctimeNs: 1_577_836_800_000_000_000n,
       birthtimeNs: 1_577_836_800_000_000_000n,
       mode: 0o644,
-      transformations: [],
+      nameFixes: [],
     };
     const writeEntries: WriteEntry[] = [
       {
@@ -216,8 +216,8 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
         archivePath: longPath,
         originalPath: `${longPath}.orig`,
         sourcePath: `input/${longPath}`,
-        // A non-NFC rename transformation, itself carrying full paths.
-        transformations: [{ rule: "name.nfd", before: `${longPath}A`, after: longPath }],
+        // A non-NFC rename nameFix, itself carrying full paths.
+        nameFixes: [{ rule: "name.nfd", before: `${longPath}A`, after: longPath }],
       },
       {
         ...base,
@@ -261,7 +261,7 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
       timeZone: "Asia/Tokyo",
     });
 
-    const planDoc: Extract<CreateData, { mode: "plan" }> = {
+    const planDoc: PlanData = {
       mode: "plan",
       output: "out.zip",
       writable: true,

@@ -79,7 +79,7 @@ export interface EngineDeps {
     onEvent: (e: LogEvent) => void,
   ): Promise<AppRemovalCheck>;
   /** Classify input paths on disk (dir/file/missing) for the job's `entries`. */
-  classify(paths: string[]): Promise<InputEntry[]>;
+  pathKinds(paths: string[]): Promise<InputEntry[]>;
   /** Move each path independently to the OS Trash and report the exact outcome.
    *  Bounded and cancellable like `plan`/`write`/`verify`: a path not yet started
    *  when `signal` aborts is reported in `failed` (kept); one whose Trash call was
@@ -481,14 +481,14 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
 
   /** Classify a job's inputs on disk and store the result as `entries`, so the
    *  label, the input list, and the originals-still-present check stay accurate.
-   *  Best-effort: a classify failure leaves the prior entries rather than crashing. */
+   *  Best-effort: a pathKinds failure leaves the prior entries rather than crashing. */
   async function classifyInputs(id: string): Promise<void> {
     if (!deps.admission.accepting()) return;
     const rec = recs.get(id);
     if (!rec) return;
     const inputs = rec.job.inputs;
     try {
-      const entries = await deps.classify(inputs);
+      const entries = await deps.pathKinds(inputs);
       const cur = recs.get(id);
       // Drop a stale result if the inputs changed while we were classifying.
       if (!deps.admission.accepting() || !cur || cur.job.inputs !== inputs) return;
@@ -503,7 +503,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
    *  older look. False when they could not be looked at. */
   async function freshEntries(rec: Rec): Promise<boolean> {
     try {
-      set(rec, { entries: await deps.classify(rec.job.inputs) });
+      set(rec, { entries: await deps.pathKinds(rec.job.inputs) });
       emit();
       return true;
     } catch (err) {
@@ -672,7 +672,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         claim = await claimFiles([output], rec.job.inputs, signal);
         let entries: InputEntry[];
         try {
-          entries = await deps.classify(rec.job.inputs);
+          entries = await deps.pathKinds(rec.job.inputs);
         } catch (err) {
           set(rec, { state: "failed", message: failureMessage(err, "job.prepareFailed") });
           deps.log.error("job resume could not classify inputs", { jobId: id, error: errorInfo(err) });

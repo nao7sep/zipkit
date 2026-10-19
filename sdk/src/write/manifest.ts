@@ -14,17 +14,17 @@
  * all findings. Keys follow the entity-record role order: the header leads with
  * identity and its own provenance time, then config and quantities; each entry
  * leads with identity, then classification, quantity, subject attributes, and
- * finally the nested transformation list.
+ * finally the nested list of name fixes.
  */
 
 import type { WriteEntry } from "../internal/types.ts";
 import type {
   ArchivePolicy,
-  CreateData,
   ExtremeEntry,
   Manifest,
   ManifestEntry,
   ManifestExcluded,
+  PlanData,
   UtcTime,
 } from "../types.ts";
 import { VERSION } from "../version.ts";
@@ -39,11 +39,6 @@ const REPOSITORY = "https://github.com/nao7sep/zipkit";
 export const MANIFEST_FORMAT = "zipkit.manifest";
 /** The manifest's format version (store-recovery conventions); a reader refuses a newer one. */
 export const MANIFEST_FORMAT_VERSION = 1;
-
-/** The `mode:"plan"` member of {@link CreateData} — the planning view the
- *  manifest document is built from (entries, summary, findings). The manifest
- *  builder never reads `log`, so it takes the logging-agnostic shape. */
-type PlanData = Extract<CreateData, { mode: "plan" }>;
 
 export interface ManifestEntryInput {
   writeEntry: WriteEntry;
@@ -88,7 +83,7 @@ function manifestEntry(input: ManifestEntryInput): ManifestEntry {
     atime: utcTime(entry.atimeNs),
     ctime: utcTime(entry.ctimeNs),
     btime: entry.birthtimeNs > 0n ? utcTime(entry.birthtimeNs) : null,
-    transformations: entry.transformations,
+    nameFixes: entry.nameFixes,
   };
   if (input.sha256 !== undefined) record.sha256 = input.sha256;
   // A preserved symlink's target is part of the lossless record.

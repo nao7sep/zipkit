@@ -109,7 +109,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
       (await zip.verify(archive, { manifest: true, signal, onEvent })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
-    classify: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
+    pathKinds: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
     trash: async () => { throw new Error("save jobs must never call Trash"); },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,

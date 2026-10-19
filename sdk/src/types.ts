@@ -71,7 +71,7 @@ export interface CompressionPolicy {
 
 /**
  * What to do about one class of non-portable name. `fix` repairs the name and
- * records an `info` finding plus the transformation; `warn` leaves it and
+ * records an `info` finding plus the name fix; `warn` leaves it and
  * records a `warning`; `error` leaves it and fails the run; `none` is silent.
  * `name.suspicious` characters are kept by design, so that rule has no `fix`.
  */
@@ -382,42 +382,42 @@ export interface PlanSummary {
 }
 
 /**
- * The `create` verb's payload, modeled as a discriminated union on `mode` so
- * neither shape carries a field it cannot honestly fill. A dry run plans but
- * reads/hashes nothing; a real write produces post-write truth (crc/sha/sizes).
- *
- * Per-entry detail is never duplicated: `mode:"plan"` carries `entries`
- * (pre-write, no crc/sha); `mode:"write"` carries the post-write per-entry SSOT
- * inside `manifest.entries`. `plan()` returns the `"plan"` member; `write()`
- * returns the `"write"` member; `create()` returns the `"write"` member, or the
- * `"plan"` member when the plan blocks (such as on an existing output without
- * `overwrite`), and throws only on an operational fault.
+ * What `plan()` returns, and what `create()` returns when the plan blocks (such
+ * as on an existing output without `overwrite`). `mode` tells it from
+ * {@link WriteData}, so neither shape carries a field it cannot honestly fill:
+ * a plan reads and hashes nothing, and its `entries` are the pre-write view (no
+ * CRC or SHA-256).
  *
  * A plan is plain data: a structured clone or a JSON round trip of it is
  * still writable, so an app can plan in one process and write in another.
  */
-export type CreateData =
-  | {
-      mode: "plan"; // planned, nothing written
-      output: string; // resolved output path (the intended target)
-      writable: boolean; // the gate
-      summary: PlanSummary;
-      findings: Finding[]; // SSOT
-      entries: PlannedEntry[]; // pre-write view (no crc/sha)
-      /** What `write` reads and how; see {@link PlanInstructions}. */
-      instructions: PlanInstructions;
-    }
-  | {
-      mode: "write"; // actual create
-      output: string;
-      bytes: number; // final on-disk size
-      zip64: boolean;
-      summary: PlanSummary;
-      findings: Finding[]; // SSOT (domain + operational)
-      /** The manifest document: the post-write per-entry record (CRC, SHA-256,
-       *  sizes, times), embedded unless the policy turned the manifest off. */
-      manifest: Manifest;
-    };
+export interface PlanData {
+  mode: "plan"; // planned, nothing written
+  output: string; // resolved output path (the intended target)
+  writable: boolean; // the gate
+  summary: PlanSummary;
+  findings: Finding[]; // SSOT
+  entries: PlannedEntry[]; // pre-write view (no crc/sha)
+  /** What `write` reads and how; see {@link PlanInstructions}. */
+  instructions: PlanInstructions;
+}
+
+/**
+ * What `write()` returns, and `create()` when it writes: post-write truth. The
+ * per-entry record (CRC, SHA-256, sizes) is held once, in `manifest.entries`.
+ * Both verbs throw only on an operational fault.
+ */
+export interface WriteData {
+  mode: "write"; // actual create
+  output: string;
+  bytes: number; // final on-disk size
+  zip64: boolean;
+  summary: PlanSummary;
+  findings: Finding[]; // SSOT (domain + operational)
+  /** The manifest document: the post-write per-entry record (CRC, SHA-256,
+   *  sizes, times), embedded unless the policy turned the manifest off. */
+  manifest: Manifest;
+}
 
 /**
  * The writer's instructions a plan carries: the resolved policy, whether an
@@ -452,15 +452,9 @@ export interface InstructionEntry {
   birthtimeNs: string;
   mode: number;
   linkTarget?: string;
-  transformations: Transformation[];
+  nameFixes: NameFix[];
 }
 
-/** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns. */
-export type PlanData = Extract<CreateData, { mode: "plan" }>;
-
-/** The `mode:"write"` member of {@link CreateData}: what `write()` and
- *  `create()` return. */
-export type WriteData = Extract<CreateData, { mode: "write" }>;
 
 export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
 
@@ -475,7 +469,7 @@ export interface UtcTime {
 }
 
 /** One name fix applied to an entry. `rule` is a `RuleId`. */
-export interface Transformation {
+export interface NameFix {
   rule: RuleId;
   before: string;
   after: string;
@@ -500,7 +494,7 @@ export interface ManifestEntry {
   /** Creation time, or `null` when the platform does not track it. */
   btime: UtcTime | null;
   linkTarget?: string;
-  transformations: Transformation[]; // nested detail
+  nameFixes: NameFix[]; // nested detail
 }
 
 /** A dropped entry's record in the {@link Manifest} document. */

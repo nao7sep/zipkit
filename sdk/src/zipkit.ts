@@ -26,7 +26,7 @@ import { recheckContent } from "./compare/content.ts";
 import { compareWithManifest, explainRemoved, onDisk } from "./compare/sources.ts";
 import { readManifestRecords, verifyArchive } from "./read/verify.ts";
 import { fromInstructions } from "./internal/instructions.ts";
-import { classifyPaths, pathState } from "./paths.ts";
+import { pathKinds, pathState } from "./paths.ts";
 import { checkRemoval, outputInsideInputs } from "./removal.ts";
 import { pathResources, type PathResource } from "./claims.ts";
 import { nodeFileSystem, Volume } from "./internal/volume.ts";
@@ -340,8 +340,8 @@ export class ZipKit {
   }
 
   /** What each path is on disk now, in order (see `PathKind`). */
-  async classify(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
-    return this.#guard(options, () => classifyPaths(requireAbsoluteList(paths, "paths"), this.volume(options.signal)));
+  async pathKinds(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
+    return this.#guard(options, () => pathKinds(requireAbsoluteList(paths, "paths"), this.volume(options.signal)));
   }
 
   /**

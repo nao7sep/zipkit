@@ -103,7 +103,7 @@ const engine = createQueueEngine({
     const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: new SdkHostError(check.refusal.error) } : check.refusal;
     return { ...check, refusal };
   },
-  classify: (paths) => sdk.call("classify", [paths]),
+  pathKinds: (paths) => sdk.call("pathKinds", [paths]),
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
     const settlements: Promise<void>[] = [];

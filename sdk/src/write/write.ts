@@ -20,17 +20,10 @@ import { fromInstructions } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { WriteEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
-import type { CreateData, ProgressCounts } from "../types.ts";
+import type { PlanData, ProgressCounts, WriteData } from "../types.ts";
 import { contentBytes } from "../plan/summary.ts";
 import { Meter } from "../progress.ts";
 
-/** The `mode:"plan"` member of {@link CreateData}: the writer's input, carrying
- *  the resolved output, the writable gate, summary, findings and the writer's
- *  instructions. */
-type PlanData = Extract<CreateData, { mode: "plan" }>;
-
-/** The `mode:"write"` member of {@link CreateData}; the writer's success shape. */
-type WriteData = Extract<CreateData, { mode: "write" }>;
 import { buildManifest, manifestText } from "./manifest.ts";
 import type { ManifestEntryInput } from "./manifest.ts";
 import { EntryCompressor, ZipWriter } from "./zipWriter.ts";

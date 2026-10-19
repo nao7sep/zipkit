@@ -93,7 +93,7 @@ function jsonStringBytes(s: string): number {
 // excluded entry, and finding the keys and small enums; and the header's fixed
 // scaffolding (about/app/version/repository/createdAtUtc/formatVersion, the resolved IANA timeZone, and the
 // summary/totals numbers) plus the policy's enum fields. Every *unbounded*
-// variable-length string (paths, transformations, messages, comment, the policy's
+// variable-length string (paths, name fixes, messages, comment, the policy's
 // patterns/extensions/zone/name, the time-range paths) is summed separately at
 // its worst-case escaped width, so the total is a true upper bound, not a
 // heuristic — the few bounded strings (the IANA timeZone, enums) sit within the
@@ -110,7 +110,7 @@ const MANIFEST_TIMERANGE_FIXED = 512;
  *  time — so its size, and the Zip64 verdict that includes it, are computable
  *  before any byte is written. */
 export interface ManifestContent {
-  /** Written entries (the manifest's `entries`): paths and transformations. */
+  /** Written entries (the manifest's `entries`): paths and name fixes. */
   entries: WriteEntry[];
   /** Dropped entries (the manifest's `excluded`). */
   excluded: { archivePath: string; originalPath: string; reason?: string }[];
@@ -153,7 +153,7 @@ export function estimateManifestSize(content: ManifestContent, policy: ArchivePo
     bytes += jsonStringBytes(entry.originalPath);
     bytes += jsonStringBytes(entry.sourcePath);
     if (entry.linkTarget !== undefined) bytes += jsonStringBytes(entry.linkTarget);
-    for (const t of entry.transformations) {
+    for (const t of entry.nameFixes) {
       bytes +=
         MANIFEST_TRANSFORM_FIXED +
         jsonStringBytes(t.rule) +

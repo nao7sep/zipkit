@@ -79,7 +79,7 @@ export function workItem(
     method: over.method ?? "store",
     emitExplicit: over.emitExplicit ?? type === "file",
     findings: over.findings ?? [],
-    transformations: over.transformations ?? [],
+    nameFixes: over.nameFixes ?? [],
   };
   if (over.excludeReason !== undefined) item.excludeReason = over.excludeReason;
   return item;

@@ -2,13 +2,13 @@
  * The mutable unit the planning pipeline threads through its passes, and the
  * conversions to the public {@link PlannedEntry} and the internal
  * {@link WriteEntry}. A work item starts as a raw scan entry and accumulates
- * resolved name, exclusion state, method, findings, and transformations as the
+ * resolved name, exclusion state, method, findings, and name fixes as the
  * passes run. The public entry omits the absolute source path; the write entry
  * keeps it for the plan's instructions.
  */
 
 import { finding } from "../registry.ts";
-import type { ScanEntry, ScanResult, SkipKind, Transformation, WriteEntry } from "../internal/types.ts";
+import type { NameFix, ScanEntry, ScanResult, SkipKind, WriteEntry } from "../internal/types.ts";
 import type { ExcludeCode, Finding, PlannedEntry, UnsupportedKind } from "../types.ts";
 
 export interface WorkItem {
@@ -25,7 +25,7 @@ export interface WorkItem {
    *  symlinks, kept empty directories) versus leaving it implied by children. */
   emitExplicit: boolean;
   findings: Finding[];
-  transformations: Transformation[];
+  nameFixes: NameFix[];
 }
 
 /** What the plan says about each object the walk left out. */
@@ -72,7 +72,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       method: "store",
       emitExplicit: false,
       findings: [finding("exclude.pattern", dir.archivePath, `excluded by ${dir.reason}`)],
-      transformations: [],
+      nameFixes: [],
     });
   }
 
@@ -93,7 +93,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       method: "store",
       emitExplicit: false,
       findings: [finding("entry.unsupported", skipped.archivePath, message)],
-      transformations: [],
+      nameFixes: [],
     });
   }
 
@@ -119,7 +119,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       method: "store",
       emitExplicit: entry.type === "file",
       findings,
-      transformations: [],
+      nameFixes: [],
     });
   }
 
@@ -171,7 +171,7 @@ export function buildWriteEntries(items: WorkItem[]): WriteEntry[] {
       ctimeNs: item.scan.ctimeNs,
       birthtimeNs: item.scan.birthtimeNs,
       mode: item.scan.mode,
-      transformations: item.transformations,
+      nameFixes: item.nameFixes,
     };
     if (item.scan.linkTarget !== undefined) entry.linkTarget = item.scan.linkTarget;
     out.push(entry);

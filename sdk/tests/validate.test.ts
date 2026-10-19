@@ -159,7 +159,7 @@ describe("locations", () => {
     const relative = { code: "path.not-absolute", kind: "invalid", subject: "a.zip" };
     await expect(zip.verify("a.zip")).rejects.toMatchObject(relative);
     await expect(zip.pathState("a.zip")).rejects.toMatchObject(relative);
-    await expect(zip.classify(["a.zip"])).rejects.toMatchObject(relative);
+    await expect(zip.pathKinds(["a.zip"])).rejects.toMatchObject(relative);
     await expect(zip.pathResources(["a.zip"])).rejects.toMatchObject(relative);
     await expect(zip.checkRemoval({ inputs: ["/a"] }, "a.zip")).rejects.toMatchObject(relative);
   });
@@ -175,7 +175,7 @@ describe("call options and arguments", () => {
     await expect(zip.verify("/a.zip", { manifest: "yes" as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.verify("/a.zip", { manifestName: "a/b" })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.pathState("/a", { signal: {} as never })).rejects.toMatchObject({ code: "options.invalid" });
-    await expect(zip.classify("abc" as never)).rejects.toMatchObject(invalid);
+    await expect(zip.pathKinds("abc" as never)).rejects.toMatchObject(invalid);
     await expect(zip.pathResources(null as never)).rejects.toMatchObject(invalid);
     await expect(zip.write(null as never)).rejects.toMatchObject({ code: "plan.invalid", kind: "invalid" });
     await expect(zip.write({ mode: "plan", writable: true, instructions: { entries: "x" } } as never)).rejects.toMatchObject({ code: "plan.invalid" });

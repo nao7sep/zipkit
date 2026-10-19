@@ -28,7 +28,7 @@ function fileEntry(size: number, method: "store" | "deflate"): WriteEntry {
     ctimeNs: 0n,
     birthtimeNs: 0n,
     mode: 0o644,
-    transformations: [],
+    nameFixes: [],
   };
 }
 

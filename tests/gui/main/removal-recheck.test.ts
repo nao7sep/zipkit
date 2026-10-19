@@ -48,7 +48,7 @@ it("keeps the originals when one was edited to the same size with its time put b
       zip.checkRemoval(buildSpec(inputs, options), archive, {
         removed, signal, onEvent, onProgress: (counts) => { if (stages.at(-1) !== counts.stage) stages.push(counts.stage); },
       }),
-    classify: async (paths) => paths.map((p) => ({ path: p, kind: "directory" as const })),
+    pathKinds: async (paths) => paths.map((p) => ({ path: p, kind: "directory" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async () => { throw new Error("not used"); },

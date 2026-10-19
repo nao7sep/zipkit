@@ -27,7 +27,7 @@ export interface SdkOps {
   deletePath(path: string): void;
   inspect(archive: string, manifestName: string | null): VerifyReport;
   checkRemoval(output: string, inputs: string[], removed: string[], options: GuiOptions): RemoteRemovalCheck;
-  classify(paths: string[]): InputEntry[];
+  pathKinds(paths: string[]): InputEntry[];
 }
 export type SdkOp = keyof SdkOps;
 
@@ -131,7 +131,7 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: failure(check.refusal.error) } : check.refusal;
       return { ...check, refusal } satisfies RemoteRemovalCheck;
     },
-    classify: (paths: string[]) => (signal) => zip.classify(paths, { signal }),
+    pathKinds: (paths: string[]) => (signal) => zip.pathKinds(paths, { signal }),
   };
 
   return {

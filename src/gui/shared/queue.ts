@@ -39,7 +39,7 @@ export function sameIntent(a: JobIntent, b: JobIntent): boolean {
 }
 
 /** What an input is on disk, and an input with it: the SDK's own `PathKind`
- *  and `PathEntry` (see `ZipKit.classify`). `unavailable` is out of reach, never
+ *  and `PathEntry` (see `ZipKit.pathKinds`). `unavailable` is out of reach, never
  *  gone: its drive is not connected or it cannot be read, so nothing is decided
  *  on it. */
 export type PathKind = SdkPathKind;
