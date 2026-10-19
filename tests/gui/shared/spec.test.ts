@@ -19,11 +19,12 @@ describe("buildSpec", () => {
   it("maps defaults to an inclusive policy with the manifest and hashing on", () => {
     const spec = buildSpec(["/a"], DEFAULT_OPTIONS);
     expect(spec.inputs).toEqual(["/a"]);
-    expect(spec.policy?.junk).toBe("builtin");
+    expect(spec.policy?.exclusions).toEqual(DEFAULT_OPTIONS.exclusions);
+    expect(spec.policy?.manifest).toEqual({ name: "zipkit.json", hash: true });
     expect(spec.policy?.symlinks).toBe("ignore");
     expect(spec.policy?.emptyDirs).toBe("keep");
     expect(spec.policy?.compression?.level).toBe(6);
-    expect(spec.policy?.manifest).toEqual({ hash: true });
+    expect(spec.policy?.manifest).toEqual({ name: "zipkit.json", hash: true });
     // Only the replacement style is chosen here; every action is left to the SDK.
     expect(spec.policy?.names).toEqual({ invalidCharStyle: "tidy" });
     expect(spec.output).toBeUndefined(); // composed in the main process, not here
@@ -47,15 +48,15 @@ describe("buildSpec", () => {
     });
   });
 
-  it("turns off the junk preset and the manifest when toggled off", () => {
-    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, junk: false, manifest: false });
-    expect(spec.policy?.junk).toBe("none");
+  it("leaves nothing out and embeds no manifest when both are off", () => {
+    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, exclude: false, manifest: false });
+    expect(spec.policy?.exclusions).toEqual([]);
     expect(spec.policy?.manifest).toBe(false);
   });
 
   it("keeps the manifest but drops the hash when hashing is off", () => {
     const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, hash: false });
-    expect(spec.policy?.manifest).toEqual({ hash: false });
+    expect(spec.policy?.manifest).toEqual({ name: "zipkit.json", hash: false });
   });
 
   it("carries overwrite and comment through (output is composed elsewhere)", () => {
@@ -80,7 +81,7 @@ describe("planAffectingChanged", () => {
   it("is true when an option that changes the dry run lands", () => {
     expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, fileName: "x.zip" })).toBe(true);
     expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, outputDir: "/out" })).toBe(true);
-    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, junk: false })).toBe(true);
+    expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, exclude: false })).toBe(true);
     expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, strict: true })).toBe(true);
     expect(planAffectingChanged(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, overwrite: true })).toBe(true);
   });
@@ -95,7 +96,7 @@ describe("optionsEqual", () => {
     expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, level: 1 })).toBe(false);
     expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, comment: "x" })).toBe(false);
     expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, outputDir: "/a" })).toBe(false);
-    expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, junk: false })).toBe(false);
+    expect(optionsEqual(DEFAULT_OPTIONS, { ...DEFAULT_OPTIONS, exclude: false })).toBe(false);
   });
 });
 

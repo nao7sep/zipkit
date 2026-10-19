@@ -103,7 +103,7 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
         if (await fakes.outputInsideInputs(output, inputs, signal)) return { refusal: { reason: "inside" }, verified: null };
       } catch (error) { return { refusal: { reason: "error", step: "location", error }, verified: null }; }
       try {
-        if (!(await deps.verify(output, signal, onEvent, true))) return { refusal: { reason: "verify-failed", report: FAILED_REPORT }, verified: null };
+        if (!(await deps.verify(output, signal, onEvent, "zipkit.json"))) return { refusal: { reason: "verify-failed", report: FAILED_REPORT }, verified: null };
       } catch (error) { return { refusal: { reason: "error", step: "verify", error }, verified: null }; }
       const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
       try {
@@ -695,7 +695,7 @@ describe("queue engine", () => {
     // The pane's option debounce lands after the job finishes. A plan-affecting
     // option re-planned the job out of `done` and threw the result away; any edit
     // dropped the published output, leaving the archive's Trash command inert.
-    engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } });
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, exclude: false } });
     engine.update(id, { options: { ...DEFAULT_OPTIONS, level: 1 } });
     engine.update(id, { intent: TRASH });
     await tick();
@@ -808,8 +808,8 @@ describe("queue engine", () => {
   });
 
   it("keep and verify: verifies the archive against its manifest only when it has one", async () => {
-    const seen: boolean[] = [];
-    const { deps, calls } = makeDeps({ verify: async (_output, _signal, _onProgress, checkMetadata) => (seen.push(checkMetadata), true) });
+    const seen: (string | null)[] = [];
+    const { deps, calls } = makeDeps({ verify: async (_output, _signal, _onProgress, manifestName) => (seen.push(manifestName), true) });
     const engine = createQueueEngine(deps);
     const withManifest = engine.add(["/a"], DEFAULT_OPTIONS);
     const without = engine.add(["/b"], { ...DEFAULT_OPTIONS, manifest: false });
@@ -818,7 +818,7 @@ describe("queue engine", () => {
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     run(engine, without);
     await until(() => expect(engine.snapshot()[1]?.state).toBe("done"));
-    expect(seen).toEqual([true, false]);
+    expect(seen).toEqual(["zipkit.json", null]);
     expect(say(engine.snapshot()[0]?.message)).toContain("Saved and verified");
     expect(calls.trash).toEqual([]);
     expect(calls.deleted).toEqual([]);
@@ -1285,7 +1285,7 @@ describe("queue engine", () => {
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE); // plan #1 (held open)
     await until(() => expect(engine.snapshot()[0]?.state).toBe("planning"));
-    engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } }); // plan #2 (fresh)
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, exclude: false } }); // plan #2 (fresh)
     await until(() => expect(engine.snapshot()[0]?.output).toBe("/FRESH.zip"));
     release[0]!(); // release the stale plan #1 — it must NOT win
     await tick();
@@ -1300,9 +1300,9 @@ describe("queue engine", () => {
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     expect(calls.plan).toBe(1);
-    engine.update(id, { options: { ...DEFAULT_OPTIONS, junk: false } });
+    engine.update(id, { options: { ...DEFAULT_OPTIONS, exclude: false } });
     await until(() => expect(calls.plan).toBe(2));
-    expect(engine.snapshot()[0]?.options.junk).toBe(false);
+    expect(engine.snapshot()[0]?.options.exclude).toBe(false);
   });
 
   it("classifies inputs on add, storing them as entries", async () => {

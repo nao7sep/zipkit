@@ -31,17 +31,24 @@ export type DeepPartial<T> = T extends ReadonlyArray<unknown>
 // ---------------------------------------------------------------------------
 
 /**
- * An exclusion rule. Every rule excludes — the system is inclusive by default,
- * so a path is kept unless a rule matches it. There is no "include": what goes
- * into an archive is chosen by the inputs, not by re-including. To archive a
- * subset of a tree, narrow the inputs.
+ * One exclusion pattern. Every pattern excludes: the system is inclusive by
+ * default, so a path is kept unless a pattern matches it. There is no
+ * "include": what goes into an archive is chosen by the inputs. A glob
+ * without a slash matches a name at any depth, one with a slash is anchored
+ * to the archive root, `**` spans folders and a trailing slash marks a
+ * folder; a regex matches the archive path anywhere unless anchored.
  */
-export interface FilterRule {
+export interface ExclusionPattern {
   pattern: string;
   /** Pattern dialect. Defaults to `"glob"`. */
   match: "glob" | "regex";
-  /** Which entry kinds the rule excludes. Defaults to `"both"`. */
+  /** Which entry kinds it excludes. Defaults to `"both"`. */
   target: "file" | "dir" | "both";
+  /** Match regardless of case. Defaults to `false`. */
+  ignoreCase: boolean;
+  /** A short name for where the pattern comes from or what it is for, such
+   *  as `macOS`; shown beside it, never matched. */
+  label?: string;
 }
 
 export interface CompressionPolicy {
@@ -120,8 +127,10 @@ export interface ManifestPolicy {
  */
 export interface ArchivePolicy {
   // Selection
-  junk: "builtin" | "none";
-  filters: FilterRule[];
+  /** What to leave out, the whole list: the first pattern that matches a path
+   *  excludes it. Defaults to `DEFAULT_EXCLUSIONS`; an empty list keeps
+   *  everything. */
+  exclusions: ExclusionPattern[];
   emptyFiles: "keep" | "skip";
   emptyDirs: "keep" | "prune";
 
@@ -257,9 +266,7 @@ export type RuleId =
   | "path.absolute"
   | "path.traversal"
   | "path.too-long"
-  | "macos.junk"
-  | "windows.junk"
-  | "linux.junk"
+  | "exclude.pattern"
   | "entry.symlink"
   | "entry.unsupported"
   | "entry.unlisted"
@@ -315,8 +322,7 @@ export interface PathEntry {
  * Why an entry was left out of the archive, as a stable code an app can key on;
  * `excludeReason` beside it is the same in English words, which may change.
  *
- * - `junk`: the built-in OS-junk preset (its finding names the OS);
- * - `filter`: one of the caller's own filter rules;
+ * - `pattern`: one of the policy's exclusion patterns (its finding names it);
  * - `empty-dir` / `empty-file`: pruned or skipped as empty, by policy;
  * - `duplicate`: the same source reached through more than one input;
  * - `path-traversal`: its path would point outside the archive;
@@ -324,7 +330,7 @@ export interface PathEntry {
  * - `unsupported`: a socket, pipe, device or link that cannot be followed;
  *   which of these is its {@link UnsupportedKind}.
  */
-export type ExcludeCode = "junk" | "filter" | "empty-dir" | "empty-file" | "duplicate" | "path-traversal" | "symlink" | "unsupported";
+export type ExcludeCode = "pattern" | "empty-dir" | "empty-file" | "duplicate" | "path-traversal" | "symlink" | "unsupported";
 
 /** What an `unsupported` item is: ZIP stores only files, folders and links,
  *  and under `follow` a link must lead to one of those inside the inputs
@@ -525,6 +531,8 @@ export interface Manifest {
   version: string; // provenance
   repository: string;
   createdAtUtc: UtcTime;
+  /** What kind of document this is, beside its version: always `zipkit.manifest`. */
+  format: "zipkit.manifest";
   /** The document's layout version; raised when a reader must tell layouts apart. */
   formatVersion: number;
   /** The IANA zone the DOS local-time fields were rendered in. */

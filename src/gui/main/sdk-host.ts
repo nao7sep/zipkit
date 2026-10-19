@@ -23,9 +23,9 @@ export interface SdkOps {
   pathState(path: string): PathState;
   plan(inputs: string[], options: GuiOptions): PlanData;
   write(plan: PlanData): number;
-  verify(output: string, manifest: boolean): boolean;
+  verify(output: string, manifestName: string | null): boolean;
   deletePath(path: string): void;
-  inspect(archive: string, manifest: boolean): VerifyReport;
+  inspect(archive: string, manifestName: string | null): VerifyReport;
   checkRemoval(output: string, inputs: string[], removed: string[], options: GuiOptions): RemoteRemovalCheck;
   classify(paths: string[]): InputEntry[];
 }
@@ -68,6 +68,11 @@ export function failure(err: unknown): RemoteFailure {
   return { name: err.name, message: err.message };
 }
 
+/** A verification's manifest options: held to the one named, or to none. */
+function manifestCheck(manifestName: string | null): { manifest: boolean; manifestName?: string } {
+  return manifestName === null ? { manifest: false } : { manifest: true, manifestName };
+}
+
 /** The SDK as the app runs it: debug events follow the app's own switch, and
  *  main records every event itself. */
 export function appZipKit(): ZipKit {
@@ -107,8 +112,9 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       });
       return written.bytes;
     },
-    verify: (output: string, manifest: boolean) => async (signal, onEvent, _id, onProgress) =>
-      (await zip.verify(output, { manifest, signal, onEvent, onProgress })).ok,
+    // Held to the manifest named, or, given none, to the archive's own integrity.
+    verify: (output: string, manifestName: string | null) => async (signal, onEvent, _id, onProgress) =>
+      (await zip.verify(output, { ...manifestCheck(manifestName), signal, onEvent, onProgress })).ok,
     // Deletes one original for good: a folder with everything in it, a file, or
     // a link itself, never what a link points to. Only after the job's checks.
     deletePath: (target: string) => async () => {
@@ -116,8 +122,8 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     },
     // The report needs the verdict, the counts and the paths that disagree,
     // never every entry's result.
-    inspect: (archive: string, manifest: boolean) => async (signal, onEvent, _id, onProgress) => {
-      const data = await zip.verify(archive, { manifest, signal, onEvent, onProgress });
+    inspect: (archive: string, manifestName: string | null) => async (signal, onEvent, _id, onProgress) => {
+      const data = await zip.verify(archive, { ...manifestCheck(manifestName), signal, onEvent, onProgress });
       return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra } satisfies VerifyReport;
     },
     checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions) => async (signal, onEvent, _id, onProgress) => {

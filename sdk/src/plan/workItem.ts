@@ -67,13 +67,11 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       originalPath: dir.archivePath,
       type: "dir",
       excluded: true,
-      excludeCode: dir.rule ? "junk" : "filter",
+      excludeCode: "pattern",
       excludeReason: dir.reason,
       method: "store",
       emitExplicit: false,
-      findings: dir.rule
-        ? [finding(dir.rule, dir.archivePath, `directory excluded by the junk preset`)]
-        : [],
+      findings: [finding("exclude.pattern", dir.archivePath, `excluded by ${dir.reason}`)],
       transformations: [],
     });
   }

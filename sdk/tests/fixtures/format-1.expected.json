@@ -1,8 +1,191 @@
 {
+  "format": "zipkit.manifest",
   "formatVersion": 1,
   "policy": {
-    "junk": "builtin",
-    "filters": [],
+    "exclusions": [
+      {
+        "pattern": ".DS_Store",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": "__MACOSX/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": "._*",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".AppleDouble/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": "Icon\r",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".Spotlight-V100",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".DocumentRevisions-V100",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".TemporaryItems",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".Trashes",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".fseventsd",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".apdisk",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".com.apple.timemachine.donotpresent",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".VolumeIcon.icns",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".localized",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".AppleDB",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": ".AppleDesktop",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "macOS"
+      },
+      {
+        "pattern": "Thumbs.db",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "Windows"
+      },
+      {
+        "pattern": "ehthumbs.db",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "Windows"
+      },
+      {
+        "pattern": "ehthumbs_vista.db",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "Windows"
+      },
+      {
+        "pattern": "desktop.ini",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "Windows"
+      },
+      {
+        "pattern": "$RECYCLE.BIN/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "label": "Windows"
+      },
+      {
+        "pattern": "System Volume Information/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "label": "Windows"
+      },
+      {
+        "pattern": ".Trash-*/",
+        "match": "glob",
+        "target": "dir",
+        "ignoreCase": true,
+        "label": "Linux"
+      },
+      {
+        "pattern": ".directory",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "Linux"
+      },
+      {
+        "pattern": ".nfs*",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "Linux"
+      },
+      {
+        "pattern": ".fuse_hidden*",
+        "match": "glob",
+        "target": "both",
+        "ignoreCase": true,
+        "label": "Linux"
+      }
+    ],
     "emptyFiles": "keep",
     "emptyDirs": "keep",
     "names": {
@@ -209,12 +392,12 @@
       "archivePath": ".DS_Store",
       "originalPath": ".DS_Store",
       "type": "file",
-      "reason": "junk: .DS_Store"
+      "reason": "pattern .DS_Store (macOS)"
     }
   ],
   "findings": [
     {
-      "rule": "macos.junk",
+      "rule": "exclude.pattern",
       "severity": "info",
       "path": ".DS_Store"
     },

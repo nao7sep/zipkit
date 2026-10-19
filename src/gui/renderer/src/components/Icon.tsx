@@ -48,3 +48,13 @@ export function ChevronIcon({ open }: { open: boolean }): ReactElement {
     </svg>
   );
 }
+
+/** An arrow for moving a row up or down a list. */
+export function MoveIcon({ direction }: { direction: "up" | "down" }): ReactElement {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false"
+      style={{ display: "inline-block", transform: direction === "down" ? "rotate(180deg)" : undefined }}>
+      <path d="M2.5 7.5L6 4l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

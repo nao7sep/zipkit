@@ -2,9 +2,9 @@
  * Compare a fresh plan of an archive's inputs with the archive's own manifest:
  * the check a caller makes before it deletes the originals. Only included
  * files and symlinks count, each by its input-relative source path, type, size
- * and modification time. Excluded entries (OS junk a file manager writes into
- * an open folder) and folders, whose times move whenever their contents do,
- * are left out, so an untouched tree always matches. The comparison runs on
+ * and modification time. Excluded entries (such as the clutter a file manager
+ * writes into an open folder) and folders, whose times move whenever their
+ * contents do, are left out, so an untouched tree always matches. The comparison runs on
  * source paths, the manifest's key; {@link onDisk} turns its answer into the
  * places on disk a person would look.
  *

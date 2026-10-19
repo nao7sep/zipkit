@@ -36,8 +36,8 @@ it("keeps originals when a real archive's file type changes after publication", 
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
-    inspect: async (archive, signal, onEvent, checkMetadata) => {
-      const data = await zip.verify(archive, { manifest: checkMetadata, signal, onEvent });
+    inspect: async (archive, signal, onEvent, manifestName) => {
+      const data = await zip.verify(archive, manifestName === null ? { signal, onEvent } : { manifest: true, manifestName, signal, onEvent });
       return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     trash, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,

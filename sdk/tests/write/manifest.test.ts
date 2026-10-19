@@ -99,14 +99,16 @@ describe("buildManifest", () => {
 
   it("opens with what the document is, the app, its version, repository, time and format", () => {
     const doc = buildManifest(plan, DEFAULT_POLICY, [], 0n, "UTC");
-    expect(Object.keys(doc).slice(0, 6)).toEqual([
+    expect(Object.keys(doc).slice(0, 7)).toEqual([
       "about",
       "app",
       "version",
       "repository",
       "createdAtUtc",
+      "format",
       "formatVersion",
     ]);
+    expect(doc.format).toBe("zipkit.manifest");
     expect(doc.about).toMatch(/^ZipKit wrote this manifest/);
     expect(doc.app).toBe("ZipKit");
     expect(doc.repository).toBe("https://github.com/nao7sep/zipkit");
@@ -251,9 +253,9 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
     const comment = "release \u0002 build ".repeat(50);
 
     const policy = resolvePolicy(undefined, {
-      filters: [
-        { pattern: `**/${"p".repeat(120)}`, match: "glob", target: "both" },
-        { pattern: "a".repeat(90), match: "regex", target: "file" },
+      exclusions: [
+        { pattern: `**/${"p".repeat(120)}`, match: "glob", target: "both", ignoreCase: false, label: "l".repeat(40) },
+        { pattern: "a".repeat(90), match: "regex", target: "file", ignoreCase: true },
       ],
       compression: { store: [".aaa", ".bbb", ".ccc"] },
       timeZone: "Asia/Tokyo",

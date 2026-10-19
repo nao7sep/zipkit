@@ -492,7 +492,7 @@ describe("planReport", () => {
       }),
       entry({ archivePath: "b/X", findings: [{ rule: "collision.case", severity: "error", path: "b/X", message: "case-only collision" }] }),
       entry({ archivePath: "b/CON_.txt", originalPath: "b/CON.txt", findings: [{ rule: "name.reserved", severity: "info", path: "b/CON.txt", message: "suffixed", fix: { kind: "rename", to: "b/CON_.txt" } }] }),
-      entry({ archivePath: "a/.DS_Store", excluded: true, excludeReason: "junk: .DS_Store", findings: [{ rule: "macos.junk", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" }] }),
+      entry({ archivePath: "a/.DS_Store", excluded: true, excludeReason: "junk: .DS_Store", findings: [{ rule: "exclude.pattern", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" }] }),
       entry({ archivePath: "a/kept.txt" }),
     ]);
     expect(planReport(plan, en)).toEqual([
@@ -506,7 +506,7 @@ describe("planReport", () => {
         }],
       },
       { kind: "renamed", rows: [{ path: "b/CON_.txt", from: "b/CON.txt", changes: ["Reserved device name given a suffix"] }] },
-      { kind: "excluded", rows: [{ path: "a/.DS_Store", changes: ["Excluded by the junk preset"] }] },
+      { kind: "excluded", rows: [{ path: "a/.DS_Store", changes: ["Left out by an exclusion pattern"] }] },
     ]);
   });
   it("gives a renamed folder one row, and a file inside it a row only for its own change", () => {
@@ -627,14 +627,14 @@ describe("planReport", () => {
   it("surfaces an excluded entry that has no finding (custom exclude, pruned empty dir)", () => {
     const plan = planOf([
       entry({ archivePath: "keep.txt" }),
-      entry({ archivePath: "build/", type: "dir", excluded: true, excludeCode: "filter", excludeReason: "exclude rule: build/" }),
+      entry({ archivePath: "build/", type: "dir", excluded: true, excludeCode: "pattern", excludeReason: "pattern build/" }),
       entry({ archivePath: "empty/", type: "dir", excluded: true, excludeCode: "empty-dir", excludeReason: "empty directory pruned" }),
     ]);
     expect(planReport(plan, en)).toEqual([
       {
         kind: "excluded",
         rows: [
-          { path: "build/", changes: ["Excluded: exclude rule: build/"], dir: true },
+          { path: "build/", changes: ["Excluded: pattern build/"], dir: true },
           { path: "empty/", changes: ["Empty directory pruned"], dir: true },
         ],
       },
@@ -661,9 +661,9 @@ describe("progressRuns", () => {
     const events = [
       jobEvent(1, { event: "session.start", version: "0.1.0", concurrency: 2, chunkSize: 1 }),
       jobEvent(2, { event: "scan.start", inputs: 1, time: "2026-06-14T05:00:01.000Z" }),
-      jobEvent(3, { event: "entry.flagged", rule: "macos.junk", path: "a", severity: "info" }),
+      jobEvent(3, { event: "entry.flagged", rule: "exclude.pattern", path: "a", severity: "info" }),
       jobEvent(4, { event: "entry.flagged", rule: "name.reserved", path: "b", severity: "warning", level: "warn" }),
-      jobEvent(5, { event: "entry.flagged", rule: "macos.junk", path: "c", severity: "info" }),
+      jobEvent(5, { event: "entry.flagged", rule: "exclude.pattern", path: "c", severity: "info" }),
       jobEvent(6, { event: "plan.done", total: 3, included: 1, excluded: 2, renamed: 0, warnings: 1, errors: 0, writable: true }),
     ];
     const runs = progressRuns(events);
@@ -674,7 +674,7 @@ describe("progressRuns", () => {
         "2026-06-14T05:00:01.000Z",
         [
           "Scanning 1 input",
-          "Junk files excluded: 2 entries",
+          "Left out by exclusion patterns: 2 entries",
           "Reserved device names: 1 entry",
           "Plan complete: 1 included, 2 excluded, 0 renamed, 1 warning, 0 errors",
         ],
@@ -726,7 +726,7 @@ describe("progressRuns", () => {
     expect(findingKind("name.nfd", "info", en)).toBe("Names normalized to NFC");
     expect(findingKind("name.nfd", "warning", en)).toBe("Names not in NFC");
     expect(findingKind("path.too-long", "warning", en)).toBe("Paths too long for Windows");
-    expect(findingKind("macos.junk", "info", en)).toBe("Junk files excluded");
+    expect(findingKind("exclude.pattern", "info", en)).toBe("Left out by exclusion patterns");
     expect(findingKind("entry.symlink", "warning", en)).toBe("Symbolic links");
     expect(findingKind("entry.unsupported", "info", en)).toBe("Special files left out");
     expect(findingKind("verify.crc32-mismatch", "error", en)).toBe("CRC-32 mismatches");
@@ -966,7 +966,7 @@ describe("Details pane sections and orders", () => {
       findings: [{ rule, severity, path: archivePath, message: rule }],
     });
     const plan = { writable: false, summary: { total: 3, included: 2, excluded: 1, renamed: 0, warnings: 1, errors: 1, zip64: false, sourceBytes: 0 }, findings: [],
-      entries: [entry("a/.DS_Store", "macos.junk", "info", true), entry("long", "path.too-long", "warning"), entry("A", "collision.case", "error")] };
+      entries: [entry("a/.DS_Store", "exclude.pattern", "info", true), entry("long", "path.too-long", "warning"), entry("A", "collision.case", "error")] };
     const done = job({ state: "done", output: "/out/a.zip", archiveStatus: "written", summary: plan.summary });
     const cards = detailsCards(done, plan as never, { missing: ["m"], extra: [] }, en, 5);
     expect(cards.map((card) => [card.key, card.level, card.open])).toEqual([
@@ -974,7 +974,7 @@ describe("Details pane sections and orders", () => {
       ["verify:missing", "error", true],
       ["rule:path.too-long", "warning", true],
       ["archive", "info", true],
-      ["rule:macos.junk", "info", true],
+      ["rule:exclude.pattern", "info", true],
     ]);
     // A card with more rows than the limit folds to its count, whatever its level.
     const many = { ...plan, entries: Array.from({ length: 6 }, (_, i) => entry(`d${i}`, "collision.case", "error")) };

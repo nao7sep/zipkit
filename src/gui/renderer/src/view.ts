@@ -371,9 +371,7 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
   "path.absolute": "finding.pathAbsolute",
   "path.traversal": "finding.pathTraversal",
   "path.too-long": "finding.pathTooLong",
-  "macos.junk": "finding.junk",
-  "windows.junk": "finding.junk",
-  "linux.junk": "finding.junk",
+  "exclude.pattern": "finding.excludedByPattern",
   "name.suspicious": "finding.suspicious",
   "entry.unsupported": "finding.unsupported",
   "entry.unlisted": "finding.unlisted",
@@ -426,9 +424,7 @@ function excludedText(entry: Pick<PlannedEntry, "excludeCode" | "excludeReason">
 
 /** The rules whose finding already says why its entry was left out. */
 const EXCLUDING_RULES = new Set([
-  "macos.junk",
-  "windows.junk",
-  "linux.junk",
+  "exclude.pattern",
   "path.traversal",
   "entry.symlink",
   "entry.unsupported",
@@ -536,9 +532,7 @@ const RULE_KINDS: Record<string, MessageKey> = {
   "path.absolute": "findingKind.pathAbsolute",
   "path.traversal": "findingKind.pathTraversal",
   "path.too-long": "findingKind.pathTooLong",
-  "macos.junk": "findingKind.junk",
-  "windows.junk": "findingKind.junk",
-  "linux.junk": "findingKind.junk",
+  "exclude.pattern": "findingKind.excludedByPattern",
   "entry.symlink": "findingKind.symlink",
   "entry.unsupported": "findingKind.unsupported",
   "entry.unlisted": "findingKind.unlisted",
@@ -893,9 +887,7 @@ const KIND_INFO: Record<string, MessageKey> = {
   "path.absolute": "kindInfo.paths",
   "path.traversal": "kindInfo.paths",
   "path.too-long": "kindInfo.pathTooLong",
-  "macos.junk": "kindInfo.junk",
-  "windows.junk": "kindInfo.junk",
-  "linux.junk": "kindInfo.junk",
+  "exclude.pattern": "kindInfo.exclusions",
   "entry.duplicate": "kindInfo.duplicate",
   "entry.symlink": "kindInfo.symlink",
   "entry.unsupported": "kindInfo.special",
@@ -905,7 +897,9 @@ const KIND_INFO: Record<string, MessageKey> = {
   "output.exists": "kindInfo.outputExists",
 };
 
-const JUNK_RULES = new Set(["macos.junk", "windows.junk", "linux.junk"]);
+/** What the exclusion patterns leave out is what the user listed to leave out,
+ *  so like OS clutter it is not raised to a warning when originals go. */
+const PATTERN_RULES = new Set(["exclude.pattern"]);
 
 /** The separator a path written by the computer uses: a Windows path has a
  *  drive or a backslash and no forward slash. */
@@ -936,7 +930,7 @@ const LEVEL_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
  *  changed when a removal was refused, and the archive itself once made, the
  *  ones that block first. When the originals are to be removed, what is left
  *  out goes with them unarchived, which each excluded card says; anything but
- *  OS junk is then worth a look. */
+ *  what the exclusion patterns matched is then worth a look. */
 export function detailsCards(
   job: Job,
   plan: PlanReport | null,
@@ -944,11 +938,11 @@ export function detailsCards(
   t: Translator,
   rowLimit: number,
 ): DetailsCard[] {
-  const cards = new Map<string, DetailsCard & { excluded: boolean; junk: boolean }>();
+  const cards = new Map<string, DetailsCard & { excluded: boolean; patterned: boolean }>();
   const card = (key: string, title: string, level: Severity, about?: MessageKey) => {
     let found = cards.get(key);
     if (!found) {
-      found = { key, title, level, rows: [], names: [], open: false, excluded: false, junk: false, ...(about ? { about: t.t(about) } : {}) };
+      found = { key, title, level, rows: [], names: [], open: false, excluded: false, patterned: false, ...(about ? { about: t.t(about) } : {}) };
       cards.set(key, found);
     }
     return found;
@@ -966,7 +960,7 @@ export function detailsCards(
         // with the originals (the SDK's `unarchived`).
         if (entry.excluded && entry.excludeCode !== "duplicate" && EXCLUDING_RULES.has(f.rule)) {
           c.excluded = true;
-          c.junk = JUNK_RULES.has(f.rule);
+          c.patterned = PATTERN_RULES.has(f.rule);
         }
       }
       if (entry.excluded && !entry.findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
@@ -999,7 +993,7 @@ export function detailsCards(
   // What is left out leaves with the originals when they are removed.
   const removing = job.intent.originals !== "keep" && job.state !== "done" && job.state !== "failed";
   const result: DetailsCard[] = [];
-  for (const { excluded, junk, ...c } of cards.values()) {
+  for (const { excluded, patterned, ...c } of cards.values()) {
     if (c.rows.length === 0) continue;
     const shown: DetailsCard = { ...c, names: namesOf(c.rows, t.locale) };
     const texts = new Set(c.rows.map((row) => row.changes.join(" ")));
@@ -1008,7 +1002,7 @@ export function detailsCards(
     if (c.key === "rule:output.exists") shown.countless = true;
     if (excluded && removing) {
       shown.note = t.t(job.intent.originals === "delete" ? "details.deletedUnarchived" : "details.trashedUnarchived");
-      if (!junk && shown.level === "info") shown.level = "warning";
+      if (!patterned && shown.level === "info") shown.level = "warning";
     }
     shown.open = shown.names.length <= rowLimit;
     result.push(shown);
@@ -1050,7 +1044,7 @@ function archiveCard(job: Job, t: Translator): DetailsCard | null {
   facts.push({
     label: t.t("details.factManifest"),
     value: job.options.manifest
-      ? (job.options.hash ? t.t("details.manifestWithHash", { file: "zipkit.json" }) : "zipkit.json")
+      ? (job.options.hash ? t.t("details.manifestWithHash", { file: job.options.manifestName }) : job.options.manifestName)
       : t.t("details.manifestNone"),
   });
   if (job.summary?.zip64) facts.push({ label: t.t("details.factFormat"), value: "Zip64" });

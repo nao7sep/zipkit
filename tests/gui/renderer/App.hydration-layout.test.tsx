@@ -436,8 +436,8 @@ describe("mounted run consent across queue projection changes", () => {
       fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "delivery" } });
       const useDefaults = screen.getByRole("checkbox", { name: "Use the parameters from Settings" });
       fireEvent.click(useDefaults);
-      fireEvent.click(screen.getByRole("checkbox", { name: /Drop OS junk files/ }));
-      expect(engine.snapshot()[0]?.options).toMatchObject({ junk: false, fileName: "delivery" });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Leave out what the exclusion patterns match/ }));
+      expect(engine.snapshot()[0]?.options).toMatchObject({ exclude: false, fileName: "delivery" });
       fireEvent.click(useDefaults);
       expect(engine.snapshot()[0]?.options).toEqual({ ...DEFAULT_OPTIONS, fileName: "delivery" });
     } finally { mounted?.unmount(); await engine.shutdown(); }
@@ -569,10 +569,10 @@ describe("the Archive pane layout", () => {
     fireEvent.click(await screen.findByRole("option"));
     const fold = screen.getByRole("button", { name: /Parameters/ });
     expect(fold.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("checkbox", { name: /Drop OS junk files/ })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Leave out what the exclusion patterns match/ })).toBeNull();
     fireEvent.click(fold);
     expect(fold.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("checkbox", { name: /Drop OS junk files/ })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /Leave out what the exclusion patterns match/ })).toBeTruthy();
     fireEvent.click(fold);
     expect(fold.getAttribute("aria-expanded")).toBe("false");
     // Unticking is for editing, so the parameters open with it.

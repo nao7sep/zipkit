@@ -1,17 +1,20 @@
 /**
  * The options → ArchiveSpec mapping: the GUI's format-coercion edge. It turns
  * the visible option state into a typed spec; the SDK still owns all validation
- * and every default not set here. Pure
- * (no Electron, no Node, no SDK runtime), so it is unit-tested directly.
+ * and every default not set here. Pure (no Electron, no Node; from the SDK
+ * only its types and its plain-data defaults), so it is unit-tested directly.
  */
 
-import type { ArchivePolicy, ArchiveSpec, DeepPartial, InvalidCharStyle, NameAction } from "zipkitsdk/types";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExclusionPattern, InvalidCharStyle, NameAction } from "zipkitsdk/types";
+import { DEFAULT_EXCLUSIONS } from "zipkitsdk/defaults";
 import type { LanguagePreference } from "./i18n/languages.js";
 
 /** The visible option state for one job. Defaults mirror the SDK's own defaults. */
 export interface GuiOptions {
-  /** Built-in OS-junk preset on. */
-  junk: boolean;
+  /** Leave out what {@link GuiOptions.exclusions} matches. */
+  exclude: boolean;
+  /** The exclusion patterns, the whole list, in order. */
+  exclusions: ExclusionPattern[];
   /** Make every name-portability issue block (error) instead of being auto-fixed. */
   strict: boolean;
   /** How characters Windows forbids in names are replaced (the SDK's styles). */
@@ -20,8 +23,10 @@ export interface GuiOptions {
   level: number;
   symlinks: "ignore" | "preserve" | "follow";
   emptyDirs: "keep" | "prune";
-  /** Embed the `zipkit.json` manifest. */
+  /** Embed the manifest. */
   manifest: boolean;
+  /** The manifest's file name inside the archive. */
+  manifestName: string;
   /** Record a per-file SHA-256 in the manifest. */
   hash: boolean;
   /** Archive comment (empty = none). */
@@ -35,13 +40,15 @@ export interface GuiOptions {
 }
 
 export const DEFAULT_OPTIONS: GuiOptions = {
-  junk: true,
+  exclude: true,
+  exclusions: DEFAULT_EXCLUSIONS.map((p) => ({ ...p })),
   strict: false,
   invalidChars: "tidy",
   level: 6,
   symlinks: "ignore",
   emptyDirs: "keep",
   manifest: true,
+  manifestName: "zipkit.json",
   hash: true,
   comment: "",
   outputDir: "",
@@ -57,7 +64,7 @@ export const DEFAULT_OPTIONS: GuiOptions = {
  * GuiOptions (where the archive goes, its name, whether it may replace a file,
  * its comment) belongs to one job and never comes from Settings.
  */
-export const PARAMETER_KEYS = ["junk", "strict", "invalidChars", "level", "symlinks", "emptyDirs", "manifest", "hash"] as const satisfies readonly (keyof GuiOptions)[];
+export const PARAMETER_KEYS = ["exclude", "exclusions", "strict", "invalidChars", "level", "symlinks", "emptyDirs", "manifest", "manifestName", "hash"] as const satisfies readonly (keyof GuiOptions)[];
 export type ArchiveParameters = Pick<GuiOptions, (typeof PARAMETER_KEYS)[number]>;
 
 /** Just the parameters of a job's options. */
@@ -67,15 +74,27 @@ export function parametersOf(options: ArchiveParameters): ArchiveParameters {
 
 export const DEFAULT_PARAMETERS: ArchiveParameters = parametersOf(DEFAULT_OPTIONS);
 
+/** Whether two option values are the same: equal primitives, or exclusion
+ *  lists with the same patterns in the same order. */
+function sameValue(a: unknown, b: unknown): boolean {
+  return a === b || (Array.isArray(a) && Array.isArray(b) && JSON.stringify(a) === JSON.stringify(b));
+}
+
+/** Whether two exclusion lists hold the same patterns in the same order. */
+export function sameExclusions(a: readonly ExclusionPattern[], b: readonly ExclusionPattern[]): boolean {
+  return sameValue(a, b);
+}
+
 /** Whether two option states agree on every parameter, so a job still uses
  *  the defaults whatever its own destination, name and comment. */
 export function parametersEqual(a: ArchiveParameters, b: ArchiveParameters): boolean {
-  return PARAMETER_KEYS.every((key) => a[key] === b[key]);
+  return PARAMETER_KEYS.every((key) => sameValue(a[key], b[key]));
 }
 
 /** A new job's options: the default parameters, with nothing of its own yet. */
 export function newJobOptions(defaults: ArchiveParameters): GuiOptions {
-  return { ...DEFAULT_OPTIONS, ...parametersOf(defaults) };
+  const options = { ...DEFAULT_OPTIONS, ...parametersOf(defaults) };
+  return { ...options, exclusions: options.exclusions.map((p) => ({ ...p })) };
 }
 
 export const THEME_PREFERENCES = ["system", "light", "dark"] as const;
@@ -159,11 +178,11 @@ export const DEFAULT_SETTINGS: GuiSettings = {
  *  layer cannot import. */
 export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
   const policy: DeepPartial<ArchivePolicy> = {
-    junk: o.junk ? "builtin" : "none",
+    exclusions: o.exclude ? o.exclusions.map((p) => ({ ...p })) : [],
     symlinks: o.symlinks,
     emptyDirs: o.emptyDirs,
     compression: { level: o.level },
-    manifest: o.manifest ? { hash: o.hash } : false,
+    manifest: o.manifest ? { name: o.manifestName, hash: o.hash } : false,
   };
   policy.names = { invalidCharStyle: o.invalidChars };
   if (o.strict) {
@@ -195,12 +214,14 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
  * composition actually feed the plan.
  */
 const PLAN_AFFECTING: (keyof GuiOptions)[] = [
-  "junk",
+  "exclude",
+  "exclusions",
   "strict",
   "invalidChars",
   "symlinks",
   "emptyDirs",
   "manifest",
+  "manifestName",
   "outputDir",
   "fileName",
   "overwrite",
@@ -208,12 +229,11 @@ const PLAN_AFFECTING: (keyof GuiOptions)[] = [
 
 /** Whether two option states differ in a way that requires a fresh dry run. */
 export function planAffectingChanged(a: GuiOptions, b: GuiOptions): boolean {
-  return PLAN_AFFECTING.some((k) => a[k] !== b[k]);
+  return PLAN_AFFECTING.some((k) => !sameValue(a[k], b[k]));
 }
 
-/** Whether two option states are identical across every field (all GuiOptions
- *  fields are primitives, so `===` per field is a full comparison). Used to decide
+/** Whether two option states are identical across every field. Used to decide
  *  whether a job is still on the defaults vs customized. */
 export function optionsEqual(a: GuiOptions, b: GuiOptions): boolean {
-  return (Object.keys(DEFAULT_OPTIONS) as (keyof GuiOptions)[]).every((k) => a[k] === b[k]);
+  return (Object.keys(DEFAULT_OPTIONS) as (keyof GuiOptions)[]).every((k) => sameValue(a[k], b[k]));
 }

@@ -7,14 +7,15 @@
 
 import { describe, expect, it } from "vitest";
 import { DEFAULT_POLICY, NAME_DEFAULTS, resolvePolicy } from "../src/policy.ts";
-import type { FilterRule } from "../src/types.ts";
+import type { ExclusionPattern } from "../src/types.ts";
+import { DEFAULT_EXCLUSIONS } from "../src/filter/defaults.ts";
 
-const ruleA: FilterRule = { pattern: "a", match: "glob", target: "both" };
-const ruleB: FilterRule = { pattern: "b", match: "glob", target: "both" };
+const ruleA: ExclusionPattern = { pattern: "a", match: "glob", target: "both", ignoreCase: false };
+const ruleB: ExclusionPattern = { pattern: "b", match: "glob", target: "both", ignoreCase: false };
 
 describe("DEFAULT_POLICY", () => {
   it("uses the documented defaults", () => {
-    expect(DEFAULT_POLICY.junk).toBe("builtin");
+    expect(DEFAULT_POLICY.exclusions).toEqual(DEFAULT_EXCLUSIONS);
     expect(DEFAULT_POLICY.emptyFiles).toBe("keep");
     expect(DEFAULT_POLICY.emptyDirs).toBe("keep");
     expect(DEFAULT_POLICY.names).toEqual(NAME_DEFAULTS);
@@ -43,10 +44,10 @@ describe("resolvePolicy", () => {
 
   it("merges per-call over instance over defaults", () => {
     const resolved = resolvePolicy(
-      { junk: "none", symlinks: "preserve" },
+      { exclusions: [], symlinks: "preserve" },
       { symlinks: "follow" },
     );
-    expect(resolved.junk).toBe("none");
+    expect(resolved.exclusions).toEqual([]);
     expect(resolved.symlinks).toBe("follow");
   });
 
@@ -59,8 +60,8 @@ describe("resolvePolicy", () => {
   });
 
   it("replaces list fields wholesale rather than concatenating", () => {
-    const resolved = resolvePolicy({ filters: [ruleA] }, { filters: [ruleB] });
-    expect(resolved.filters).toEqual([ruleB]);
+    const resolved = resolvePolicy({ exclusions: [ruleA] }, { exclusions: [ruleB] });
+    expect(resolved.exclusions).toEqual([ruleB]);
   });
 
   it("replaces the nested compression.store list rather than concatenating", () => {
@@ -78,10 +79,10 @@ describe("resolvePolicy", () => {
     // A list set only on the instance layer survives — replacement means "the
     // most specific layer that set it wins," not "drop unless the call sets it."
     const resolved = resolvePolicy(
-      { filters: [ruleA], compression: { store: ["a"] } },
+      { exclusions: [ruleA], compression: { store: ["a"] } },
       undefined,
     );
-    expect(resolved.filters).toEqual([ruleA]);
+    expect(resolved.exclusions).toEqual([ruleA]);
     expect(resolved.compression.store).toEqual([".a"]);
   });
 
@@ -122,8 +123,8 @@ describe("resolvePolicy", () => {
   });
 
   it("does not mutate DEFAULT_POLICY across calls", () => {
-    resolvePolicy(undefined, { filters: [ruleA], compression: { store: [".x"] } });
-    expect(DEFAULT_POLICY.filters).toEqual([]);
+    resolvePolicy(undefined, { exclusions: [ruleA], compression: { store: [".x"] } });
+    expect(DEFAULT_POLICY.exclusions).toEqual(DEFAULT_EXCLUSIONS);
     expect(DEFAULT_POLICY.compression.store).toEqual([]);
   });
 

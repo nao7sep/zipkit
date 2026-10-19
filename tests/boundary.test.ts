@@ -32,7 +32,7 @@ function imports(dirs: string[]): Array<{ file: string; spec: string }> {
 
 /** Whether a specifier reaches into the SDK's package other than by name. */
 function intoPackage(file: string, spec: string): boolean {
-  if (!spec.startsWith(".")) return /^zipkitsdk\/(?!types$|testing$)/.test(spec);
+  if (!spec.startsWith(".")) return /^zipkitsdk\/(?!types$|defaults$|testing$)/.test(spec);
   return path.resolve(path.dirname(file), spec).startsWith(path.resolve("sdk"));
 }
 

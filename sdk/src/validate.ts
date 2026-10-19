@@ -39,11 +39,13 @@ function isSafePathComponent(name: string): boolean {
   return fullFixSegment(segment, "_") === segment;
 }
 
-const filterRuleSchema = z
+const exclusionSchema = z
   .strictObject({
-    pattern: z.string(),
+    pattern: z.string().min(1),
     match: z.enum(["glob", "regex"]).default("glob"),
     target: z.enum(["file", "dir", "both"]).default("both"),
+    ignoreCase: z.boolean().default(false),
+    label: z.string().optional(),
   })
   .refine(
     (rule) => {
@@ -61,8 +63,7 @@ const filterRuleSchema = z
 const nameActionSchema = z.enum(["fix", "warn", "error", "none"]);
 
 const partialPolicySchema = z.strictObject({
-  junk: z.enum(["builtin", "none"]).optional(),
-  filters: z.array(filterRuleSchema).optional(),
+  exclusions: z.array(exclusionSchema).optional(),
   emptyFiles: z.enum(["keep", "skip"]).optional(),
   emptyDirs: z.enum(["keep", "prune"]).optional(),
   names: z

@@ -46,10 +46,11 @@ const byPath = (a: { archivePath: unknown }, b: { archivePath: unknown }): numbe
  *  why, the findings and the summary. */
 export function manifestEssentials(manifest: Record<string, unknown>): unknown {
   const m = manifest as {
-    formatVersion: number; policy: unknown; summary: unknown;
+    format: string; formatVersion: number; policy: unknown; summary: unknown;
     entries: Array<Record<string, unknown>>; excluded: unknown; findings: Array<Record<string, unknown>>;
   };
   return {
+    format: m.format,
     formatVersion: m.formatVersion,
     policy: m.policy,
     summary: m.summary,

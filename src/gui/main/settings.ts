@@ -24,12 +24,28 @@ function freshSettings(): GuiSettings {
   return { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_PARAMETERS } };
 }
 
+/** One exclusion pattern as the SDK takes it; a regex must compile. */
+function isExclusion(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  const p = value as Record<string, unknown>;
+  if (typeof p.pattern !== "string" || p.pattern === "" || (p.match !== "glob" && p.match !== "regex")) return false;
+  if (p.target !== "file" && p.target !== "dir" && p.target !== "both") return false;
+  if (typeof p.ignoreCase !== "boolean" || (p.label !== undefined && typeof p.label !== "string")) return false;
+  if (p.match === "regex") {
+    try { new RegExp(p.pattern); } catch { return false; }
+  }
+  return true;
+}
+
 const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
-  ["junk", (v) => typeof v === "boolean"], ["strict", (v) => typeof v === "boolean"],
+  ["exclude", (v) => typeof v === "boolean"],
+  ["exclusions", (v) => Array.isArray(v) && v.every(isExclusion)],
+  ["strict", (v) => typeof v === "boolean"],
   ["invalidChars", (v) => v === "tidy" || v === "replace" || v === "fullwidth" || v === "remove"],
   ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
   ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
   ["emptyDirs", (v) => v === "keep" || v === "prune"], ["manifest", (v) => typeof v === "boolean"],
+  ["manifestName", (v) => typeof v === "string" && singleLine(v) === v && v.trim() !== ""],
   ["hash", (v) => typeof v === "boolean"], ["comment", (v) => typeof v === "string"],
   ["outputDir", (v) => typeof v === "string"], ["fileName", (v) => typeof v === "string"],
   ["overwrite", (v) => typeof v === "boolean"],

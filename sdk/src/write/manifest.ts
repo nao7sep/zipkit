@@ -34,6 +34,9 @@ const ABOUT =
   "original name, size, CRC-32 and times, the entries left out, and what ZipKit found and " +
   "fixed. ZipKit's Verify reads it to confirm the archive is complete and unchanged.";
 const REPOSITORY = "https://github.com/nao7sep/zipkit";
+/** The manifest's format name, recorded beside its version so the document
+ *  says what it is; a reader refuses a document that names another. */
+export const MANIFEST_FORMAT = "zipkit.manifest";
 /** The manifest's format version (store-recovery conventions); a reader refuses a newer one. */
 export const MANIFEST_FORMAT_VERSION = 1;
 
@@ -143,6 +146,7 @@ export function buildManifest(
     version: VERSION,
     repository: REPOSITORY,
     createdAtUtc: utcTime(createdNs),
+    format: MANIFEST_FORMAT,
     formatVersion: MANIFEST_FORMAT_VERSION,
     // The IANA zone the archive's DOS local-time fields were rendered in, so the
     // lossy local field stays interpretable.
@@ -159,9 +163,9 @@ export function buildManifest(
     },
     timeRange: computeTimeRange(entries),
     entries: entries.map(manifestEntry),
-    // Dropped entries (junk, ignored symlinks, pruned directories, traversal) are
-    // not in the archive, so they are recorded separately with the reason — the
-    // matching rule is also in `findings`.
+    // Dropped entries (an exclusion pattern's matches, ignored symlinks, pruned
+    // directories, traversal) are not in the archive, so they are recorded
+    // separately with the reason; the matching rule is also in `findings`.
     excluded,
     findings: plan.findings,
   };

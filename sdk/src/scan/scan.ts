@@ -298,7 +298,6 @@ async function walkTree(
                 diskPath: path.join(anchors.disk, path.relative(absDir, abs)),
                 reason: rule.describe,
               };
-              if (rule.junkRule) pruned.rule = rule.junkRule;
               ctx.prunedDirs.push(pruned);
               continue;
             }

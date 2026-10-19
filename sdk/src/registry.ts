@@ -32,9 +32,7 @@ export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
   "path.absolute": { severity: "warning", disposition: "strip prefix" },
   "path.traversal": { severity: "error", disposition: "abort" },
   "path.too-long": { severity: "warning", disposition: "keep" },
-  "macos.junk": { severity: "info", disposition: "exclude" },
-  "windows.junk": { severity: "info", disposition: "exclude" },
-  "linux.junk": { severity: "info", disposition: "exclude" },
+  "exclude.pattern": { severity: "info", disposition: "exclude" },
   "entry.symlink": { severity: "warning", disposition: "exclude" },
   // A socket, FIFO or device, or under `follow` a link that leads nowhere
   // archivable: ZIP cannot store it, so it is left out and reported.

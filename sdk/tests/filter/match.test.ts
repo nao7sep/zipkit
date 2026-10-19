@@ -2,19 +2,21 @@
  * Exclusion engine tests — exercised hard, because archive paths are full of
  * edge cases. Covers gitignore-flavoured glob anchoring, the `**` span, glob
  * metacharacters, the regex dialect, dotfiles, case sensitivity,
- * target applicability, the junk preset, ordering/reporting, and the inclusive
+ * target applicability, the default list, ordering/reporting, and the inclusive
  * default.
  */
 
 import { describe, expect, it } from "vitest";
 import { buildMatcher } from "../../src/filter/match.ts";
-import type { FilterRule } from "../../src/types.ts";
+import { DEFAULT_EXCLUSIONS } from "../../src/filter/defaults.ts";
+import type { ExclusionPattern } from "../../src/types.ts";
 
-function matcher(rules: FilterRule[], junk = false) {
-  return buildMatcher(rules, junk);
+/** The patterns given, then the default list when `defaults` is set, as a caller would list them. */
+function matcher(rules: ExclusionPattern[], defaults = false) {
+  return buildMatcher(defaults ? [...rules, ...DEFAULT_EXCLUSIONS] : rules);
 }
-function rule(over: Partial<FilterRule> & { pattern: string }): FilterRule {
-  return { pattern: over.pattern, match: over.match ?? "glob", target: over.target ?? "both" };
+function rule(over: Partial<ExclusionPattern> & { pattern: string }): ExclusionPattern {
+  return { match: "glob", target: "both", ignoreCase: false, ...over };
 }
 const hit = (m: ReturnType<typeof matcher>, p: string, isDir = false) => m.match(p, isDir) !== null;
 
@@ -132,13 +134,13 @@ describe("target applicability", () => {
   });
 });
 
-describe("junk preset, ordering, and the inclusive default", () => {
-  it("matches dotfile junk at any depth with the right rule id", () => {
+describe("the default list, ordering, and the inclusive default", () => {
+  it("matches dotfiles at any depth, labelled with their OS", () => {
     const m = matcher([], true);
-    expect(m.match(".DS_Store", false)?.junkRule).toBe("macos.junk");
-    expect(m.match("a/.DS_Store", false)?.junkRule).toBe("macos.junk");
-    expect(m.match("Thumbs.db", false)?.junkRule).toBe("windows.junk");
-    expect(m.match("ehthumbs_vista.db", false)?.junkRule).toBe("windows.junk");
+    expect(m.match(".DS_Store", false)?.pattern.label).toBe("macOS");
+    expect(m.match("a/.DS_Store", false)?.pattern.label).toBe("macOS");
+    expect(m.match("Thumbs.db", false)?.pattern.label).toBe("Windows");
+    expect(m.match("ehthumbs_vista.db", false)?.pattern.label).toBe("Windows");
   });
 
   it("keeps files people sometimes want, which only look like leftovers", () => {
@@ -149,12 +151,12 @@ describe("junk preset, ordering, and the inclusive default", () => {
     }
   });
 
-  it("matches junk case-insensitively (OS names vary in case across filesystems)", () => {
+  it("matches the default list case-insensitively (OS names vary in case across file systems)", () => {
     const m = matcher([], true);
-    expect(m.match("thumbs.db", false)?.junkRule).toBe("windows.junk");
-    expect(m.match(".ds_store", false)?.junkRule).toBe("macos.junk");
-    expect(m.match("DESKTOP.INI", false)?.junkRule).toBe("windows.junk");
-    expect(m.match("dir/.DS_STORE", false)?.junkRule).toBe("macos.junk");
+    expect(m.match("thumbs.db", false)?.pattern.label).toBe("Windows");
+    expect(m.match(".ds_store", false)?.pattern.label).toBe("macOS");
+    expect(m.match("DESKTOP.INI", false)?.pattern.label).toBe("Windows");
+    expect(m.match("dir/.DS_STORE", false)?.pattern.label).toBe("macOS");
   });
 
   it("matches the added macOS metadata names", () => {
@@ -169,43 +171,48 @@ describe("junk preset, ordering, and the inclusive default", () => {
       ".AppleDB",
       ".AppleDesktop",
     ]) {
-      expect(m.match(name, false)?.junkRule).toBe("macos.junk");
+      expect(m.match(name, false)?.pattern.label).toBe("macOS");
     }
   });
 
-  it("matches Linux/freedesktop junk (.directory, .nfs* temporaries, .Trash-<uid>/)", () => {
+  it("matches Linux/freedesktop leftovers (.directory, .nfs* temporaries, .Trash-<uid>/)", () => {
     const m = matcher([], true);
-    expect(m.match(".directory", false)?.junkRule).toBe("linux.junk");
-    expect(m.match(".nfs0000000000abcdef00000001", false)?.junkRule).toBe("linux.junk");
-    expect(m.match(".fuse_hidden0000000a00000001", false)?.junkRule).toBe("linux.junk");
+    expect(m.match(".directory", false)?.pattern.label).toBe("Linux");
+    expect(m.match(".nfs0000000000abcdef00000001", false)?.pattern.label).toBe("Linux");
+    expect(m.match(".fuse_hidden0000000a00000001", false)?.pattern.label).toBe("Linux");
     // `.Trash-<uid>` is a directory-only rule (trailing slash).
-    expect(m.match(".Trash-1000", true)?.junkRule).toBe("linux.junk");
+    expect(m.match(".Trash-1000", true)?.pattern.label).toBe("Linux");
     expect(m.match(".Trash-1000", false)).toBeNull();
   });
 
-  it("matches directory junk case-insensitively too", () => {
+  it("matches default folder patterns case-insensitively too", () => {
     const m = matcher([], true);
-    expect(m.match("__macosx", true)?.junkRule).toBe("macos.junk");
-    expect(m.match(".trash-1000", true)?.junkRule).toBe("linux.junk");
+    expect(m.match("__macosx", true)?.pattern.label).toBe("macOS");
+    expect(m.match(".trash-1000", true)?.pattern.label).toBe("Linux");
   });
 
-  it("matches AppleDouble junk", () => {
+  it("matches AppleDouble files", () => {
     const m = matcher([], true);
-    expect(m.match("._payload", false)?.junkRule).toBe("macos.junk");
-    expect(m.match("dir/._payload", false)?.junkRule).toBe("macos.junk");
+    expect(m.match("._payload", false)?.pattern.label).toBe("macOS");
+    expect(m.match("dir/._payload", false)?.pattern.label).toBe("macOS");
   });
 
-  it("treats trailing-slash junk as directory-only", () => {
+  it("treats a trailing-slash default as folder-only", () => {
     const m = matcher([], true);
-    expect(m.match("__MACOSX", true)?.junkRule).toBe("macos.junk");
+    expect(m.match("__MACOSX", true)?.pattern.label).toBe("macOS");
     expect(m.match("__MACOSX", false)).toBeNull();
   });
 
-  it("reports the first matching rule, user rules before junk", () => {
-    const m = matcher([rule({ pattern: ".DS_Store" })], true);
-    // A user rule and a junk rule both match; the user rule is reported.
-    expect(m.match(".DS_Store", false)?.junkRule).toBeUndefined();
-    expect(m.match(".DS_Store", false)?.describe).toContain("exclude rule");
+  it("reports the first matching pattern in list order", () => {
+    const m = matcher([rule({ pattern: ".DS_Store", label: "mine" })], true);
+    expect(m.match(".DS_Store", false)?.pattern.label).toBe("mine");
+    expect(m.match(".DS_Store", false)?.describe).toBe("pattern .DS_Store (mine)");
+  });
+
+  it("matches regardless of case only for a pattern that says so", () => {
+    expect(matcher([rule({ pattern: "Build" })]).match("build", false)).toBeNull();
+    expect(matcher([rule({ pattern: "Build", ignoreCase: true })]).match("build", false)).not.toBeNull();
+    expect(matcher([rule({ pattern: "^Build$", match: "regex", ignoreCase: true })]).match("BUILD", false)).not.toBeNull();
   });
 
   it("keeps anything no rule matches (inclusive by default)", () => {
@@ -213,7 +220,7 @@ describe("junk preset, ordering, and the inclusive default", () => {
     expect(m.match("keep.txt", false)).toBeNull();
   });
 
-  it("an empty rule set with no junk excludes nothing", () => {
+  it("an empty list excludes nothing", () => {
     const m = matcher([], false);
     expect(m.match("anything/at/all.txt", false)).toBeNull();
   });

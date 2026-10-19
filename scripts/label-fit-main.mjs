@@ -85,7 +85,13 @@ async function measure() {
     await main.exec(`document.querySelector('[role="menuitem"]').click()`);
     await main.waitFor('[role="dialog"]');
     await main.settle();
-    await check("settings", main);
+    // Each Settings tab in turn, since a hidden panel measures as nothing.
+    const tabs = await main.exec(`document.querySelectorAll('[role="dialog"] [role="tab"]').length`);
+    for (let i = 0; i < tabs; i++) {
+      await main.exec(`document.querySelectorAll('[role="dialog"] [role="tab"]')[${i}].click()`);
+      await main.settle();
+      await check(`settings tab ${i + 1}`, main);
+    }
     await main.exec("window.zipkit.openRecordsWindow()");
     const records = await page("records.html");
     await records.waitFor('[role="listbox"]');

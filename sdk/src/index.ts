@@ -10,6 +10,7 @@ export { createPathClaims } from "./claims.ts";
 export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.ts";
 
 export { RULE_REGISTRY } from "./registry.ts";
+export { DEFAULT_EXCLUSIONS } from "./filter/defaults.ts";
 export type { VerifyRuleId, FindingRule, RuleId, RuleSpec } from "./registry.ts";
 
 export type {
@@ -23,7 +24,7 @@ export type {
   UnsupportedKind,
   ExtremeEntry,
   Finding,
-  FilterRule,
+  ExclusionPattern,
   InstructionEntry,
   InvalidCharStyle,
   NameAction,

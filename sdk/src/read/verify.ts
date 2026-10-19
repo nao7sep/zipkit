@@ -22,7 +22,7 @@ import type { Logger } from "../log/logger.ts";
 import { Meter } from "../progress.ts";
 import { finding } from "../registry.ts";
 import type { Finding, ProgressCounts, VerifiedEntry, VerifyData } from "../types.ts";
-import { MANIFEST_FORMAT_VERSION } from "../write/manifest.ts";
+import { MANIFEST_FORMAT, MANIFEST_FORMAT_VERSION } from "../write/manifest.ts";
 import { createManifestReader, type ManifestReading } from "./manifestReader.ts";
 import { localHeaderMismatch, parseZip, readEntryData, type ParsedZip, type ReadEntry } from "./zipReader.ts";
 
@@ -118,6 +118,11 @@ async function loadManifest(
     // document itself failing to parse is an invalid manifest.
     if (err instanceof ZipKitError) throw err;
     throw new ZipKitError("manifest.invalid", `manifest ${name} is not valid JSON`, { cause: err, subject: name });
+  }
+  // A document without a format name predates it; one that names another
+  // format is not a ZipKit manifest, whatever it holds.
+  if (reading.format !== undefined && reading.format !== MANIFEST_FORMAT) {
+    throw new ZipKitError("manifest.invalid", `${name} is not a ZipKit manifest`, { subject: name });
   }
   const formatVersion = reading.formatVersion;
   if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {

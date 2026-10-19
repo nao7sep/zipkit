@@ -47,7 +47,7 @@ const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEn
   archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, findings: [], ...over,
 });
 const junk = (path: string, type: "file" | "dir" = "file") =>
-  entry(path, { type, excluded: true, findings: [{ rule: "macos.junk", severity: "info", path, message: "junk" }] });
+  entry(path, { type, excluded: true, findings: [{ rule: "exclude.pattern", severity: "info", path, message: "junk" }] });
 const blocking = (path: string) => entry(path, { findings: [{ rule: "x.test" as Finding["rule"], severity: "error", path, message: "Blocks the archive" }] });
 const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = []) =>
   render(<JobDetails job={job(over)} plan={p} verify={null} events={events} rowLimit={5} />);
@@ -55,7 +55,7 @@ const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = 
 describe("JobDetails", () => {
   it("lists names only in a card, each once with its count, and only its count past the limit", () => {
     show(plan([junk("a/.DS_Store"), junk("b/.DS_Store"), junk("c/Thumbs.db")]));
-    const card = screen.getByRole("heading", { name: /^Junk files excluded\s*3$/ }).closest("section")!;
+    const card = screen.getByRole("heading", { name: /^Left out by exclusion patterns\s*3$/ }).closest("section")!;
     expect(within(card).getAllByRole("listitem").map((item) => item.textContent)).toEqual([".DS_Store (2)", "Thumbs.db"]);
     cleanup();
     show(plan(Array.from({ length: 6 }, (_, i) => blocking(`a/${i}.txt`))));
@@ -78,12 +78,12 @@ describe("JobDetails", () => {
 
   it("lists every item by its full path in Details, saying what they share once", () => {
     show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("w/Thumbs.db")]));
-    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (3)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Left out by exclusion patterns (3)" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(/^System clutter from macOS, Windows and Linux/)).toBeTruthy();
+    expect(within(dialog).getByText(/^What the exclusion patterns match is left out/)).toBeTruthy();
     expect(within(dialog).getAllByText(/\//).map((path) => path.textContent)).toEqual(["/in/w/Thumbs.db", "/in/x/.DS_Store", "/in/y/.DS_Store"]);
     // Every item was left out for the same reason, so no row repeats it.
-    expect(within(dialog).queryByText("Excluded by the junk preset")).toBeNull();
+    expect(within(dialog).queryByText("Left out by an exclusion pattern")).toBeNull();
     expect(within(dialog).queryByRole("checkbox")).toBeNull();
   });
 
@@ -94,7 +94,7 @@ describe("JobDetails", () => {
     const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     // The socket card is now a warning, so it comes before the junk card.
     expect(titles[0]).toMatch(/^Special files left out/);
-    expect(titles[1]).toMatch(/^Junk files excluded/);
+    expect(titles[1]).toMatch(/^Left out by exclusion patterns/);
   });
 
   it("marks each change of a rename on the full path in Details", () => {
@@ -163,7 +163,7 @@ describe("JobDetails", () => {
 
   it("draws only the rows near the view of a list with thousands of rows", () => {
     show(plan(Array.from({ length: 5000 }, (_, i) => junk(`photos/${i}/.DS_Store`))));
-    fireEvent.click(screen.getByRole("button", { name: "Junk files excluded (5,000)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Left out by exclusion patterns (5,000)" }));
     const drawn = within(screen.getByRole("dialog")).getAllByText(/^\/in\/photos\//).length;
     expect(drawn).toBeGreaterThan(0);
     expect(drawn).toBeLessThan(100);

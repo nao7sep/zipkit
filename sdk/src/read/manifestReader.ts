@@ -14,6 +14,8 @@ import type { Token } from "stream-json/core/parser.js";
 /** What reading found: the format version as written, the records, and the
  *  first problem with the document's shape, decided by the caller in order. */
 export interface ManifestReading {
+  /** The `format` name, `undefined` when absent and `null` when not a string. */
+  format: unknown;
   formatVersion: unknown;
   /** False when `entries` was absent or not a list. */
   hasEntries: boolean;
@@ -30,7 +32,7 @@ export type AcceptRecord = (record: unknown) => { keep: unknown } | { refuse: st
 export function createManifestReader(accept: AcceptRecord) {
   const parse = parser({ streamValues: false });
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  const reading: ManifestReading = { formatVersion: undefined, hasEntries: false, records: [], problem: null };
+  const reading: ManifestReading = { format: undefined, formatVersion: undefined, hasEntries: false, records: [], problem: null };
   // 0 before the root object, 1 inside it, 2 inside its `entries` list.
   let depth = 0;
   let closed = false;
@@ -74,6 +76,7 @@ export function createManifestReader(accept: AcceptRecord) {
         depth = 2;
       } else {
         if (key === "formatVersion") reading.formatVersion = token.name === "numberValue" ? Number(token.value) : null;
+        if (key === "format") reading.format = token.name === "stringValue" ? token.value : null;
         if (key === "entries") reading.hasEntries = false;
         if (opens(token)) skipping = 1;
       }

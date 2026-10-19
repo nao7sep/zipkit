@@ -62,8 +62,6 @@ export interface ScanEntry {
 export interface PrunedDir {
   archivePath: string;
   diskPath: string;
-  /** The junk rule that pruned it, when the prune came from the junk preset. */
-  rule?: RuleId;
   reason: string;
 }
 

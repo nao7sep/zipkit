@@ -2,7 +2,8 @@
  * The archive-parameters editor, shared by two surfaces: the Settings dialog
  * (where it edits the defaults for new jobs) and a selected job's Parameters
  * pane. It is a controlled view over the archive parameters — cleaning, manifest
- * and compression. Where the archive goes, its name, whether it may replace a
+ * and compression. The exclusion patterns themselves are edited in Settings,
+ * on their own tab; a job takes the list Settings had when it was added. Where the archive goes, its name, whether it may replace a
  * file and its comment belong to one job and live with the Create action.
  * The SDK still owns all validation and every default not set here. Sections flow
  * into responsive columns so the whole set stays visible without a tall scroll.
@@ -11,6 +12,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { ArchiveParameters } from "../../../shared/spec";
 import { useI18n } from "../i18n/I18nContext";
+import { singleLine } from "../../../shared/textCleanup";
 
 export function OptionsPanel({
   options,
@@ -30,8 +32,8 @@ export function OptionsPanel({
     // The fieldset is the grid; its columns follow the pane's width.
     <fieldset disabled={disabled} className="options-grid" style={S.fieldset}>
       <Section title={t("options.cleaning")}>
-        <Check checked={options.junk} onChange={(v) => set("junk", v)}>
-          {t("options.junk")}
+        <Check checked={options.exclude} onChange={(v) => set("exclude", v)}>
+          {t("options.exclude")}
         </Check>
         <Check checked={options.strict} onChange={(v) => set("strict", v)}>
           {t("options.strict")}
@@ -55,8 +57,20 @@ export function OptionsPanel({
 
       <Section title={t("options.manifest")}>
         <Check checked={options.manifest} onChange={(v) => set("manifest", v)}>
-          {rich("options.embedManifest", { file: <code>zipkit.json</code> })}
+          {rich("options.embedManifest", { file: <code>{options.manifestName}</code> })}
         </Check>
+        {/* The name the manifest takes inside the archive; the SDK refuses an
+            entry that would take it, and a name that is not one safe file name. */}
+        <Field label={t("options.manifestName")}>
+          <input
+            value={options.manifestName}
+            disabled={!options.manifest}
+            spellCheck={false}
+            onChange={(e) => set("manifestName", e.target.value)}
+            onBlur={(e) => set("manifestName", singleLine(e.target.value) || "zipkit.json")}
+            style={S.nameInput}
+          />
+        </Field>
         <Check checked={options.hash} disabled={!options.manifest} onChange={(v) => set("hash", v)}>
           {t("options.hash")}
         </Check>
@@ -163,4 +177,5 @@ const S: Record<string, CSSProperties> = {
   fieldControl: { display: "flex", gap: "0.5rem", alignItems: "center", flex: "1 1 auto", minWidth: 0 },
   // A select can then shrink below its longest option instead of overflowing.
   select: { minWidth: 0, maxWidth: "100%" },
+  nameInput: { minWidth: 0, width: "12rem", maxWidth: "100%" },
 };

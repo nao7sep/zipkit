@@ -15,21 +15,22 @@ describe("validateSpec", () => {
     expect(spec.inputs).toEqual(["/a"]);
   });
 
-  it("applies filter-rule defaults", () => {
+  it("applies exclusion-pattern defaults", () => {
     const spec = validateSpec({
       inputs: ["/a"],
-      policy: { filters: [{ pattern: "*.tmp" }] as never },
+      policy: { exclusions: [{ pattern: "*.tmp" }] as never },
     });
-    expect(spec.policy?.filters?.[0]).toEqual({
+    expect(spec.policy?.exclusions?.[0]).toEqual({
       pattern: "*.tmp",
       match: "glob",
       target: "both",
+      ignoreCase: false,
     });
   });
 
-  it("rejects a filter rule with an unknown 'action' key (include is gone)", () => {
+  it("rejects a exclusion pattern with an unknown 'action' key (include is gone)", () => {
     expect(() =>
-      validateSpec({ inputs: ["/a"], policy: { filters: [{ action: "include", pattern: "x" }] } as never }),
+      validateSpec({ inputs: ["/a"], policy: { exclusions: [{ action: "include", pattern: "x" }] } as never }),
     ).toThrow(invalidError);
   });
 
@@ -54,7 +55,7 @@ describe("validateSpec", () => {
     expect(() =>
       validateSpec({
         inputs: ["/a"],
-        policy: { filters: [{ pattern: "[", match: "regex" }] as never },
+        policy: { exclusions: [{ pattern: "[", match: "regex" }] as never },
       }),
     ).toThrow(invalidError);
   });
@@ -63,7 +64,7 @@ describe("validateSpec", () => {
     expect(() =>
       validateSpec({
         inputs: ["/a"],
-        policy: { filters: [{ pattern: "\\.log$", match: "regex" }] as never },
+        policy: { exclusions: [{ pattern: "\\.log$", match: "regex" }] as never },
       }),
     ).not.toThrow();
   });
@@ -71,8 +72,8 @@ describe("validateSpec", () => {
 
 describe("validatePolicy", () => {
   it("accepts a partial policy and applies filter defaults", () => {
-    const policy = validatePolicy({ filters: [{ pattern: "x" }] as never });
-    expect(policy.filters?.[0]?.match).toBe("glob");
+    const policy = validatePolicy({ exclusions: [{ pattern: "x" }] as never });
+    expect(policy.exclusions?.[0]?.match).toBe("glob");
   });
 
   it("rejects an invalid symlink mode", () => {

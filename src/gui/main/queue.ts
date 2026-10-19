@@ -91,13 +91,13 @@ const engine = createQueueEngine({
   effects: appPathClaims,
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
-  inspect: (output, signal, onEvent, manifest) =>
-    sdk.call("inspect", [output, manifest], { signal, onEvent, onProgress: countsFor(onEvent) }),
+  inspect: (output, signal, onEvent, manifestName) =>
+    sdk.call("inspect", [output, manifestName], { signal, onEvent, onProgress: countsFor(onEvent) }),
   plan: (inputs, options, signal, onEvent) => sdk.call("plan", [inputs, options], { signal, onEvent }),
   write: (plan, signal, onEvent, onPhysicalSettlement) =>
     sdk.call("write", [plan], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
-  verify: (output, signal, onEvent, manifest) =>
-    sdk.call("verify", [output, manifest], { signal, onEvent, onProgress: countsFor(onEvent) }),
+  verify: (output, signal, onEvent, manifestName) =>
+    sdk.call("verify", [output, manifestName], { signal, onEvent, onProgress: countsFor(onEvent) }),
   checkRemoval: async (output, inputs, removed, options, signal, onEvent) => {
     const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onEvent, onProgress: countsFor(onEvent) });
     const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: new SdkHostError(check.refusal.error) } : check.refusal;

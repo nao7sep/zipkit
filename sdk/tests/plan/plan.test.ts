@@ -40,14 +40,14 @@ describe("baseline", () => {
 });
 
 describe("selection", () => {
-  it("excludes junk with an info finding and stays writable", () => {
+  it("excludes what a default pattern matches with an info finding and stays writable", () => {
     const p = plan([scanEntry({ archivePath: "a.txt" }), scanEntry({ archivePath: ".DS_Store" })]);
     expect(p.writable).toBe(true);
     const ds = p.entries.find((e) => e.archivePath === ".DS_Store");
     expect(ds?.excluded).toBe(true);
-    expect(ds?.excludeCode).toBe("junk");
+    expect(ds?.excludeCode).toBe("pattern");
     expect(p.entries.find((e) => e.archivePath === "a.txt")?.excludeCode).toBeUndefined();
-    expect(rules(p.findings)).toContain("macos.junk");
+    expect(rules(p.findings)).toContain("exclude.pattern");
   });
 
   it("skips zero-byte files under emptyFiles:skip", () => {
@@ -394,11 +394,11 @@ describe("exclusion codes", () => {
         scanEntry({ archivePath: "build.log" }),
         scanEntry({ archivePath: "empty", type: "dir" }),
       ],
-      { emptyDirs: "prune", filters: [{ pattern: "*.log", match: "glob", target: "both" }] },
+      { emptyDirs: "prune", exclusions: [{ pattern: "*.log", match: "glob", target: "both", ignoreCase: false }, { pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true }] },
     );
     const code = (path: string) => p.entries.find((e) => e.archivePath === path)?.excludeCode;
-    expect(code(".DS_Store")).toBe("junk");
-    expect(code("build.log")).toBe("filter");
+    expect(code(".DS_Store")).toBe("pattern");
+    expect(code("build.log")).toBe("pattern");
     expect(code("empty")).toBe("empty-dir");
     expect(code("a.txt")).toBeUndefined();
     for (const entry of p.entries) expect(entry.excluded).toBe(entry.excludeCode !== undefined);

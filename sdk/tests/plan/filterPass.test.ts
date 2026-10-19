@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CompiledRule, FilterMatcher } from "../../src/filter/match.ts";
+import { describePattern, type CompiledRule, type FilterMatcher } from "../../src/filter/match.ts";
 import { applyFilter } from "../../src/plan/filterPass.ts";
 import { workItem } from "../helpers/synthetic.ts";
 
@@ -18,32 +18,21 @@ function matcherFor(path: string, rule: CompiledRule): FilterMatcher {
 }
 
 describe("applyFilter", () => {
-  it("excludes a junk match with the preset's info finding", () => {
-    const rule: CompiledRule = {
-      target: "file",
-      test: () => true,
-      junkRule: "macos.junk",
-      describe: "junk: .DS_Store",
-    };
+  it("excludes a match with an info finding naming the pattern", () => {
+    const pattern = { pattern: ".DS_Store", match: "glob" as const, target: "both" as const, ignoreCase: true, label: "macOS" };
+    const rule: CompiledRule = { target: "file", test: () => true, pattern, describe: describePattern(pattern) };
     const item = workItem({ archivePath: ".DS_Store" });
     applyFilter([item], matcherFor(".DS_Store", rule));
     expect(item.excluded).toBe(true);
     expect(item.emitExplicit).toBe(false);
-    expect(item.excludeReason).toBe("junk: .DS_Store");
-    expect(item.findings.map((f) => f.rule)).toEqual(["macos.junk"]);
-  });
-
-  it("excludes a user-rule match with no finding", () => {
-    const rule: CompiledRule = { target: "file", test: () => true, describe: "exclude rule: *.tmp" };
-    const item = workItem({ archivePath: "scratch.tmp" });
-    applyFilter([item], matcherFor("scratch.tmp", rule));
-    expect(item.excluded).toBe(true);
-    expect(item.excludeReason).toBe("exclude rule: *.tmp");
-    expect(item.findings).toEqual([]);
+    expect(item.excludeCode).toBe("pattern");
+    expect(item.excludeReason).toBe("pattern .DS_Store (macOS)");
+    expect(item.findings).toEqual([expect.objectContaining({ rule: "exclude.pattern", severity: "info", message: "excluded by pattern .DS_Store (macOS)" })]);
   });
 
   it("leaves a non-matching entry included", () => {
-    const rule: CompiledRule = { target: "file", test: () => true, describe: "exclude rule: *.tmp" };
+    const pattern = { pattern: "*.tmp", match: "glob" as const, target: "both" as const, ignoreCase: false };
+    const rule: CompiledRule = { target: "file", test: () => true, pattern, describe: describePattern(pattern) };
     const item = workItem({ archivePath: "keep.txt" });
     applyFilter([item], matcherFor("scratch.tmp", rule));
     expect(item.excluded).toBe(false);

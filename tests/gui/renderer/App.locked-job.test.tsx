@@ -103,7 +103,7 @@ describe("a job that finishes mid-edit", () => {
 
   const junk = (): HTMLInputElement => {
     const label = [...container.querySelectorAll("label")]
-      .find((node) => node.textContent?.includes("Drop OS junk files"))!;
+      .find((node) => node.textContent?.includes("Leave out what the exclusion patterns match"))!;
     return label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   };
   const comment = (): HTMLTextAreaElement => container.querySelector("textarea")!;
@@ -115,7 +115,7 @@ describe("a job that finishes mid-edit", () => {
     expect(junk().checked).toBe(true);
     await act(async () => junk().click());
 
-    expect(updateJob).toHaveBeenCalledWith("job-1", { options: { ...CUSTOM_OPTIONS, junk: false } });
+    expect(updateJob).toHaveBeenCalledWith("job-1", { options: { ...CUSTOM_OPTIONS, exclude: false } });
   });
 
   it("sends a typed edit immediately and shows accepted options when the job locks", async () => {

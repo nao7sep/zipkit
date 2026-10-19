@@ -60,12 +60,12 @@ export interface EngineDeps {
   /** Write a planned archive; resolves to the byte count (or null if unknown). */
   write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
     onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number>;
-  /** Verify a written archive: every entry's CRC-32, and against its manifest
-   *  when `manifest`; resolves to the SDK's verdict. */
-  verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifest: boolean): Promise<boolean>;
+  /** Verify a written archive: every entry's CRC-32, and against the manifest
+   *  named, when one is; resolves to the SDK's verdict. */
+  verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifestName: string | null): Promise<boolean>;
   /** Verify a written archive on request: the verdict, the counts and the
    *  paths that disagree, for the job's review. */
-  inspect(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifest: boolean): Promise<VerifyReport>;
+  inspect(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifestName: string | null): Promise<VerifyReport>;
   /** Every check before the originals are removed (the SDK's checkRemoval):
    *  the archive is not inside them, it verifies against its manifest, and a
    *  fresh scan of `inputs` under the job's options still matches it; `removed`
@@ -159,6 +159,12 @@ interface Rec {
 /** The code of an SDK failure, or of the SDK host's own exit. Undefined for
  *  plain or Node errors, so a Node `code` like ENOENT is never mistaken for an
  *  SDK code. */
+/** The manifest a job's archive is verified against: its name, or null when
+ *  the job embeds none. */
+function manifestOf(options: GuiOptions): string | null {
+  return options.manifest ? options.manifestName : null;
+}
+
 function errCode(err: unknown): string | undefined {
   if (isZipKitError(err)) return err.code;
   return (err as { code?: unknown } | null)?.code === "host.exited" ? "host.exited" : undefined;
@@ -748,7 +754,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     let verified: boolean;
     const seen: PathState | undefined = rec.fingerprint === null ? undefined : { kind: "present", fingerprint: rec.fingerprint };
     try {
-      verified = await deps.verify(output, signal, onEvent, rec.job.options.manifest);
+      verified = await deps.verify(output, signal, onEvent, manifestOf(rec.job.options));
     } catch (err) {
       set(rec, { state: "failed", message: failureMessage(err, "job.savedVerifyErrored") });
       deps.log.error("job saved; verification errored", { jobId: id, output, error: errorInfo(err) });
@@ -1169,7 +1175,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           if (!(await observeArchive(rec, signal))) return null;
           claim = await claimFiles([output], [], signal);
           const seen = await lookAt(rec, output, signal);
-          const report = await deps.inspect(output, signal, deps.progress(id, "verify"), rec.job.options.manifest);
+          const report = await deps.inspect(output, signal, deps.progress(id, "verify"), manifestOf(rec.job.options));
           if (report.ok) {
             markVerified(rec, seen?.kind === "present" ? seen.fingerprint : null);
             set(rec, { actionResult: { severity: "info", message: message("history.verified", { count: report.summary.total }) } });

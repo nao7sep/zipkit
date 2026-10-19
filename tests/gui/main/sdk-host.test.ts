@@ -45,8 +45,8 @@ describe("the SDK host", () => {
     // How far the write got crosses too, to its last byte.
     expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 1, entriesTotal: 1, bytesDone: 5, bytesTotal: 5 });
     await Promise.all(settlements);
-    expect(await sdk.call("verify", [plan.output, true])).toBe(true);
-    const report = await sdk.call("inspect", [plan.output, true]);
+    expect(await sdk.call("verify", [plan.output, "zipkit.json"])).toBe(true);
+    const report = await sdk.call("inspect", [plan.output, "zipkit.json"]);
     expect(report).toEqual({ ok: true, summary: expect.objectContaining({ total: expect.any(Number) }), missing: [], extra: [] });
     expect(report).not.toHaveProperty("entries");
     expect(events.some((e) => e.event === "plan.done")).toBe(true);

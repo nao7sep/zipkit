@@ -31,7 +31,7 @@ Object.defineProperty(window, "zipkit", {
  *  a chosen UI font, a chosen theme, and a chosen language — so a reset's reach
  *  is visible on each. */
 const CUSTOM: GuiSettings = {
-  defaults: { ...DEFAULT_PARAMETERS, level: 9, junk: false },
+  defaults: { ...DEFAULT_PARAMETERS, level: 9, exclude: false },
   uiFontFamily: "Iosevka, monospace",
   theme: "dark",
   language: "fr",
@@ -125,6 +125,7 @@ describe("SettingsDialog reset", () => {
 
   it("shows human labels while preserving the option values saved to settings", () => {
     const onSave = renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "New job parameters" }));
     const symlinks = screen.getByLabelText("Symlinks") as HTMLSelectElement;
     const emptyDirs = screen.getByLabelText("Empty directories") as HTMLSelectElement;
 
@@ -307,14 +308,50 @@ describe("SettingsDialog draft report", () => {
   });
 });
 
-describe("SettingsDialog default parameters section", () => {
-  it("names the parameters under their own heading, with the reset that covers them beside it", () => {
+describe("SettingsDialog tabs", () => {
+  it("names the parameters under their own tab, with the reset that covers them beside it", () => {
     renderDialog();
-    const section = screen.getByRole("region", { name: "New job parameters" });
+    expect(screen.getByRole("tab", { name: "General" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("tab", { name: "New job parameters" }));
+    const section = screen.getByRole("tabpanel", { name: "New job parameters" });
     expect(within(section).getByRole("button", { name: "Reset parameters to initial values" })).toBeTruthy();
     expect(within(section).getByLabelText("Compression level (1–9)")).toBeTruthy();
     // Language, theme and font sit above it, outside what the reset covers.
     expect(within(section).queryByLabelText(/^UI font/)).toBeNull();
     expect(within(section).queryByRole("group", { name: "Theme" })).toBeNull();
+  });
+});
+
+describe("SettingsDialog exclusion patterns", () => {
+  it("edits the whole list, holds Save for a pattern that cannot be used, and resets to the built-in list", () => {
+    const onSave = renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
+    const panel = screen.getByRole("tabpanel", { name: "Exclusion patterns" });
+    const first = within(panel).getByLabelText("Pattern 1") as HTMLInputElement;
+    expect(first.value).toBe(".DS_Store");
+    // Removing every pattern but the first, then adding a broken regex.
+    const count = within(panel).getAllByLabelText(/^Pattern \d+$/).length;
+    for (let i = count; i > 1; i--) fireEvent.click(within(panel).getByRole("button", { name: `Remove pattern ${i}` }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Add pattern" }));
+    fireEvent.change(within(panel).getByLabelText("Pattern 2"), { target: { value: "(" } });
+    fireEvent.change(within(panel).getByLabelText("Kind of pattern 2"), { target: { value: "regex" } });
+    expect(within(panel).getByRole("alert").textContent).toBe("Pattern 2 is not a valid regular expression.");
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(panel).getByLabelText("Pattern 2"), { target: { value: "\\.log$" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Move pattern 2 up" }));
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0]![0].defaults.exclusions).toEqual([
+      { pattern: "\\.log$", match: "regex", target: "both", ignoreCase: false },
+      expect.objectContaining({ pattern: ".DS_Store", label: "macOS" }),
+    ]);
+  });
+
+  it("resets the patterns alone to the list ZipKit ships with", () => {
+    renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
+    const panel = screen.getByRole("tabpanel", { name: "Exclusion patterns" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Remove pattern 1" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Reset patterns to initial values" }));
+    expect((within(panel).getByLabelText("Pattern 1") as HTMLInputElement).value).toBe(".DS_Store");
   });
 });

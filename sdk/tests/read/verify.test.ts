@@ -227,6 +227,16 @@ describe("against the embedded manifest", () => {
     await expect(new ZipKit().verify(archive, { manifest: true })).rejects.toMatchObject({ code: "manifest.missing", subject: "zipkit.json" });
   });
 
+  it("refuses a document that names another format, and reads one that names none", async () => {
+    const a = fileEntry("a.txt", "alpha");
+    const named = (format?: string) => writeArchive([a, fileEntry("zipkit.json", JSON.stringify({
+      ...(format === undefined ? {} : { format }), formatVersion: MANIFEST_FORMAT_VERSION, entries: [manifestRecord(a)],
+    }))]);
+    expect((await new ZipKit().verify(await named("zipkit.manifest"), { manifest: true })).ok).toBe(true);
+    expect((await new ZipKit().verify(await named(), { manifest: true })).ok).toBe(true);
+    await expect(new ZipKit().verify(await named("other.thing"), { manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
+  });
+
   it("refuses a manifest a newer ZipKit wrote, leaving the archive as it is", async () => {
     const manifest = { formatVersion: MANIFEST_FORMAT_VERSION + 1, entries: [{ archivePath: "a.txt" }] };
     const archive = await writeArchive([fileEntry("a.txt", "alpha"), fileEntry("zipkit.json", JSON.stringify(manifest))]);
