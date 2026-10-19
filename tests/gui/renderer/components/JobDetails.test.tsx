@@ -113,7 +113,7 @@ describe("JobDetails", () => {
   });
 
   it("lists by name what a verification found missing or unexpected, and each way the originals changed", () => {
-    render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["a/gone.txt"], added: ["a/new.txt"], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
+    render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["/Users/me/a/gone.txt"], added: ["/Users/me/a/new.txt"], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
       ok: true,
       data: { ok: false, missing: ["a/one.txt", "b/two.txt"], extra: ["stray.bin"], summary: { total: 2, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 } } as never,
     }} />);

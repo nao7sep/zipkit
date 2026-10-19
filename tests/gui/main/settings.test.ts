@@ -59,6 +59,9 @@ describe("settings sets", () => {
     ["hash", "yes"],
     ["level", 10],
     ["symlinks", "unknown"],
+    ["exclusions", [{ pattern: "(", match: "regex", target: "both", ignoreCase: false }]],
+    ["exclusions", [{ pattern: "", match: "glob", target: "both", ignoreCase: false }]],
+    ["manifestName", ""],
   ] as const)("reverts only an invalid %s, keeping the authored parameters beside it", (member, bad) => {
     const authored = CUSTOM.defaults;
     const logger = warningLog();

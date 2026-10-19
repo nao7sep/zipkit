@@ -614,6 +614,15 @@ describe("planReport", () => {
       },
     ]);
   });
+  it("says which kind of special file was left out when the plan names it", () => {
+    const kinds = [["socket", "Left out: a socket, which ZIP cannot hold"], ["broken-link", "Left out: a link whose target does not exist"],
+      ["external-link", "Left out: a link that leads outside the inputs"]] as const;
+    const plan = planOf(kinds.map(([kind]) => entry({
+      archivePath: kind, excluded: true, excludeCode: "unsupported", unsupportedKind: kind, excludeReason: "left out",
+      findings: [{ rule: "entry.unsupported", severity: "info", path: kind, message: "left out" }],
+    })));
+    expect(planReport(plan, en)[0]?.rows.map((row) => row.changes[0])).toEqual(kinds.map(([, text]) => text));
+  });
   it("shows a rule the GUI does not know as the SDK wrote it", () => {
     const plan = planOf([entry({ archivePath: "x", findings: [{ rule: "future.rule" as Finding["rule"], severity: "warning", path: "x", message: "something new" }] })]);
     expect(planReport(plan, en)[0]?.rows[0]?.changes).toEqual(["Something new"]);

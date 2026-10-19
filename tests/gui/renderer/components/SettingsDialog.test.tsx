@@ -322,6 +322,19 @@ describe("SettingsDialog tabs", () => {
   });
 });
 
+describe("SettingsDialog manifest name", () => {
+  it("marks an empty manifest name on its field and holds Save", () => {
+    renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "New job parameters" }));
+    const field = screen.getByLabelText("Manifest name") as HTMLInputElement;
+    expect(field.value).toBe("zipkit.json");
+    fireEvent.change(field, { target: { value: "" } });
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(field.getAttribute("aria-describedby")!)?.textContent).toBe("Enter a name for the manifest.");
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
 describe("SettingsDialog exclusion patterns", () => {
   it("edits the whole list, drops a blank row, and holds Save for a regex that does not compile", () => {
     const onSave = renderDialog();
