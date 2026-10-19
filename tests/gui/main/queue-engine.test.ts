@@ -340,7 +340,7 @@ describe("queue engine", () => {
   it("refuses to run a Move-to-Trash job without the manifest, writing nothing", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);
-    const id = engine.add(["/good"], { ...DEFAULT_OPTIONS, metadata: false }, TRASH);
+    const id = engine.add(["/good"], { ...DEFAULT_OPTIONS, manifest: false }, TRASH);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     run(engine, id);
     await tick();
@@ -812,7 +812,7 @@ describe("queue engine", () => {
     const { deps, calls } = makeDeps({ verify: async (_output, _signal, _onProgress, checkMetadata) => (seen.push(checkMetadata), true) });
     const engine = createQueueEngine(deps);
     const withManifest = engine.add(["/a"], DEFAULT_OPTIONS);
-    const without = engine.add(["/b"], { ...DEFAULT_OPTIONS, metadata: false });
+    const without = engine.add(["/b"], { ...DEFAULT_OPTIONS, manifest: false });
     await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
     run(engine, withManifest);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
@@ -1424,7 +1424,7 @@ describe("queue engine", () => {
 
   it("trashOriginals is refused for an archive without the manifest", async () => {
     const { deps, calls } = makeDeps();
-    const { engine, id } = await doneSave(deps, { ...DEFAULT_OPTIONS, metadata: false });
+    const { engine, id } = await doneSave(deps, { ...DEFAULT_OPTIONS, manifest: false });
     engine.removeOriginals(id, "trash");
     await tick();
     expect(calls.verify).toBe(0);

@@ -94,8 +94,8 @@ export function present(entry: InputEntry): boolean {
  *  before it moves or deletes anything, so it cannot run with the manifest
  *  turned off. One copy, so the engine refuses exactly the runs the renderer
  *  does not offer. */
-export function manifestRequiredButMissing(intent: JobIntent, metadata: boolean): boolean {
-  return removesOriginals(intent) && !metadata;
+export function manifestRequiredButMissing(intent: JobIntent, manifest: boolean): boolean {
+  return removesOriginals(intent) && !manifest;
 }
 
 /** A job that removes its originals, whose plan found a folder it could not

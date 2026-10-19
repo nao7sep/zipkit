@@ -242,8 +242,8 @@ export interface ZipKitOptions {
  */
 export interface ZipKitCallOptions {
   onEvent?: (event: LogEvent) => void;
-  /** How far `write`/`create` and `verify` have got, for a progress bar, as
-   *  counts rather than events: at
+  /** How far `write`/`create`, `verify` and `checkRemoval` have got, for a
+   *  progress bar, as counts rather than events: at
    *  the start, at most every 100 ms while entries stream, and once at the end
    *  of a run that finishes. Other verbs ignore this hook, and like
    *  `onEvent` it cannot break the verb. */
@@ -258,10 +258,11 @@ export interface ZipKitCallOptions {
 }
 
 /** How far a write or a read has got. A write counts the entries it streams
- *  and their content as on disk (the plan's `summary.sourceBytes`); a read
- *  counts every entry and its uncompressed bytes. */
+ *  and their content as on disk (the plan's `summary.sourceBytes`); a
+ *  verification counts every entry and its uncompressed bytes; the removal
+ *  check's recheck counts the originals' files and links and their bytes. */
 export interface ProgressCounts {
-  stage: "write" | "verify";
+  stage: "write" | "verify" | "recheck";
   entriesDone: number;
   entriesTotal: number;
   bytesDone: number;
@@ -584,11 +585,11 @@ export interface VerifyData {
 }
 
 /**
- * How an archive's inputs on disk compare with its manifest, from
- * {@link import("./zipkit.ts").ZipKit.compareSources}. Paths are the
- * manifest's input-relative source paths. `matches` is the delete gate: true
- * only when every included file and symlink is as archived and the fresh scan
- * listed every folder.
+ * How an archive's inputs on disk compare with its manifest, as the removal
+ * check's `changed` refusal carries it. Paths are the manifest's
+ * input-relative source paths. `matches` is the delete gate: true only when
+ * every included file and symlink is as archived, by content too, and the
+ * fresh scan listed every folder.
  */
 export interface SourceComparison {
   matches: boolean;
@@ -596,31 +597,10 @@ export interface SourceComparison {
   added: string[];
   /** In the manifest but no longer included. */
   missing: string[];
-  /** In both, with a different type, size or modification time. */
+  /** In both, with a different type, size, modification time or content. */
   changed: string[];
   /** Folders the fresh scan could not list, so their contents went unchecked. */
   unlisted: string[];
-}
-
-/** One entry of an archive as its central directory records it. */
-export interface ListedEntry {
-  archivePath: string;
-  type: "file" | "dir" | "symlink";
-  /** How it is compressed; `other` is a method ZipKit cannot read. */
-  method: "store" | "deflate" | "other";
-  /** Uncompressed bytes. */
-  size: number;
-  compressedSize: number;
-  crc32: number;
-  /** Its modification time, from the most precise field stored. */
-  modified: UtcTime;
-}
-
-/** The answer of `ZipKit.list`. */
-export interface ArchiveListing {
-  archive: string;
-  zip64: boolean;
-  entries: ListedEntry[];
 }
 
 /** Why the originals may not be removed: the first check of

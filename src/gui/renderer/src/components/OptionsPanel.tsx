@@ -54,10 +54,10 @@ export function OptionsPanel({
       </Section>
 
       <Section title={t("options.manifest")}>
-        <Check checked={options.metadata} onChange={(v) => set("metadata", v)}>
+        <Check checked={options.manifest} onChange={(v) => set("manifest", v)}>
           {rich("options.embedManifest", { file: <code>zipkit.json</code> })}
         </Check>
-        <Check checked={options.hash} disabled={!options.metadata} onChange={(v) => set("hash", v)}>
+        <Check checked={options.hash} disabled={!options.manifest} onChange={(v) => set("hash", v)}>
           {t("options.hash")}
         </Check>
       </Section>

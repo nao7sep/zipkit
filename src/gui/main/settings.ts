@@ -29,7 +29,7 @@ const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
   ["invalidChars", (v) => v === "tidy" || v === "replace" || v === "fullwidth" || v === "remove"],
   ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
   ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
-  ["emptyDirs", (v) => v === "keep" || v === "prune"], ["metadata", (v) => typeof v === "boolean"],
+  ["emptyDirs", (v) => v === "keep" || v === "prune"], ["manifest", (v) => typeof v === "boolean"],
   ["hash", (v) => typeof v === "boolean"], ["comment", (v) => typeof v === "string"],
   ["outputDir", (v) => typeof v === "string"], ["fileName", (v) => typeof v === "string"],
   ["overwrite", (v) => typeof v === "boolean"],

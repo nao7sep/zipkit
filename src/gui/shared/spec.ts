@@ -21,7 +21,7 @@ export interface GuiOptions {
   symlinks: "ignore" | "preserve" | "follow";
   emptyDirs: "keep" | "prune";
   /** Embed the `zipkit.json` manifest. */
-  metadata: boolean;
+  manifest: boolean;
   /** Record a per-file SHA-256 in the manifest. */
   hash: boolean;
   /** Archive comment (empty = none). */
@@ -41,7 +41,7 @@ export const DEFAULT_OPTIONS: GuiOptions = {
   level: 6,
   symlinks: "ignore",
   emptyDirs: "keep",
-  metadata: true,
+  manifest: true,
   hash: true,
   comment: "",
   outputDir: "",
@@ -57,7 +57,7 @@ export const DEFAULT_OPTIONS: GuiOptions = {
  * GuiOptions (where the archive goes, its name, whether it may replace a file,
  * its comment) belongs to one job and never comes from Settings.
  */
-export const PARAMETER_KEYS = ["junk", "strict", "invalidChars", "level", "symlinks", "emptyDirs", "metadata", "hash"] as const satisfies readonly (keyof GuiOptions)[];
+export const PARAMETER_KEYS = ["junk", "strict", "invalidChars", "level", "symlinks", "emptyDirs", "manifest", "hash"] as const satisfies readonly (keyof GuiOptions)[];
 export type ArchiveParameters = Pick<GuiOptions, (typeof PARAMETER_KEYS)[number]>;
 
 /** Just the parameters of a job's options. */
@@ -163,7 +163,7 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
     symlinks: o.symlinks,
     emptyDirs: o.emptyDirs,
     compression: { level: o.level },
-    manifest: o.metadata ? { hash: o.hash } : false,
+    manifest: o.manifest ? { hash: o.hash } : false,
   };
   policy.names = { invalidCharStyle: o.invalidChars };
   if (o.strict) {
@@ -200,7 +200,7 @@ const PLAN_AFFECTING: (keyof GuiOptions)[] = [
   "invalidChars",
   "symlinks",
   "emptyDirs",
-  "metadata",
+  "manifest",
   "outputDir",
   "fileName",
   "overwrite",

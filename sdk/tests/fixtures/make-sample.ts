@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { ZipKit } from "../../src/index.ts";
 import { MANIFEST_FORMAT_VERSION } from "../../src/write/manifest.ts";
 import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./sample-tree.ts";
+import { readManifest } from "../helpers/manifest.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const work = await mkdtemp(path.join(tmpdir(), "zipkit-sample-"));
@@ -23,8 +24,7 @@ try {
   await new ZipKit().create({ inputs: [tree], output: archive, policy: SAMPLE_POLICY });
   const name = `format-${MANIFEST_FORMAT_VERSION}`;
   await copyFile(archive, path.join(here, `${name}.zip`));
-  const manifest = await new ZipKit().readManifest(archive);
-  await writeFile(path.join(here, `${name}.expected.json`), `${JSON.stringify(manifestEssentials(manifest as never), null, 2)}\n`);
+  await writeFile(path.join(here, `${name}.expected.json`), `${JSON.stringify(manifestEssentials(readManifest(archive)), null, 2)}\n`);
 } finally {
   await rm(work, { recursive: true, force: true });
 }

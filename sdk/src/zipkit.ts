@@ -38,13 +38,13 @@ import {
   sessionLogName,
   type SessionLog,
 } from "./log/session.ts";
+import { recheckContent } from "./compare/content.ts";
 import { compareWithManifest } from "./compare/sources.ts";
 import { readManifestRecords, verifyArchive } from "./read/verify.ts";
 import { readInternals } from "./internal/carrier.ts";
 import { classifyPaths, pathState } from "./paths.ts";
 import { checkRemoval, outputInsideInputs } from "./removal.ts";
 import { pathResources, type PathResource } from "./claims.ts";
-import { listArchive, readArchiveManifest } from "./read/list.ts";
 import { nodeFileSystem, Volume } from "./internal/volume.ts";
 import { planArchive } from "./plan/plan.ts";
 import { MANIFEST_DEFAULTS, resolvePolicy } from "./policy.ts";
@@ -62,7 +62,6 @@ import {
   validateFlag,
   validateInstanceOptionKeys,
   validateManifestName,
-  validateTimeZoneName,
   validateSkipPaths,
   validateSpec,
 } from "./validate.ts";
@@ -70,14 +69,12 @@ import { writeArchive, type WriteDeps } from "./write/write.ts";
 import { VERSION } from "./version.ts";
 import type { Unlogged } from "./internal/types.ts";
 import type {
-  ArchiveListing,
   ArchivePolicy,
   ArchiveSpec,
   PlanData,
   WriteData,
   DeepPartial,
   LogStage,
-  Manifest,
   SourceComparison,
   PathEntry,
   PathState,
@@ -248,18 +245,19 @@ export class ZipKit {
 
   /**
    * Re-scan `spec`'s inputs and compare them with the manifest embedded in
-   * `archive` (see {@link SourceComparison}), the check before deleting the
-   * originals an archive was made from. `spec` is the one the archive was
-   * created with, so the same entries are included and excluded. Writes
-   * nothing; emits the scan's events but not a plan's findings, since this
-   * plan is never written.
+   * `archive` (see {@link SourceComparison}), the last check before the
+   * originals an archive was made from are removed. `spec` is the one the
+   * archive was created with, so the same entries are included and excluded.
+   * When nothing was added, changed by type, size or time, or left unlisted,
+   * every file and link is read again and compared by content. Writes nothing;
+   * emits the scan's events but not a plan's findings, since this plan is
+   * never written.
    */
-  async compareSources(
+  async #compareSources(
     spec: ArchiveSpec,
     archive: string,
-    options: ZipKitCallOptions = {},
+    options: ZipKitCallOptions,
   ): Promise<SourceComparison> {
-    requireAbsolute(archive, "archive");
     const result = await this.#run(options, async (logger) => {
       try {
         const validated = validateSpec(spec);
@@ -281,7 +279,16 @@ export class ZipKit {
         const unlisted = scanned.entries
           .filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath))
           .map((e) => e.sourcePath);
-        return compareWithManifest(readInternals(plan)?.writeEntries ?? [], unlisted, records);
+        const fresh = readInternals(plan)?.writeEntries ?? [];
+        const comparison = compareWithManifest(fresh, unlisted, records);
+        // Entries missing from the manifest's view may be explained by inputs
+        // already removed, so only additions, changes and unlisted folders
+        // make reading the content pointless.
+        if (comparison.added.length > 0 || comparison.changed.length > 0 || comparison.unlisted.length > 0) return comparison;
+        const changed = await recheckContent(fresh, records, {
+          volume, limit, chunkSize: this.#chunkSize, signal: options.signal, onProgress: options.onProgress,
+        });
+        return changed.length === 0 ? comparison : { ...comparison, matches: false, changed };
       } catch (err) {
         this.#reportError(logger, err);
         throw err;
@@ -292,35 +299,12 @@ export class ZipKit {
   }
 
   /**
-   * The entries of `archive` as its central directory records them, without
-   * reading their data: what `verify` would check. Works on any ZIP. A time
-   * stored only in the DOS field, which carries no zone, is read in
-   * `timeZone` (the host's by default). Bounded like every look at a user volume.
-   */
-  async list(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { timeZone?: string } = {}): Promise<ArchiveListing> {
-    return this.#guard(options, () =>
-      listArchive(this.volume(options.signal), requireAbsolute(archive, "archive"), validateTimeZoneName(options.timeZone)));
-  }
-
-  /**
-   * The manifest ZipKit embedded in `archive`, read whole: the policy, the
-   * summary, every entry with its source trace, size, times and hashes, what
-   * was left out and why. `manifestName` is the manifest's name when the
-   * archive was made with another than the instance policy's. Holds the whole
-   * document, so to check a very large archive against its manifest use
-   * `verify` with `manifest`, which streams it.
-   */
-  async readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { manifestName?: string } = {}): Promise<Manifest> {
-    return this.#guard(options, () =>
-      readArchiveManifest(this.volume(options.signal), requireAbsolute(archive, "archive"),
-        this.#manifestName(validateManifestName(options.manifestName))));
-  }
-
-  /**
    * Whether the originals `archive` was made from can be removed without
    * losing data, checked in order: the archive does not sit at or inside an
    * input, it verifies against its manifest, and a fresh scan of `spec`'s
-   * inputs still matches that manifest. `spec` is the one the archive was
+   * inputs still matches that manifest, every file and link by its content.
+   * Reads every original once, reporting how far through `onProgress` (stage
+   * `recheck`, after the verification's `verify`). `spec` is the one the archive was
    * created with, its inputs only those still to be removed; `removed` names
    * inputs an earlier partial removal already took. Removes nothing. A check
    * that cannot finish refuses, naming its step and carrying its error; a
@@ -346,7 +330,7 @@ export class ZipKit {
           });
           return { ok: data.ok, report: { summary: data.summary, missing: data.missing, extra: data.extra, findings: data.findings } };
         },
-        compare: () => this.compareSources(rescan, archive, call),
+        compare: () => this.#compareSources(rescan, archive, call),
       }, archive, validated.inputs, removed);
       call.signal?.throwIfAborted();
       return check;

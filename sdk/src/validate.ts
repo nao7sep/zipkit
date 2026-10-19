@@ -300,15 +300,6 @@ export function validateFlag(value: unknown, what: string): boolean | undefined 
   throw new ZipKitError("options.invalid", `${what} must be a boolean`);
 }
 
-/** An IANA time zone name, when one is given. */
-export function validateTimeZoneName(zone: unknown): string | undefined {
-  if (zone === undefined) return undefined;
-  if (typeof zone !== "string" || !isValidTimeZone(zone)) {
-    throw new ZipKitError("options.invalid", "timeZone must be a valid IANA time zone name (e.g. 'Asia/Tokyo', 'UTC')");
-  }
-  return zone;
-}
-
 /** A list of absolute paths, as a verb that takes several paths needs. */
 export function requireAbsoluteList(values: unknown, what: string): string[] {
   if (!Array.isArray(values)) throw new ZipKitError("options.invalid", `${what} must be a list of absolute paths`);

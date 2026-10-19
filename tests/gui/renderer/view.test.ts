@@ -903,17 +903,17 @@ describe("jobCommands", () => {
   });
   it("offers trash-originals only when the archive carries the manifest", () => {
     const done = { state: "done" as const, intent: SAVE, entries: [{ path: "/a", kind: "file" as const }] };
-    expect(jobCommands(job({ ...done, options: { ...DEFAULT_OPTIONS, metadata: false } }))).toEqual([
+    expect(jobCommands(job({ ...done, options: { ...DEFAULT_OPTIONS, manifest: false } }))).toEqual([
       "verify",
       "reveal",
       "remove-archive",
     ]);
   });
   it("offers no create or retry for a Move-to-Trash job without its manifest", () => {
-    const noManifest = { intent: TRASH, options: { ...DEFAULT_OPTIONS, metadata: false } };
+    const noManifest = { intent: TRASH, options: { ...DEFAULT_OPTIONS, manifest: false } };
     expect(jobCommands(job({ state: "ready", ...noManifest }))).toEqual([]);
     expect(jobCommands(job({ state: "failed", ...noManifest }))).toEqual([]);
-    expect(jobCommands(job({ state: "ready", intent: SAVE, options: { ...DEFAULT_OPTIONS, metadata: false } }))).toEqual([
+    expect(jobCommands(job({ state: "ready", intent: SAVE, options: { ...DEFAULT_OPTIONS, manifest: false } }))).toEqual([
       "create",
     ]);
   });

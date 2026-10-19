@@ -16,7 +16,7 @@ import {
 } from "../../../src/gui/shared/spec.js";
 
 describe("buildSpec", () => {
-  it("maps defaults to an inclusive policy with metadata + hashing on", () => {
+  it("maps defaults to an inclusive policy with the manifest and hashing on", () => {
     const spec = buildSpec(["/a"], DEFAULT_OPTIONS);
     expect(spec.inputs).toEqual(["/a"]);
     expect(spec.policy?.junk).toBe("builtin");
@@ -48,7 +48,7 @@ describe("buildSpec", () => {
   });
 
   it("turns off the junk preset and the manifest when toggled off", () => {
-    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, junk: false, metadata: false });
+    const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, junk: false, manifest: false });
     expect(spec.policy?.junk).toBe("none");
     expect(spec.policy?.manifest).toBe(false);
   });

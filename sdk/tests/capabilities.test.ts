@@ -5,14 +5,15 @@
  * archive holds without verifying it.
  */
 
-import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit, ZipKitError } from "../src/index.ts";
+import { ZipKit } from "../src/index.ts";
 import type { ProgressCounts } from "../src/index.ts";
 import { Meter } from "../src/progress.ts";
 import { createDirectoryLink } from "./helpers/symlink.ts";
+import { readZipFile } from "./helpers/readZip.ts";
 
 let root: string;
 let proj: string;
@@ -61,12 +62,22 @@ describe("onProgress", () => {
     const zip = new ZipKit();
     const archive = path.join(root, "o.zip");
     await zip.create({ inputs: [proj], output: archive });
-    const listing = await zip.list(archive);
+    const listing = readZipFile(archive).entries;
     const counts: ProgressCounts[] = [];
     await zip.verify(archive, { manifest: true, onProgress: (c) => counts.push(c) });
-    const bytes = listing.entries.reduce((sum, e) => sum + e.size, 0);
+    const bytes = listing.reduce((sum, e) => sum + e.uncompSize, 0);
     expect(counts[0]).toMatchObject({ stage: "verify", entriesDone: 0, bytesDone: 0 });
-    expect(counts.at(-1)).toEqual({ stage: "verify", entriesDone: listing.entries.length, entriesTotal: listing.entries.length, bytesDone: bytes, bytesTotal: bytes });
+    expect(counts.at(-1)).toEqual({ stage: "verify", entriesDone: listing.length, entriesTotal: listing.length, bytesDone: bytes, bytesTotal: bytes });
+  });
+
+  it("follows a removal check through verification and then the recheck of every original", async () => {
+    const zip = new ZipKit();
+    const archive = path.join(root, "o.zip");
+    await zip.create({ inputs: [proj], output: archive });
+    const counts: ProgressCounts[] = [];
+    expect((await zip.checkRemoval({ inputs: [proj] }, archive, { onProgress: (c) => counts.push(c) })).refusal).toBeNull();
+    expect(counts.at(-1)).toEqual({ stage: "recheck", entriesDone: 2, entriesTotal: 2, bytesDone: 11, bytesTotal: 11 });
+    expect(counts.map((c) => c.stage).join(" ")).toMatch(/^(verify )+(recheck ?)+$/);
   });
 
   it("reports at most every 100 ms between the first and the last, and survives an observer that throws", () => {
@@ -81,37 +92,5 @@ describe("onProgress", () => {
     expect(seen).toEqual([0, 20, 30]);
     // With no observer it does nothing at all.
     expect(() => new Meter("verify", { entries: 1, bytes: 1 }, undefined).finish()).not.toThrow();
-  });
-});
-
-describe("list and readManifest", () => {
-  it("list the entries without verifying them, and read the manifest whole", async () => {
-    const zip = new ZipKit();
-    const archive = path.join(root, "o.zip");
-    const when = new Date("2026-05-04T03:02:01Z");
-    await utimes(path.join(proj, "a.txt"), when, when);
-    await zip.create({ inputs: [proj], output: archive });
-    const listing = await zip.list(archive);
-    expect(listing.archive).toBe(archive);
-    const entries = byPath(listing.entries);
-    expect(entries.get("a.txt")).toMatchObject({ type: "file", method: "deflate", size: 5, crc32: expect.any(Number) });
-    expect(entries.get("a.txt")?.modified.iso).toBe("2026-05-04T03:02:01.000Z");
-    expect(entries.has("zipkit.json")).toBe(true);
-    const manifest = await zip.readManifest(archive);
-    expect(manifest.formatVersion).toBe(1);
-    expect(manifest.entries.map((e) => e.archivePath).sort()).toEqual(["a.txt", "sub", "sub/b.txt"]);
-    expect(manifest.summary.sourceBytes).toBe(11);
-  });
-
-  it("refuse an archive without a manifest, and a file that is not a ZIP", async () => {
-    const zip = new ZipKit();
-    const bare = path.join(root, "bare.zip");
-    await zip.create({ inputs: [proj], output: bare, policy: { manifest: false } });
-    expect((await zip.list(bare)).entries.length).toBeGreaterThan(0);
-    await expect(zip.readManifest(bare)).rejects.toMatchObject({ code: "manifest.missing" });
-    const text = path.join(root, "not.zip");
-    await writeFile(text, "x".repeat(100));
-    await expect(zip.list(text)).rejects.toBeInstanceOf(ZipKitError);
-    expect((await stat(text)).size).toBe(100);
   });
 });

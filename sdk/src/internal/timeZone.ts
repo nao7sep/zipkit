@@ -59,32 +59,6 @@ export interface WallClock {
   second: number; // 0–59
 }
 
-/**
- * The inverse of {@link wallClockInZone}: the absolute instant (epoch ms) whose
- * local rendering in `timeZone` equals the given wall clock. Used when listing
- * to turn a zone-less DOS field back into an instant for archives that carry no
- * UTC time extra. Resolve the offset at the resulting candidate as well as at
- * the initial guess, since a transition can lie between them. Ambiguous times
- * keep the first matching reading; a skipped time retains the first correction,
- * preserving the DOS field's existing approximate policy for impossible times.
- */
-export function instantFromWallClockInZone(w: WallClock, timeZone: string): number {
-  const guess = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
-  let candidate = guess;
-  let firstCorrection = guess;
-  for (let i = 0; i < 3; i++) {
-    const rendered = wallClockInZone(candidate, timeZone);
-    const renderedAsUtc = Date.UTC(
-      rendered.year, rendered.month - 1, rendered.day,
-      rendered.hour, rendered.minute, rendered.second,
-    );
-    if (renderedAsUtc === guess) return candidate;
-    candidate += guess - renderedAsUtc;
-    if (i === 0) firstCorrection = candidate;
-  }
-  return firstCorrection;
-}
-
 /** The local wall-clock components of an absolute instant in the given zone. */
 export function wallClockInZone(epochMs: number, timeZone: string): WallClock {
   const parts = formatterFor(timeZone).formatToParts(new Date(epochMs));

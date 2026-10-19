@@ -1104,7 +1104,7 @@ function JobView({
               ))}
             </div>
           </div>
-          {manifestRequiredButMissing(job.intent, opts.metadata) && (
+          {manifestRequiredButMissing(job.intent, opts.manifest) && (
             <p style={S.caution}>{t.t("op.manifestNeeded")}</p>
           )}
           {scanBlocksRemoval(job) && (

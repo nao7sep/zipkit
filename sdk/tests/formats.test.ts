@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../src/index.ts";
 import { MANIFEST_FORMAT_VERSION } from "../src/write/manifest.ts";
 import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./fixtures/sample-tree.ts";
+import { readManifest } from "./helpers/manifest.ts";
+import { readZipFile } from "./helpers/readZip.ts";
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const SUPPORTED = Array.from({ length: MANIFEST_FORMAT_VERSION }, (_, i) => i + 1);
@@ -36,8 +38,7 @@ describe.each(SUPPORTED)("manifest format %i", (version) => {
   });
 
   it("still reads as it was written", async () => {
-    const manifest = await new ZipKit().readManifest(archive);
-    expect(manifestEssentials(manifest as never)).toEqual(await expected(version));
+    expect(manifestEssentials(readManifest(archive))).toEqual(await expected(version));
   });
 });
 
@@ -46,12 +47,13 @@ it.skipIf(process.platform === "win32")("the current writer records the sample t
   const tree = await makeSampleTree(root);
   const archive = path.join(root, "now.zip");
   await new ZipKit().create({ inputs: [tree], output: archive, policy: SAMPLE_POLICY });
-  const manifest = await new ZipKit().readManifest(archive);
-  expect(manifestEssentials(manifest as never)).toEqual(await expected(MANIFEST_FORMAT_VERSION));
-  // The entries themselves too: the same names, kinds, methods, sizes, checksums and times.
-  const listing = async (file: string) => (await new ZipKit().list(file, { timeZone: "UTC" })).entries
-    .filter((e) => e.archivePath !== "zipkit.json")
-    .map(({ archivePath, type, method, size, crc32, modified }) => ({ archivePath, type, method, size, crc32, modified }))
-    .sort((a, b) => (a.archivePath < b.archivePath ? -1 : 1));
-  expect(await listing(archive)).toEqual(await listing(path.join(fixtures, `format-${MANIFEST_FORMAT_VERSION}.zip`)));
+  expect(manifestEssentials(readManifest(archive))).toEqual(await expected(MANIFEST_FORMAT_VERSION));
+  // The entries themselves too: the same names, attributes, methods, sizes,
+  // checksums, DOS times and extra fields (which carry the UTC times).
+  const entries = (file: string) => readZipFile(file).entries
+    .filter((e) => e.name !== "zipkit.json")
+    .map(({ name, method, dosTime, dosDate, crc32, uncompSize, externalAttr, centralExtra }) =>
+      ({ name, method, dosTime, dosDate, crc32, uncompSize, externalAttr, centralExtra: centralExtra.toString("hex") }))
+    .sort((a, b) => (a.name < b.name ? -1 : 1));
+  expect(entries(archive)).toEqual(entries(path.join(fixtures, `format-${MANIFEST_FORMAT_VERSION}.zip`)));
 });

@@ -16,7 +16,6 @@ export type { VerifyRuleId, FindingRule, RuleId, RuleSpec } from "./registry.ts"
 
 export type {
   ArchiveInput,
-  ArchiveListing,
   ArchivePolicy,
   ArchiveSpec,
   CompressionPolicy,
@@ -36,7 +35,6 @@ export type {
   LogEventBody,
   LogMeta,
   LogLevel,
-  ListedEntry,
   LogStage,
   Manifest,
   ManifestEntry,

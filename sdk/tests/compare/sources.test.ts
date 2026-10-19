@@ -1,15 +1,15 @@
 /**
- * The delete gate's source check, end to end through `compareSources`: an
+ * The delete gate's source check, end to end through `checkRemoval`: an
  * archive's inputs re-scanned against its embedded manifest. Only included
- * files and symlinks count, by source path, type, size and modification time;
- * junk written into the tree and folder times do not.
+ * files and symlinks count, by source path, type, size, modification time and
+ * content; junk written into the tree and folder times do not.
  */
 
-import { chmod, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit } from "../../src/index.ts";
+import { ZipKit, type SourceComparison } from "../../src/index.ts";
 import { compareWithManifest } from "../../src/compare/sources.ts";
 import { scanEntry } from "../helpers/synthetic.ts";
 
@@ -32,13 +32,28 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const compare = () => new ZipKit().compareSources({ inputs: [proj], output }, output);
+const SAME = { matches: true, added: [], missing: [], changed: [], unlisted: [] };
 
-describe("compareSources", () => {
+/** The removal check's comparison: the same as archived, or what its refusal says changed. */
+async function compare(archive = output, spec = { inputs: [proj] }): Promise<SourceComparison> {
+  const { refusal } = await new ZipKit().checkRemoval(spec, archive);
+  if (refusal === null) return SAME;
+  if (refusal.reason !== "changed") throw new Error(`refused for ${refusal.reason}`);
+  return refusal.comparison;
+}
+
+/** Rewrite a file with same-size content and put its modification time back. */
+async function editKeepingTime(file: string, content: string): Promise<void> {
+  const before = await stat(file);
+  await writeFile(file, content);
+  await utimes(file, before.atime, before.mtime);
+}
+
+describe("the source check", () => {
   it("matches an untouched tree, even after junk lands and folder times move", async () => {
     await writeFile(path.join(proj, ".DS_Store"), "finder");
     await utimes(path.join(proj, "sub"), new Date(2001, 0, 1), new Date(2001, 0, 1));
-    expect(await compare()).toEqual({ matches: true, added: [], missing: [], changed: [], unlisted: [] });
+    expect(await compare()).toEqual(SAME);
   });
 
   it("reports a file added, one removed and one edited since archiving", async () => {
@@ -52,6 +67,20 @@ describe("compareSources", () => {
       changed: ["proj/sub/b.txt"],
       unlisted: [],
     });
+  });
+
+  it("reports a same-size edit whose modification time was kept, by its SHA-256", async () => {
+    await editKeepingTime(path.join(proj, "sub", "b.txt"), "BETA");
+    expect(await compare()).toEqual({ ...SAME, matches: false, changed: ["proj/sub/b.txt"] });
+  });
+
+  it("compares by CRC-32 when the archive recorded no SHA-256", async () => {
+    const crcOnly = path.join(dir, "crc.zip");
+    const policy = { manifest: { hash: false } };
+    await new ZipKit().create({ inputs: [proj], output: crcOnly, policy });
+    expect(await compare(crcOnly, { inputs: [proj], policy } as never)).toEqual(SAME);
+    await editKeepingTime(path.join(proj, "a.txt"), "ALPHA");
+    expect((await compare(crcOnly, { inputs: [proj], policy } as never)).changed).toEqual(["proj/a.txt"]);
   });
 
   it("reports a file whose modification time alone changed", async () => {
@@ -70,12 +99,11 @@ describe("compareSources", () => {
     },
   );
 
-  it("fails when the archive holds no manifest", async () => {
+  it("refuses when the archive holds no manifest", async () => {
     const bare = path.join(dir, "bare.zip");
     await new ZipKit().create({ inputs: [proj], output: bare, policy: { manifest: false } });
-    await expect(new ZipKit().compareSources({ inputs: [proj] }, bare)).rejects.toMatchObject({
-      code: "manifest.missing",
-    });
+    const { refusal } = await new ZipKit().checkRemoval({ inputs: [proj] }, bare);
+    expect(refusal).toMatchObject({ reason: "error", step: "verify", error: { code: "manifest.missing" } });
   });
 });
 

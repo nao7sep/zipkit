@@ -748,7 +748,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     let verified: boolean;
     const seen: PathState | undefined = rec.fingerprint === null ? undefined : { kind: "present", fingerprint: rec.fingerprint };
     try {
-      verified = await deps.verify(output, signal, onEvent, rec.job.options.metadata);
+      verified = await deps.verify(output, signal, onEvent, rec.job.options.manifest);
     } catch (err) {
       set(rec, { state: "failed", message: failureMessage(err, "job.savedVerifyErrored") });
       deps.log.error("job saved; verification errored", { jobId: id, output, error: errorInfo(err) });
@@ -778,7 +778,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
    *  folder. Checked when a run is requested and again when the drain reaches
    *  it, so neither a stale click nor an edit while it waited can start it. */
   function refusesRun(rec: Rec): boolean {
-    if (manifestRequiredButMissing(rec.job.intent, rec.job.options.metadata)) {
+    if (manifestRequiredButMissing(rec.job.intent, rec.job.options.manifest)) {
       deps.log.warn("job run refused: removing the originals needs the manifest", { jobId: rec.job.id });
       return true;
     }
@@ -1089,7 +1089,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       if (!rec || rec.job.state !== "done" || rec.job.trashing) return;
       // Offered only when the archive carries the manifest its verify needs,
       // and when the scan listed every folder, so nothing unarchived is removed.
-      if (!rec.job.options.metadata) {
+      if (!rec.job.options.manifest) {
         deps.log.warn("removing originals refused: the archive has no manifest", { jobId: id, method });
         return;
       }
@@ -1169,7 +1169,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           if (!(await observeArchive(rec, signal))) return null;
           claim = await claimFiles([output], [], signal);
           const seen = await lookAt(rec, output, signal);
-          const report = await deps.inspect(output, signal, deps.progress(id, "verify"), rec.job.options.metadata);
+          const report = await deps.inspect(output, signal, deps.progress(id, "verify"), rec.job.options.manifest);
           if (report.ok) {
             markVerified(rec, seen?.kind === "present" ? seen.fingerprint : null);
             set(rec, { actionResult: { severity: "info", message: message("history.verified", { count: report.summary.total }) } });

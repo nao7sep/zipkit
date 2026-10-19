@@ -210,7 +210,7 @@ export { manifestRequiredButMissing, scanBlocksRemoval };
 export function jobCommands(job: Job): JobCommand[] {
   // Moving the archive or the originals to Trash on request: busy until it ends or is cancelled.
   if (job.trashing) return ["cancel"];
-  const runnable = !manifestRequiredButMissing(job.intent, job.options.metadata) && !scanBlocksRemoval(job);
+  const runnable = !manifestRequiredButMissing(job.intent, job.options.manifest) && !scanBlocksRemoval(job);
   switch (job.state) {
     case "planning":
       return ["cancel"];
@@ -255,7 +255,7 @@ export function jobCommands(job: Job): JobCommand[] {
       // look finds some back: before that, nothing is known to be there.
       if (removesOriginals(job.intent) && job.entries === undefined) return commands;
       if (originalsIntact(job)) commands.push("remove-archive");
-      if (job.options.metadata && !job.scanIncomplete && originalsPresent(job)) commands.push("trash-originals", "delete-originals");
+      if (job.options.manifest && !job.scanIncomplete && originalsPresent(job)) commands.push("trash-originals", "delete-originals");
       return commands;
     }
   }
@@ -1049,7 +1049,7 @@ function archiveCard(job: Job, t: Translator): DetailsCard | null {
   if (job.summary) facts.push({ label: t.t("details.factEntries"), value: t.number(job.summary.included) });
   facts.push({
     label: t.t("details.factManifest"),
-    value: job.options.metadata
+    value: job.options.manifest
       ? (job.options.hash ? t.t("details.manifestWithHash", { file: "zipkit.json" }) : "zipkit.json")
       : t.t("details.manifestNone"),
   });
