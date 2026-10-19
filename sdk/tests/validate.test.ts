@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { validateExtractSpec, validatePolicy, validateSpec } from "../src/validate.ts";
+import { validatePolicy, validateSpec } from "../src/validate.ts";
 import { exportPlan, importPlan, ZipKit } from "../src/index.ts";
 import { invalidError } from "./helpers/errors.ts";
 
@@ -106,12 +106,12 @@ describe("safe single-component fields", () => {
   it.each(["a/b", "..", ".", "with/slash", "dir/zipkit.json"])(
     "rejects an unsafe metadata.name %j",
     (name) => {
-      expect(() => validatePolicy({ metadata: { name } } as never)).toThrow(invalidError);
+      expect(() => validatePolicy({ manifest: { name } } as never)).toThrow(invalidError);
     },
   );
 
   it("accepts a safe metadata.name", () => {
-    expect(() => validatePolicy({ metadata: { name: "zipkit.json" } } as never)).not.toThrow();
+    expect(() => validatePolicy({ manifest: { name: "zipkit.json" } } as never)).not.toThrow();
   });
 });
 
@@ -154,12 +154,11 @@ describe("locations", () => {
     expect(() => validateSpec({ inputs: ["relative"] })).toThrow(invalidError);
     expect(() => validateSpec({ inputs: ["/a"], output: "out.zip" })).toThrow(invalidError);
     expect(() => validateSpec({ inputs: ["/a"], outputDir: "out" })).toThrow(invalidError);
-    expect(() => validateExtractSpec({ archive: "a.zip", dryRun: true })).toThrow(invalidError);
-    expect(() => validateExtractSpec({ archive: "/a.zip", dest: "out" })).toThrow(invalidError);
     expect(() => new ZipKit({ logDir: "logs" })).toThrow(invalidError);
     expect(() => new ZipKit({ skipPaths: ["data"] })).toThrow(invalidError);
     const zip = new ZipKit();
     const relative = { code: "path.not-absolute", kind: "invalid", subject: "a.zip" };
+    await expect(zip.verify("a.zip")).rejects.toMatchObject(relative);
     await expect(zip.list("a.zip")).rejects.toMatchObject(relative);
     await expect(zip.readManifest("a.zip")).rejects.toMatchObject(relative);
     await expect(zip.pathState("a.zip")).rejects.toMatchObject(relative);
@@ -176,11 +175,13 @@ describe("call options and arguments", () => {
     const invalid = { name: "ZipKitError", kind: "invalid" };
     expect(() => new ZipKit({ logdir: "/tmp" } as never)).toThrow(invalidError);
     await expect(zip.plan({ inputs: ["/a"] }, { signal: { aborted: false } as never })).rejects.toMatchObject({ code: "options.invalid" });
-    await expect(zip.extract({ archive: "/a.zip", dryRun: true }, { onEvent: "log" as never })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.verify("/a.zip", { onEvent: "log" as never })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.verify("/a.zip", { manifest: "yes" as never })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.verify("/a.zip", { manifestName: "a/b" })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.pathState("/a", { signal: {} as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.classify("abc" as never)).rejects.toMatchObject(invalid);
     await expect(zip.pathResources(null as never)).rejects.toMatchObject(invalid);
-    await expect(zip.readManifest("/a.zip", { name: "../x" })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.readManifest("/a.zip", { manifestName: "../x" })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.list("/a.zip", { timeZone: "Bogus/Zone" })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.write(null as never)).rejects.toMatchObject({ code: "write.no-internals", kind: "invalid" });
     await expect(zip.checkRemoval({ inputs: ["/a"] }, "/a.zip", { removed: 5 as never })).rejects.toMatchObject(invalid);

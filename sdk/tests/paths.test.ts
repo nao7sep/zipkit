@@ -45,7 +45,7 @@ describe("pathState", () => {
     const another = await pathState(other, volume);
     expect(sameFile((first as { fingerprint: string }).fingerprint, (another as { fingerprint: string }).fingerprint)).toBe(false);
     await rm(file);
-    expect(await pathState(file, volume)).toEqual({ kind: "gone" });
+    expect(await pathState(file, volume)).toEqual({ kind: "missing" });
   });
 
   it("reads a path on a drive that is not connected as out of reach, not gone", async () => {
@@ -83,6 +83,6 @@ describe("classifyPaths", () => {
     const zip = new ZipKit();
     expect(await zip.classify([file])).toEqual([{ path: file, kind: "file" }]);
     expect((await zip.pathState(file)).kind).toBe("present");
-    expect(await zip.pathState(path.join(root, "gone"))).toEqual({ kind: "gone" });
+    expect(await zip.pathState(path.join(root, "missing"))).toEqual({ kind: "missing" });
   });
 });

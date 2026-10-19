@@ -30,15 +30,15 @@ it("keeps originals when a real archive's file type changes after publication", 
       await writeFile(output, bytes);
       return result.bytes;
     },
-    verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
+    verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, checkMetadata) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent });
-      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
+      const data = await zip.verify(archive, { manifest: checkMetadata, signal, onEvent });
+      return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     trash, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,
   });

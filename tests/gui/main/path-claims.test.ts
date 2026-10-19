@@ -106,7 +106,7 @@ async function fixture() {
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
     write: async (plan, signal, onEvent, onPhysicalSettlement) =>
       (await zip.write(plan, { signal, onEvent, onPhysicalSettlement })).bytes,
-    verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
+    verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
     classify: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
@@ -117,8 +117,8 @@ async function fixture() {
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, checkMetadata) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent });
-      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
+      const data = await zip.verify(archive, { manifest: checkMetadata, signal, onEvent });
+      return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     emit: () => {}, progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,
   };

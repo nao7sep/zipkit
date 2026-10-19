@@ -689,10 +689,10 @@ describe("progressRuns", () => {
       jobEvent(1, { event: "scan.start", inputs: 1 }),
       jobEvent(2, { event: "scan.start", inputs: 1 }, S, create),
       jobEvent(3, { event: "write.start", entries: 2 }, S, create),
-      jobEvent(4, { event: "extract.start", entries: 2, write: false }, S, create),
+      jobEvent(4, { event: "verify.start", entries: 2 }, S, create),
       jobEvent(
         5,
-        { event: "extract.done", total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, written: 0, skipped: 2, reportOk: true },
+        { event: "verify.done", total: 2, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0, ok: true },
         S,
         create,
       ),
@@ -705,15 +705,15 @@ describe("progressRuns", () => {
           "Scanning 1 input",
           "Writing 2 entries",
           "Verifying 2 entries",
-          "Verify complete: 2 entries, 0 CRC failures, 0 SHA mismatches, 0 manifest mismatches",
+          "Verify complete: 2 entries, 0 CRC failures, 0 unreadable entries, 0 SHA mismatches, 0 manifest mismatches",
         ],
       ],
     ]);
   });
   it("heads a Verify run and starts a new run when the run id changes, even for the same action", () => {
     const runs = progressRuns([
-      jobEvent(1, { event: "extract.start", entries: 1, write: false }, S, { action: "verify", run: "3" }),
-      jobEvent(2, { event: "extract.start", entries: 1, write: false }, S, { action: "verify", run: "4" }),
+      jobEvent(1, { event: "verify.start", entries: 1 }, S, { action: "verify", run: "3" }),
+      jobEvent(2, { event: "verify.start", entries: 1 }, S, { action: "verify", run: "4" }),
     ]);
     expect(runs.map((run) => progressHeading(run, en).split(" · ")[0])).toEqual(["Verify", "Verify"]);
   });
@@ -730,14 +730,14 @@ describe("progressRuns", () => {
     expect(findingKind("macos.junk", "info", en)).toBe("Junk files excluded");
     expect(findingKind("entry.symlink", "warning", en)).toBe("Symbolic links");
     expect(findingKind("entry.unsupported", "info", en)).toBe("Special files left out");
-    expect(findingKind("extract.crc-fail", "error", en)).toBe("CRC-32 mismatches");
-    expect(findingKind("extract.manifest-mismatch", "error", en)).toBe("Mismatches with the manifest");
+    expect(findingKind("verify.crc32-mismatch", "error", en)).toBe("CRC-32 mismatches");
+    expect(findingKind("verify.manifest-mismatch", "error", en)).toBe("Mismatches with the manifest");
     expect(findingKind("future.rule", "info", en)).toBe("future.rule");
   });
   it("gives every rule the SDK registers, and every verify rule, a label in one form", () => {
     const rules = [
       ...RULE_ORDER.flatMap((rule) => (rule.startsWith("name.") ? [`${rule}|info`, `${rule}|warning`] : [`${rule}|warning`])),
-      ...["crc-fail", "sha-mismatch", "manifest-mismatch", "unsafe-path", "missing", "extra"].map((r) => `extract.${r}|error`),
+      ...["crc32-mismatch", "unreadable", "local-mismatch", "sha256-mismatch", "manifest-mismatch", "missing", "extra"].map((r) => `verify.${r}|error`),
     ];
     for (const entry of rules) {
       const [rule, severity] = entry.split("|") as [string, Severity];
@@ -828,12 +828,12 @@ describe("progress presentation", () => {
       time: "2026-06-14T05:00:00.000Z",
       level: "error",
       event: "fault",
-      code: "scan.stat-failed",
+      code: "path.denied",
       detail: "cannot stat: /x",
       cause: "EACCES",
-      message: "scan.stat-failed: cannot stat: /x: EACCES",
+      message: "path.denied: cannot stat: /x: EACCES",
     } as LogEvent;
-    expect(progressMessage(event, createTranslator("ja"))).toBe("scan.stat-failed: cannot stat: /x: EACCES");
+    expect(progressMessage(event, createTranslator("ja"))).toBe("path.denied: cannot stat: /x: EACCES");
   });
 
   it("lists a stage's counts the way the language lists things", () => {

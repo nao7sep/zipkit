@@ -23,7 +23,7 @@ describe("buildSpec", () => {
     expect(spec.policy?.symlinks).toBe("ignore");
     expect(spec.policy?.emptyDirs).toBe("keep");
     expect(spec.policy?.compression?.level).toBe(6);
-    expect(spec.policy?.metadata).toEqual({ hash: true });
+    expect(spec.policy?.manifest).toEqual({ hash: true });
     // Only the replacement style is chosen here; every action is left to the SDK.
     expect(spec.policy?.names).toEqual({ invalidCharStyle: "tidy" });
     expect(spec.output).toBeUndefined(); // composed in the main process, not here
@@ -50,12 +50,12 @@ describe("buildSpec", () => {
   it("turns off the junk preset and the manifest when toggled off", () => {
     const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, junk: false, metadata: false });
     expect(spec.policy?.junk).toBe("none");
-    expect(spec.policy?.metadata).toBe(false);
+    expect(spec.policy?.manifest).toBe(false);
   });
 
   it("keeps the manifest but drops the hash when hashing is off", () => {
     const spec = buildSpec(["/a"], { ...DEFAULT_OPTIONS, hash: false });
-    expect(spec.policy?.metadata).toEqual({ hash: false });
+    expect(spec.policy?.manifest).toEqual({ hash: false });
   });
 
   it("carries overwrite and comment through (output is composed elsewhere)", () => {

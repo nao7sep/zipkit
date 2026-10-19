@@ -42,7 +42,7 @@ describe("exclusive publication through the actual volume owner", () => {
       await opened.promise;
       if (ending === "cancel") controller.abort();
       else await vi.advanceTimersByTimeAsync(50);
-      expect(await result).toHaveProperty("code", ending === "cancel" ? "aborted" : "io.stalled");
+      expect(await result).toHaveProperty("code", ending === "cancel" ? "operation.cancelled" : "io.stalled");
       open.release();
       await closing.promise;
       expect(existsSync(output)).toBe(true);
@@ -100,7 +100,7 @@ describe("exclusive publication through the actual volume owner", () => {
       await writing.promise;
       controller.abort();
       await vi.advanceTimersByTimeAsync(50);
-      expect(await result).toHaveProperty("code", "aborted");
+      expect(await result).toHaveProperty("code", "operation.cancelled");
       expect(closed).toBe(false);
       if (replace) {
         await unlink(output); await writeFile(output, "winner"); replacement = true;

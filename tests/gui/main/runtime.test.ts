@@ -135,8 +135,8 @@ describe("GUI error presentation", () => {
   });
 
   it("presents an SDK failure by its kind, without its text", () => {
-    const read = new SdkHostError({ name: "ZipKitError", message: "EACCES /private/HOSTILE", code: "read.open-failed", kind: "unavailable", effect: "none" });
-    expect(toGuiError(read)).toEqual({ kind: "unavailable", code: "read.open-failed", presentation: { key: "error.readFailed" } });
+    const read = new SdkHostError({ name: "ZipKitError", message: "EACCES /private/HOSTILE", code: "path.denied", kind: "unavailable", effect: "none" });
+    expect(toGuiError(read)).toEqual({ kind: "unavailable", code: "path.denied", presentation: { key: "error.readFailed" } });
     const write = new SdkHostError({ name: "ZipKitError", message: "x", code: "write.failed", kind: "unavailable", effect: "none" });
     expect(toGuiError(write).presentation).toEqual({ key: "error.verifyIncomplete" });
   });

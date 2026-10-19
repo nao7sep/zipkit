@@ -53,7 +53,7 @@ export interface EngineDeps {
   effects: PathClaims;
   resources(paths: string[], signal: AbortSignal): Promise<PathResource[]>;
   /** What is at a path now: there with a comparable fingerprint (which file,
-   *  its size and when it last changed), gone, or out of reach. */
+   *  its size and when it last changed), missing, or out of reach. */
   pathState(target: string, signal: AbortSignal): Promise<PathState>;
   /** Dry-run plan for the given inputs/options; progress events go to `onEvent`. */
   plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<PlanData>;
@@ -61,11 +61,11 @@ export interface EngineDeps {
   write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
     onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number>;
   /** Verify a written archive: every entry's CRC-32, and against its manifest
-   *  when `checkMetadata`; resolves to the SDK's reportOk. */
-  verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, checkMetadata: boolean): Promise<boolean>;
+   *  when `manifest`; resolves to the SDK's verdict. */
+  verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifest: boolean): Promise<boolean>;
   /** Verify a written archive on request: the verdict, the counts and the
    *  paths that disagree, for the job's review. */
-  inspect(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, checkMetadata: boolean): Promise<VerifyReport>;
+  inspect(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifest: boolean): Promise<VerifyReport>;
   /** Every check before the originals are removed (the SDK's checkRemoval):
    *  the archive is not inside them, it verifies against its manifest, and a
    *  fresh scan of `inputs` under the job's options still matches it; `removed`
@@ -320,8 +320,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
       return false;
     }
-    if (state.kind === "gone") {
-      archiveGone(rec, output, "gone");
+    if (state.kind === "missing") {
+      archiveGone(rec, output, "missing");
       return false;
     }
     if (rec.job.archiveStatus === "unavailable") {
@@ -348,7 +348,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
    *  another file put there, outside ZipKit. A file in its place is left alone.
    *  While every original is still there the job goes back to planning so it
    *  can be created again; once some are gone it stays finished and says so. */
-  function archiveGone(rec: Rec, output: string, how: "gone" | "replaced"): void {
+  function archiveGone(rec: Rec, output: string, how: "missing" | "replaced"): void {
     const id = rec.job.id;
     rec.publishedOutput = null;
     rec.publication = null;
@@ -357,20 +357,20 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     const originalsGone = entries
       ? entries.some((entry) => entry.kind === "missing")
       : rec.job.state === "done" && removesOriginals(rec.job.intent);
-    deps.log.warn(how === "gone" ? "archive missing" : "archive replaced", { jobId: id, output, originalsGone });
+    deps.log.warn(how === "missing" ? "archive missing" : "archive replaced", { jobId: id, output, originalsGone });
     if (originalsGone) {
       set(rec, {
         archiveWritten: false,
         archiveStatus: "missing",
         actionResult: {
           severity: "error",
-          message: message(how === "gone" ? "action.archiveMissingOriginalsGone" : "action.archiveReplacedOriginalsGone"),
+          message: message(how === "missing" ? "action.archiveMissingOriginalsGone" : "action.archiveReplacedOriginalsGone"),
         },
       });
       emit();
       return;
     }
-    set(rec, { actionResult: { severity: "warning", message: message(how === "gone" ? "action.archiveMissing" : "action.archiveReplaced") } });
+    set(rec, { actionResult: { severity: "warning", message: message(how === "missing" ? "action.archiveMissing" : "action.archiveReplaced") } });
     resetForRecreate(rec);
   }
   /** Back to an editable, re-planned job whose archive is gone, so options can
@@ -1170,18 +1170,19 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           claim = await claimFiles([output], [], signal);
           const seen = await lookAt(rec, output, signal);
           const report = await deps.inspect(output, signal, deps.progress(id, "verify"), rec.job.options.metadata);
-          if (report.reportOk) {
+          if (report.ok) {
             markVerified(rec, seen?.kind === "present" ? seen.fingerprint : null);
             set(rec, { actionResult: { severity: "info", message: message("history.verified", { count: report.summary.total }) } });
           } else {
             const s = report.summary;
-            const problems = s.crcFailed + s.shaMismatched + s.manifestMismatched + s.localMismatched + report.missing.length + report.extra.length;
+            const problems = s.crc32Failed + s.unreadable + s.localMismatched + s.sha256Mismatched + s.manifestMismatched +
+              report.missing.length + report.extra.length;
             set(rec, {
               archiveStatus: rec.job.archiveStatus === "verified" ? "changed" : rec.job.archiveStatus,
               actionResult: { severity: "error", message: message("history.verifyFailed", { count: Math.max(problems, 1) }) },
             });
           }
-          deps.log.info("verify done", { jobId: id, output, reportOk: report.reportOk });
+          deps.log.info("verify done", { jobId: id, output, ok: report.ok });
           return report;
         } catch (err) {
           deps.log.error("verify failed", { jobId: id, output, error: errorInfo(err) });

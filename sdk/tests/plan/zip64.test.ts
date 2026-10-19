@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { computeZip64Need, deflateBound, planNeedsZip64 } from "../../src/plan/zip64.ts";
-import type { MetadataContent, SizedEntry } from "../../src/plan/zip64.ts";
+import type { ManifestContent, SizedEntry } from "../../src/plan/zip64.ts";
 import { resolvePolicy } from "../../src/policy.ts";
 import type { WriteEntry } from "../../src/internal/types.ts";
 
@@ -72,9 +72,9 @@ describe("planNeedsZip64", () => {
   it("accounts for deflate expansion: a deflate entry needs Zip64 where the same-size store entry does not", () => {
     // Below the per-entry sentinel, so only the method's payload bound decides.
     const size = 0xffffffff - 1000;
-    const policy = resolvePolicy(undefined, { metadata: false }); // isolate from the manifest entry
-    const stored: MetadataContent = { entries: [fileEntry(size, "store")], excluded: [], findings: [] };
-    const deflated: MetadataContent = { entries: [fileEntry(size, "deflate")], excluded: [], findings: [] };
+    const policy = resolvePolicy(undefined, { manifest: false }); // isolate from the manifest entry
+    const stored: ManifestContent = { entries: [fileEntry(size, "store")], excluded: [], findings: [] };
+    const deflated: ManifestContent = { entries: [fileEntry(size, "deflate")], excluded: [], findings: [] };
     expect(planNeedsZip64(stored, policy)).toBe(false);
     expect(planNeedsZip64(deflated, policy)).toBe(true);
   });

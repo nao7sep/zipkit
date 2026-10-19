@@ -5,13 +5,12 @@
  * behind.
  */
 
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ERROR_CODES, isZipKitError, ZipKit, ZipKitError } from "../src/index.ts";
 import { stallError, toAbortError, withUnknownEffect } from "../src/errors.ts";
-import { nodeFileSystem, Volume } from "../src/testing.ts";
 
 let root: string;
 beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), "zipkit-errors-")); });
@@ -23,7 +22,7 @@ describe("ZipKitError", () => {
       expect(new ZipKitError(code as keyof typeof ERROR_CODES, "x").kind).toBe(kind);
     }
     expect(new ZipKitError("spec.invalid", "bad").effect).toBe("none");
-    expect(toAbortError(new Error("stop"))).toMatchObject({ code: "aborted", kind: "cancelled", effect: "none" });
+    expect(toAbortError(new Error("stop"))).toMatchObject({ code: "operation.cancelled", kind: "cancelled", effect: "none" });
   });
 
   it("crosses a process boundary as plain data the guard still recognizes", () => {
@@ -50,49 +49,12 @@ describe("ZipKitError", () => {
 
   it("marks a failure that may have left output behind, keeping everything else", () => {
     const cause = new Error("disk");
-    const err = new ZipKitError("read.write-failed", "cannot write a.txt", { cause, subject: "a.txt" });
+    const err = new ZipKitError("write.failed", "cannot write a.zip", { cause, subject: "a.zip" });
     const marked = withUnknownEffect(err) as ZipKitError;
-    expect(marked).toMatchObject({ code: "read.write-failed", effect: "unknown", subject: "a.txt", cause });
+    expect(marked).toMatchObject({ code: "write.failed", effect: "unknown", subject: "a.zip", cause });
     expect(withUnknownEffect(marked)).toBe(marked);
     const plain = new Error("not ours");
     expect(withUnknownEffect(plain)).toBe(plain);
-  });
-});
-
-describe("effect in practice", () => {
-  it("is none when an extraction fails before writing anything, and unknown once it has written a file", async () => {
-    const proj = path.join(root, "proj");
-    await mkdir(proj);
-    await writeFile(path.join(proj, "a.txt"), "alpha");
-    await writeFile(path.join(proj, "b.txt"), "bravo");
-    const archive = path.join(root, "a.zip");
-    await new ZipKit().create({ inputs: [proj], output: archive, policy: { metadata: false } });
-
-    // Writes into the destination are refused after `allow` files are created.
-    let opened = 0;
-    class Refusing extends ZipKit {
-      readonly allow: number;
-      readonly dest: string;
-      constructor(allow: number, dest: string) { super({ concurrency: 1 }); this.allow = allow; this.dest = dest; }
-      override volume(signal?: AbortSignal): Volume {
-        const { allow, dest } = this;
-        return new Volume({
-          ...nodeFileSystem,
-          open: async (file, flags, mode) => {
-            if (file.startsWith(dest + path.sep) && flags.startsWith("w") && opened++ >= allow) {
-              throw Object.assign(new Error("refused"), { code: "EACCES" });
-            }
-            return nodeFileSystem.open(file, flags, mode);
-          },
-        }, 30_000, signal);
-      }
-    }
-    const none = path.join(root, "none");
-    await expect(new Refusing(0, none).extract({ archive, dest: none })).rejects.toMatchObject({ code: "read.write-failed", effect: "none" });
-    opened = 0;
-    const some = path.join(root, "some");
-    await expect(new Refusing(1, some).extract({ archive, dest: some })).rejects.toMatchObject({ code: "read.write-failed", effect: "unknown" });
-    expect((await readdir(some)).length).toBeGreaterThan(0);
   });
 });
 
@@ -102,15 +64,15 @@ describe("verification of the two headers", () => {
     await writeFile(file, "alpha");
     const archive = path.join(root, "a.zip");
     await new ZipKit().create({ inputs: [file], output: archive });
-    expect((await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
+    expect((await new ZipKit().verify(archive, { manifest: true })).ok).toBe(true);
     const bytes = await readFile(archive);
     // The first entry's local header starts the file; its name follows the 30-byte header.
     expect(bytes.readUInt32LE(0)).toBe(0x04034b50);
     bytes[30] = "z".charCodeAt(0);
     await writeFile(archive, bytes);
-    const result = await new ZipKit().extract({ archive, dryRun: true });
-    expect(result.reportOk).toBe(false);
+    const result = await new ZipKit().verify(archive);
+    expect(result.ok).toBe(false);
     expect(result.summary.localMismatched).toBe(1);
-    expect(result.findings).toEqual([expect.objectContaining({ rule: "extract.local-mismatch", path: "a.txt", severity: "error" })]);
+    expect(result.findings).toEqual([expect.objectContaining({ rule: "verify.local-mismatch", path: "a.txt", severity: "error" })]);
   });
 });

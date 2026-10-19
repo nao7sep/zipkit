@@ -6,7 +6,7 @@ import { ZipKit } from "../../src/index.ts";
 import { readInternals } from "../../src/internal/carrier.ts";
 import { planArchive } from "../../src/plan/plan.ts";
 import { resolvePolicy } from "../../src/policy.ts";
-import { buildMetadata, manifestText } from "../../src/write/metadata.ts";
+import { buildManifest, manifestText } from "../../src/write/manifest.ts";
 import { writeArchive } from "../../src/write/write.ts";
 import { createLogger } from "../../src/log/logger.ts";
 import { scanEntry, scanResult, Y2020_NS } from "../helpers/synthetic.ts";
@@ -23,7 +23,7 @@ const write = (plan: ReturnType<typeof planArchive>) => writeArchive(plan, {
   logger: createLogger(), chunkSize: 65536, volume: realVolume(),
 });
 function document(plan: ReturnType<typeof planArchive>) {
-  return buildMetadata(plan, policy, readInternals(plan)!.writeEntries.map((writeEntry) => ({
+  return buildManifest(plan, policy, readInternals(plan)!.writeEntries.map((writeEntry) => ({
     writeEntry, crc32: 0, compressedSize: 0,
   })), Y2020_NS, "UTC");
 }
@@ -34,8 +34,8 @@ describe("manifests of any size", () => {
     expect(plan.writable).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(document(plan), null, 2))).toBeGreaterThan(16 * 1024 * 1024);
     await write(plan);
-    const verified = await new ZipKit().extract({ archive: plan.output, dryRun: true, checkMetadata: true });
-    expect(verified.reportOk).toBe(true);
+    const verified = await new ZipKit().verify(plan.output, { manifest: true });
+    expect(verified.ok).toBe(true);
     expect(verified.entries).toHaveLength(25_001);
   }, 15_000); // 25,000 real ZIP directory writes, under ordinary suite concurrency
 
@@ -44,11 +44,11 @@ describe("manifests of any size", () => {
       archivePath: `project/src/components/entry-${String(i).padStart(5, "0")}.ts`, size: 1024,
     }));
     const plan = planArchive(scanResult(entries), policy);
-    const metadata = buildMetadata(plan, policy, readInternals(plan)!.writeEntries.map((writeEntry) => ({
+    const metadata = buildManifest(plan, policy, readInternals(plan)!.writeEntries.map((writeEntry) => ({
       writeEntry, crc32: 0xffffffff, compressedSize: 512, sha256: "a".repeat(64),
     })), Y2020_NS, "UTC", "a comment");
     expect([...manifestText(metadata)].join("")).toBe(JSON.stringify(metadata, null, 2));
-    const empty = buildMetadata(planArchive(scanResult([]), policy), policy, [], Y2020_NS, "UTC");
+    const empty = buildManifest(planArchive(scanResult([]), policy), policy, [], Y2020_NS, "UTC");
     expect([...manifestText(empty)].join("")).toBe(JSON.stringify(empty, null, 2));
   });
 
@@ -61,8 +61,8 @@ describe("manifests of any size", () => {
     // One long finding message carries the manifest past the old limit cheaply.
     plan.findings.push({ rule: "name.suspicious", severity: "warning", path: "folder-0", message: "é".repeat(33 * 1024 * 1024) });
     await write(plan);
-    const verified = await new ZipKit().extract({ archive: output, dryRun: true, checkMetadata: true });
-    expect(verified.reportOk).toBe(true);
+    const verified = await new ZipKit().verify(output, { manifest: true });
+    expect(verified.ok).toBe(true);
     expect(await readdir(root)).toEqual(["past-limit.zip"]);
   }, 15_000); // a 66 MiB manifest deflated and inflated once each
 

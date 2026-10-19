@@ -33,7 +33,7 @@ import { applyPathFix } from "./pathFix.ts";
 import { buildSummary } from "./summary.ts";
 import { applySymlinks } from "./symlinks.ts";
 import { applyTimestamps } from "./timestamps.ts";
-import { planNeedsZip64, type MetadataContent } from "./zip64.ts";
+import { planNeedsZip64, type ManifestContent } from "./zip64.ts";
 import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.ts";
 
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
@@ -50,11 +50,11 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   applyNameFix(items, policy);
   applyEmptyDirs(items, policy);
   applyDedup(items);
-  // The writer injects the embedded metadata file at the archive root after
+  // The writer injects the embedded manifest file at the archive root after
   // planning; reserve its name so a real entry that would collide with it is
   // caught here (and predicted by the dry run) rather than silently producing a
   // duplicate ZIP entry.
-  const reserved = policy.metadata !== false ? [policy.metadata.name] : [];
+  const reserved = policy.manifest !== false ? [policy.manifest.name] : [];
   applyCollision(items, reserved);
   applyCompression(items, policy);
   applyTimestamps(items, scan.timeZone);
@@ -78,20 +78,20 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   }
   for (const f of globalFindings) findings.push(f);
 
-  // The Zip64 verdict includes the metadata file the writer injects, sized from
+  // The Zip64 verdict includes the manifest file the writer injects, sized from
   // its real content — the written entries, the dropped ones, and every finding —
   // so the dry run's `summary.zip64` matches what the write will emit.
   const excluded = items
     .filter((item) => item.excluded)
     .map((item) => {
-      const record: MetadataContent["excluded"][number] = {
+      const record: ManifestContent["excluded"][number] = {
         archivePath: item.archivePath,
         originalPath: item.originalPath,
       };
       if (item.excludeReason !== undefined) record.reason = item.excludeReason;
       return record;
     });
-  const content: MetadataContent = { entries: writeEntries, excluded, findings };
+  const content: ManifestContent = { entries: writeEntries, excluded, findings };
   if (scan.comment !== undefined) content.comment = scan.comment;
   const zip64 = planNeedsZip64(content, policy);
 

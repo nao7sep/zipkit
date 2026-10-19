@@ -14,11 +14,11 @@
  * fixing, deduplication, collision detection, and timestamp resolution.
  */
 
-import type { ExtractRuleId, Finding, FindingRule, RuleId, Severity } from "./types.ts";
+import type { Finding, FindingRule, RuleId, Severity, VerifyRuleId } from "./types.ts";
 
 export type { RuleId };
 
-export type { ExtractRuleId, FindingRule };
+export type { FindingRule, VerifyRuleId };
 
 export interface RuleSpec {
   /** The rule's severity, which alone decides blocking (`error` blocks). For
@@ -74,8 +74,8 @@ export function isKnownRule(rule: string): rule is RuleId {
  * - a registry `RuleId`, whose severity defaults to the registry tier (a caller
  *   passes an explicit `severity` only for the configurable name rules, whose
  *   tier is chosen per run from the policy action); or
- * - an `ExtractRuleId` with an explicit `severity`, which is how the extract
- *   pass records its CRC/SHA/manifest/path findings.
+ * - a `VerifyRuleId` with an explicit `severity`, which is how verification
+ *   records its CRC-32, header, hash and manifest findings.
  */
 export function finding(
   rule: RuleId,
@@ -84,7 +84,7 @@ export function finding(
   opts?: { fix?: Finding["fix"]; severity?: Severity },
 ): Finding;
 export function finding(
-  rule: ExtractRuleId,
+  rule: VerifyRuleId,
   path: string,
   message: string,
   opts: { fix?: Finding["fix"]; severity: Severity },

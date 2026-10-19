@@ -102,26 +102,26 @@ describe("SDK session log", () => {
   });
 
   /** Build the archive with a throwaway instance whose log goes elsewhere, so the
-   *  session log under `logDir` holds only the extract run we assert on. */
+   *  session log under `logDir` holds only the verify run we assert on. */
   async function buildArchive(): Promise<string> {
     const archive = path.join(root, "e.zip");
     await new ZipKit({ logDir: path.join(root, "build-logs") }).create({ inputs: [proj], output: archive });
     return archive;
   }
 
-  it("records extract's info events in the session log (gating per-entry debug off)", async () => {
+  it("records verify's info events in the session log (gating per-entry debug off)", async () => {
     const archive = await buildArchive();
-    await new ZipKit({ logDir }).extract({ archive, dryRun: true });
+    await new ZipKit({ logDir }).verify(archive);
 
     const events = (await sessionLines()).map((l) => l.event);
-    expect(events).toContain("extract.start");
-    expect(events).toContain("extract.done");
+    expect(events).toContain("verify.start");
+    expect(events).toContain("verify.done");
     expect(events).not.toContain("entry.verified"); // debug, gated off by default
   });
 
-  it("records per-entry entry.verified in the extract log when built with debug", async () => {
+  it("records per-entry entry.verified in the verify log when built with debug", async () => {
     const archive = await buildArchive();
-    await new ZipKit({ logDir, debug: true }).extract({ archive, dryRun: true });
+    await new ZipKit({ logDir, debug: true }).verify(archive);
 
     expect((await sessionLines()).map((l) => l.event)).toContain("entry.verified");
   });
@@ -135,8 +135,8 @@ describe("SDK session log", () => {
     };
     const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onEvent });
     await zip.write(plan, { onEvent });
-    await zip.extract({ archive, dryRun: true, checkMetadata: true }, { onEvent });
-    await expect(zip.extract({ archive: path.join(root, "missing.zip"), dryRun: true }, { onEvent })).rejects.toThrow();
+    await zip.verify(archive, { manifest: true, onEvent });
+    await expect(zip.verify(path.join(root, "missing.zip"), { onEvent })).rejects.toThrow();
 
     const lines = await sessionLines();
     expect(seen.map((e) => e.event)).toContain("fault");
@@ -158,13 +158,13 @@ describe("SDK without a session log", () => {
       };
       const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onEvent });
       const written = await zip.write(plan, { onEvent });
-      const extracted = await zip.extract({ archive: written.output, dryRun: true }, { onEvent });
+      const verified = await zip.verify(written.output, { onEvent });
 
-      expect([plan.log, written.log, extracted.log]).toEqual([null, null, null]);
+      expect([plan.log, written.log, verified.log]).toEqual([null, null, null]);
       await expect(readdir(dir)).rejects.toMatchObject({ code: "ENOENT" });
       expect(seen.filter((e) => e.event === "session.start")).toHaveLength(1);
       expect(seen[0]?.event).toBe("session.start");
-      expect(seen.map((e) => e.event)).toEqual(expect.arrayContaining(["plan.done", "write.done", "extract.done"]));
+      expect(seen.map((e) => e.event)).toEqual(expect.arrayContaining(["plan.done", "write.done", "verify.done"]));
     } finally {
       if (previous === undefined) delete process.env.ZIPKIT_LOG_DIR;
       else process.env.ZIPKIT_LOG_DIR = previous;

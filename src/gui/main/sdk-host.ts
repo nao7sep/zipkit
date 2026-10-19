@@ -24,9 +24,9 @@ export interface SdkOps {
   pathState(path: string): PathState;
   plan(inputs: string[], options: GuiOptions): PlanTransfer;
   write(transfer: PlanTransfer): number;
-  verify(output: string, checkMetadata: boolean): boolean;
+  verify(output: string, manifest: boolean): boolean;
   deletePath(path: string): void;
-  inspect(archive: string, checkMetadata: boolean): VerifyReport;
+  inspect(archive: string, manifest: boolean): VerifyReport;
   checkRemoval(output: string, inputs: string[], removed: string[], options: GuiOptions): RemoteRemovalCheck;
   classify(paths: string[]): InputEntry[];
 }
@@ -87,7 +87,7 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
   ) => Promise<unknown>;
   const ops: { [K in SdkOp]: (...args: never[]) => Run } = {
     resources: (paths: string[]) => (signal) => zip.pathResources(paths, { signal }),
-    // What is at a path now: there with a comparable fingerprint, gone, or
+    // What is at a path now: there with a comparable fingerprint, missing, or
     // out of reach on a drive that is not connected.
     pathState: (target: string) => (signal) => zip.pathState(target, { signal }),
     plan: (inputs: string[], options: GuiOptions) => async (signal, onEvent) => {
@@ -109,8 +109,8 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
       });
       return written.bytes;
     },
-    verify: (output: string, checkMetadata: boolean) => async (signal, onEvent, _id, onProgress) =>
-      (await zip.extract({ archive: output, dryRun: true, checkMetadata }, { signal, onEvent, onProgress })).reportOk,
+    verify: (output: string, manifest: boolean) => async (signal, onEvent, _id, onProgress) =>
+      (await zip.verify(output, { manifest, signal, onEvent, onProgress })).ok,
     // Deletes one original for good: a folder with everything in it, a file, or
     // a link itself, never what a link points to. Only after the job's checks.
     deletePath: (target: string) => async () => {
@@ -118,9 +118,9 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     },
     // The report needs the verdict, the counts and the paths that disagree,
     // never every entry's result.
-    inspect: (archive: string, checkMetadata: boolean) => async (signal, onEvent, _id, onProgress) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent, onProgress });
-      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra } satisfies VerifyReport;
+    inspect: (archive: string, manifest: boolean) => async (signal, onEvent, _id, onProgress) => {
+      const data = await zip.verify(archive, { manifest, signal, onEvent, onProgress });
+      return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra } satisfies VerifyReport;
     },
     checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions) => async (signal, onEvent, _id, onProgress) => {
       const check = await zip.checkRemoval(buildSpec(inputs, options), output, { removed, signal, onEvent, onProgress });

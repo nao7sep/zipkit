@@ -70,13 +70,10 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
     realpath: (path) => gate("realpath", path, () => real.realpath(path)),
     readlink: (path) => gate("readlink", path, () => real.readlink(path)),
     readdir: (path) => gate("readdir", path, () => real.readdir(path)),
-    mkdir: (path, recursive) => gate("mkdir", path, () => real.mkdir(path, recursive)),
     rename: (from, to) => gate("rename", to, () => real.rename(from, to)),
     link: (existing, created) => gate("link", created, () => real.link(existing, created)),
-    symlink: (target, path) => gate("symlink", path, () => real.symlink(target, path)),
     unlink: (path) => gate("unlink", path, () => real.unlink(path)),
     rm: (path) => gate("rm", path, () => real.rm(path)),
-    utimes: (path, atime, mtime) => gate("utimes", path, () => real.utimes(path, atime, mtime)),
     chmod: (path, mode) => gate("chmod", path, () => real.chmod(path, mode)),
     syncDirectory: (path) => gate("sync directory", path, () => real.syncDirectory(path)),
   };

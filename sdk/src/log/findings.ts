@@ -7,8 +7,8 @@
  * feeds the per-session log and the `onEvent` hook.
  *
  * Both stages that produce findings route through here — the plan stage
- * (`src/zipkit.ts`) and the extract/validate stage (`src/extract/extract.ts`) —
- * so a CRC failure, a SHA mismatch, an unsafe path, or a portability defect is
+ * (`src/zipkit.ts`) and the verify stage (`src/read/verify.ts`) — so a CRC
+ * failure, a SHA mismatch, an unreadable entry, or a portability defect is
  * logged the same way wherever it is found, with the severity→level mapping
  * living in exactly one place.
  */

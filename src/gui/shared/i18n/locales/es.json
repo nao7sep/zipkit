@@ -387,6 +387,7 @@
   "report.crcFailures": { "one": "{count} error de CRC", "many": "{count} de errores de CRC", "other": "{count} errores de CRC" },
   "report.shaMismatches": { "one": "{count} discrepancia de SHA", "many": "{count} de discrepancias de SHA", "other": "{count} discrepancias de SHA" },
   "report.manifestMismatches": {"one": "{count} discrepancia con el manifiesto", "many": "{count} de discrepancias con el manifiesto", "other": "{count} discrepancias con el manifiesto"},
+  "report.unreadable": { "one": "{count} entrada ilegible", "many": "{count} de entradas ilegibles", "other": "{count} entradas ilegibles" },
   "report.zipInput": "Esta entrada ya es un .zip. Volver a comprimirla apenas ahorra espacio y solo mete un zip dentro de otro. Comprime su contenido en su lugar, o ponle otro nombre a la salida.",
   "report.excludedEmptyDir": "Carpeta vacía omitida",
   "report.excludedEmptyFile": "Archivo vacío omitido",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "Renombrado desde {from}",
 
   "guidance.outputAmbiguous": "Estas entradas están en carpetas distintas, así que ZipKit no puede elegir una ubicación por sí solo. Indica un nombre de archivo (la carpeta de salida es, de forma predeterminada, la de la primera entrada) y se comprimirán juntas.",
-  "guidance.inputMissing": "Una entrada ya no existe en el disco. Quítala de la lista o restáurala, y vuelve a intentarlo.",
-  "guidance.statFailed": "No se pudo leer una entrada. Puede estar bloqueada o protegida por permisos. Revísala y vuelve a intentarlo.",
-  "guidance.walkFailed": "No se pudo leer por completo una carpeta por un problema de permisos o de entrada/salida. Revísala y vuelve a intentarlo.",
+  "guidance.pathMissing": "Una entrada ya no existe en el disco. Quítala de la lista o restáurala, y vuelve a intentarlo.",
+  "guidance.pathDenied": "No se pudo leer una entrada. Puede estar bloqueada o protegida por permisos. Revísala y vuelve a intentarlo.",
+  "guidance.ioFailed": "No se pudo leer por completo una carpeta por un problema de permisos o de entrada/salida. Revísala y vuelve a intentarlo.",
 
   "finding.pathAbsolute": "Se quitó el prefijo de ruta absoluta",
   "finding.pathTraversal": "La ruta sale de la raíz del archivo comprimido y se excluyó",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "Discrepancias de SHA-256",
   "findingKind.manifestMismatch": "Discrepancias con el manifiesto",
   "findingKind.localMismatch": "Entradas con encabezados discordantes",
-  "findingKind.unsafePath": "Rutas fuera del destino",
+  "findingKind.unreadable": "Entradas ilegibles",
   "findingKind.missing": "Entradas que faltan en el archivo comprimido",
   "findingKind.extra": "Entradas que no están en el manifiesto",
 
@@ -479,13 +480,9 @@
   "event.written": "Escrito: {path}",
   "event.writeDone": "Archivo comprimido escrito: {size}",
   "event.writeDoneZip64": "Archivo comprimido escrito: {size} (ZIP64)",
-  "event.extractStart": { "one": "Extrayendo {count} entrada", "many": "Extrayendo {count} de entradas", "other": "Extrayendo {count} entradas" },
   "event.verifyStart": { "one": "Verificando {count} entrada", "many": "Verificando {count} de entradas", "other": "Verificando {count} entradas" },
   "event.verified": "Verificado: {path}",
-  "event.extractDone": "Extracción completa: {counts}",
   "event.verifyDone": "Verificación completa: {counts}",
-  "event.writtenCount": { "one": "{count} escrito", "many": "{count} escritos", "other": "{count} escritos" },
-  "event.skippedCount": { "one": "{count} omitido", "many": "{count} omitidos", "other": "{count} omitidos" },
 
   "settings.title": "Configuración",
   "settings.language": "Idioma",

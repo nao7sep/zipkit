@@ -13,9 +13,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../src/index.ts";
 import { ZipWriter } from "../src/write/zipWriter.ts";
-import { parseZip, readEntryData } from "../src/extract/zipReader.ts";
+import { parseZip, readEntryData } from "../src/read/zipReader.ts";
 import pLimit from "p-limit";
-import { extractArchive } from "../src/extract/extract.ts";
+import { verifyArchive } from "../src/read/verify.ts";
 import { writeArchive } from "../src/write/write.ts";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.ts";
 import { createLogger } from "../src/log/logger.ts";
@@ -49,7 +49,7 @@ describe("abort propagation", () => {
 
     await expect(
       new ZipKit().plan({ inputs: [proj] }, { signal: controller.signal }),
-    ).rejects.toMatchObject({ code: "aborted" });
+    ).rejects.toMatchObject({ code: "operation.cancelled" });
   });
 
   it("rejects write() when the signal is already aborted", async () => {
@@ -64,7 +64,7 @@ describe("abort propagation", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(zip.write(plan, { signal: controller.signal })).rejects.toMatchObject({ code: "aborted" });
+    await expect(zip.write(plan, { signal: controller.signal })).rejects.toMatchObject({ code: "operation.cancelled" });
     expect(existsSync(output)).toBe(false);
   });
 
@@ -86,7 +86,7 @@ describe("abort propagation", () => {
           },
         },
       ),
-    ).rejects.toMatchObject({ code: "aborted" });
+    ).rejects.toMatchObject({ code: "operation.cancelled" });
     expect(existsSync(output)).toBe(false);
   });
 
@@ -114,50 +114,46 @@ describe("abort propagation", () => {
           },
         },
       ),
-    ).rejects.toMatchObject({ code: "aborted" });
+    ).rejects.toMatchObject({ code: "operation.cancelled" });
     expect(existsSync(output)).toBe(false);
   });
 
-  it("rejects extract() aborted mid-entry and commits no file", async () => {
-    // A stored entry sixteen chunks long. The first chunk written to the entry's
-    // staging temp raises the abort, so the per-entry pre-walk check has already
-    // passed and the copy loop is running: the cancellation lands on the
-    // per-chunk sink boundary (not the entry boundary) and no file may be
-    // committed.
+  it("rejects verify() cancelled mid-entry, at the chunk boundary", async () => {
+    // A stored entry sixteen chunks long. The first chunk-sized read of its data
+    // raises the abort, so the per-entry check has already passed and the read
+    // loop is running: the cancellation lands on the per-chunk boundary (not the
+    // entry boundary), long before the entry is read through.
     const chunkSize = 4096;
     const raw = randomBytes(16 * chunkSize);
     const { path: archive } = await buildZipFile(
       [{ name: "big.bin", type: "file", method: "store", uncompressedSize: raw.length, mtimeNs: 0n, atimeNs: 0n, birthtimeNs: 0n, mode: 0o644, raw }],
       { timeZone: "UTC", chunkSize },
     );
-    const dest = path.join(dir, "out");
     const controller = new AbortController();
-    let stagedWrites = 0;
+    let chunkReads = 0;
     const port: FileSystemPort = {
       ...nodeFileSystem,
       open: async (file, flags) => {
         const handle = await nodeFileSystem.open(file, flags);
-        if (!path.basename(file).startsWith(".zk-")) return handle;
         return {
           ...handle,
-          write: (buffer, offset, length, position) => {
-            stagedWrites++;
-            controller.abort();
-            return handle.write(buffer, offset, length, position);
+          read: (buffer, offset, length, position) => {
+            if (length === chunkSize && ++chunkReads === 1) controller.abort();
+            return handle.read(buffer, offset, length, position);
           },
         };
       },
     };
 
     await expect(
-      extractArchive(
-        { archive, dest },
+      verifyArchive(
+        { archive, manifest: false, manifestName: "zipkit.json" },
         { limit: pLimit(1), logger: createLogger(), chunkSize, signal: controller.signal, volume: new Volume(port, 30_000, controller.signal) },
       ),
-    ).rejects.toMatchObject({ code: "aborted" });
-    expect(stagedWrites).toBe(1);
-    expect(readdirSync(dest)).toEqual([]);
+    ).rejects.toMatchObject({ code: "operation.cancelled" });
+    expect(chunkReads).toBeLessThan(16);
   });
+
   it("rejects a write cancelled while a destination write is held, and leaves no temp file once it lands", async () => {
     const proj = path.join(dir, "big");
     await mkdir(proj);
@@ -199,7 +195,7 @@ describe("abort propagation", () => {
     await holding;
     controller.abort();
 
-    expect(await outcome).toMatchObject({ code: "aborted" });
+    expect(await outcome).toMatchObject({ code: "operation.cancelled" });
     release();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(readdirSync(dir).sort()).toEqual(["big"]);
@@ -225,7 +221,7 @@ describe("abort boundaries (unit)", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(writer.finalize(false, undefined, controller.signal)).rejects.toMatchObject({ code: "aborted" });
+    await expect(writer.finalize(false, undefined, controller.signal)).rejects.toMatchObject({ code: "operation.cancelled" });
     expect(existsSync(output)).toBe(false);
     await writer.abort(); // remove the orphaned temp file
   });
@@ -253,7 +249,7 @@ describe("abort boundaries (unit)", () => {
         calls++;
         throw toAbortError(undefined);
       };
-      await expect(readEntryData(file, entry!, sink, chunkSize)).rejects.toMatchObject({ code: "aborted" });
+      await expect(readEntryData(file, entry!, sink, chunkSize)).rejects.toMatchObject({ code: "operation.cancelled" });
       expect(calls).toBeLessThan(8); // tore down at the aborting chunk, not 256
 
       // The archive handle is shared across concurrent entries: the teardown

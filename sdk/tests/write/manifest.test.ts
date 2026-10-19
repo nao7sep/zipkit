@@ -1,14 +1,14 @@
 /**
- * Metadata builder. Locks the lossless symlink classification, the four UTC
+ * Manifest builder. Locks the lossless symlink classification, the four UTC
  * times (and the btime-null sentinel), and the optional archive comment.
  */
 
 import { describe, expect, it } from "vitest";
 import { DEFAULT_POLICY, resolvePolicy } from "../../src/policy.ts";
-import { buildMetadata } from "../../src/write/metadata.ts";
-import type { MetadataEntryInput } from "../../src/write/metadata.ts";
-import { estimateMetadataSize } from "../../src/plan/zip64.ts";
-import type { MetadataContent } from "../../src/plan/zip64.ts";
+import { buildManifest } from "../../src/write/manifest.ts";
+import type { ManifestEntryInput } from "../../src/write/manifest.ts";
+import { estimateManifestSize } from "../../src/plan/zip64.ts";
+import type { ManifestContent } from "../../src/plan/zip64.ts";
 import type { Unlogged, WriteEntry } from "../../src/internal/types.ts";
 import type { CreateData, Finding, PlannedEntry } from "../../src/types.ts";
 
@@ -77,9 +77,9 @@ function metaEntries(doc: { entries: unknown }): Array<Record<string, unknown>> 
   return doc.entries as Array<Record<string, unknown>>;
 }
 
-describe("buildMetadata", () => {
+describe("buildManifest", () => {
   it("records a symlink's classification and all four UTC times losslessly", () => {
-    const doc = buildMetadata(
+    const doc = buildManifest(
       plan,
       DEFAULT_POLICY,
       [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }],
@@ -98,7 +98,7 @@ describe("buildMetadata", () => {
   });
 
   it("opens with what the document is, the app, its version, repository, time and format", () => {
-    const doc = buildMetadata(plan, DEFAULT_POLICY, [], 0n, "UTC");
+    const doc = buildManifest(plan, DEFAULT_POLICY, [], 0n, "UTC");
     expect(Object.keys(doc).slice(0, 6)).toEqual([
       "about",
       "app",
@@ -116,7 +116,7 @@ describe("buildMetadata", () => {
 
   it("records btime as null when the platform reports no creation time", () => {
     const noBirth: WriteEntry = { ...symlink, birthtimeNs: 0n };
-    const doc = buildMetadata(
+    const doc = buildManifest(
       plan,
       DEFAULT_POLICY,
       [{ writeEntry: noBirth, crc32: 123, compressedSize: 6 }],
@@ -130,7 +130,7 @@ describe("buildMetadata", () => {
   });
 
   it("records the archive comment when one is given", () => {
-    const doc = buildMetadata(
+    const doc = buildManifest(
       plan,
       DEFAULT_POLICY,
       [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }],
@@ -142,7 +142,7 @@ describe("buildMetadata", () => {
   });
 
   it("omits the comment field entirely when none is given", () => {
-    const doc = buildMetadata(
+    const doc = buildManifest(
       plan,
       DEFAULT_POLICY,
       [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }],
@@ -155,7 +155,7 @@ describe("buildMetadata", () => {
 
 describe("timeRange", () => {
   it("is null when the archive has only directory entries (no file to date)", () => {
-    const doc = buildMetadata(
+    const doc = buildManifest(
       plan,
       DEFAULT_POLICY,
       [{ writeEntry: dirEntry, crc32: 0, compressedSize: 0 }],
@@ -169,7 +169,7 @@ describe("timeRange", () => {
     const old = 1_000_000_000_000_000_000n;
     const mid = 1_500_000_000_000_000_000n;
     const recent = 2_000_000_000_000_000_000n;
-    const doc = buildMetadata(
+    const doc = buildManifest(
       plan,
       DEFAULT_POLICY,
       [
@@ -190,7 +190,7 @@ describe("timeRange", () => {
   });
 });
 
-describe("estimateMetadataSize (Zip64 manifest bound)", () => {
+describe("estimateManifestSize (Zip64 manifest bound)", () => {
   it("upper-bounds a real serialized manifest with long paths, many findings, and a comment", () => {
     const longPath = `deep/${"x".repeat(180)}/file.txt`;
     const base: WriteEntry = {
@@ -256,7 +256,7 @@ describe("estimateMetadataSize (Zip64 manifest bound)", () => {
         { pattern: "a".repeat(90), match: "regex", target: "file" },
       ],
       compression: { store: [".aaa", ".bbb", ".ccc"] },
-      timezone: "Asia/Tokyo",
+      timeZone: "Asia/Tokyo",
     });
 
     const planDoc: Unlogged<Extract<CreateData, { mode: "plan" }>> = {
@@ -271,16 +271,16 @@ describe("estimateMetadataSize (Zip64 manifest bound)", () => {
 
     // Build the real document with maximum-width write-time fields (crc32 at its
     // sentinel, a full 64-hex sha, compressedSize = size), then measure it.
-    const inputs: MetadataEntryInput[] = writeEntries.map((e) => ({
+    const inputs: ManifestEntryInput[] = writeEntries.map((e) => ({
       writeEntry: e,
       crc32: 0xffffffff,
       compressedSize: e.size,
       sha256: "f".repeat(64),
     }));
-    const doc = buildMetadata(planDoc, policy, inputs, 1_893_456_000_000_000_000n, "Asia/Tokyo", comment);
+    const doc = buildManifest(planDoc, policy, inputs, 1_893_456_000_000_000_000n, "Asia/Tokyo", comment);
     const realBytes = Buffer.byteLength(JSON.stringify(doc, null, 2), "utf8");
 
-    const content: MetadataContent = {
+    const content: ManifestContent = {
       entries: writeEntries,
       excluded: [
         {
@@ -293,6 +293,6 @@ describe("estimateMetadataSize (Zip64 manifest bound)", () => {
       comment,
     };
 
-    expect(estimateMetadataSize(content, policy)).toBeGreaterThanOrEqual(realBytes);
+    expect(estimateManifestSize(content, policy)).toBeGreaterThanOrEqual(realBytes);
   });
 });

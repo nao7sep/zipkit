@@ -22,11 +22,11 @@
       "store": [],
       "level": 6
     },
-    "metadata": {
+    "manifest": {
       "name": "zipkit.json",
       "hash": true
     },
-    "timezone": "UTC"
+    "timeZone": "UTC"
   },
   "summary": {
     "total": 11,

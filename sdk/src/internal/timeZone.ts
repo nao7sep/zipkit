@@ -1,12 +1,12 @@
 /**
- * Timezone resolution and wall-clock rendering, used only by the writer's DOS
+ * Time zone resolution and wall-clock rendering, used only by the writer's DOS
  * field. The ZIP DOS date/time field stores *local* wall-clock time with no
  * timezone attached (every reader interprets it in the viewer's zone), so to
  * fill it faithfully we must render an absolute instant into a chosen IANA zone.
  *
  * The absolute extras the writer also emits — the Info-ZIP extended timestamp
  * (0x5455) and the NTFS extra (0x000a) — are UTC by specification and need none
- * of this; only the DOS field is timezone-sensitive.
+ * of this; only the DOS field is zone-sensitive.
  *
  * Zones are named with IANA Time Zone Database identifiers (e.g. `Asia/Tokyo`,
  * `UTC`). `Intl` is clock-free here: it converts a supplied instant, it does not
@@ -34,7 +34,7 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
   return fmt;
 }
 
-/** The host's IANA timezone — the default DOS-field zone when none is given —
+/** The host's IANA time zone — the default DOS-field zone when none is given —
  *  or UTC when the platform reports none (timestamp conventions). */
 export function machineTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -61,7 +61,7 @@ export interface WallClock {
 
 /**
  * The inverse of {@link wallClockInZone}: the absolute instant (epoch ms) whose
- * local rendering in `timeZone` equals the given wall clock. Used on extraction
+ * local rendering in `timeZone` equals the given wall clock. Used when listing
  * to turn a zone-less DOS field back into an instant for archives that carry no
  * UTC time extra. Resolve the offset at the resulting candidate as well as at
  * the initial guess, since a transition can lie between them. Ambiguous times

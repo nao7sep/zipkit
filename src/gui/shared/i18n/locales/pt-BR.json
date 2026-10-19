@@ -387,6 +387,7 @@
   "report.crcFailures": { "one": "{count} erro de CRC", "many": "{count} de erros de CRC", "other": "{count} erros de CRC" },
   "report.shaMismatches": { "one": "{count} divergência de SHA", "many": "{count} de divergências de SHA", "other": "{count} divergências de SHA" },
   "report.manifestMismatches": {"one": "{count} divergência com o manifesto", "many": "{count} de divergências com o manifesto", "other": "{count} divergências com o manifesto"},
+  "report.unreadable": { "one": "{count} entrada ilegível", "many": "{count} de entradas ilegíveis", "other": "{count} entradas ilegíveis" },
   "report.zipInput": "Esta entrada já é um .zip. Compactá-la de novo economiza pouco e só coloca um zip dentro de outro. Compacte o conteúdo dela em vez disso ou dê outro nome à saída.",
   "report.excludedEmptyDir": "Pasta vazia omitida",
   "report.excludedEmptyFile": "Arquivo vazio ignorado",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "Renomeado de {from}",
 
   "guidance.outputAmbiguous": "Estas entradas estão em pastas diferentes, então o ZipKit não consegue escolher um local sozinho. Defina um nome de arquivo (a pasta de saída padrão é a da primeira entrada) e elas serão compactadas juntas.",
-  "guidance.inputMissing": "Uma entrada não existe mais no disco. Remova-a da lista ou restaure-a e tente novamente.",
-  "guidance.statFailed": "Não foi possível ler uma entrada. Ela pode estar bloqueada ou protegida por permissões. Verifique-a e tente novamente.",
-  "guidance.walkFailed": "Não foi possível ler uma pasta por completo devido a um problema de permissão ou de E/S. Verifique-a e tente novamente.",
+  "guidance.pathMissing": "Uma entrada não existe mais no disco. Remova-a da lista ou restaure-a e tente novamente.",
+  "guidance.pathDenied": "Não foi possível ler uma entrada. Ela pode estar bloqueada ou protegida por permissões. Verifique-a e tente novamente.",
+  "guidance.ioFailed": "Não foi possível ler uma pasta por completo devido a um problema de permissão ou de E/S. Verifique-a e tente novamente.",
 
   "finding.pathAbsolute": "Prefixo de caminho absoluto removido",
   "finding.pathTraversal": "O caminho sai da raiz do arquivo compactado e foi excluído",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "Divergências de SHA-256",
   "findingKind.manifestMismatch": "Divergências com o manifesto",
   "findingKind.localMismatch": "Entradas com cabeçalhos divergentes",
-  "findingKind.unsafePath": "Caminhos fora do destino",
+  "findingKind.unreadable": "Entradas ilegíveis",
   "findingKind.missing": "Entradas ausentes do arquivo compactado",
   "findingKind.extra": "Entradas fora do manifesto",
 
@@ -479,13 +480,9 @@
   "event.written": "Gravado: {path}",
   "event.writeDone": "Arquivo compactado gravado: {size}",
   "event.writeDoneZip64": "Arquivo compactado gravado: {size} (ZIP64)",
-  "event.extractStart": { "one": "Extraindo {count} entrada", "many": "Extraindo {count} de entradas", "other": "Extraindo {count} entradas" },
   "event.verifyStart": { "one": "Verificando {count} entrada", "many": "Verificando {count} de entradas", "other": "Verificando {count} entradas" },
   "event.verified": "Verificado: {path}",
-  "event.extractDone": "Extração concluída: {counts}",
   "event.verifyDone": "Verificação concluída: {counts}",
-  "event.writtenCount": { "one": "{count} gravado", "many": "{count} gravados", "other": "{count} gravados" },
-  "event.skippedCount": { "one": "{count} ignorado", "many": "{count} ignorados", "other": "{count} ignorados" },
 
   "settings.title": "Configurações",
   "settings.language": "Idioma",

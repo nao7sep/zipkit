@@ -47,7 +47,7 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
 }
 
 const FAILED_REPORT: VerifyReport = {
-  summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 }, missing: [], extra: [], findings: [],
+  summary: { total: 1, crc32Failed: 1, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 }, missing: [], extra: [], findings: [],
 };
 
 /** The SDK's removal check's own steps, faked one by one: the engine's fake
@@ -67,7 +67,7 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
     effects: createPathClaims(),
     resources: async (paths) => paths.map((location) => ({ location, identity: location })),
     pathState: async (target) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` }),
-    inspect: async () => ({ reportOk: true, summary: { total: 1, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 } as never, missing: [], extra: [] }),
+    inspect: async () => ({ ok: true, summary: { total: 1, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] }),
     plan: async (inputs) => {
       calls.plan++;
       return planData(inputs[0] !== "bad");
@@ -1645,7 +1645,7 @@ describe("the archive's recorded state and the job's history", () => {
     const made = makeDeps({
       pathState: async (target) => {
         if (!target.endsWith(".zip")) return { kind: "present", fingerprint: `1:${target}:1:1` };
-        if (archive.state === null) return { kind: "gone" };
+        if (archive.state === null) return { kind: "missing" };
         if (archive.state === "unavailable") return { kind: "unavailable" };
         return { kind: "present", fingerprint: `${archive.file}:${archive.state}:1` };
       },
@@ -1677,7 +1677,7 @@ describe("the archive's recorded state and the job's history", () => {
     try {
       await finished(engine, id);
       expect(engine.snapshot()[0]?.archiveStatus).toBe("written");
-      expect((await engine.verify(id))?.reportOk).toBe(true);
+      expect((await engine.verify(id))?.ok).toBe(true);
       expect(engine.snapshot()[0]?.archiveStatus).toBe("verified");
       expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("Verified 1 entry. No problems were found.");
       // Looking again at the same archive changes nothing.
@@ -1695,7 +1695,7 @@ describe("the archive's recorded state and the job's history", () => {
 
   it("records a failed verification on request as a problem count", async () => {
     const { deps } = withArchive({
-      inspect: async () => ({ reportOk: false, summary: { total: 3, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 } as never, missing: ["a"], extra: [] }),
+      inspect: async () => ({ ok: false, summary: { total: 3, crc32Failed: 1, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 } as never, missing: ["a"], extra: [] }),
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
@@ -1799,7 +1799,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
   const archiveAt = (archive: { state: "there" | "replaced" | "gone" | "unavailable" }) =>
     async (target: string) => {
       if (!target.endsWith(".zip")) return { kind: "present" as const, fingerprint: `1:${target}:1:1` };
-      if (archive.state === "gone") return { kind: "gone" as const };
+      if (archive.state === "gone") return { kind: "missing" as const };
       if (archive.state === "unavailable") return { kind: "unavailable" as const };
       return { kind: "present" as const, fingerprint: archive.state === "there" ? "1:1:10:1" : "1:2:10:1" };
     };

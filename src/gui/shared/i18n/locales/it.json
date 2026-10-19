@@ -387,6 +387,7 @@
   "report.crcFailures": { "one": "{count} errore CRC", "many": "{count} di errori CRC", "other": "{count} errori CRC" },
   "report.shaMismatches": { "one": "{count} discrepanza SHA", "many": "{count} di discrepanze SHA", "other": "{count} discrepanze SHA" },
   "report.manifestMismatches": {"one": "{count} discrepanza con il manifesto", "many": "{count} di discrepanze con il manifesto", "other": "{count} discrepanze con il manifesto"},
+  "report.unreadable": { "one": "{count} voce illeggibile", "many": "{count} di voci illeggibili", "other": "{count} voci illeggibili" },
   "report.zipInput": "Questo input è già un .zip. Comprimerlo di nuovo fa risparmiare poco e mette solo uno zip dentro un altro. Archivia invece il suo contenuto, oppure dai un altro nome alla destinazione.",
   "report.excludedEmptyDir": "Cartella vuota esclusa",
   "report.excludedEmptyFile": "File vuoto saltato",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "Rinominato da {from}",
 
   "guidance.outputAmbiguous": "Questi input si trovano in cartelle diverse, quindi ZipKit non può scegliere da solo una posizione. Imposta un nome di file (la cartella di destinazione predefinita è quella del primo input) e verranno archiviati insieme.",
-  "guidance.inputMissing": "Un input non esiste più sul disco. Rimuovilo dall’elenco o ripristinalo, poi riprova.",
-  "guidance.statFailed": "Impossibile leggere un input. Potrebbe essere bloccato o protetto da autorizzazioni. Controllalo, poi riprova.",
-  "guidance.walkFailed": "Impossibile leggere completamente una cartella a causa di un problema di autorizzazioni o di I/O. Controllala, poi riprova.",
+  "guidance.pathMissing": "Un input non esiste più sul disco. Rimuovilo dall’elenco o ripristinalo, poi riprova.",
+  "guidance.pathDenied": "Impossibile leggere un input. Potrebbe essere bloccato o protetto da autorizzazioni. Controllalo, poi riprova.",
+  "guidance.ioFailed": "Impossibile leggere completamente una cartella a causa di un problema di autorizzazioni o di I/O. Controllala, poi riprova.",
 
   "finding.pathAbsolute": "Prefisso di percorso assoluto rimosso",
   "finding.pathTraversal": "Il percorso esce dalla radice dell’archivio ed è stato escluso",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "Discrepanze SHA-256",
   "findingKind.manifestMismatch": "Discrepanze con il manifesto",
   "findingKind.localMismatch": "Voci con intestazioni discordanti",
-  "findingKind.unsafePath": "Percorsi fuori dalla destinazione",
+  "findingKind.unreadable": "Voci illeggibili",
   "findingKind.missing": "Voci mancanti dall’archivio",
   "findingKind.extra": "Voci non presenti nel manifesto",
 
@@ -479,13 +480,9 @@
   "event.written": "Scritto: {path}",
   "event.writeDone": "Archivio scritto: {size}",
   "event.writeDoneZip64": "Archivio scritto: {size} (ZIP64)",
-  "event.extractStart": { "one": "Estrazione di {count} voce", "many": "Estrazione di {count} di voci", "other": "Estrazione di {count} voci" },
   "event.verifyStart": { "one": "Verifica di {count} voce", "many": "Verifica di {count} di voci", "other": "Verifica di {count} voci" },
   "event.verified": "Verificato: {path}",
-  "event.extractDone": "Estrazione completata: {counts}",
   "event.verifyDone": "Verifica completata: {counts}",
-  "event.writtenCount": { "one": "{count} scritto", "many": "{count} scritti", "other": "{count} scritti" },
-  "event.skippedCount": { "one": "{count} saltato", "many": "{count} saltati", "other": "{count} saltati" },
 
   "settings.title": "Impostazioni",
   "settings.language": "Lingua",

@@ -53,7 +53,7 @@ let lastRun = 0;
  *  the launch, and a record's session tells launches apart. */
 /** The steps that begin without counts or with their own: the counts of the
  *  step before stop showing when one of them starts. */
-const STEP_STARTS = new Set(["scan.start", "write.start", "extract.start"]);
+const STEP_STARTS = new Set(["scan.start", "write.start", "verify.start"]);
 
 export function startProgressRun(jobId: string, action: JobAction): (event: LogEvent) => void {
   const run = String(++lastRun);
@@ -115,5 +115,9 @@ export function toGuiError(err: unknown): GuiError {
   if (err.code === "io.stalled" && err.subject !== undefined) {
     return { kind: err.kind, code: err.code, presentation: message("error.stalled", { path: err.subject }) };
   }
-  return { kind: err.kind, code: err.code, presentation: message(err.code.startsWith("read.") ? "error.readFailed" : "error.verifyIncomplete") };
+  return { kind: err.kind, code: err.code, presentation: message(READ_FAILURES.test(err.code) ? "error.readFailed" : "error.verifyIncomplete") };
 }
+
+/** The codes that mean the archive itself could not be read: missing or
+ *  denied, a disk failure, or not a readable ZIP or manifest. */
+const READ_FAILURES = /^(archive|manifest|path)\.|^io\.failed$/;

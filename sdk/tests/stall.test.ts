@@ -1,5 +1,5 @@
 /**
- * Stalled volumes: every filesystem call the scan, write, and extract edges make
+ * Stalled volumes: every filesystem call the scan, write, and verify edges make
  * is bounded by the SDK's per-operation budget and answers to the run's signal.
  * A fake filesystem holds chosen calls forever (a dropped network share, a
  * removed drive); each edge must fail with an `io.stalled` error naming the path once
@@ -19,7 +19,7 @@ import path from "node:path";
 import pLimit from "p-limit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ZipKit, type ZipKitError } from "../src/index.ts";
-import { extractArchive } from "../src/extract/extract.ts";
+import { verifyArchive } from "../src/read/verify.ts";
 import { matcherFor } from "../src/filter/match.ts";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.ts";
 import { createLogger } from "../src/log/logger.ts";
@@ -167,7 +167,7 @@ describe("scan on a stalled source", () => {
     await untilHeld(fs);
     controller.abort();
 
-    expect(await run.error).toMatchObject({ code: "aborted" });
+    expect(await run.error).toMatchObject({ code: "operation.cancelled" });
     await fs.release();
   });
 });
@@ -239,7 +239,7 @@ describe("write on a stalled volume", () => {
     await untilHeld(fs);
     controller.abort();
 
-    expect(await run.error).toMatchObject({ code: "aborted" });
+    expect(await run.error).toMatchObject({ code: "operation.cancelled" });
     expect(leftovers(dir, ["proj"])).toEqual([]);
     await fs.release();
   });
@@ -261,7 +261,7 @@ describe("write on a stalled volume", () => {
     );
     await untilHeld(fs);
     controller.abort();
-    expect(await run.error).toMatchObject({ code: "aborted" });
+    expect(await run.error).toMatchObject({ code: "operation.cancelled" });
 
     // The abandoned create lands now and makes the file; the Volume removes it.
     await fs.release();
@@ -292,7 +292,7 @@ describe("write on a stalled volume", () => {
   });
 });
 
-describe("extract on a stalled volume", () => {
+describe("verify on a stalled volume", () => {
   async function archiveOf(files: number): Promise<string> {
     const proj = await makeTree(files);
     const archive = path.join(dir, "in.zip");
@@ -300,28 +300,18 @@ describe("extract on a stalled volume", () => {
     return archive;
   }
 
-  function runExtract(archive: string, dest: string, volume: Volume, signal?: AbortSignal) {
-    return extractArchive(
-      { archive, dest },
+  function runVerify(archive: string, volume: Volume, signal?: AbortSignal) {
+    return verifyArchive(
+      { archive, manifest: true, manifestName: "zipkit.json" },
       { limit: pLimit(4), logger: createLogger(), chunkSize: 65536, signal, volume },
     );
   }
 
-  /** Extracted files and staged temps under `dest`. */
-  function written(dest: string): string[] {
-    return existsSync(dest)
-      ? readdirSync(dest, { recursive: true })
-          .map(String)
-          .filter((n) => n.endsWith(".txt") || n.includes(".zk-"))
-      : [];
-  }
-
   it("fails when the budget elapses while the archive stops responding", async () => {
     const archive = await archiveOf(2);
-    const dest = path.join(dir, "out");
     const fs = stallingFileSystem((op, p) => op === "read" && p === archive);
 
-    const run = expectFailure(runExtract(archive, dest, new Volume(fs.port, BUDGET)));
+    const run = expectFailure(runVerify(archive, new Volume(fs.port, BUDGET)));
     await untilHeld(fs);
     vi.advanceTimersByTime(BUDGET);
 
@@ -329,58 +319,16 @@ describe("extract on a stalled volume", () => {
     await fs.release();
   });
 
-  it("stops every concurrent entry once the destination stalls, leaves no temp, and publishes nothing late", async () => {
-    // Forty entries four at a time: were each entry to wait out its own budget
-    // the run would take ten budgets; one elapsed budget must end them all.
-    const archive = await archiveOf(40);
-    const dest = path.join(dir, "out");
-    const fs = stallingFileSystem((op, p) => op === "write" && path.basename(p).startsWith(".zk-"));
-
-    const run = expectFailure(runExtract(archive, dest, new Volume(fs.port, BUDGET)));
-    await untilHeld(fs);
-    vi.advanceTimersByTime(BUDGET);
-    const err = await run.error;
-
-    expect(err).toMatchObject({ code: "io.stalled", details: expect.objectContaining({ operation: "write" }) });
-    expect(written(dest)).toEqual([]);
-
-    await fs.release();
-    await tick();
-    expect(written(dest)).toEqual([]);
-  });
-
-  it("fails with the aborted error when cancelled during a stalled write", async () => {
+  it("fails with the cancelled error when cancelled during a stalled read", async () => {
     const archive = await archiveOf(2);
-    const dest = path.join(dir, "out");
-    const fs = stallingFileSystem((op, p) => op === "write" && path.basename(p).startsWith(".zk-"));
+    const fs = stallingFileSystem((op, p) => op === "read" && p === archive);
     const controller = new AbortController();
 
-    const run = expectFailure(
-      runExtract(archive, dest, new Volume(fs.port, 60_000, controller.signal), controller.signal),
-    );
+    const run = expectFailure(runVerify(archive, new Volume(fs.port, 60_000, controller.signal), controller.signal));
     await untilHeld(fs);
     controller.abort();
 
-    expect(await run.error).toMatchObject({ code: "aborted" });
-    expect(written(dest)).toEqual([]);
+    expect(await run.error).toMatchObject({ code: "operation.cancelled" });
     await fs.release();
-  });
-
-  it("leaves no temp when cancelled while an entry's temp is being created", async () => {
-    const archive = await archiveOf(2);
-    const dest = path.join(dir, "out");
-    const fs = stallingFileSystem((op, p) => op === "open" && path.basename(p).startsWith(".zk-"));
-    const controller = new AbortController();
-
-    const run = expectFailure(
-      runExtract(archive, dest, new Volume(fs.port, 60_000, controller.signal), controller.signal),
-    );
-    await untilHeld(fs);
-    controller.abort();
-    expect(await run.error).toMatchObject({ code: "aborted" });
-
-    // The abandoned creates land now and make their files; the Volume removes them.
-    await fs.release();
-    while (written(dest).length > 0) await tick();
   });
 });

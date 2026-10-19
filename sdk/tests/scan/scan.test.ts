@@ -75,7 +75,7 @@ describe("scan over a real tree", () => {
     const work = scan({ inputs: [proj] }, policy, {
       ...deps(policy), volume, signal: controller.signal, limit: pLimit(1),
     });
-    const rejected = expect(work).rejects.toHaveProperty("code", "aborted");
+    const rejected = expect(work).rejects.toHaveProperty("code", "operation.cancelled");
     try { await started; controller.abort(); await rejected; }
     finally { release(); await settled; }
   });

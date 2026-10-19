@@ -1,5 +1,5 @@
 /**
- * Choosing which stored time to restore to an extracted file. The archive may
+ * Choosing which stored time to report for an entry. The archive may
  * carry up to three representations of the modification time; this picks the
  * most faithful one available, in order:
  *
@@ -12,8 +12,8 @@
  *   3. DOS field — local wall-clock with no zone, interpreted in the configured
  *      zone. The lossy last resort, for archives carrying no UTC extra.
  *
- * Creation/birth time is deliberately not restored: no portable cross-platform
- * API sets it, so claiming to would be dishonest. Pure — no filesystem access.
+ * Creation/birth time is not read.
+ * Pure — no filesystem access.
  */
 
 import { instantFromWallClockInZone } from "../internal/timeZone.ts";

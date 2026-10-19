@@ -7,7 +7,7 @@
 
 import { createDefu } from "defu";
 import { normalizeExtension } from "./internal/path.ts";
-import type { ArchivePolicy, DeepPartial, MetadataPolicy, NameRules } from "./types.ts";
+import type { ArchivePolicy, DeepPartial, ManifestPolicy, NameRules } from "./types.ts";
 
 /**
  * The built-in set stored verbatim under `compression.stored: "builtin"`. An
@@ -108,7 +108,7 @@ export const DEFAULT_STORE_EXTENSIONS: readonly string[] = [
   ".woff",
 ];
 
-export const METADATA_DEFAULTS: MetadataPolicy = {
+export const MANIFEST_DEFAULTS: ManifestPolicy = {
   name: "zipkit.json",
   // A manifest exists to establish content identity, so the SHA-256 is on by
   // default; omitting it is the deliberate choice. CRC-32 is always present.
@@ -153,10 +153,10 @@ export const DEFAULT_POLICY: ArchivePolicy = {
   followExternal: false,
   compression: { stored: "builtin", store: [], level: DEFAULT_DEFLATE_LEVEL },
 
-  // Companion output — the embedded metadata record is zipkit's reason to
+  // Companion output — the embedded manifest record is zipkit's reason to
   // exist (faithful, high-precision persistence), so it is on by default;
-  // `metadata: false` opts into a plain archive.
-  metadata: { ...METADATA_DEFAULTS },
+  // `manifest: false` opts into a plain archive.
+  manifest: { ...MANIFEST_DEFAULTS },
 };
 
 /**
@@ -166,7 +166,7 @@ export const DEFAULT_POLICY: ArchivePolicy = {
  * on the value being an array, not on a field name, so every list — `filters`,
  * `compression.store`, and any future one — obeys it with no per-field
  * bookkeeping. Scalars and nested objects keep `defu`'s deep-merge, which fills
- * a partial `names` or `metadata` object from the layer below and completes it
+ * a partial `names` or `manifest` object from the layer below and completes it
  * from the defaults. In `defu`'s merger the accumulator holds the lower-priority
  * value (`object[key]`) and `value` is the higher-priority one, so assigning
  * `value` is "the more specific array wins."

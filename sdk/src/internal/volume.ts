@@ -1,6 +1,6 @@
 /**
  * The SDK's one file-access boundary. Every filesystem call the scan, write,
- * and extract edges make on a user volume goes through a {@link Volume}, which
+ * and verify edges make on a user volume goes through a {@link Volume}, which
  * is where that call's wait is bounded.
  *
  * A filesystem call has no timeout or cancel of its own, and a volume that
@@ -17,7 +17,7 @@
  *
  * - `work` — ordinary reads and writes. Refused once the verb is cancelled or
  *   the volume has already stalled, abandoned on cancel or timeout. A timeout
- *   marks the whole volume stalled, so sibling work (extraction runs entries
+ *   marks the whole volume stalled, so sibling work (verification reads entries
  *   concurrently) stops at its next call instead of each waiting its own budget.
  * - `commit` — publication of a finished file (a rename or hard link into the
  *   destination). Refused before it starts under the same rules as `work`, but
@@ -66,14 +66,10 @@ export interface FileSystemPort {
   realpath(path: string): Promise<string>;
   readlink(path: string): Promise<string>;
   readdir(path: string): Promise<DirEntry[]>;
-  mkdir(path: string, recursive: boolean): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   link(existing: string, created: string): Promise<void>;
-  symlink(target: string, path: string): Promise<void>;
   unlink(path: string): Promise<void>;
   rm(path: string): Promise<void>;
-  /** Set access and modification times, given as Unix epoch nanoseconds. */
-  utimes(path: string, atimeNs: bigint, mtimeNs: bigint): Promise<void>;
   chmod(path: string, mode: number): Promise<void>;
   syncDirectory(path: string): Promise<void>;
 }
@@ -81,14 +77,6 @@ export interface FileSystemPort {
 /** Only explicit filesystem capability failures permit omitting ordinary modes. */
 export function isModeUnsupported(error: unknown): boolean {
   return ["ENOSYS", "ENOTSUP", "EOPNOTSUPP"].includes((error as NodeJS.ErrnoException)?.code ?? "");
-}
-
-/** Epoch nanoseconds as the fractional seconds `fs.utimes` takes. Node carries
- *  the time as a double, so the set time is the nearest one the double holds:
- *  within about 120 ns for present-day times. Splitting the whole seconds from
- *  the fraction rounds once, where `Number(ns) / 1e9` would round twice. */
-function epochSeconds(ns: bigint): number {
-  return Number(ns / 1_000_000_000n) + Number(ns % 1_000_000_000n) / 1e9;
 }
 
 export const nodeFileSystem: FileSystemPort = {
@@ -107,15 +95,10 @@ export const nodeFileSystem: FileSystemPort = {
   realpath: (path) => fsp.realpath(path),
   readlink: (path) => fsp.readlink(path),
   readdir: (path) => fsp.readdir(path, { withFileTypes: true }),
-  mkdir: async (path, recursive) => {
-    await fsp.mkdir(path, { recursive });
-  },
   rename: (from, to) => fsp.rename(from, to),
   link: (existing, created) => fsp.link(existing, created),
-  symlink: (target, path) => fsp.symlink(target, path),
   unlink: (path) => fsp.unlink(path),
   rm: (path) => fsp.rm(path, { force: true }),
-  utimes: (path, atimeNs, mtimeNs) => fsp.utimes(path, epochSeconds(atimeNs), epochSeconds(mtimeNs)),
   chmod: (path, mode) => fsp.chmod(path, mode),
   syncDirectory,
 };
@@ -177,30 +160,6 @@ export class Volume {
 
   readdir(path: string): Promise<DirEntry[]> {
     return this.#run("work", "readdir", path, () => this.#port.readdir(path));
-  }
-
-  mkdir(path: string, recursive = false): Promise<void> {
-    return this.#run("work", "mkdir", path, () => this.#port.mkdir(path, recursive));
-  }
-
-  stageSymlink(target: string, path: string): Promise<void> {
-    return this.#run("work", "symlink", path, () => this.#port.symlink(target, path), {
-      onLateValue: () => this.#port.rm(path),
-    });
-  }
-
-  /** Atomic final-name creation. Once issued, cancellation cannot undo it. */
-  publishSymlink(target: string, path: string): Promise<void> {
-    return this.#run("commit", "publish", path, () => this.#port.symlink(target, path));
-  }
-
-  /** Remove a path as part of the work (not a cleanup of this run's own temp). */
-  remove(path: string): Promise<void> {
-    return this.#run("work", "remove", path, () => this.#port.rm(path));
-  }
-
-  utimes(path: string, atimeNs: bigint, mtimeNs: bigint): Promise<void> {
-    return this.#run("work", "utimes", path, () => this.#port.utimes(path, atimeNs, mtimeNs));
   }
 
   chmod(path: string, mode: number): Promise<void> {

@@ -22,8 +22,8 @@ export type ErrorKind = "invalid" | "unavailable" | "cancelled" | "internal";
 
 /** What the failure left in the world: `none` when nothing was changed, or
  *  `unknown` when a write may have taken effect (an archive published but not
- *  confirmed on disk, a publication still in flight, extracted files written
- *  before the failure). */
+ *  confirmed on disk, a publication still in flight, a temporary file left
+ *  behind). */
 export type ErrorEffect = "none" | "unknown";
 
 /** Every error code with its kind. */
@@ -39,33 +39,22 @@ export const ERROR_CODES = {
   "path.missing": "unavailable",
   "path.denied": "unavailable",
   "io.failed": "unavailable",
-  "scan.input-missing": "unavailable",
+  "io.stalled": "unavailable",
   "scan.output-is-input": "invalid",
-  "scan.output-stat-failed": "unavailable",
-  "scan.stat-failed": "unavailable",
-  "scan.walk-failed": "unavailable",
   "write.not-writable": "invalid",
   "write.no-internals": "invalid",
   "write.source-changed": "unavailable",
-  "write.read-failed": "unavailable",
   "write.durability": "unavailable",
   "write.failed": "unavailable",
-  "read.open-failed": "unavailable",
-  "read.not-zip": "invalid",
-  "read.malformed": "invalid",
-  "read.unsupported-method": "invalid",
-  "read.inflate-failed": "invalid",
-  "read.size-mismatch": "invalid",
-  "read.entry-too-large": "invalid",
-  "read.target-collision": "invalid",
-  "read.unsafe-path": "invalid",
-  "read.no-dest": "invalid",
-  "read.write-failed": "unavailable",
-  "read.manifest-missing": "invalid",
-  "read.manifest-invalid": "invalid",
-  "read.manifest-newer": "invalid",
-  "io.stalled": "unavailable",
-  aborted: "cancelled",
+  "archive.not-zip": "invalid",
+  "archive.malformed": "invalid",
+  "archive.unsupported-method": "invalid",
+  "archive.corrupt-data": "invalid",
+  "archive.size-mismatch": "invalid",
+  "manifest.missing": "invalid",
+  "manifest.invalid": "invalid",
+  "manifest.newer": "invalid",
+  "operation.cancelled": "cancelled",
   "internal.unexpected": "internal",
 } as const satisfies Record<string, ErrorKind>;
 
@@ -178,10 +167,10 @@ export function isStall(err: unknown): err is ZipKitError<"io.stalled"> {
 }
 
 /** The cancellation error for a signal's reason. */
-export function toAbortError(err: unknown, fallback = "operation aborted", effect: ErrorEffect = "none"): ZipKitError<"aborted"> {
-  if (err instanceof ZipKitError && err.code === "aborted") return err as ZipKitError<"aborted">;
-  if (err instanceof Error) return new ZipKitError("aborted", err.message || fallback, { cause: err, effect });
-  return new ZipKitError("aborted", typeof err === "string" && err.length > 0 ? err : fallback, { effect });
+export function toAbortError(err: unknown, fallback = "operation cancelled", effect: ErrorEffect = "none"): ZipKitError<"operation.cancelled"> {
+  if (err instanceof ZipKitError && err.code === "operation.cancelled") return err as ZipKitError<"operation.cancelled">;
+  if (err instanceof Error) return new ZipKitError("operation.cancelled", err.message || fallback, { cause: err, effect });
+  return new ZipKitError("operation.cancelled", typeof err === "string" && err.length > 0 ? err : fallback, { effect });
 }
 
 /** Throw the cancellation error if the signal is already aborted. */

@@ -72,9 +72,9 @@ describe("compareSources", () => {
 
   it("fails when the archive holds no manifest", async () => {
     const bare = path.join(dir, "bare.zip");
-    await new ZipKit().create({ inputs: [proj], output: bare, policy: { metadata: false } });
+    await new ZipKit().create({ inputs: [proj], output: bare, policy: { manifest: false } });
     await expect(new ZipKit().compareSources({ inputs: [proj] }, bare)).rejects.toMatchObject({
-      code: "read.manifest-missing",
+      code: "manifest.missing",
     });
   });
 });

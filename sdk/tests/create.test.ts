@@ -15,6 +15,7 @@ import { ZipKit, ZipKitError } from "../src/index.ts";
 import { readZip } from "./helpers/readZip.ts";
 import { createFileLink, fileSymlinksSupported } from "./helpers/symlink.ts";
 import { invalidError } from "./helpers/errors.ts";
+import { written } from "./helpers/written.ts";
 
 let dir: string;
 
@@ -45,7 +46,7 @@ describe("output resolution and round-trip", () => {
 
     const { entries } = readZip(await readFile(result.output));
     const names = entries.map((e) => e.name).sort();
-    // Metadata is embedded by default, so it rides along with the flattened content.
+    // Manifest is embedded by default, so it rides along with the flattened content.
     expect(names).toEqual(["a.txt", "sub/", "sub/b.bin", "zipkit.json"]);
     expect(entries.find((e) => e.name === "a.txt")?.content.toString()).toBe(
       "hello hello hello hello",
@@ -100,7 +101,7 @@ describe("metadata", () => {
     await new ZipKit().create({
       inputs: [proj],
       output,
-      policy: { metadata: { name: "zipkit.json", hash: true } },
+      policy: { manifest: { name: "zipkit.json", hash: true } },
     });
 
     const { entries } = readZip(await readFile(output));
@@ -133,10 +134,10 @@ describe("metadata", () => {
     const result = await new ZipKit().create({
       inputs: [proj],
       output: path.join(dir, "times.zip"),
-      policy: { metadata: false },
+      policy: { manifest: false },
     });
 
-    const range = result.metadata!.timeRange!;
+    const range = written(result).manifest.timeRange!;
     expect(range.oldest.archivePath).toBe("old.txt");
     expect(range.newest.archivePath).toBe("new.txt");
     expect(range.oldest.mtime.iso).toBe("2001-02-03T04:05:06.000Z");
@@ -156,17 +157,17 @@ describe("metadata", () => {
     const tokyo = await new ZipKit().create({
       inputs: [proj],
       output: path.join(dir, "tokyo.zip"),
-      policy: { timezone: "Asia/Tokyo", metadata: false },
+      policy: { timeZone: "Asia/Tokyo", manifest: false },
     });
     expect(tokyo.findings.map((f) => f.rule)).toContain("time.post-2107");
-    expect(tokyo.metadata!.timeZone).toBe("Asia/Tokyo");
+    expect(written(tokyo).manifest.timeZone).toBe("Asia/Tokyo");
     const clamped = readZip(await readFile(tokyo.output)).entries[0]!;
     expect([clamped.dosDate, clamped.dosTime]).toEqual([dosMaxDate, dosMaxTime]);
 
     const la = await new ZipKit().create({
       inputs: [proj],
       output: path.join(dir, "la.zip"),
-      policy: { timezone: "America/Los_Angeles", metadata: false },
+      policy: { timeZone: "America/Los_Angeles", manifest: false },
     });
     expect(la.findings.map((f) => f.rule)).not.toContain("time.post-2107");
     const kept = readZip(await readFile(la.output)).entries[0]!;
@@ -183,10 +184,10 @@ describe("metadata", () => {
     expect(names).toContain("zipkit.json");
 
     // The full structured record is returned regardless.
-    expect(result.metadata!.app).toBe("ZipKit");
-    expect(result.metadata!.timeZone).toBeTypeOf("string");
-    expect(Array.isArray(result.metadata!.findings)).toBe(true);
-    const a = result.metadata!.entries.find((e) => e.archivePath === "a.txt");
+    expect(written(result).manifest.app).toBe("ZipKit");
+    expect(written(result).manifest.timeZone).toBeTypeOf("string");
+    expect(Array.isArray(written(result).manifest.findings)).toBe(true);
+    const a = written(result).manifest.entries.find((e) => e.archivePath === "a.txt");
     expect(a?.sha256).toBeTypeOf("string"); // hashing on by default
     expect(a?.mtime.ns).toBeTypeOf("string"); // times always present in the return
   });
@@ -198,17 +199,17 @@ describe("metadata", () => {
     // The returned summary is the very object embedded in the manifest, so
     // `summary.zip64` (the plan's pre-write estimate) can never diverge between
     // the two — guards against forking it back into a separate object.
-    expect(result.summary).toBe(result.metadata!.summary);
+    expect(result.summary).toBe(written(result).manifest.summary);
     // The exact post-write Zip64 outcome is the top-level field on the result.
-    expect(result.zip64).toBeTypeOf("boolean");
+    expect(written(result).zip64).toBeTypeOf("boolean");
   });
 
-  it("produces a plain archive under metadata:false but still returns the record", async () => {
+  it("produces a plain archive under manifest:false but still returns the record", async () => {
     const proj = await makeTree();
     const result = await new ZipKit().create({
       inputs: [proj],
       output: path.join(dir, "plain.zip"),
-      policy: { metadata: false },
+      policy: { manifest: false },
     });
 
     // No metadata entry in the archive.
@@ -218,10 +219,10 @@ describe("metadata", () => {
 
     // The record is still returned (the run's state), with times but no SHA
     // (hashing wasn't requested), so a caller can still inspect the run.
-    expect(result.metadata!.entries.find((e) => e.archivePath === "a.txt")?.mtime.ns).toBeTypeOf(
+    expect(written(result).manifest.entries.find((e) => e.archivePath === "a.txt")?.mtime.ns).toBeTypeOf(
       "string",
     );
-    expect(result.metadata!.entries.find((e) => e.archivePath === "a.txt")?.sha256).toBeUndefined();
+    expect(written(result).manifest.entries.find((e) => e.archivePath === "a.txt")?.sha256).toBeUndefined();
   });
 
   it("records a SHA-256 that matches the file content", async () => {
@@ -230,7 +231,7 @@ describe("metadata", () => {
     await new ZipKit().create({
       inputs: [proj],
       output,
-      policy: { metadata: { name: "zipkit.json", hash: true } },
+      policy: { manifest: { name: "zipkit.json", hash: true } },
     });
 
     const { entries } = readZip(await readFile(output));
@@ -258,7 +259,7 @@ describe("plan / inspect / write flow", () => {
     const { entries } = readZip(await readFile(output));
     // The metadata document lists every written entry except the embedded
     // zipkit.json itself, which rides as the archive's final entry.
-    expect((result.metadata?.entries.length ?? 0) + 1).toBe(entries.length);
+    expect((result.manifest?.entries.length ?? 0) + 1).toBe(entries.length);
   });
 });
 
@@ -279,12 +280,16 @@ describe("options validation", () => {
 });
 
 describe("overwrite gate", () => {
-  it("refuses to write over an existing output without overwrite", async () => {
+  it("returns the blocked plan, unwritten, for an existing output without overwrite", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "gate.zip");
     await new ZipKit().create({ inputs: [proj], output });
+    const before = await readFile(output);
 
-    await expect(new ZipKit().create({ inputs: [proj], output })).rejects.toBeInstanceOf(ZipKitError);
+    const refused = await new ZipKit().create({ inputs: [proj], output });
+    expect(refused).toMatchObject({ mode: "plan", writable: false });
+    expect(refused.findings.map((f) => f.rule)).toContain("output.exists");
+    expect((await readFile(output)).equals(before)).toBe(true);
     await expect(
       new ZipKit().create({ inputs: [proj], output, overwrite: true }),
     ).resolves.toMatchObject({ output });
@@ -337,7 +342,7 @@ describe("symlink preservation and empty directories", () => {
       policy: { symlinks: "preserve", emptyDirs: "keep" },
     });
 
-    const entries = result.metadata!.entries;
+    const entries = written(result).manifest.entries;
     const link = entries.find((e) => e.archivePath === "link.txt");
     expect(link?.type).toBe("symlink"); // the writer emitted a Unix link entry
     expect(link?.linkTarget).toBe("real.txt");
@@ -347,8 +352,8 @@ describe("symlink preservation and empty directories", () => {
     expect(empty?.type).toBe("dir"); // a leaf empty dir gets an explicit entry under keep
 
     // The produced archive is well-formed and round-trips on read.
-    const report = await new ZipKit().extract({ archive: output, dryRun: true });
-    expect(report.reportOk).toBe(true);
+    const report = await new ZipKit().verify(output);
+    expect(report.ok).toBe(true);
   });
 });
 

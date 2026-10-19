@@ -102,7 +102,7 @@ async function copyExclusive(
   } catch (err) {
     await destination?.discard().catch(() => {});
     // Cleanup uncertainty does not turn cancellation/stall into an ordinary
-    // existing-output conflict (which extraction would treat as a safe skip).
+    // existing-output conflict.
     throw err;
   } finally {
     await source.close().catch(() => {});

@@ -235,7 +235,7 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
 
   it("reports a path something else moved or deleted first as gone, not kept", async () => {
     trashItem.mockRejectedValue(new Error("no such file"));
-    mocks.sdkCall.mockResolvedValueOnce({ kind: "gone" });
+    mocks.sdkCall.mockResolvedValueOnce({ kind: "missing" });
 
     const result = await mocks.deps!.trash(["/a"], new AbortController().signal);
 

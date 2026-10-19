@@ -1,7 +1,7 @@
 /**
  * What is at a path, as an app must tell it apart before acting on it: there
- * (with a comparable fingerprint), gone, or out of reach. A path is out of
- * reach, never gone, when the drive that holds it is not connected or the path
+ * (with a comparable fingerprint), missing, or out of reach. A path is out of
+ * reach, never missing, when the drive that holds it is not connected or the path
  * cannot be read, so an ejected drive or a permission change is never taken for
  * a deletion. Inputs are classified the same way. The drive rule is pure given
  * the platform, so it unit-tests without one; every look-up uses the bounded
@@ -54,7 +54,7 @@ export async function pathState(target: string, volume: Volume, platform: NodeJS
   } catch (error) {
     if (error instanceof ZipKitError) throw error;
     if (!missing(error)) return { kind: "unavailable" };
-    return (await driveMissing(target, volume, platform)) ? { kind: "unavailable" } : { kind: "gone" };
+    return (await driveMissing(target, volume, platform)) ? { kind: "unavailable" } : { kind: "missing" };
   }
 }
 
@@ -68,7 +68,7 @@ export function sameFile(a: string, b: string): boolean {
 export async function classifyPaths(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform): Promise<PathEntry[]> {
   return Promise.all(paths.map(async (target): Promise<PathEntry> => {
     const state = await pathState(target, volume, platform);
-    if (state.kind === "gone") return { path: target, kind: "missing" };
+    if (state.kind === "missing") return { path: target, kind: "missing" };
     if (state.kind === "unavailable") return { path: target, kind: "unavailable" };
     let kind: PathKind = "missing";
     try {

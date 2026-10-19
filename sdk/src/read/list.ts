@@ -5,36 +5,14 @@
  */
 
 import { ZipKitError } from "../errors.ts";
-import { isManifestRecord } from "./extract.ts";
 import { machineTimeZone } from "../internal/timeZone.ts";
-import type { Volume, VolumeFile } from "../internal/volume.ts";
-import { METADATA_DEFAULTS } from "../policy.ts";
-import type { ArchiveListing, ListedEntry, Metadata } from "../types.ts";
-import { MANIFEST_FORMAT_VERSION } from "../write/metadata.ts";
-import { restoreTimes } from "./restore.ts";
-import { parseZip, readEntryData, type ParsedZip } from "./zipReader.ts";
-
-async function withArchive<T>(volume: Volume, archivePath: string, use: (archive: VolumeFile, parsed: ParsedZip) => Promise<T>): Promise<T> {
-  let archive: VolumeFile;
-  try {
-    archive = await volume.open(archivePath, "r");
-  } catch (err) {
-    if (err instanceof ZipKitError) throw err;
-    throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err, subject: archivePath });
-  }
-  try {
-    let fileSize: number;
-    try {
-      fileSize = Number((await archive.stat()).size);
-    } catch (err) {
-      if (err instanceof ZipKitError) throw err;
-      throw new ZipKitError("read.open-failed", `cannot read archive ${archivePath}`, { cause: err, subject: archivePath });
-    }
-    return await use(archive, await parseZip(archive, fileSize));
-  } finally {
-    await archive.release();
-  }
-}
+import type { Volume } from "../internal/volume.ts";
+import { MANIFEST_DEFAULTS } from "../policy.ts";
+import type { ArchiveListing, ListedEntry, Manifest } from "../types.ts";
+import { MANIFEST_FORMAT_VERSION } from "../write/manifest.ts";
+import { restoreTimes } from "./times.ts";
+import { isManifestRecord, withArchive } from "./verify.ts";
+import { readEntryData } from "./zipReader.ts";
 
 function utcTime(ns: bigint): ListedEntry["modified"] {
   return { ns: ns.toString(), iso: new Date(Number(ns / 1_000_000n)).toISOString() };
@@ -63,40 +41,41 @@ export async function listArchive(volume: Volume, archivePath: string, timeZone 
  *  malformed or repeated entry record is
  *  `read.manifest-invalid`, and one a newer ZipKit wrote is
  *  `read.manifest-newer`. */
-export async function readArchiveManifest(volume: Volume, archivePath: string, name = METADATA_DEFAULTS.name): Promise<Metadata> {
+export async function readArchiveManifest(volume: Volume, archivePath: string, name = MANIFEST_DEFAULTS.name): Promise<Manifest> {
   return withArchive(volume, archivePath, async (archive, parsed) => {
     const inside = parsed.entries.find((entry) => entry.archivePath === name);
-    if (!inside) throw new ZipKitError("read.manifest-missing", `no manifest '${name}' is embedded in the archive`);
+    if (!inside) throw new ZipKitError("manifest.missing", `no manifest '${name}' is embedded in the archive`, { subject: name });
     const chunks: Buffer[] = [];
     await readEntryData(archive, inside, async (chunk) => { chunks.push(chunk); }, 65536);
     let document: unknown;
     try {
       document = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
     } catch (err) {
-      throw new ZipKitError("read.manifest-invalid", `manifest ${name} is not valid JSON`, { cause: err });
+      throw new ZipKitError("manifest.invalid", `manifest ${name} is not valid JSON`, { cause: err, subject: name });
     }
     if (typeof document !== "object" || document === null || Array.isArray(document)) {
-      throw new ZipKitError("read.manifest-invalid", `manifest ${name} is not a JSON object`);
+      throw new ZipKitError("manifest.invalid", `manifest ${name} is not a JSON object`, { subject: name });
     }
     const { formatVersion, entries } = document as Record<string, unknown>;
     if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {
-      throw new ZipKitError("read.manifest-invalid", `manifest ${name} has no valid formatVersion`);
+      throw new ZipKitError("manifest.invalid", `manifest ${name} has no valid formatVersion`, { subject: name });
     }
     if (formatVersion > MANIFEST_FORMAT_VERSION) {
       throw new ZipKitError(
-        "read.manifest-newer",
+        "manifest.newer",
         `manifest ${name} has format version ${formatVersion}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
+        { subject: name },
       );
     }
-    if (!Array.isArray(entries)) throw new ZipKitError("read.manifest-invalid", `manifest ${name} has no entries list`);
+    if (!Array.isArray(entries)) throw new ZipKitError("manifest.invalid", `manifest ${name} has no entries list`, { subject: name });
     // The same records verification accepts, so a manifest that reads here
     // also verifies there.
     const paths = new Set<string>();
     for (const record of entries) {
-      if (!isManifestRecord(record)) throw new ZipKitError("read.manifest-invalid", `manifest ${name} holds a malformed entry record`);
-      if (paths.has(record.archivePath)) throw new ZipKitError("read.manifest-invalid", `manifest ${name} records '${record.archivePath}' twice`);
+      if (!isManifestRecord(record)) throw new ZipKitError("manifest.invalid", `manifest ${name} holds a malformed entry record`, { subject: name });
+      if (paths.has(record.archivePath)) throw new ZipKitError("manifest.invalid", `manifest ${name} records '${record.archivePath}' twice`, { subject: name });
       paths.add(record.archivePath);
     }
-    return document as Metadata;
+    return document as Manifest;
   });
 }

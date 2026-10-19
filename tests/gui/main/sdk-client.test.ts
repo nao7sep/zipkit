@@ -47,8 +47,8 @@ describe("createSdkClient", () => {
     const call = sdk.call("plan", [["/a"], {} as never], { signal: controller.signal });
     controller.abort();
     expect(host.sent.at(-1)).toEqual({ type: "cancel", id: 1 });
-    host.reply({ type: "failed", id: 1, error: { name: "ZipKitError", message: "aborted", code: "aborted", kind: "cancelled", effect: "none" } });
-    await expect(call).rejects.toMatchObject({ name: "ZipKitError", code: "aborted", kind: "cancelled", effect: "none" });
+    host.reply({ type: "failed", id: 1, error: { name: "ZipKitError", message: "aborted", code: "operation.cancelled", kind: "cancelled", effect: "none" } });
+    await expect(call).rejects.toMatchObject({ name: "ZipKitError", code: "operation.cancelled", kind: "cancelled", effect: "none" });
     await expect(sdk.call("verify", ["/x", true], { signal: controller.signal })).rejects.toBeDefined();
   });
 

@@ -26,7 +26,7 @@
 
 import type { BigIntStats } from "node:fs";
 import path from "node:path";
-import { throwIfAborted, ZipKitError } from "../errors.ts";
+import { fsFailure, throwIfAborted, ZipKitError } from "../errors.ts";
 import type { FilterMatcher } from "../filter/match.ts";
 import { toForwardSlash } from "../internal/path.ts";
 import { machineTimeZone } from "../internal/timeZone.ts";
@@ -67,7 +67,7 @@ interface ScanContext {
    * run never archives itself, exactly on every filesystem: a case-insensitive
    * volume aliases `Out.zip`/`out.zip` to one inode, while a case-sensitive one
    * keeps a same-named neighbour distinct. A name comparison could not draw that
-   * line either way. (The metadata is embedded, so there is no second output
+   * line either way. (The manifest is embedded, so there is no second output
    * file to exclude.)
    *
    * This is the only self-exclusion the scan does. There is deliberately no
@@ -252,8 +252,7 @@ async function processPath(
   try {
     st = await ctx.volume.lstat(abs);
   } catch (err) {
-    rethrowClassified(err);
-    throw new ZipKitError("scan.stat-failed", `cannot stat: ${abs}`, { cause: err, subject: abs });
+    throw fsFailure(err, abs);
   }
   // This run's own output archive, reached under any casing: skip it so the
   // archive can never contain itself.
@@ -304,7 +303,7 @@ async function walkTree(
           } catch (err) {
             rethrowClassified(err);
             if (dir === absDir) {
-              throw new ZipKitError("scan.walk-failed", `failed to walk directory: ${absDir}`, { cause: err, subject: absDir });
+              throw fsFailure(err, absDir);
             }
             ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, dir))));
             return { dir, entries: [] };
@@ -385,32 +384,20 @@ export async function scan(
     try {
       link = await deps.volume.lstat(input.path);
     } catch (err) {
-      rethrowClassified(err);
-      throw new ZipKitError("scan.input-missing", `cannot stat input: ${input.path}`, {
-        cause: err,
-        subject: input.path,
-      });
+      throw fsFailure(err, input.path);
     }
     if (link.isSymbolicLink()) {
       let real: string;
       try {
         real = await deps.volume.realpath(input.path);
       } catch (err) {
-        rethrowClassified(err);
-        throw new ZipKitError("scan.input-missing", `cannot resolve symlink input: ${input.path}`, {
-          cause: err,
-          subject: input.path,
-        });
+        throw fsFailure(err, input.path);
       }
       let resolved: BigIntStats;
       try {
         resolved = await deps.volume.stat(real);
       } catch (err) {
-        rethrowClassified(err);
-        throw new ZipKitError("scan.input-missing", `cannot stat symlink target: ${input.path}`, {
-          cause: err,
-          subject: input.path,
-        });
+        throw fsFailure(err, input.path);
       }
       isDir.push(resolved.isDirectory());
       realInputPaths.push(real);
@@ -445,12 +432,7 @@ export async function scan(
     artifactIds.add(outputId);
   } catch (err) {
     rethrowClassified(err);
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw new ZipKitError("scan.output-stat-failed", `cannot inspect output path: ${output}`, {
-        cause: err,
-        subject: output,
-      });
-    }
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw fsFailure(err, output);
     outputExists = false;
   }
 
@@ -527,11 +509,7 @@ export async function scan(
       try {
         fileStats = await deps.volume.stat(real);
       } catch (err) {
-        rethrowClassified(err);
-        throw new ZipKitError("scan.input-missing", `cannot stat input file: ${real}`, {
-          cause: err,
-          subject: real,
-        });
+        throw fsFailure(err, real);
       }
       // A file named directly as input that is itself the output archive.
       if (ctx.artifactIds.has(fileId(fileStats))) continue;
@@ -555,7 +533,7 @@ export async function scan(
     output,
     outputExists,
     overwrite: spec.overwrite === true,
-    timeZone: policy.timezone ?? machineTimeZone(),
+    timeZone: policy.timeZone ?? machineTimeZone(),
   };
   if (spec.comment !== undefined) result.comment = spec.comment;
   return result;

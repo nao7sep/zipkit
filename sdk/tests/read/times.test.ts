@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { restoreTimes } from "../../src/extract/restore.ts";
-import type { ReadEntry } from "../../src/extract/zipReader.ts";
+import { restoreTimes } from "../../src/read/times.ts";
+import type { ReadEntry } from "../../src/read/zipReader.ts";
 
 const NTFS_EPOCH_OFFSET = 116_444_736_000_000_000n;
 const filetime = (ms: number): bigint => BigInt(ms) * 10_000n + NTFS_EPOCH_OFFSET;

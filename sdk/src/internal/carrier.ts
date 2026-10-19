@@ -3,7 +3,7 @@
  * never carry absolute source paths. But `write(plan)` is self-contained:
  * given only a plan, it must read the right bytes from disk. We reconcile the
  * two by attaching the writer's instructions to the plan through a
- * symbol-keyed, non-enumerable property. `JSON.stringify` — used by the metadata
+ * symbol-keyed, non-enumerable property. `JSON.stringify` — used by the manifest
  * serializer and any caller that serializes a plan — never sees it, so
  * the absolute paths are stripped by construction, while the data travels with the plan
  * object across the handoff with no instance coupling.
@@ -15,13 +15,13 @@ import type { WriteEntry } from "./types.ts";
 export interface PlanInternals {
   /** Included entries, in plan order, ready for the writer. */
   writeEntries: WriteEntry[];
-  /** The resolved policy governing selection, naming, compression, and metadata. */
+  /** The resolved policy governing selection, naming, compression, and manifest. */
   policy: ArchivePolicy;
   /** Whether replacing an output that exists at publication time was authorized. */
   overwrite: boolean;
   /** The resolved IANA zone the DOS local-time fields are rendered in. */
   timeZone: string;
-  /** The archive comment from the spec, written to the EOCD and the metadata. */
+  /** The archive comment from the spec, written to the EOCD and the manifest. */
   comment?: string;
 }
 
@@ -33,7 +33,7 @@ interface Carried {
 
 /**
  * Attach the writer's instructions to a plan object without making them
- * enumerable, so `JSON.stringify` — used by the metadata serializer and any
+ * enumerable, so `JSON.stringify` — used by the manifest serializer and any
  * caller that serializes a plan — never sees them and the absolute source paths
  * they hold are stripped by construction. They travel with the object across the
  * plan → write handoff.

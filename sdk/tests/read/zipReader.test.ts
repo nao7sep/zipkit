@@ -9,7 +9,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseZip, readEntryData, type ReadEntry } from "../../src/extract/zipReader.ts";
+import { parseZip, readEntryData, type ReadEntry } from "../../src/read/zipReader.ts";
 import type { VolumeFile } from "../../src/internal/volume.ts";
 import { openRead } from "../helpers/volume.ts";
 
@@ -69,29 +69,29 @@ async function parse(bytes: Buffer) {
 
 describe("parseZip rejects malformed archives", () => {
   it("a file too small to hold an EOCD", async () => {
-    await expect(parse(Buffer.alloc(10))).rejects.toMatchObject({ code: "read.not-zip" });
+    await expect(parse(Buffer.alloc(10))).rejects.toMatchObject({ code: "archive.not-zip" });
   });
 
   it("a file with no end-of-central-directory signature", async () => {
-    await expect(parse(Buffer.alloc(200))).rejects.toMatchObject({ code: "read.not-zip" });
+    await expect(parse(Buffer.alloc(200))).rejects.toMatchObject({ code: "archive.not-zip" });
   });
 
   it("an EOCD whose central-directory location is out of range", async () => {
     await expect(parse(eocd({ count: 1, cdSize: 50, cdOffset: 1_000_000 }))).rejects.toMatchObject({
-      code: "read.malformed",
+      code: "archive.malformed",
     });
   });
 
   it("an EOCD pointing at bytes that are not a central record", async () => {
     const fakeCd = Buffer.alloc(10); // no central signature
     const bytes = Buffer.concat([fakeCd, eocd({ count: 1, cdSize: fakeCd.length, cdOffset: 0 })]);
-    await expect(parse(bytes)).rejects.toMatchObject({ code: "read.malformed" });
+    await expect(parse(bytes)).rejects.toMatchObject({ code: "archive.malformed" });
   });
 
   it("a Zip64 sentinel with a missing required extra value", async () => {
     const cd = central({ name: "x", uncompSize: 0xffffffff });
     const bytes = Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0 })]);
-    await expect(parse(bytes)).rejects.toMatchObject({ code: "read.malformed" });
+    await expect(parse(bytes)).rejects.toMatchObject({ code: "archive.malformed" });
   });
 
   it("a Zip64 value outside JavaScript's safe integer range", async () => {
@@ -103,7 +103,7 @@ describe("parseZip rejects malformed archives", () => {
     payload.copy(extra, 4);
     const cd = central({ name: "x", uncompSize: 0xffffffff, extra });
     const bytes = Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0 })]);
-    await expect(parse(bytes)).rejects.toMatchObject({ code: "read.malformed" });
+    await expect(parse(bytes)).rejects.toMatchObject({ code: "archive.malformed" });
   });
 
   it("a Zip64 end record with a truncated declared structure", async () => {
@@ -115,7 +115,7 @@ describe("parseZip rejects malformed archives", () => {
     locator.writeBigUInt64LE(0n, 8);
     const end = eocd({ count: 0xffff, cdSize: 0, cdOffset: 0xffffffff });
     await expect(parse(Buffer.concat([z64, locator, end]))).rejects.toMatchObject({
-      code: "read.malformed",
+      code: "archive.malformed",
     });
   });
 });
@@ -135,7 +135,7 @@ describe("readEntryData rejects unreadable entries", () => {
     const { fd, entry, close } = await parsedFirst(bytes);
     try {
       await expect(readEntryData(fd, entry, async () => {}, 65536)).rejects.toMatchObject({
-        code: "read.unsupported-method",
+        code: "archive.unsupported-method",
       });
     } finally {
       await close();
@@ -155,7 +155,7 @@ describe("readEntryData rejects unreadable entries", () => {
     const { fd, entry, close } = await parsedFirst(bytes);
     try {
       await expect(readEntryData(fd, entry, async () => {}, 65536)).rejects.toMatchObject({
-        code: "read.malformed",
+        code: "archive.malformed",
       });
     } finally {
       await close();
@@ -185,7 +185,7 @@ describe("readEntryData rejects unreadable entries", () => {
       nameBytes: Buffer.alloc(0),
     };
     try {
-      await expect(readEntryData(fh, entry, async () => {}, 65536)).rejects.toMatchObject({ code: "read.size-mismatch" });
+      await expect(readEntryData(fh, entry, async () => {}, 65536)).rejects.toMatchObject({ code: "archive.size-mismatch" });
     } finally {
       await fh.close();
     }

@@ -3,7 +3,7 @@
  * archive sequentially — the archive is one ordered byte stream. Each source
  * file flows through deflate (or a store pass-through) in `chunkSize` pieces, so
  * an arbitrarily large file is archived in bounded memory; its CRC-32 and
- * SHA-256 are computed incrementally as it streams. The metadata file is built
+ * SHA-256 are computed incrementally as it streams. The manifest file is built
  * from the streamed results and injected as the final entry. The writer
  * instructions ride on the plan (see `carrier.ts`), so `write(plan)` needs no
  * second argument.
@@ -15,7 +15,7 @@
 
 import { createHash, type Hash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
-import { isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
+import { fsFailure, isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
 import { readInternals } from "../internal/carrier.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { Unlogged, WriteEntry } from "../internal/types.ts";
@@ -32,8 +32,8 @@ type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 /** The `mode:"write"` member of {@link CreateData}; the writer's success shape.
  *  Logging-agnostic: the `log` path is stamped by the SDK boundary, not here. */
 type WriteData = Unlogged<Extract<CreateData, { mode: "write" }>>;
-import { buildMetadata, manifestText } from "./metadata.ts";
-import type { MetadataEntryInput } from "./metadata.ts";
+import { buildManifest, manifestText } from "./manifest.ts";
+import type { ManifestEntryInput } from "./manifest.ts";
 import { EntryCompressor, ZipWriter } from "./zipWriter.ts";
 import type { StreamResult, WriteEntryInput } from "./zipWriter.ts";
 
@@ -47,7 +47,7 @@ export interface WriteDeps {
   onProgress?: ((counts: ProgressCounts) => void) | undefined;
 }
 
-/** What each streamed entry contributed, gathered for the metadata record. */
+/** What each streamed entry contributed, gathered for the manifest record. */
 interface StreamedEntry {
   source: WriteEntry;
   crc32: number;
@@ -131,17 +131,14 @@ async function streamFile(
     } catch (err) {
       await compressor.dispose();
       // A cancel, a stall, or a destination fault surfacing through the
-      // compressor is already classified; only a raw source error is wrapped.
-      if (err instanceof ZipKitError) throw err;
-      throw new ZipKitError("write.read-failed", `cannot read source for ${source.archivePath}`, {
-        cause: err, subject: source.archivePath,
-      });
+      // compressor is already classified; only a raw source error is mapped.
+      throw fsFailure(err, source.absolutePath);
     }
     return compressor.finish();
   });
 }
 
-/** Stream an in-memory buffer (a symlink target or the metadata JSON) as one entry. */
+/** Stream an in-memory buffer (a symlink target or the manifest) as one entry. */
 async function streamBuffer(
   writer: ZipWriter,
   input: WriteEntryInput,
@@ -208,8 +205,8 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   }
 
   // `timeZone` is the zone the plan resolved and checked the DOS range in; it is
-  // recorded in the metadata so the local field is interpretable. The UTC extras
-  // and metadata times need no zone.
+  // recorded in the manifest so the local field is interpretable. The UTC extras
+  // and manifest times need no zone.
   const { policy, writeEntries, overwrite, timeZone, comment } = internals;
   const level = policy.compression.level;
   const signal = deps.signal;
@@ -217,7 +214,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
 
   deps.logger.emit({ stage: "write", level: "info", event: "write.start", entries: writeEntries.length });
 
-  const hash = policy.metadata !== false && policy.metadata.hash;
+  const hash = policy.manifest !== false && policy.manifest.hash;
   const createdNs = BigInt(Date.now()) * 1_000_000n;
 
   // The plan already computed the Zip64 verdict over the full content (entries
@@ -297,8 +294,8 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
 
     // The structured record is always built and returned — it is the run's full
     // state. Embedding it as `zipkit.json` is the only part gated by policy.
-    const metadataEntries: MetadataEntryInput[] = streamed.map((s) => {
-      const input: MetadataEntryInput = {
+    const manifestEntries: ManifestEntryInput[] = streamed.map((s) => {
+      const input: ManifestEntryInput = {
         writeEntry: s.source,
         crc32: s.crc32,
         compressedSize: s.compressedSize,
@@ -306,27 +303,27 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       if (s.sha256 !== undefined) input.sha256 = s.sha256;
       return input;
     });
-    const metadata = buildMetadata(
+    const manifest = buildManifest(
       plan,
       policy,
-      metadataEntries,
+      manifestEntries,
       createdNs,
       timeZone,
       comment,
     );
 
-    if (policy.metadata !== false) {
+    if (policy.manifest !== false) {
       // A ZIP is a container, so the manifest rides inside it rather than as a
       // loose file that could drift away from the archive. Its text is produced
       // in pieces twice, once to count its bytes for the entry's header and once
       // into the archive, so the whole text is never held (volume-handling
       // conventions, Data size): a folder of any size gets its manifest.
       let length = 0;
-      for (const piece of manifestText(metadata)) length += Buffer.byteLength(piece, "utf8");
+      for (const piece of manifestText(manifest)) length += Buffer.byteLength(piece, "utf8");
       await streamPieces(
         writer,
         {
-          name: policy.metadata.name,
+          name: policy.manifest.name,
           type: "file",
           method: "deflate",
           uncompressedSize: length,
@@ -335,7 +332,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
           birthtimeNs: createdNs,
           mode: 0,
         },
-        manifestText(metadata),
+        manifestText(manifest),
         deps.chunkSize,
         level,
       );
@@ -359,7 +356,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       // `zip64` above is the exact outcome, so a caller reads that for the truth.
       summary: plan.summary,
       findings: plan.findings,
-      metadata,
+      manifest,
     };
   } catch (err) {
     // A temporary file that could not be removed is left behind, so the

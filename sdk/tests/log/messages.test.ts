@@ -20,10 +20,10 @@ const samples: LogEventBody[] = [
   { event: "write.start", entries: 1 },
   { event: "entry.written", path: "p" },
   { event: "write.done", bytes: 100, zip64: false },
-  { event: "extract.start", entries: 2, write: true },
+  { event: "verify.start", entries: 2 },
   { event: "entry.verified", path: "p" },
-  { event: "extract.done", total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0, written: 2, skipped: 0, reportOk: true },
-  { event: "fault", code: "read.not-zip", detail: "not a zip" },
+  { event: "verify.done", total: 2, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0, ok: true },
+  { event: "fault", code: "archive.not-zip", detail: "not a zip" },
 ];
 
 describe("messageFor", () => {
@@ -54,9 +54,10 @@ describe("messageFor", () => {
     expect(messageFor({ event: "write.done", bytes: 10, zip64: false })).not.toContain("zip64");
   });
 
-  it("distinguishes extract from verify by the write flag", () => {
-    expect(messageFor({ event: "extract.start", entries: 1, write: true })).toContain("extracting");
-    expect(messageFor({ event: "extract.start", entries: 1, write: false })).toContain("verifying");
+  it("counts a verification's problems", () => {
+    const clean = { event: "verify.done", total: 2, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0, ok: true } as const;
+    expect(messageFor(clean)).toBe("verify complete: 2 entries, no problems");
+    expect(messageFor({ ...clean, crc32Failed: 1, unreadable: 1, ok: false })).toBe("verify complete: 2 entries, 2 problems (not ok)");
   });
 
   it("renders the startup line with the version and runtime config", () => {

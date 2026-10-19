@@ -102,12 +102,12 @@ export interface NameRules {
   suspicious: "warn" | "error" | "none";
 }
 
-export interface MetadataPolicy {
-  /** The metadata file's entry name; it is always embedded in the archive. */
+export interface ManifestPolicy {
+  /** The manifest's entry name; it is always embedded in the archive. */
   name: string;
   /**
    * Compute a SHA-256 per file in addition to the always-present CRC-32.
-   * Defaults to `true` whenever metadata is emitted — the manifest's purpose is
+   * Defaults to `true` whenever a manifest is written — the manifest's purpose is
    * content identity. Set `false` to record CRC-32 only.
    */
   hash: boolean;
@@ -132,18 +132,18 @@ export interface ArchivePolicy {
   symlinks: "ignore" | "preserve" | "follow";
   followExternal: boolean;
   /**
-   * IANA timezone name (e.g. `"Asia/Tokyo"`, `"UTC"`) the ZIP DOS local-time
+   * IANA time zone name (e.g. `"Asia/Tokyo"`, `"UTC"`) the ZIP DOS local-time
    * field is rendered in. The DOS field stores local wall-clock with no zone, so
    * a same-zone reader sees the file's real time. Defaults to the host zone.
    * Affects only the DOS field, whose 1980–2107 range (and so the `time.pre-1980`
    * and `time.post-2107` findings) is judged in this zone — the
-   * extended-timestamp and NTFS extras and the metadata record are always UTC.
+   * extended-timestamp and NTFS extras and the manifest are always UTC.
    */
-  timezone?: string;
+  timeZone?: string;
   compression: CompressionPolicy;
 
   // Companion output
-  metadata: false | MetadataPolicy;
+  manifest: false | ManifestPolicy;
 }
 
 /**
@@ -170,7 +170,7 @@ export interface ArchiveSpec {
   overwrite?: boolean;
 
   // Content
-  /** The ZIP end-of-central-directory comment (UTF-8). Recorded in the metadata. */
+  /** The ZIP end-of-central-directory comment (UTF-8). Recorded in the manifest. */
   comment?: string;
 
   // Configuration
@@ -237,19 +237,19 @@ export interface ZipKitOptions {
  *
  * `signal` is the cancellation signal. Every method that touches the disk
  * honors it, stopping cleanly at the next boundary (a phase edge, a
- * walked entry, a streamed chunk) and rejecting with the `aborted` error. It is
+ * walked entry, a streamed chunk) and rejecting with the `operation.cancelled` error. It is
  * control, not data, so it lives here and not on the spec.
  */
 export interface ZipKitCallOptions {
   onEvent?: (event: LogEvent) => void;
-  /** How far `write`/`create` and `extract` have got, for a progress bar, as
+  /** How far `write`/`create` and `verify` have got, for a progress bar, as
    *  counts rather than events: at
    *  the start, at most every 100 ms while entries stream, and once at the end
    *  of a run that finishes. Other verbs ignore this hook, and like
    *  `onEvent` it cannot break the verb. */
   onProgress?: (counts: ProgressCounts) => void;
   signal?: AbortSignal;
-  /** `write`, `create` and `extract` deliver this after their logical
+  /** `write`, `create` and `verify` deliver this after their logical
    * outcome. The promise joins raw I/O and late cleanup that may outlive a
    * cancelled or timed-out wait. Callers reserving output paths retain them
    * until it settles. The observer cannot change the verb's outcome. Other
@@ -261,7 +261,7 @@ export interface ZipKitCallOptions {
  *  and their content as on disk (the plan's `summary.sourceBytes`); a read
  *  counts every entry and its uncompressed bytes. */
 export interface ProgressCounts {
-  stage: "write" | "extract";
+  stage: "write" | "verify";
   entriesDone: number;
   entriesTotal: number;
   bytesDone: number;
@@ -297,28 +297,29 @@ export type RuleId =
   | "time.post-2107"
   | "output.exists";
 
-/** The findings extract and verify report: an entry that fails its CRC-32, its
- *  manifest hash or its manifest record, an unsafe path, and entries missing
+/** The findings verification reports: an entry that fails its CRC-32, whose
+ *  data cannot be read, whose local header disagrees with the central
+ *  directory, or that fails its manifest hash or record, and entries missing
  *  from or extra to the archive against its manifest. */
-export type ExtractRuleId =
-  | "extract.crc-fail"
-  | "extract.sha-mismatch"
-  | "extract.manifest-mismatch"
-  | "extract.local-mismatch"
-  | "extract.unsafe-path"
-  | "extract.missing"
-  | "extract.extra";
+export type VerifyRuleId =
+  | "verify.crc32-mismatch"
+  | "verify.unreadable"
+  | "verify.local-mismatch"
+  | "verify.sha256-mismatch"
+  | "verify.manifest-mismatch"
+  | "verify.missing"
+  | "verify.extra";
 
 /** Every rule a finding can carry. */
-export type FindingRule = RuleId | ExtractRuleId;
+export type FindingRule = RuleId | VerifyRuleId;
 
 /** What is at a path now: there, with a fingerprint that changes with its
- *  content and tells one file from another (`sameFile`); gone; or out of reach,
- *  on a drive that is not connected or a path that cannot be read — never taken
- *  for gone. */
+ *  content and tells one file from another (`sameFile`); missing; or out of
+ *  reach, on a drive that is not connected or a path that cannot be read —
+ *  never taken for missing. */
 export type PathState =
   | { kind: "present"; fingerprint: string }
-  | { kind: "gone" }
+  | { kind: "missing" }
   | { kind: "unavailable" };
 
 /** What a path is on disk: a folder, a file, something else (a socket, a
@@ -346,8 +347,8 @@ export interface PathEntry {
 export type ExcludeCode = "junk" | "filter" | "empty-dir" | "empty-file" | "duplicate" | "path-traversal" | "symlink" | "unsupported";
 
 export interface Finding {
-  /** What was found: a plan rule (`RuleId`) or, from extract and verify, an
-   *  `ExtractRuleId`. Both are listed in the registry and stable. */
+  /** What was found: a plan rule (`RuleId`) or, from verification, a
+   *  `VerifyRuleId`. Both are listed in the registry and stable. */
   rule: FindingRule; // identity
   severity: Severity; // classification (sourced from the registry)
   path: string; // locator
@@ -393,8 +394,10 @@ export interface PlanSummary {
  *
  * Per-entry detail is never duplicated: `mode:"plan"` carries `entries`
  * (pre-write, no crc/sha); `mode:"write"` carries the post-write per-entry SSOT
- * inside `metadata.entries`. `plan()` returns the `"plan"` member; `write()` and
- * `create()` return the `"write"` member (or throw on an operational fault).
+ * inside `manifest.entries`. `plan()` returns the `"plan"` member; `write()`
+ * returns the `"write"` member; `create()` returns the `"write"` member, or the
+ * `"plan"` member when the plan blocks (such as on an existing output without
+ * `overwrite`), and throws only on an operational fault.
  */
 export type CreateData =
   | {
@@ -416,14 +419,9 @@ export type CreateData =
       findings: Finding[]; // SSOT (domain + operational)
       /** The manifest document: the post-write per-entry record (CRC, SHA-256,
        *  sizes, times), embedded unless the policy turned the manifest off. */
-      metadata: Metadata;
+      manifest: Manifest;
     };
 
-// ---------------------------------------------------------------------------
-// Metadata record
-// ---------------------------------------------------------------------------
-
-/** A UTC instant as both its lossless nanosecond count and an ISO-8601 string. */
 /** The `mode:"plan"` member of {@link CreateData}: what `plan()` returns. */
 export type PlanData = Extract<CreateData, { mode: "plan" }>;
 
@@ -433,6 +431,11 @@ export type WriteData = Extract<CreateData, { mode: "write" }>;
 
 export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
 
+// ---------------------------------------------------------------------------
+// Manifest
+// ---------------------------------------------------------------------------
+
+/** A UTC instant as both its lossless nanosecond count and an ISO-8601 string. */
 export interface UtcTime {
   ns: string;
   iso: string;
@@ -445,8 +448,8 @@ export interface Transformation {
   after: string;
 }
 
-/** One written entry's record in the {@link Metadata} document. */
-export interface MetadataEntry {
+/** One written entry's record in the {@link Manifest} document. */
+export interface ManifestEntry {
   archivePath: string; // identity
   originalPath: string;
   sourcePath: string;
@@ -467,8 +470,8 @@ export interface MetadataEntry {
   transformations: Transformation[]; // nested detail
 }
 
-/** A dropped entry's record in the {@link Metadata} document. */
-export interface MetadataExcluded {
+/** A dropped entry's record in the {@link Manifest} document. */
+export interface ManifestExcluded {
   archivePath: string;
   originalPath: string;
   type: "file" | "dir" | "symlink";
@@ -487,7 +490,7 @@ export interface ExtremeEntry {
  * dropped entries, and findings. Returned from every `write` and `create` and embedded as
  * `zipkit.json` unless disabled.
  */
-export interface Metadata {
+export interface Manifest {
   /** A plain-language sentence saying what the document is, for a recipient
    *  who opens it without knowing ZipKit. */
   about: string; // identity
@@ -511,108 +514,71 @@ export interface Metadata {
    * file entries by `mtime` (UTC). Computed over file and symlink entries, never
    * synthetic directories. `null` when the set has no such entry (e.g. an archive
    * of only empty directories), so a caller reads the range without scanning
-   * {@link Metadata.entries} or parsing nanosecond strings.
+   * {@link Manifest.entries} or parsing nanosecond strings.
    */
   timeRange: { oldest: ExtremeEntry; newest: ExtremeEntry } | null;
-  entries: MetadataEntry[]; // nested detail
-  excluded: MetadataExcluded[];
+  entries: ManifestEntry[]; // nested detail
+  excluded: ManifestExcluded[];
   findings: Finding[];
 }
 
 // ---------------------------------------------------------------------------
-// Extract / validate
+// Verify
 // ---------------------------------------------------------------------------
 
-/**
- * One read operation drives both extraction and validation. The two switches
- * are orthogonal: `dryRun` decides whether files are written, `checkMetadata`
- * decides whether the archive is reconciled against its manifest. CRC-32 is
- * always verified — every entry is decompressed regardless — so a dry run with
- * no other option is a pure integrity test (`unzip -t`), and it works on any
- * ZIP, not only ones zipkit produced.
- */
-export interface ExtractSpec {
-  // Source
-  archive: string;
-
-  // Destination
-  /** Output directory. Required unless `dryRun` is set; ignored on a dry run. */
-  dest?: string;
-  overwrite?: boolean;
-
-  // Mode
-  /** Verify only, write nothing. */
-  dryRun?: boolean;
-  /** Reconcile entries against the manifest and verify recorded SHA-256s. */
-  checkMetadata?: boolean;
-  /** Manifest entry name to look for inside the archive. */
-  metadataName?: string;
-
-  // Restore policy (write only)
-  /** Restore modification/access times to extracted files and folders. Defaults to `restore`. */
-  timestamps?: "restore" | "none";
-  /** Zone used to interpret the DOS field when an entry has no UTC time extra. */
-  timezone?: string;
-  /** Handling of entries whose path escapes `dest`. Defaults to `skip`. */
-  onUnsafe?: "skip" | "abort";
-  /** Whether to recreate symlink entries. Defaults to `restore`. */
-  symlinks?: "restore" | "skip";
-  /**
-   * Exclusion rules. A matching entry is still verified (CRC, and SHA under
-   * `checkMetadata`) but is not written to disk — filtering selects output,
-   * integrity always covers the whole archive.
-   */
-  exclude?: FilterRule[];
+/** Options for `ZipKit.verify`. */
+export interface VerifyOptions extends ZipKitCallOptions {
+  /** Also hold the archive to its embedded manifest: every recorded entry
+   *  present, nothing extra, and each type, size, CRC-32 and recorded SHA-256
+   *  equal. Without it the check is the archive's own integrity and works on
+   *  any ZIP. */
+  manifest?: boolean;
+  /** The manifest's name, when the archive was made with another than the
+   *  instance policy's. */
+  manifestName?: string;
 }
 
-export interface ExtractEntryResult {
+/** One entry's verification. */
+export interface VerifiedEntry {
   archivePath: string; // identity
   type: "file" | "dir" | "symlink"; // classification
-  crc: "ok" | "fail"; // outcome: content integrity
-  /** Identity against the manifest, present only under `checkMetadata`. */
-  sha?: "ok" | "mismatch" | "absent";
-  written: boolean; // state
-  /** Why an entry was not written, when it was not. `unchanged`: an overwrite
-   *  found the destination already holding the entry's content, and left it. */
-  skipped?: "dry-run" | "crc-fail" | "unsafe" | "excluded" | "exists" | "unchanged" | "symlink-skip";
-  /** Where the entry was written. On Windows a name it cannot hold (a reserved
-   *  device name, `< > : " | ? *`, control characters, trailing dots or spaces) is
-   *  renamed the way ZipKit fixes names when it creates an archive, so this path
-   *  can differ from `archivePath` there. */
-  outputPath?: string;
+  /** Its data against its CRC-32, or `unreadable` when the data could not be
+   *  decompressed (an unsupported method, a broken stream, a wrong size). */
+  crc32: "ok" | "fail" | "unreadable"; // outcome
+  /** Its content against the manifest's SHA-256, under `manifest` only;
+   *  `absent` when the manifest recorded none. */
+  sha256?: "ok" | "mismatch" | "absent";
 }
 
 /**
- * The `extract` verb's payload. `findings` is the SSOT fault carrier. The domain
- * verdict is `reportOk` — no CRC failure, no unsafe path, and (under
- * `checkMetadata`) no missing/extra entry and no SHA, size or CRC-32 mismatch
- * against the manifest. A run can complete cleanly yet not be ok, so a
- * caller decides from `reportOk`, as the removal check does.
+ * The `verify` verb's payload. `findings` holds each failure; `ok` is the
+ * verdict: every entry readable with its CRC-32 and local header intact, and
+ * under `manifest` nothing missing or extra and no SHA-256, size or CRC-32
+ * differing from the manifest. A run can complete yet not be ok, so a caller
+ * decides from `ok`, as the removal check does.
  */
-export interface ExtractData {
+export interface VerifyData {
   archive: string; // identity
   log: string | null; // session log this run was recorded to (provenance); null without a `logDir`
-  dest: string | null; // null on a dry run
-  dryRun: boolean;
-  wrote: boolean; // state: whether any file was written
-  reportOk: boolean; // domain verdict (the removal check reads this)
-  /** The embedded manifest used, when `checkMetadata` was requested. */
+  ok: boolean; // verdict
+  /** The embedded manifest used, under `manifest`. */
   manifest: { name: string } | null;
   summary: {
     total: number;
-    written: number;
-    skipped: number;
-    crcFailed: number;
-    shaMismatched: number;
-    /** Entries whose size or CRC-32 differs from the manifest (`checkMetadata`). */
-    manifestMismatched: number;
+    crc32Failed: number;
+    /** Entries whose data could not be read. */
+    unreadable: number;
     /** Entries whose local header disagrees with the central directory. */
     localMismatched: number;
+    /** Entries whose content differs from the manifest's SHA-256 (`manifest`). */
+    sha256Mismatched: number;
+    /** Entries whose type, size or CRC-32 differs from the manifest (`manifest`). */
+    manifestMismatched: number;
   };
-  entries: ExtractEntryResult[];
-  /** In the manifest but absent from the archive (`checkMetadata`). */
+  entries: VerifiedEntry[];
+  /** In the manifest but absent from the archive (`manifest`). */
   missing: string[];
-  /** In the archive but absent from the manifest (`checkMetadata`). */
+  /** In the archive but absent from the manifest (`manifest`). */
   extra: string[];
   findings: Finding[]; // SSOT
 }
@@ -672,7 +638,7 @@ export type RemovalRefusal =
 
 /** What a verification found, without every entry's result. */
 export interface VerifyReport {
-  summary: ExtractData["summary"];
+  summary: VerifyData["summary"];
   /** In the manifest but absent from the archive. */
   missing: string[];
   /** In the archive but absent from the manifest. */
@@ -704,7 +670,7 @@ export interface RemovalOptions extends ZipKitCallOptions {
 
 /** The phase a {@link LogEvent} belongs to. `session` carries the once-per-session
  *  startup line; the rest are the verb pipeline phases. */
-export type LogStage = "session" | "scan" | "plan" | "write" | "extract";
+export type LogStage = "session" | "scan" | "plan" | "write" | "verify";
 
 /** The severity of a {@link LogEvent}. */
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -737,19 +703,9 @@ export type LogEventBody =
   | { event: "write.start"; entries: number }
   | { event: "entry.written"; path: string }
   | { event: "write.done"; bytes: number; zip64: boolean }
-  | { event: "extract.start"; entries: number; write: boolean }
+  | { event: "verify.start"; entries: number }
   | { event: "entry.verified"; path: string }
-  | {
-      event: "extract.done";
-      total: number;
-      crcFailed: number;
-      shaMismatched: number;
-      manifestMismatched: number;
-      localMismatched: number;
-      written: number;
-      skipped: number;
-      reportOk: boolean;
-    }
+  | ({ event: "verify.done"; ok: boolean } & VerifyData["summary"])
   | { event: "fault"; code: string; detail: string; cause?: string };
 
 /**

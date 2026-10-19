@@ -106,7 +106,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
       }
     },
     verify: async (archive, signal, onEvent) =>
-      (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal, onEvent })).reportOk,
+      (await zip.verify(archive, { manifest: true, signal, onEvent })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
     classify: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
@@ -114,8 +114,8 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, checkMetadata) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent });
-      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
+      const data = await zip.verify(archive, { manifest: checkMetadata, signal, onEvent });
+      return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     emit: (jobs) => { if (jobs[0]?.state === "failed") firstFailed.resolve(); },
     progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,
@@ -141,7 +141,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     if (!cancel && phase === "write") await vi.advanceTimersByTimeAsync(1_000);
     await firstFailed.promise;
     vi.useRealTimers();
-    expect(writeErrors[0]).toMatchObject({ code: cancel ? "aborted" : "io.stalled" });
+    expect(writeErrors[0]).toMatchObject({ code: cancel ? "operation.cancelled" : "io.stalled" });
     expect(physical).toBeDefined();
     expect(physicallySettled).toBe(false);
 
@@ -164,7 +164,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     await state(second, "done");
     expect(writesStarted).toBe(2);
     const winner = await readFile(output);
-    expect((await zip.extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
+    expect((await zip.verify(output, { manifest: true })).ok).toBe(true);
     expect(await readFile(output)).toEqual(winner);
     expect(await readFile(b, "utf8")).toBe("NEW WINNER");
   } finally {

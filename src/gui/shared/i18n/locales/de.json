@@ -387,6 +387,7 @@
   "report.crcFailures": { "one": "{count} CRC-Fehler", "other": "{count} CRC-Fehler" },
   "report.shaMismatches": { "one": "{count} SHA-Abweichung", "other": "{count} SHA-Abweichungen" },
   "report.manifestMismatches": {"one": "{count} Manifest-Abweichung", "other": "{count} Manifest-Abweichungen"},
+  "report.unreadable": { "one": "{count} nicht lesbarer Eintrag", "other": "{count} nicht lesbare Einträge" },
   "report.zipInput": "Diese Eingabe ist bereits eine .zip-Datei. Erneutes Komprimieren spart kaum Platz und steckt nur ein ZIP in ein ZIP. Archivieren Sie stattdessen ihren Inhalt oder geben Sie der Ausgabe einen anderen Namen.",
   "report.excludedEmptyDir": "Leerer Ordner weggelassen",
   "report.excludedEmptyFile": "Leere Datei übersprungen",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "Umbenannt von {from}",
 
   "guidance.outputAmbiguous": "Diese Eingaben liegen in verschiedenen Ordnern, daher kann ZipKit keinen Speicherort selbst wählen. Legen Sie einen Dateinamen fest (der Ausgabeordner ist standardmäßig der Ordner der ersten Eingabe), dann werden sie gemeinsam archiviert.",
-  "guidance.inputMissing": "Eine Eingabe ist nicht mehr auf dem Datenträger vorhanden. Entfernen Sie sie aus der Liste oder stellen Sie sie wieder her, und versuchen Sie es dann erneut.",
-  "guidance.statFailed": "Eine Eingabe konnte nicht gelesen werden. Sie ist möglicherweise gesperrt oder durch Berechtigungen geschützt. Prüfen Sie sie und versuchen Sie es dann erneut.",
-  "guidance.walkFailed": "Ein Ordner konnte wegen eines Berechtigungs- oder E/A-Problems nicht vollständig gelesen werden. Prüfen Sie ihn und versuchen Sie es dann erneut.",
+  "guidance.pathMissing": "Eine Eingabe ist nicht mehr auf dem Datenträger vorhanden. Entfernen Sie sie aus der Liste oder stellen Sie sie wieder her, und versuchen Sie es dann erneut.",
+  "guidance.pathDenied": "Eine Eingabe konnte nicht gelesen werden. Sie ist möglicherweise gesperrt oder durch Berechtigungen geschützt. Prüfen Sie sie und versuchen Sie es dann erneut.",
+  "guidance.ioFailed": "Ein Ordner konnte wegen eines Berechtigungs- oder E/A-Problems nicht vollständig gelesen werden. Prüfen Sie ihn und versuchen Sie es dann erneut.",
 
   "finding.pathAbsolute": "Absolutes Pfadpräfix entfernt",
   "finding.pathTraversal": "Der Pfad führt aus dem Archivstamm heraus und wurde ausgeschlossen",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "SHA-256-Abweichungen",
   "findingKind.manifestMismatch": "Abweichungen vom Manifest",
   "findingKind.localMismatch": "Einträge mit widersprüchlichen Kopfdaten",
-  "findingKind.unsafePath": "Pfade außerhalb des Ziels",
+  "findingKind.unreadable": "Nicht lesbare Einträge",
   "findingKind.missing": "Im Archiv fehlende Einträge",
   "findingKind.extra": "Nicht im Manifest aufgeführte Einträge",
 
@@ -479,13 +480,9 @@
   "event.written": "Geschrieben: {path}",
   "event.writeDone": "Archiv geschrieben: {size}",
   "event.writeDoneZip64": "Archiv geschrieben: {size} (ZIP64)",
-  "event.extractStart": { "one": "{count} Eintrag wird entpackt", "other": "{count} Einträge werden entpackt" },
   "event.verifyStart": { "one": "{count} Eintrag wird geprüft", "other": "{count} Einträge werden geprüft" },
   "event.verified": "Geprüft: {path}",
-  "event.extractDone": "Entpacken abgeschlossen: {counts}",
   "event.verifyDone": "Prüfung abgeschlossen: {counts}",
-  "event.writtenCount": { "one": "{count} geschrieben", "other": "{count} geschrieben" },
-  "event.skippedCount": { "one": "{count} übersprungen", "other": "{count} übersprungen" },
 
   "settings.title": "Einstellungen",
   "settings.language": "Sprache",

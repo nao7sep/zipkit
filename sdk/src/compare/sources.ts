@@ -12,7 +12,7 @@
 
 import type { WriteEntry } from "../internal/types.ts";
 import type { SourceComparison } from "../types.ts";
-import type { ManifestRecord } from "../extract/extract.ts";
+import type { ManifestRecord } from "../read/verify.ts";
 
 /** One compared object: its type, size and modification time. */
 function signature(type: string, size: number, mtimeNs: string): string {

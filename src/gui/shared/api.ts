@@ -15,7 +15,7 @@
  */
 
 import type { InputAdmission } from "./input-admission.js";
-import type { ArchiveSpec, ExtractData, Finding, LogEvent, PlanData, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison } from "zipkitsdk/types";
+import type { ArchiveSpec, Finding, LogEvent, PlanData, PlannedEntry, PlanSummary, ProgressCounts, Severity, SourceComparison, VerifyData } from "zipkitsdk/types";
 import type { PlanReport } from "./plan-report.js";
 import type { GuiOptions, GuiSettings } from "./spec.js";
 import type { InputEntry, Job, JobIntent, PathKind } from "./queue.js";
@@ -40,7 +40,7 @@ export type GuiPlatform =
   | "cygwin"
   | "netbsd";
 
-export type { ArchiveSpec, PlanData, ExtractData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, SourceComparison };
+export type { ArchiveSpec, PlanData, VerifyData, Finding, PlannedEntry, PlanReport, PlanSummary, InputEntry, Job, JobIntent, LogEvent, PathKind, ProgressCounts, Severity, SourceComparison };
 export type { LanguageEnvironment, Message, PaneLayout };
 
 /** The action that started a Progress run: a background plan, Create (its
@@ -92,7 +92,7 @@ export interface GuiReportedError {
 
 /** What a verification tells the window: the verdict, the counts and the paths
  *  the archive and its manifest disagree on, never every entry's result. */
-export type VerifyReport = Pick<ExtractData, "reportOk" | "summary" | "missing" | "extra">;
+export type VerifyReport = Pick<VerifyData, "ok" | "summary" | "missing" | "extra">;
 export type VerifyResult = { ok: true; data: VerifyReport } | { ok: false; error: GuiError };
 
 /** What each System choice in Settings resolves to now (app-chrome and

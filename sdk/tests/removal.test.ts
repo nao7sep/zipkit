@@ -74,7 +74,7 @@ describe("outputInsideInputs", () => {
 
 describe("checkRemoval", () => {
   const same = { matches: true, added: [], missing: [], changed: [], unlisted: [] };
-  const report = { summary: { total: 1, written: 0, skipped: 1, crcFailed: 1, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 }, missing: [], extra: [], findings: [] };
+  const report = { summary: { total: 1, crc32Failed: 1, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 }, missing: [], extra: [], findings: [] };
   const steps = (over: Partial<RemovalSteps> = {}, ran: string[] = []): RemovalSteps => ({
     state: async () => (ran.push("state"), { kind: "present", fingerprint: "f1" }),
     inside: async () => (ran.push("inside"), false),
@@ -108,7 +108,7 @@ describe("checkRemoval", () => {
   });
 
   it("throws a cancellation from any step instead of answering", async () => {
-    const aborted = new ZipKitError("aborted", "stop");
+    const aborted = new ZipKitError("operation.cancelled", "stop");
     await expect(check(steps({ state: async () => { throw aborted; } }))).rejects.toBe(aborted);
     await expect(check(steps({ verify: async () => { throw aborted; } }))).rejects.toBe(aborted);
   });
@@ -154,13 +154,13 @@ describe("ZipKit.checkRemoval", () => {
     await writeFile(path.join(input, "a.txt"), "a");
     const zip = new ZipKit();
     const archive = path.join(root, "proj.zip");
-    const policy = { metadata: { name: "files.json" } };
+    const policy = { manifest: { name: "files.json" } };
     await zip.create({ inputs: [input], output: archive, policy });
     expect((await zip.checkRemoval({ inputs: [input], policy }, archive)).refusal).toBeNull();
     await expect(zip.checkRemoval({ inputs: ["proj"] }, archive)).rejects.toMatchObject({ kind: "invalid" });
     const controller = new AbortController();
     controller.abort();
-    await expect(zip.checkRemoval({ inputs: [input] }, archive, { signal: controller.signal })).rejects.toMatchObject({ code: "aborted", kind: "cancelled" });
+    await expect(zip.checkRemoval({ inputs: [input] }, archive, { signal: controller.signal })).rejects.toMatchObject({ code: "operation.cancelled", kind: "cancelled" });
   });
 
   it("refuses an archive inside an input, and ignores how the spec would have named it", async () => {

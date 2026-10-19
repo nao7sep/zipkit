@@ -219,7 +219,7 @@ export function processSegment(segment: string, names: NameRules): SegmentFix {
 
 /**
  * The segment after every fix is applied unconditionally — the standard the
- * validation boundary holds a metadata name or replacement character to. Equal
+ * validation boundary holds a manifest name or replacement character to. Equal
  * to the input exactly when the name needs no repair.
  */
 export function fullFixSegment(segment: string, replacement: string): string {

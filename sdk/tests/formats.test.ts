@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../src/index.ts";
-import { MANIFEST_FORMAT_VERSION } from "../src/write/metadata.ts";
+import { MANIFEST_FORMAT_VERSION } from "../src/write/manifest.ts";
 import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./fixtures/sample-tree.ts";
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -28,11 +28,11 @@ describe.each(SUPPORTED)("manifest format %i", (version) => {
   const archive = path.join(fixtures, `format-${version}.zip`);
 
   it("still verifies, entry by entry and against its manifest", async () => {
-    const result = await new ZipKit().extract({ archive, dryRun: true, checkMetadata: true });
-    expect(result.reportOk).toBe(true);
+    const result = await new ZipKit().verify(archive, { manifest: true });
+    expect(result.ok).toBe(true);
     expect(result.missing).toEqual([]);
     expect(result.extra).toEqual([]);
-    expect(result.entries.every((e) => e.crc === "ok" && (e.type !== "file" || e.archivePath === "zipkit.json" || e.sha === "ok"))).toBe(true);
+    expect(result.entries.every((e) => e.crc32 === "ok" && (e.type !== "file" || e.archivePath === "zipkit.json" || e.sha256 === "ok"))).toBe(true);
   });
 
   it("still reads as it was written", async () => {

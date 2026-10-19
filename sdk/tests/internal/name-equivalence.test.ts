@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { aliasUnprovable, foldedName } from "../../src/internal/name-equivalence.ts";
-import { linkValueComponents } from "../../src/extract/linkTargets.ts";
 
 describe("aliasUnprovable", () => {
   it.each(["darwin", "linux", "win32"] as const)("treats non-ASCII names as unprovable on %s", (platform) => {
@@ -26,12 +25,5 @@ describe("foldedName", () => {
   it("drops trailing dots and spaces only on Windows", () => {
     expect(foldedName("Report. .", "win32")).toBe("report");
     expect(foldedName("Report. .", "darwin")).toBe("report. .");
-  });
-});
-
-describe("linkValueComponents", () => {
-  it("splits on either slash on Windows and only on / elsewhere", () => {
-    expect(linkValueComponents("a\\b/c", "win32")).toEqual(["a", "b", "c"]);
-    expect(linkValueComponents("a\\b/c", "darwin")).toEqual(["a\\b", "c"]);
   });
 });

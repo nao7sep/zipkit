@@ -12,7 +12,7 @@ export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.ts";
 export type { PlanTransfer } from "./transfer.ts";
 
 export { RULE_REGISTRY } from "./registry.ts";
-export type { ExtractRuleId, FindingRule, RuleId, RuleSpec } from "./registry.ts";
+export type { VerifyRuleId, FindingRule, RuleId, RuleSpec } from "./registry.ts";
 
 export type {
   ArchiveInput,
@@ -23,9 +23,6 @@ export type {
   CreateData,
   DeepPartial,
   ExcludeCode,
-  ExtractData,
-  ExtractEntryResult,
-  ExtractSpec,
   ExtremeEntry,
   Finding,
   FilterRule,
@@ -41,10 +38,10 @@ export type {
   LogLevel,
   ListedEntry,
   LogStage,
-  Metadata,
-  MetadataEntry,
-  MetadataExcluded,
-  MetadataPolicy,
+  Manifest,
+  ManifestEntry,
+  ManifestExcluded,
+  ManifestPolicy,
   PlanSummary,
   PlannedEntry,
   ProgressCounts,
@@ -56,6 +53,9 @@ export type {
   SourceComparison,
   Transformation,
   UtcTime,
+  VerifiedEntry,
+  VerifyData,
+  VerifyOptions,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.ts";

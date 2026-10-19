@@ -45,7 +45,7 @@ describe("awaitDrain", () => {
     stream.write(Buffer.alloc(64));
     const pending = awaitDrain(stream, controller.signal);
     controller.abort();
-    await expect(pending).rejects.toMatchObject({ code: "aborted" });
+    await expect(pending).rejects.toMatchObject({ code: "operation.cancelled" });
   });
 
   it("rejects immediately for an already-aborted signal", async () => {
@@ -53,7 +53,7 @@ describe("awaitDrain", () => {
     controller.abort();
     const stream = backedUpStream();
     stream.write(Buffer.alloc(64));
-    await expect(awaitDrain(stream, controller.signal)).rejects.toMatchObject({ code: "aborted" });
+    await expect(awaitDrain(stream, controller.signal)).rejects.toMatchObject({ code: "operation.cancelled" });
   });
 
   it("leaves no listeners behind on any path", async () => {

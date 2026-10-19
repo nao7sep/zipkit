@@ -31,15 +31,15 @@ it("presents a real publication flush failure safely and keeps originals out of 
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
     write: async (plan, signal, onEvent, onPhysicalSettlement) =>
       (await zip.write(plan, { signal, onEvent, onPhysicalSettlement })).bytes,
-    verify: async (archive, signal) => (await zip.extract({ archive, dryRun: true, checkMetadata: true }, { signal })).reportOk,
+    verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
     classify: async (paths) => paths.map((location) => ({ path: location, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, checkMetadata) => {
-      const data = await zip.extract({ archive, dryRun: true, checkMetadata }, { signal, onEvent });
-      return { reportOk: data.reportOk, summary: data.summary, missing: data.missing, extra: data.extra };
+      const data = await zip.verify(archive, { manifest: checkMetadata, signal, onEvent });
+      return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     trash, emit: () => {}, progress: () => () => {},
     newId: () => "job", log: { ...nullLog, error: logged },
@@ -62,6 +62,6 @@ it("presents a real publication flush failure safely and keeps originals out of 
     expect(job.archiveWritten).toBe(false);
     expect(trash).not.toHaveBeenCalled();
     expect(await readFile(input, "utf8")).toBe("preserved original");
-    expect((await new ZipKit().extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
+    expect((await new ZipKit().verify(output, { manifest: true })).ok).toBe(true);
   } finally { await engine.shutdown(); await rm(root, { recursive: true, force: true }); }
 });

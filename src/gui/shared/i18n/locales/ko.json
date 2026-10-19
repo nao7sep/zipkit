@@ -387,6 +387,7 @@
   "report.crcFailures": { "other": "CRC 오류 {count}개" },
   "report.shaMismatches": { "other": "SHA 불일치 {count}개" },
   "report.manifestMismatches": {"other": "매니페스트 불일치 {count}개"},
+  "report.unreadable": { "other": "읽을 수 없는 항목 {count}개" },
   "report.zipInput": "이 입력은 이미 .zip 파일입니다. 다시 압축해도 크기가 거의 줄지 않고 zip 안에 zip이 들어갈 뿐입니다. 대신 내용을 아카이브하거나 출력에 다른 이름을 지정하십시오.",
   "report.excludedEmptyDir": "빈 폴더 제외됨",
   "report.excludedEmptyFile": "빈 파일 건너뜀",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "원래 이름: {from}",
 
   "guidance.outputAmbiguous": "입력이 서로 다른 폴더에 있어 ZipKit이 저장 위치를 스스로 정할 수 없습니다. 파일 이름을 설정하면(출력 폴더는 첫 번째 입력의 폴더가 기본값) 함께 아카이브됩니다.",
-  "guidance.inputMissing": "입력이 더 이상 디스크에 없습니다. 목록에서 제거하거나 복원한 다음 다시 시도하십시오.",
-  "guidance.statFailed": "입력을 읽을 수 없습니다. 잠겨 있거나 권한으로 보호되어 있을 수 있습니다. 확인한 다음 다시 시도하십시오.",
-  "guidance.walkFailed": "권한 또는 입출력 문제로 폴더를 끝까지 읽을 수 없습니다. 확인한 다음 다시 시도하십시오.",
+  "guidance.pathMissing": "입력이 더 이상 디스크에 없습니다. 목록에서 제거하거나 복원한 다음 다시 시도하십시오.",
+  "guidance.pathDenied": "입력을 읽을 수 없습니다. 잠겨 있거나 권한으로 보호되어 있을 수 있습니다. 확인한 다음 다시 시도하십시오.",
+  "guidance.ioFailed": "권한 또는 입출력 문제로 폴더를 끝까지 읽을 수 없습니다. 확인한 다음 다시 시도하십시오.",
 
   "finding.pathAbsolute": "절대 경로 접두어를 제거했습니다",
   "finding.pathTraversal": "경로가 아카이브 루트 밖을 가리켜 제외했습니다",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "SHA-256 불일치",
   "findingKind.manifestMismatch": "매니페스트 불일치",
   "findingKind.localMismatch": "헤더가 서로 다른 항목",
-  "findingKind.unsafePath": "대상 밖을 가리키는 경로",
+  "findingKind.unreadable": "읽을 수 없는 항목",
   "findingKind.missing": "아카이브에 없는 항목",
   "findingKind.extra": "매니페스트에 없는 항목",
 
@@ -479,13 +480,9 @@
   "event.written": "쓰기 완료: {path}",
   "event.writeDone": "아카이브를 썼습니다: {size}",
   "event.writeDoneZip64": "아카이브를 썼습니다: {size}(ZIP64)",
-  "event.extractStart": { "other": "항목 {count}개 푸는 중" },
   "event.verifyStart": { "other": "항목 {count}개 검증 중" },
   "event.verified": "검증됨: {path}",
-  "event.extractDone": "풀기 완료: {counts}",
   "event.verifyDone": "검증 완료: {counts}",
-  "event.writtenCount": { "other": "쓴 항목 {count}개" },
-  "event.skippedCount": { "other": "건너뜀 {count}개" },
 
   "settings.title": "설정",
   "settings.language": "언어",

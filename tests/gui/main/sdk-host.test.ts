@@ -47,7 +47,7 @@ describe("the SDK host", () => {
     await Promise.all(settlements);
     expect(await sdk.call("verify", [plan.output, true])).toBe(true);
     const report = await sdk.call("inspect", [plan.output, true]);
-    expect(report).toEqual({ reportOk: true, summary: expect.objectContaining({ total: expect.any(Number) }), missing: [], extra: [] });
+    expect(report).toEqual({ ok: true, summary: expect.objectContaining({ total: expect.any(Number) }), missing: [], extra: [] });
     expect(report).not.toHaveProperty("entries");
     expect(events.some((e) => e.event === "plan.done")).toBe(true);
     expect((await readdir(root)).sort()).toEqual(["photos", "photos.zip"]);
@@ -87,7 +87,7 @@ describe("the SDK host", () => {
     await writeFile(archive, "a longer second version");
     expect(await sdk.call("pathState", [archive])).not.toEqual(first);
     await rm(archive);
-    expect(await sdk.call("pathState", [archive])).toEqual({ kind: "gone" });
+    expect(await sdk.call("pathState", [archive])).toEqual({ kind: "missing" });
   });
 
   it("deletes an original for good: a folder with its contents, or a link itself rather than its target", async () => {
@@ -108,7 +108,7 @@ describe("the SDK host", () => {
   it("carries an SDK failure back to main as the SDK's own data, which its guard still recognizes", async () => {
     const sdk = createSdkClient(inProcessHost);
     const failed = await sdk.call("plan", [[path.join(root, "missing")], { ...DEFAULT_OPTIONS }]).catch((err: unknown) => err);
-    expect(failed).toMatchObject({ code: "scan.input-missing", kind: "unavailable", effect: "none" });
+    expect(failed).toMatchObject({ code: "path.missing", kind: "unavailable", effect: "none" });
     expect(isZipKitError(failed)).toBe(true);
   });
 
@@ -121,6 +121,6 @@ describe("the SDK host", () => {
     host.handle({ type: "call", id: 7, op: "plan", args: [[input], { ...DEFAULT_OPTIONS }] });
     host.handle({ type: "cancel", id: 7 });
     await vi.waitFor(() => expect(replies.some((r) => r.type === "failed" || r.type === "done")).toBe(true));
-    expect(replies.find((r) => r.id === 7 && r.type !== "event")).toMatchObject({ type: "failed", error: { code: "aborted", kind: "cancelled" } });
+    expect(replies.find((r) => r.id === 7 && r.type !== "event")).toMatchObject({ type: "failed", error: { code: "operation.cancelled", kind: "cancelled" } });
   });
 });

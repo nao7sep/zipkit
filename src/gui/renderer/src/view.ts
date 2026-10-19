@@ -282,9 +282,9 @@ export interface ReportLine {
  *  without an entry fall back to the job's own message. */
 const ERROR_GUIDANCE: Record<string, MessageKey> = {
   "output.ambiguous": "guidance.outputAmbiguous",
-  "scan.input-missing": "guidance.inputMissing",
-  "scan.stat-failed": "guidance.statFailed",
-  "scan.walk-failed": "guidance.walkFailed",
+  "path.missing": "guidance.pathMissing",
+  "path.denied": "guidance.pathDenied",
+  "io.failed": "guidance.ioFailed",
 };
 
 /** The report's headline sentence: context-aware, factual, and never the vague
@@ -538,13 +538,13 @@ const RULE_KINDS: Record<string, MessageKey> = {
   "time.pre-1980": "findingKind.pre1980",
   "time.post-2107": "findingKind.post2107",
   "output.exists": "findingKind.outputExists",
-  "extract.crc-fail": "findingKind.crcFail",
-  "extract.sha-mismatch": "findingKind.shaMismatch",
-  "extract.manifest-mismatch": "findingKind.manifestMismatch",
-  "extract.local-mismatch": "findingKind.localMismatch",
-  "extract.unsafe-path": "findingKind.unsafePath",
-  "extract.missing": "findingKind.missing",
-  "extract.extra": "findingKind.extra",
+  "verify.crc32-mismatch": "findingKind.crcFail",
+  "verify.unreadable": "findingKind.unreadable",
+  "verify.local-mismatch": "findingKind.localMismatch",
+  "verify.sha256-mismatch": "findingKind.shaMismatch",
+  "verify.manifest-mismatch": "findingKind.manifestMismatch",
+  "verify.missing": "findingKind.missing",
+  "verify.extra": "findingKind.extra",
 };
 
 /** The label for a kind of finding in Progress, from its rule and the severity
@@ -599,10 +599,9 @@ export function progressHeading(run: ProgressRun, t: Translator): string {
 }
 
 /** A Progress line: one SDK event, or a run's findings of one kind folded into
- *  a count. An event line knows whether its run's read was a dry run, so a
- *  verify ends with its own result line. */
+ *  a count. */
 export type ProgressLine =
-  | { kind: "event"; level: LogEvent["level"]; event: LogEvent; dryRun: boolean }
+  | { kind: "event"; level: LogEvent["level"]; event: LogEvent }
   | { kind: "findings"; level: LogEvent["level"]; rule: string; severity: Severity; count: number };
 
 /** One run of an action on a job — a plan, a Create, a Verify — headed once
@@ -623,7 +622,6 @@ export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
   const runs: ProgressRun[] = [];
   let run: ProgressRun | null = null;
   let runId = "";
-  let dryRun = false;
   let folded = new Map<string, Extract<ProgressLine, { kind: "findings" }>>();
   for (const { session, seq, action, run: eventRun, event } of events) {
     if (event.event === "session.start") continue;
@@ -632,10 +630,8 @@ export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
       run = { key: `${session}:${seq}`, action, time: event.time, lines: [] };
       runs.push(run);
       runId = id;
-      dryRun = false;
       folded = new Map();
     }
-    if (event.event === "extract.start") dryRun = !event.write;
     if (event.event === "entry.flagged") {
       const kind = `${event.rule}\0${event.severity}`;
       const line = folded.get(kind);
@@ -654,7 +650,7 @@ export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
       }
       continue;
     }
-    run.lines.push({ kind: "event", level: event.level, event, dryRun });
+    run.lines.push({ kind: "event", level: event.level, event });
   }
   return runs;
 }
@@ -662,7 +658,7 @@ export function progressRuns(events: readonly JobEvent[]): ProgressRun[] {
 /** A Progress line's text. */
 export function progressLineText(line: ProgressLine, t: Translator): string {
   return line.kind === "event"
-    ? progressMessage(line.event, t, line.dryRun)
+    ? progressMessage(line.event, t)
     : t.t("progress.findings", { kind: findingKind(line.rule, line.severity, t), count: line.count });
 }
 
@@ -721,9 +717,8 @@ export function logLevelLabel(level: LogEvent["level"]): MessageKey {
 /** The Progress line for a typed SDK event, rendered from the event's own
  *  fields rather than from the SDK's English `message`. The structured event,
  *  its JSONL message, and its wire literals remain untouched. A fault keeps
- *  its code and diagnostic detail as the SDK wrote them. `dryRun` says the
- *  read this event ends wrote nothing, so `extract.done` reads as a verify. */
-export function progressMessage(event: LogEvent, t: Translator, dryRun = false): string {
+ *  its code and diagnostic detail as the SDK wrote them. */
+export function progressMessage(event: LogEvent, t: Translator): string {
   switch (event.event) {
     case "session.start":
       return t.t("event.sessionStart", {
@@ -766,27 +761,17 @@ export function progressMessage(event: LogEvent, t: Translator, dryRun = false):
       return t.t("event.written", { path: event.path });
     case "write.done":
       return t.t(event.zip64 ? "event.writeDoneZip64" : "event.writeDone", { size: { bytes: event.bytes } });
-    case "extract.start":
-      return t.t(event.write ? "event.extractStart" : "event.verifyStart", { count: event.entries });
+    case "verify.start":
+      return t.t("event.verifyStart", { count: event.entries });
     case "entry.verified":
       return t.t("event.verified", { path: event.path });
-    case "extract.done":
-      if (dryRun) {
-        return t.t("event.verifyDone", {
-          counts: t.list([
-            t.t("report.entries", { count: event.total }),
-            t.t("report.crcFailures", { count: event.crcFailed }),
-            t.t("report.shaMismatches", { count: event.shaMismatched }),
-            t.t("report.manifestMismatches", { count: event.manifestMismatched }),
-          ]),
-        });
-      }
-      return t.t("event.extractDone", {
+    case "verify.done":
+      return t.t("event.verifyDone", {
         counts: t.list([
-          t.t("event.writtenCount", { count: event.written }),
-          t.t("event.skippedCount", { count: event.skipped }),
-          t.t("report.crcFailures", { count: event.crcFailed }),
-          t.t("report.shaMismatches", { count: event.shaMismatched }),
+          t.t("report.entries", { count: event.total }),
+          t.t("report.crcFailures", { count: event.crc32Failed }),
+          t.t("report.unreadable", { count: event.unreadable }),
+          t.t("report.shaMismatches", { count: event.sha256Mismatched }),
           t.t("report.manifestMismatches", { count: event.manifestMismatched }),
         ]),
       });

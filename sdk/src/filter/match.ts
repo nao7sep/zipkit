@@ -1,15 +1,12 @@
 /**
- * The exclusion engine, shared by every verb. User exclude rules and (for
- * archiving) the junk preset form one ordered list; the first rule that matches
- * a path excludes it, and the matched rule is returned so the caller can report
- * *why*. The system is inclusive by default: a path with no matching rule is
- * kept. There is no "include" — what goes in is chosen by the inputs, and what
- * comes out by `dest`; rules only ever subtract.
+ * The exclusion engine. User exclude rules and the junk preset form one
+ * ordered list; the first rule that matches a path excludes it, and the
+ * matched rule is returned so the caller can report *why*. The system is
+ * inclusive by default: a path with no matching rule is kept. There is no
+ * "include" — what goes in is chosen by the inputs; rules only ever subtract.
  *
- * The matcher is pure. On the archive side the scan layer uses it to prune
- * excluded directory subtrees during the walk and the plan layer to decide each
- * surviving entry; on the read side `extract` uses it to decide which entries
- * are written. One engine, every caller.
+ * The matcher is pure. The scan layer uses it to prune excluded directory
+ * subtrees during the walk and the plan layer to decide each surviving entry.
  *
  * Pattern dialects follow gitignore conventions: a glob without a leading slash
  * is unanchored and matches at any depth; a leading slash (or any interior
@@ -117,8 +114,7 @@ function applies(target: CompiledRule["target"], isDir: boolean): boolean {
 
 /**
  * Build the ordered matcher: user exclude rules first, then the junk preset when
- * requested. Verb-agnostic — `create` passes its policy's filters and junk
- * setting, `extract` passes its exclude rules with no junk.
+ * requested.
  */
 export function buildMatcher(rules: FilterRule[], includeJunk: boolean): FilterMatcher {
   const compiled: CompiledRule[] = rules.map(compileUserRule);

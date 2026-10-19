@@ -3,7 +3,7 @@
  * are part of the committed surface; they may be refactored freely.
  *
  * Time is carried as nanoseconds since the Unix epoch (UTC) in a `bigint`,
- * matching the precision the platform stat call exposes and the metadata
+ * matching the precision the platform stat call exposes and the manifest
  * file's lossless record. Conversion to DOS time happens only at the
  * writer's edge.
  */
@@ -12,7 +12,7 @@ import type { RuleId } from "../registry.ts";
 
 /**
  * A verb result before the SDK boundary stamps the session-log path onto it. The
- * pure builders (`planArchive`, `writeArchive`, `extractArchive`) produce
+ * pure builders (`planArchive`, `writeArchive`, `verifyArchive`) produce
  * everything a result holds *except* `log`; {@link import("../zipkit.ts").ZipKit}
  * adds it where it owns the per-session log, so the builders stay
  * logging-agnostic.
@@ -34,10 +34,10 @@ export interface ScanEntry {
    * A best-effort disk-trace path: the input's own name (as the user supplied
    * it) joined with the entry's path within that input, independent of the
    * archive layout, so a flattened entry is not reduced to a bare filename in
-   * the metadata. Always relative and never absolute or `..`-escaping, so the
+   * the manifest. Always relative and never absolute or `..`-escaping, so the
    * clean-byte guarantee holds — but a trace hint, not a unique key: distinct
    * inputs sharing a basename can yield the same sourcePath, and a
-   * filesystem-root input ("/") contributes no name. Recorded in the metadata.
+   * filesystem-root input ("/") contributes no name. Recorded in the manifest.
    */
   sourcePath: string;
   /** Where it is on disk as the user sees it: the input as given joined with
@@ -49,12 +49,12 @@ export interface ScanEntry {
   /**
    * The four nanosecond stat times the platform exposes, all UTC instants:
    * modification, access, inode-change, and creation (birth). `ctimeNs` (inode
-   * change) has no ZIP field and rides only into the metadata record; the
+   * change) has no ZIP field and rides only into the manifest record; the
    * others map to the DOS field and the timestamp extras. Birth time is not
    * tracked on every filesystem; the platform then reports 0 (or a fallback),
    * so a zero `birthtimeNs` is treated as "no creation time" — omitted from the
    * UT extra, written as the FILETIME unset sentinel in NTFS, and null in the
-   * metadata — rather than preserved as if real.
+   * manifest — rather than preserved as if real.
    */
   mtimeNs: bigint;
   atimeNs: bigint;
@@ -106,7 +106,7 @@ export interface ScanResult {
   comment?: string;
 }
 
-/** One name fix applied to an entry, recorded for the metadata file. */
+/** One name fix applied to an entry, recorded for the manifest file. */
 export interface Transformation {
   rule: RuleId;
   before: string;
@@ -116,7 +116,7 @@ export interface Transformation {
 /**
  * An entry the writer will emit. Produced by the planner alongside the public
  * {@link import("../types.ts").PlannedEntry}, but retaining the absolute source
- * path and raw attributes the writer and metadata builder need. Carried out of
+ * path and raw attributes the writer and manifest builder need. Carried out of
  * band on the plan (see `carrier.ts`) so it never reaches serialization.
  */
 export interface WriteEntry {

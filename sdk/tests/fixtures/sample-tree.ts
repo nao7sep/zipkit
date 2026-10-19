@@ -12,7 +12,7 @@ import type { ArchivePolicy, DeepPartial } from "../../src/index.ts";
 export const SAMPLE_TIME = new Date("2026-01-02T03:04:05Z");
 
 /** Written with UTC as the DOS-time zone, so the archive is the same on every machine. */
-export const SAMPLE_POLICY: DeepPartial<ArchivePolicy> = { timezone: "UTC" };
+export const SAMPLE_POLICY: DeepPartial<ArchivePolicy> = { timeZone: "UTC" };
 
 export const SAMPLE_FILES: ReadonlyArray<{ name: string; content: string | Buffer }> = [
   { name: "README.md", content: "# Sample\n" },

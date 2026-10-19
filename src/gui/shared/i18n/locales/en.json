@@ -387,6 +387,7 @@
   "report.crcFailures": { "one": "{count} CRC failure", "other": "{count} CRC failures" },
   "report.shaMismatches": { "one": "{count} SHA mismatch", "other": "{count} SHA mismatches" },
   "report.manifestMismatches": {"one": "{count} manifest mismatch", "other": "{count} manifest mismatches"},
+  "report.unreadable": { "one": "{count} unreadable entry", "other": "{count} unreadable entries" },
   "report.zipInput": "This input is already a .zip. Compressing it again saves little and only nests a zip inside a zip. Archive its contents instead, or give the output a different name.",
   "report.excludedEmptyDir": "Empty directory pruned",
   "report.excludedEmptyFile": "Empty file skipped",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "Renamed from {from}",
 
   "guidance.outputAmbiguous": "These inputs are in different folders, so ZipKit can’t choose a location on its own. Set a file name (the output directory defaults to the first input’s folder) and they’ll be archived together.",
-  "guidance.inputMissing": "An input no longer exists on disk. Remove it from the list or restore it, then try again.",
-  "guidance.statFailed": "An input couldn’t be read. It may be locked or permission-protected. Check it, then try again.",
-  "guidance.walkFailed": "A folder couldn’t be fully read because of a permission or I/O problem. Check it, then try again.",
+  "guidance.pathMissing": "An input no longer exists on disk. Remove it from the list or restore it, then try again.",
+  "guidance.pathDenied": "An input couldn’t be read. It may be locked or permission-protected. Check it, then try again.",
+  "guidance.ioFailed": "A folder couldn’t be fully read because of a permission or I/O problem. Check it, then try again.",
 
   "finding.pathAbsolute": "Absolute path prefix stripped",
   "finding.pathTraversal": "The path escapes the archive root and was excluded",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "SHA-256 mismatches",
   "findingKind.manifestMismatch": "Mismatches with the manifest",
   "findingKind.localMismatch": "Entries whose two headers disagree",
-  "findingKind.unsafePath": "Paths outside the destination",
+  "findingKind.unreadable": "Entries that can’t be read",
   "findingKind.missing": "Entries missing from the archive",
   "findingKind.extra": "Entries not in the manifest",
 
@@ -479,13 +480,9 @@
   "event.written": "Wrote {path}",
   "event.writeDone": "Archive written: {size}",
   "event.writeDoneZip64": "Archive written: {size} (ZIP64)",
-  "event.extractStart": { "one": "Extracting {count} entry", "other": "Extracting {count} entries" },
   "event.verifyStart": { "one": "Verifying {count} entry", "other": "Verifying {count} entries" },
   "event.verified": "Verified {path}",
-  "event.extractDone": "Extract complete: {counts}",
   "event.verifyDone": "Verify complete: {counts}",
-  "event.writtenCount": { "one": "{count} written", "other": "{count} written" },
-  "event.skippedCount": { "one": "{count} skipped", "other": "{count} skipped" },
 
   "settings.title": "Settings",
   "settings.language": "Language",

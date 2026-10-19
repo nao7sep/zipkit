@@ -1,7 +1,7 @@
 /**
  * The app's own log — the lifecycle-and-orchestration record the main process
  * keeps, per the logging and data-lifecycle conventions: startup/shutdown, IPC
- * commands, queue transitions, and failures. The SDK's scan/plan/write/extract
+ * commands, queue transitions, and failures. The SDK's scan/plan/write/verify
  * events are recorded here too, under their job (`jobEvent`); the SDK instance
  * writes no log file of its own.
  *

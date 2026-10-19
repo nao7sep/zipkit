@@ -387,6 +387,7 @@
   "report.crcFailures": { "other": "{count} 个 CRC 错误" },
   "report.shaMismatches": { "other": "{count} 个 SHA 不匹配" },
   "report.manifestMismatches": {"other": "{count} 个清单不一致"},
+  "report.unreadable": { "other": "{count} 个无法读取的条目" },
   "report.zipInput": "此输入已经是 .zip。再次压缩几乎不会变小，只会把一个 zip 套进另一个 zip。请改为归档其内容，或为输出另取一个名称。",
   "report.excludedEmptyDir": "已排除空文件夹",
   "report.excludedEmptyFile": "已跳过空文件",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "原名称：{from}",
 
   "guidance.outputAmbiguous": "这些输入位于不同的文件夹中，因此 ZipKit 无法自行选择保存位置。设置一个文件名（输出文件夹默认为第一个输入所在的文件夹），它们就会被归档在一起。",
-  "guidance.inputMissing": "某个输入已不在磁盘上。请将其从列表中移除或恢复它，然后重试。",
-  "guidance.statFailed": "无法读取某个输入。它可能被锁定或受权限保护。请检查后重试。",
-  "guidance.walkFailed": "由于权限或输入输出问题，无法完整读取某个文件夹。请检查后重试。",
+  "guidance.pathMissing": "某个输入已不在磁盘上。请将其从列表中移除或恢复它，然后重试。",
+  "guidance.pathDenied": "无法读取某个输入。它可能被锁定或受权限保护。请检查后重试。",
+  "guidance.ioFailed": "由于权限或输入输出问题，无法完整读取某个文件夹。请检查后重试。",
 
   "finding.pathAbsolute": "已去除绝对路径前缀",
   "finding.pathTraversal": "路径超出了归档根目录，已被排除",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "SHA-256 不匹配",
   "findingKind.manifestMismatch": "与清单不一致",
   "findingKind.localMismatch": "头部信息不一致的条目",
-  "findingKind.unsafePath": "指向目标之外的路径",
+  "findingKind.unreadable": "无法读取的条目",
   "findingKind.missing": "归档中缺失的条目",
   "findingKind.extra": "清单中没有的条目",
 
@@ -479,13 +480,9 @@
   "event.written": "已写入 {path}",
   "event.writeDone": "归档已写入：{size}",
   "event.writeDoneZip64": "归档已写入：{size}（ZIP64）",
-  "event.extractStart": { "other": "正在解压 {count} 个条目" },
   "event.verifyStart": { "other": "正在校验 {count} 个条目" },
   "event.verified": "已校验 {path}",
-  "event.extractDone": "解压完成：{counts}",
   "event.verifyDone": "校验完成：{counts}",
-  "event.writtenCount": { "other": "写入 {count} 个" },
-  "event.skippedCount": { "other": "跳过 {count} 个" },
 
   "settings.title": "设置",
   "settings.language": "语言",

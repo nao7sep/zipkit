@@ -69,15 +69,15 @@ describe("applyCollision", () => {
   });
 
   it("flags an entry that folds onto a reserved writer name", () => {
-    const items = [workItem({ archivePath: "Metadata.json" })];
-    applyCollision(items, ["metadata.json"]);
+    const items = [workItem({ archivePath: "Manifest.json" })];
+    applyCollision(items, ["manifest.json"]);
     expect(rules(items[0]!)).toEqual(["collision.post-fix"]);
-    expect(items[0]!.findings[0]!.message).toMatch(/reserved metadata file name/);
+    expect(items[0]!.findings[0]!.message).toMatch(/reserved manifest name/);
   });
 
   it("does not flag a reserved name that no entry collides with", () => {
     const items = [workItem({ archivePath: "data.json" })];
-    applyCollision(items, ["metadata.json"]);
+    applyCollision(items, ["manifest.json"]);
     expect(items[0]!.findings).toEqual([]);
   });
 });

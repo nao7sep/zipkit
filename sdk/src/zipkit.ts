@@ -39,20 +39,19 @@ import {
   type SessionLog,
 } from "./log/session.ts";
 import { compareWithManifest } from "./compare/sources.ts";
-import { extractArchive, readManifest } from "./extract/extract.ts";
+import { readManifestRecords, verifyArchive } from "./read/verify.ts";
 import { readInternals } from "./internal/carrier.ts";
 import { classifyPaths, pathState } from "./paths.ts";
 import { checkRemoval, outputInsideInputs } from "./removal.ts";
 import { pathResources, type PathResource } from "./claims.ts";
-import { listArchive, readArchiveManifest } from "./extract/list.ts";
+import { listArchive, readArchiveManifest } from "./read/list.ts";
 import { nodeFileSystem, Volume } from "./internal/volume.ts";
 import { planArchive } from "./plan/plan.ts";
-import { METADATA_DEFAULTS, resolvePolicy } from "./policy.ts";
+import { MANIFEST_DEFAULTS, resolvePolicy } from "./policy.ts";
 import { scan } from "./scan/scan.ts";
 import {
   validateChunkSize,
   validateConcurrency,
-  validateExtractSpec,
   validateIoTimeout,
   validatePolicy,
   validateDebug,
@@ -60,6 +59,7 @@ import {
   requireAbsolute,
   requireAbsoluteList,
   validateCallOptions,
+  validateFlag,
   validateInstanceOptionKeys,
   validateManifestName,
   validateTimeZoneName,
@@ -76,15 +76,15 @@ import type {
   PlanData,
   WriteData,
   DeepPartial,
-  ExtractData,
-  ExtractSpec,
   LogStage,
-  Metadata,
+  Manifest,
   SourceComparison,
   PathEntry,
   PathState,
   RemovalCheck,
   RemovalOptions,
+  VerifyData,
+  VerifyOptions,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.ts";
@@ -100,8 +100,8 @@ export type { PlanData, WriteData } from "./types.ts";
  * keeps a many-core box from opening an unbounded number of streams at once.
  * The floor keeps the work — which is largely I/O-bound — parallel even on a
  * single-vCPU container, where `availableParallelism()` returns 1. Concurrency
- * governs the scan and extraction (each entry streams to its own output file);
- * the create write is a single ordered byte stream and runs sequentially.
+ * governs the scan and verification (each entry is read on its own); the
+ * create write is a single ordered byte stream and runs sequentially.
  */
 const MIN_DEFAULT_CONCURRENCY = 4;
 const MAX_DEFAULT_CONCURRENCY = 16;
@@ -182,12 +182,15 @@ export class ZipKit {
 
   /** Plan and write in one call. One logger and one signal serve both inner
    *  steps, so the caller's single `onEvent` hook sees the whole run and one
-   *  cancellation stops it at whichever phase it is in. */
-  async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData> {
+   *  cancellation stops it at whichever phase it is in. A plan that blocks,
+   *  such as on an existing output without `overwrite`, is returned unwritten
+   *  as the refusal, with the findings that block it. */
+  async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData | PlanData> {
     const volume = this.volume(options.signal);
     try {
-      return await this.#run(options, async (logger) => {
+      return await this.#run<Unlogged<WriteData> | Unlogged<PlanData>>(options, async (logger) => {
         const plan = await this.#plan(spec, logger, options.signal, volume);
+        if (!plan.writable) return plan;
         return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onProgress: options.onProgress });
       });
     } finally { this.#notifySettlement(options, volume); }
@@ -201,32 +204,46 @@ export class ZipKit {
   }
 
   /**
-   * Read an archive: verify every entry's CRC-32, optionally reconcile against
-   * the manifest (`checkMetadata`) and verify recorded SHA-256s, and — unless
-   * `dryRun` is set — write the verified entries to `dest`. A dry run writes
-   * nothing and is a pure integrity test that works on any ZIP.
+   * Verify `archive`: read every entry through, checking its CRC-32 and its
+   * local header, and under `manifest` hold the archive to its embedded
+   * manifest and check each recorded SHA-256. Writes nothing. Without
+   * `manifest` it is the archive's own integrity test and works on any ZIP.
+   * What fails is reported in the result, not thrown: an error means the
+   * check itself could not run.
    */
-  async extract(spec: ExtractSpec, options: ZipKitCallOptions = {}): Promise<ExtractData> {
-    const volume = this.volume(options.signal);
+  async verify(archive: string, options: VerifyOptions = {}): Promise<VerifyData> {
+    const { manifest, manifestName, ...call } = options;
+    const volume = this.volume(call.signal);
     try {
-      return await this.#run(options, async (logger) => {
+      return await this.#run(call, async (logger) => {
         try {
-          const validated = validateExtractSpec(spec);
-          const limit = pLimit(this.#concurrency);
-          return await extractArchive(validated, {
-            limit,
+          const request = {
+            archive: requireAbsolute(archive, "archive"),
+            manifest: validateFlag(manifest, "manifest") ?? false,
+            manifestName: this.#manifestName(validateManifestName(manifestName)),
+          };
+          return await verifyArchive(request, {
+            limit: pLimit(this.#concurrency),
             chunkSize: this.#chunkSize,
             logger,
-            signal: options.signal,
+            signal: call.signal,
             volume,
-            onProgress: options.onProgress,
+            onProgress: call.onProgress,
           });
         } catch (err) {
-          this.#reportError(logger, err, "extract");
+          this.#reportError(logger, err, "verify");
           throw err;
         }
       });
-    } finally { this.#notifySettlement(options, volume); }
+    } finally { this.#notifySettlement(call, volume); }
+  }
+
+  /** The manifest name a read looks for: the one given, else the instance
+   *  policy's, else the default. */
+  #manifestName(given: string | undefined): string {
+    if (given !== undefined) return given;
+    const manifest = resolvePolicy(this.#policy, undefined).manifest;
+    return manifest !== false ? manifest.name : MANIFEST_DEFAULTS.name;
   }
 
   /**
@@ -258,8 +275,8 @@ export class ZipKit {
           skipPaths: this.#skipPaths,
         });
         const plan = planArchive(scanned, policy);
-        const name = policy.metadata !== false ? policy.metadata.name : METADATA_DEFAULTS.name;
-        const records = await readManifest(volume, archive, name);
+        const name = policy.manifest !== false ? policy.manifest.name : MANIFEST_DEFAULTS.name;
+        const records = await readManifestRecords(volume, archive, name, this.#chunkSize);
         const unlistedDirs = new Set(scanned.unlistedDirs);
         const unlisted = scanned.entries
           .filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath))
@@ -276,7 +293,7 @@ export class ZipKit {
 
   /**
    * The entries of `archive` as its central directory records them, without
-   * reading their data: what `extract` would verify. Works on any ZIP. A time
+   * reading their data: what `verify` would check. Works on any ZIP. A time
    * stored only in the DOS field, which carries no zone, is read in
    * `timeZone` (the host's by default). Bounded like every look at a user volume.
    */
@@ -288,14 +305,15 @@ export class ZipKit {
   /**
    * The manifest ZipKit embedded in `archive`, read whole: the policy, the
    * summary, every entry with its source trace, size, times and hashes, what
-   * was left out and why. `name` is the manifest's name when the archive was
-   * made with another (`zipkit.json` by default). Holds the whole document, so
-   * to check a very large archive against its manifest use `extract` with
-   * `checkMetadata`, which streams it.
+   * was left out and why. `manifestName` is the manifest's name when the
+   * archive was made with another than the instance policy's. Holds the whole
+   * document, so to check a very large archive against its manifest use
+   * `verify` with `manifest`, which streams it.
    */
-  async readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { name?: string } = {}): Promise<Metadata> {
+  async readManifest(archive: string, options: Pick<ZipKitCallOptions, "signal"> & { manifestName?: string } = {}): Promise<Manifest> {
     return this.#guard(options, () =>
-      readArchiveManifest(this.volume(options.signal), requireAbsolute(archive, "archive"), validateManifestName(options.name)));
+      readArchiveManifest(this.volume(options.signal), requireAbsolute(archive, "archive"),
+        this.#manifestName(validateManifestName(options.manifestName))));
   }
 
   /**
@@ -314,7 +332,7 @@ export class ZipKit {
       requireAbsolute(archive, "archive");
       const { removed: removedOption, ...call } = options;
       const removed = removedOption === undefined ? [] : requireAbsoluteList(removedOption, "removed");
-      const metadata = resolvePolicy(this.#policy, validated.policy).metadata;
+      const manifest = resolvePolicy(this.#policy, validated.policy).manifest;
       // The archive is the output, so the fresh scan never counts the archive
       // itself when it sits beside the inputs.
       const { outputDir: _dir, outputName: _name, ...rest } = validated;
@@ -323,11 +341,10 @@ export class ZipKit {
         state: () => this.pathState(archive, call),
         inside: () => outputInsideInputs(archive, validated.inputs, this.volume(call.signal)),
         verify: async () => {
-          const data = await this.extract({
-            archive, dryRun: true, checkMetadata: true,
-            ...(metadata !== false ? { metadataName: metadata.name } : {}),
-          }, call);
-          return { ok: data.reportOk, report: { summary: data.summary, missing: data.missing, extra: data.extra, findings: data.findings } };
+          const data = await this.verify(archive, {
+            ...call, manifest: true, ...(manifest !== false ? { manifestName: manifest.name } : {}),
+          });
+          return { ok: data.ok, report: { summary: data.summary, missing: data.missing, extra: data.extra, findings: data.findings } };
         },
         compare: () => this.compareSources(rescan, archive, call),
       }, archive, validated.inputs, removed);
@@ -347,7 +364,7 @@ export class ZipKit {
   }
 
   /**
-   * What is at a path now: there with a fingerprint, gone, or out of reach on a
+   * What is at a path now: there with a fingerprint, missing, or out of reach on a
    * drive that is not connected or a path that cannot be read. Compare two
    * fingerprints with `sameFile` to tell a file rewritten in place from another
    * file put in its place. Bounded like every look at a user volume.
@@ -528,5 +545,6 @@ function classified(err: unknown, signal: AbortSignal | undefined): ZipKitError 
 const STAGE_FOR_CODE_DOMAIN: Record<string, LogStage> = {
   scan: "scan",
   write: "write",
-  read: "extract",
+  archive: "verify",
+  manifest: "verify",
 };

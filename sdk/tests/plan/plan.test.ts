@@ -199,7 +199,7 @@ describe("collisions", () => {
 
   it("permits the metadata name when metadata is disabled (no reservation)", () => {
     const p = plan([scanEntry({ archivePath: "zipkit.json", absolutePath: "/abs/1" })], {
-      metadata: false,
+      manifest: false,
     });
     expect(p.writable).toBe(true);
   });

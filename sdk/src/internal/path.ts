@@ -57,9 +57,3 @@ export function ancestorDirs(archivePath: string): string[] {
   }
   return out;
 }
-
-/** The parent directory path of an entry, or "" when it sits at the root. */
-export function parentDir(archivePath: string): string {
-  const slash = archivePath.lastIndexOf("/");
-  return slash === -1 ? "" : archivePath.slice(0, slash);
-}

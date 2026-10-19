@@ -80,7 +80,7 @@ it("write delivers its settlement observer before rejection and retains a late c
     }).catch((error: unknown) => { order.push("rejection"); return error; });
     await Promise.race([opened.promise, outcome.then(() => { throw new Error("write ended before claiming its output"); })]);
     controller.abort();
-    expect(await outcome).toMatchObject({ code: "aborted" });
+    expect(await outcome).toMatchObject({ code: "operation.cancelled" });
     expect(order).toEqual(["observer", "rejection"]);
     expect(settlement).toBeDefined();
     expect(settled).toBe(false);
@@ -129,7 +129,7 @@ it("create delivers a settled observer before returning a successful archive", a
     await settlement;
     expect(result.output).toBe(output);
     expect(existsSync(output)).toBe(true);
-    expect((await zip.extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
+    expect((await zip.verify(output, { manifest: true })).ok).toBe(true);
   } finally {
     await settlement;
     await rm(root, { recursive: true, force: true });

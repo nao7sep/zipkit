@@ -20,9 +20,9 @@
  *   always written. Both carry modification, access, and creation times so a
  *   reader on any platform recovers the right instant.
  * - The DOS date/time field holds *local* wall-clock time, rendered in the
- *   configured timezone (the host zone by default), clamped to the 1980–2107
+ *   configured time zone (the host zone by default), clamped to the 1980–2107
  *   window. DOS time carries no zone, so it is only a same-zone convenience —
- *   the absolute truth lives in the two UTC extras above and in the metadata
+ *   the absolute truth lives in the two UTC extras above and in the manifest
  *   record.
  * - The path separator is always a forward slash.
  *
@@ -138,7 +138,7 @@ function filetime(ns: bigint): bigint {
  * time whose seconds fit the field's signed 32-bit range (roughly 1901–2038);
  * the central copy holds only the modification time per the field's convention,
  * sharing the same flags byte. Returns null when no time is representable, so a
- * value is never silently misrepresented — the metadata file stays lossless.
+ * value is never silently misrepresented — the manifest file stays lossless.
  */
 function extendedTimestamp(entry: WriteEntryInput): { local: Buffer; central: Buffer } | null {
   const m = utSeconds(entry.mtimeNs);

@@ -163,7 +163,7 @@ export function buildSpec(inputs: string[], o: GuiOptions): ArchiveSpec {
     symlinks: o.symlinks,
     emptyDirs: o.emptyDirs,
     compression: { level: o.level },
-    metadata: o.metadata ? { hash: o.hash } : false,
+    manifest: o.metadata ? { hash: o.hash } : false,
   };
   policy.names = { invalidCharStyle: o.invalidChars };
   if (o.strict) {

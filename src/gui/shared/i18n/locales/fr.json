@@ -387,6 +387,7 @@
   "report.crcFailures": { "one": "{count} erreur CRC", "many": "{count} d’erreurs CRC", "other": "{count} erreurs CRC" },
   "report.shaMismatches": { "one": "{count} écart SHA", "many": "{count} d’écarts SHA", "other": "{count} écarts SHA" },
   "report.manifestMismatches": {"one": "{count} écart avec le manifeste", "many": "{count} d’écarts avec le manifeste", "other": "{count} écarts avec le manifeste"},
+  "report.unreadable": { "one": "{count} entrée illisible", "many": "{count} d’entrées illisibles", "other": "{count} entrées illisibles" },
   "report.zipInput": "Cette entrée est déjà un .zip. La compresser à nouveau ne fait presque rien gagner et ne fait qu’imbriquer un zip dans un zip. Archivez plutôt son contenu, ou donnez un autre nom à la sortie.",
   "report.excludedEmptyDir": "Dossier vide écarté",
   "report.excludedEmptyFile": "Fichier vide ignoré",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "Renommé depuis {from}",
 
   "guidance.outputAmbiguous": "Ces entrées se trouvent dans des dossiers différents, ZipKit ne peut donc pas choisir seul un emplacement. Indiquez un nom de fichier (le dossier de sortie est par défaut celui de la première entrée) et elles seront archivées ensemble.",
-  "guidance.inputMissing": "Une entrée n’existe plus sur le disque. Retirez-la de la liste ou restaurez-la, puis réessayez.",
-  "guidance.statFailed": "Une entrée n’a pas pu être lue. Elle est peut-être verrouillée ou protégée par des autorisations. Vérifiez-la, puis réessayez.",
-  "guidance.walkFailed": "Un dossier n’a pas pu être lu entièrement à cause d’un problème d’autorisation ou d’entrée/sortie. Vérifiez-le, puis réessayez.",
+  "guidance.pathMissing": "Une entrée n’existe plus sur le disque. Retirez-la de la liste ou restaurez-la, puis réessayez.",
+  "guidance.pathDenied": "Une entrée n’a pas pu être lue. Elle est peut-être verrouillée ou protégée par des autorisations. Vérifiez-la, puis réessayez.",
+  "guidance.ioFailed": "Un dossier n’a pas pu être lu entièrement à cause d’un problème d’autorisation ou d’entrée/sortie. Vérifiez-le, puis réessayez.",
 
   "finding.pathAbsolute": "Préfixe de chemin absolu supprimé",
   "finding.pathTraversal": "Le chemin sort de la racine de l’archive et a été exclu",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "Écarts de SHA-256",
   "findingKind.manifestMismatch": "Écarts avec le manifeste",
   "findingKind.localMismatch": "Entrées aux en-têtes contradictoires",
-  "findingKind.unsafePath": "Chemins hors de la destination",
+  "findingKind.unreadable": "Entrées illisibles",
   "findingKind.missing": "Entrées absentes de l’archive",
   "findingKind.extra": "Entrées absentes du manifeste",
 
@@ -479,13 +480,9 @@
   "event.written": "Écrit\u00a0: {path}",
   "event.writeDone": "Archive écrite\u00a0: {size}",
   "event.writeDoneZip64": "Archive écrite\u00a0: {size} (ZIP64)",
-  "event.extractStart": { "one": "Extraction de {count} entrée d’archive", "many": "Extraction de {count} d’entrées d’archive", "other": "Extraction de {count} entrées d’archive" },
   "event.verifyStart": { "one": "Vérification de {count} entrée d’archive", "many": "Vérification de {count} d’entrées d’archive", "other": "Vérification de {count} entrées d’archive" },
   "event.verified": "Vérifié\u00a0: {path}",
-  "event.extractDone": "Extraction terminée\u00a0: {counts}",
   "event.verifyDone": "Vérification terminée\u00a0: {counts}",
-  "event.writtenCount": { "one": "{count} écrit", "many": "{count} écrits", "other": "{count} écrits" },
-  "event.skippedCount": { "one": "{count} ignoré", "many": "{count} ignorés", "other": "{count} ignorés" },
 
   "settings.title": "Réglages",
   "settings.language": "Langue",

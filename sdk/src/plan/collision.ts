@@ -14,7 +14,7 @@ import type { WorkItem } from "./workItem.ts";
 
 /**
  * @param reserved Archive paths the writer will inject after planning (the
- *   inside-metadata file). A real entry that folds to one would produce a
+ *   embedded manifest). A real entry that folds to one would produce a
  *   duplicate ZIP entry — the same ambiguous, no-safe-auto-resolution case as a
  *   source-side collision — so it is reported here as an error, which also lets
  *   the dry run predict it.
@@ -52,7 +52,7 @@ export function applyCollision(items: WorkItem[], reserved: readonly string[] = 
         finding(
           "collision.post-fix",
           item.archivePath,
-          `archive path collides with the reserved metadata file name "${name}"`,
+          `archive path collides with the reserved manifest name "${name}"`,
         ),
       );
     }

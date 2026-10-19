@@ -52,7 +52,7 @@ describe("planned entries", () => {
     const written = await zip.write(plan, { onProgress: (c) => counts.push(c) });
     expect(counts[0]).toEqual({ stage: "write", entriesDone: 0, entriesTotal: 3, bytesDone: 0, bytesTotal: 11 });
     expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 3, entriesTotal: 3, bytesDone: 11, bytesTotal: 11 });
-    expect(written.metadata?.summary.sourceBytes).toBe(11);
+    expect(written.manifest?.summary.sourceBytes).toBe(11);
   });
 });
 
@@ -63,10 +63,10 @@ describe("onProgress", () => {
     await zip.create({ inputs: [proj], output: archive });
     const listing = await zip.list(archive);
     const counts: ProgressCounts[] = [];
-    await zip.extract({ archive, dryRun: true, checkMetadata: true }, { onProgress: (c) => counts.push(c) });
+    await zip.verify(archive, { manifest: true, onProgress: (c) => counts.push(c) });
     const bytes = listing.entries.reduce((sum, e) => sum + e.size, 0);
-    expect(counts[0]).toMatchObject({ stage: "extract", entriesDone: 0, bytesDone: 0 });
-    expect(counts.at(-1)).toEqual({ stage: "extract", entriesDone: listing.entries.length, entriesTotal: listing.entries.length, bytesDone: bytes, bytesTotal: bytes });
+    expect(counts[0]).toMatchObject({ stage: "verify", entriesDone: 0, bytesDone: 0 });
+    expect(counts.at(-1)).toEqual({ stage: "verify", entriesDone: listing.entries.length, entriesTotal: listing.entries.length, bytesDone: bytes, bytesTotal: bytes });
   });
 
   it("reports at most every 100 ms between the first and the last, and survives an observer that throws", () => {
@@ -80,7 +80,7 @@ describe("onProgress", () => {
     meter.finish();
     expect(seen).toEqual([0, 20, 30]);
     // With no observer it does nothing at all.
-    expect(() => new Meter("extract", { entries: 1, bytes: 1 }, undefined).finish()).not.toThrow();
+    expect(() => new Meter("verify", { entries: 1, bytes: 1 }, undefined).finish()).not.toThrow();
   });
 });
 
@@ -106,9 +106,9 @@ describe("list and readManifest", () => {
   it("refuse an archive without a manifest, and a file that is not a ZIP", async () => {
     const zip = new ZipKit();
     const bare = path.join(root, "bare.zip");
-    await zip.create({ inputs: [proj], output: bare, policy: { metadata: false } });
+    await zip.create({ inputs: [proj], output: bare, policy: { manifest: false } });
     expect((await zip.list(bare)).entries.length).toBeGreaterThan(0);
-    await expect(zip.readManifest(bare)).rejects.toMatchObject({ code: "read.manifest-missing" });
+    await expect(zip.readManifest(bare)).rejects.toMatchObject({ code: "manifest.missing" });
     const text = path.join(root, "not.zip");
     await writeFile(text, "x".repeat(100));
     await expect(zip.list(text)).rejects.toBeInstanceOf(ZipKitError);

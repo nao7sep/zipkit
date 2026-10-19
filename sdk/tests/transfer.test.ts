@@ -29,7 +29,7 @@ describe("exportPlan and importPlan", () => {
     const across = structuredClone(exportPlan(plan));
     const written = await new ZipKit().write(importPlan(across));
     expect(written.output).toBe(output);
-    expect((await new ZipKit().extract({ archive: output, dryRun: true, checkMetadata: true })).reportOk).toBe(true);
+    expect((await new ZipKit().verify(output, { manifest: true })).ok).toBe(true);
     expect((await readFile(output)).length).toBeGreaterThan(0);
   });
 

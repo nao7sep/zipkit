@@ -4,7 +4,7 @@
  * upper bound on what the writer emits — it bounds each entry's archive payload
  * (exact for `store`, a deflate upper bound for `deflate`, which can expand
  * incompressible input), counts the timestamp extras the writer adds to every
- * record, and folds in the metadata file the writer injects — so the dry run's
+ * record, and folds in the manifest file the writer injects — so the dry run's
  * verdict is never an underestimate of the actual write. Zip64 is used
  * transparently whenever this holds and omitted otherwise; there is no policy knob.
  */
@@ -97,19 +97,19 @@ function jsonStringBytes(s: string): number {
 // patterns/extensions/zone/name, the time-range paths) is summed separately at
 // its worst-case escaped width, so the total is a true upper bound, not a
 // heuristic — the few bounded strings (the IANA timeZone, enums) sit within the
-// fixed allowances. A drift test measures a real metadata document against it.
-const METADATA_BASE = 16384;
-const METADATA_ENTRY_FIXED = 1024;
-const METADATA_TRANSFORM_FIXED = 64;
-const METADATA_EXCLUDED_FIXED = 512;
-const METADATA_FINDING_FIXED = 512;
-const METADATA_FILTER_FIXED = 64;
-const METADATA_TIMERANGE_FIXED = 512;
+// fixed allowances. A drift test measures a real manifest document against it.
+const MANIFEST_BASE = 16384;
+const MANIFEST_ENTRY_FIXED = 1024;
+const MANIFEST_TRANSFORM_FIXED = 64;
+const MANIFEST_EXCLUDED_FIXED = 512;
+const MANIFEST_FINDING_FIXED = 512;
+const MANIFEST_FILTER_FIXED = 64;
+const MANIFEST_TIMERANGE_FIXED = 512;
 
-/** The content the embedded metadata file will serialize, all known at plan
+/** The content the embedded manifest file will serialize, all known at plan
  *  time — so its size, and the Zip64 verdict that includes it, are computable
  *  before any byte is written. */
-export interface MetadataContent {
+export interface ManifestContent {
   /** Written entries (the manifest's `entries`): paths and transformations. */
   entries: WriteEntry[];
   /** Dropped entries (the manifest's `excluded`). */
@@ -125,15 +125,15 @@ export interface MetadataContent {
  *  stored extensions cannot make the real manifest exceed the estimate. */
 function policyStringBytes(policy: ArchivePolicy): number {
   let bytes = jsonStringBytes(policy.names.invalidCharReplacement);
-  if (policy.timezone !== undefined) bytes += jsonStringBytes(policy.timezone);
-  if (policy.metadata !== false) bytes += jsonStringBytes(policy.metadata.name);
-  for (const filter of policy.filters) bytes += METADATA_FILTER_FIXED + jsonStringBytes(filter.pattern);
+  if (policy.timeZone !== undefined) bytes += jsonStringBytes(policy.timeZone);
+  if (policy.manifest !== false) bytes += jsonStringBytes(policy.manifest.name);
+  for (const filter of policy.filters) bytes += MANIFEST_FILTER_FIXED + jsonStringBytes(filter.pattern);
   for (const ext of policy.compression.store) bytes += jsonStringBytes(ext);
   return bytes;
 }
 
 /**
- * A real upper bound on the embedded metadata file's serialized (uncompressed)
+ * A real upper bound on the embedded manifest file's serialized (uncompressed)
  * size, summed from the content known at plan time: every variable-length string
  * at its worst-case JSON-escaped width plus a generous fixed allowance for each
  * record's bounded fields. Because the manifest is deflated, this also bounds its
@@ -141,13 +141,13 @@ function policyStringBytes(policy: ArchivePolicy): number {
  * beaten by long paths, many findings, or many exclude patterns — the cases that
  * would otherwise let the dry run underreport Zip64 near the 4 GiB boundary.
  */
-export function estimateMetadataSize(content: MetadataContent, policy: ArchivePolicy): number {
-  let bytes = METADATA_BASE + policyStringBytes(policy);
+export function estimateManifestSize(content: ManifestContent, policy: ArchivePolicy): number {
+  let bytes = MANIFEST_BASE + policyStringBytes(policy);
   if (content.comment !== undefined) bytes += jsonStringBytes(content.comment);
 
   let maxEntryPathBytes = 0;
   for (const entry of content.entries) {
-    bytes += METADATA_ENTRY_FIXED;
+    bytes += MANIFEST_ENTRY_FIXED;
     const pathBytes = jsonStringBytes(entry.archivePath);
     bytes += pathBytes;
     bytes += jsonStringBytes(entry.originalPath);
@@ -155,7 +155,7 @@ export function estimateMetadataSize(content: MetadataContent, policy: ArchivePo
     if (entry.linkTarget !== undefined) bytes += jsonStringBytes(entry.linkTarget);
     for (const t of entry.transformations) {
       bytes +=
-        METADATA_TRANSFORM_FIXED +
+        MANIFEST_TRANSFORM_FIXED +
         jsonStringBytes(t.rule) +
         jsonStringBytes(t.before) +
         jsonStringBytes(t.after);
@@ -164,16 +164,16 @@ export function estimateMetadataSize(content: MetadataContent, policy: ArchivePo
   }
   // `timeRange` names the oldest and newest file entries; both archive paths are
   // already counted once above, so bound the second appearance by the widest.
-  if (content.entries.length > 0) bytes += METADATA_TIMERANGE_FIXED + 2 * maxEntryPathBytes;
+  if (content.entries.length > 0) bytes += MANIFEST_TIMERANGE_FIXED + 2 * maxEntryPathBytes;
 
   for (const x of content.excluded) {
-    bytes += METADATA_EXCLUDED_FIXED + jsonStringBytes(x.archivePath) + jsonStringBytes(x.originalPath);
+    bytes += MANIFEST_EXCLUDED_FIXED + jsonStringBytes(x.archivePath) + jsonStringBytes(x.originalPath);
     if (x.reason !== undefined) bytes += jsonStringBytes(x.reason);
   }
 
   for (const f of content.findings) {
     bytes +=
-      METADATA_FINDING_FIXED + jsonStringBytes(f.rule) + jsonStringBytes(f.path) + jsonStringBytes(f.message);
+      MANIFEST_FINDING_FIXED + jsonStringBytes(f.rule) + jsonStringBytes(f.path) + jsonStringBytes(f.message);
     if (f.fix?.to !== undefined) bytes += jsonStringBytes(f.fix.to);
   }
 
@@ -182,21 +182,21 @@ export function estimateMetadataSize(content: MetadataContent, policy: ArchivePo
 
 /**
  * Whether the archive the writer will produce needs Zip64: the planned entries
- * plus the metadata file the writer injects (when metadata is enabled), sized
+ * plus the manifest file the writer injects (when manifest is enabled), sized
  * from its real content. Shared by the plan (its `summary.zip64` verdict) and the
  * writer (its finalize decision), so the dry run and the actual write agree.
  */
-export function planNeedsZip64(content: MetadataContent, policy: ArchivePolicy): boolean {
+export function planNeedsZip64(content: ManifestContent, policy: ArchivePolicy): boolean {
   const sized: SizedEntry[] = content.entries.map((entry) => ({
     name: entry.archivePath,
     size: entry.method === "deflate" ? deflateBound(entry.size) : entry.size,
     isDir: entry.type === "dir",
   }));
-  if (policy.metadata !== false) {
+  if (policy.manifest !== false) {
     // The manifest is always deflated; bound its compressed contribution too.
     sized.push({
-      name: policy.metadata.name,
-      size: deflateBound(estimateMetadataSize(content, policy)),
+      name: policy.manifest.name,
+      size: deflateBound(estimateManifestSize(content, policy)),
       isDir: false,
     });
   }

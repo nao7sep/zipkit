@@ -1,5 +1,5 @@
 /**
- * The metadata record: the serialized plan plus the raw scan data, which
+ * The manifest record: the serialized plan plus the raw scan data, which
  * together form a lossless account of the run. It never stores absolute source
  * paths — only the archive-relative final and original paths, and an
  * input-relative disk-trace path. CRC-32 (already computed) detects corruption;
@@ -22,9 +22,9 @@ import type {
   ArchivePolicy,
   CreateData,
   ExtremeEntry,
-  Metadata,
-  MetadataEntry,
-  MetadataExcluded,
+  Manifest,
+  ManifestEntry,
+  ManifestExcluded,
   UtcTime,
 } from "../types.ts";
 import { VERSION } from "../version.ts";
@@ -38,11 +38,11 @@ const REPOSITORY = "https://github.com/nao7sep/zipkit";
 export const MANIFEST_FORMAT_VERSION = 1;
 
 /** The `mode:"plan"` member of {@link CreateData} — the planning view the
- *  metadata document is built from (entries, summary, findings). The metadata
+ *  manifest document is built from (entries, summary, findings). The manifest
  *  builder never reads `log`, so it takes the logging-agnostic shape. */
 type PlanData = Unlogged<Extract<CreateData, { mode: "plan" }>>;
 
-export interface MetadataEntryInput {
+export interface ManifestEntryInput {
   writeEntry: WriteEntry;
   crc32: number;
   /** Compressed byte length of the entry's data as written to the archive. */
@@ -60,9 +60,9 @@ function utcTime(ns: bigint): UtcTime {
   return { ns: ns.toString(), iso: new Date(Number(ns / 1_000_000n)).toISOString() };
 }
 
-function metadataEntry(input: MetadataEntryInput): MetadataEntry {
+function manifestEntry(input: ManifestEntryInput): ManifestEntry {
   const entry = input.writeEntry;
-  const record: MetadataEntry = {
+  const record: ManifestEntry = {
     archivePath: entry.archivePath,
     // Input-relative disk-trace path: carries the input's own name even when the
     // archive path is flattened to a bare filename, so an entry stays traceable
@@ -100,7 +100,7 @@ function metadataEntry(input: MetadataEntryInput): MetadataEntry {
  * plan order, keeping the result deterministic. `null` when the set holds no such
  * entry, so a caller can read the span without re-deriving it from `entries`.
  */
-function computeTimeRange(entries: MetadataEntryInput[]): Metadata["timeRange"] {
+function computeTimeRange(entries: ManifestEntryInput[]): Manifest["timeRange"] {
   let oldest: { entry: ExtremeEntry; ns: bigint } | null = null;
   let newest: { entry: ExtremeEntry; ns: bigint } | null = null;
   for (const { writeEntry } of entries) {
@@ -117,18 +117,18 @@ function computeTimeRange(entries: MetadataEntryInput[]): Metadata["timeRange"] 
   return { oldest: oldest.entry, newest: newest.entry };
 }
 
-export function buildMetadata(
+export function buildManifest(
   plan: PlanData,
   policy: ArchivePolicy,
-  entries: MetadataEntryInput[],
+  entries: ManifestEntryInput[],
   createdNs: bigint,
   timeZone: string,
   comment?: string,
-): Metadata {
-  const excluded: MetadataExcluded[] = plan.entries
+): Manifest {
+  const excluded: ManifestExcluded[] = plan.entries
     .filter((entry) => entry.excluded)
     .map((entry) => {
-      const record: MetadataExcluded = {
+      const record: ManifestExcluded = {
         archivePath: entry.archivePath,
         originalPath: entry.originalPath,
         type: entry.type,
@@ -137,7 +137,7 @@ export function buildMetadata(
       return record;
     });
 
-  const document: Metadata = {
+  const document: Manifest = {
     about: ABOUT,
     app: "ZipKit",
     version: VERSION,
@@ -151,14 +151,14 @@ export function buildMetadata(
     summary: plan.summary,
     // Aggregate byte totals across the written entries. The on-disk archive size
     // (which also counts ZIP headers, the central directory, and this embedded
-    // metadata file) is not knowable here — stat the output for that; these are
+    // manifest file) is not knowable here — stat the output for that; these are
     // the content totals the writer can compute.
     totals: {
       uncompressedBytes: entries.reduce((sum, e) => sum + e.writeEntry.size, 0),
       compressedBytes: entries.reduce((sum, e) => sum + e.compressedSize, 0),
     },
     timeRange: computeTimeRange(entries),
-    entries: entries.map(metadataEntry),
+    entries: entries.map(manifestEntry),
     // Dropped entries (junk, ignored symlinks, pruned directories, traversal) are
     // not in the archive, so they are recorded separately with the reason — the
     // matching rule is also in `findings`.
@@ -177,7 +177,7 @@ export function buildMetadata(
  * the whole text (volume-handling conventions, Data size). A large list is
  * written one record at a time; every other value is small and is written whole.
  */
-export function* manifestText(document: Metadata): Generator<string> {
+export function* manifestText(document: Manifest): Generator<string> {
   const indent = (text: string, pad: string): string => text.replaceAll("\n", `\n${pad}`);
   const fields = Object.entries(document).filter(([, value]) => value !== undefined);
   yield "{";

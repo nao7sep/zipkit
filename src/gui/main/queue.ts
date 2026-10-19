@@ -91,13 +91,13 @@ const engine = createQueueEngine({
   effects: appPathClaims,
   resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
-  inspect: (output, signal, onEvent, checkMetadata) =>
-    sdk.call("inspect", [output, checkMetadata], { signal, onEvent, onProgress: countsFor(onEvent) }),
+  inspect: (output, signal, onEvent, manifest) =>
+    sdk.call("inspect", [output, manifest], { signal, onEvent, onProgress: countsFor(onEvent) }),
   plan: async (inputs, options, signal, onEvent) => importPlan(await sdk.call("plan", [inputs, options], { signal, onEvent })),
   write: (plan, signal, onEvent, onPhysicalSettlement) =>
     sdk.call("write", [exportPlan(plan)], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
-  verify: (output, signal, onEvent, checkMetadata) =>
-    sdk.call("verify", [output, checkMetadata], { signal, onEvent, onProgress: countsFor(onEvent) }),
+  verify: (output, signal, onEvent, manifest) =>
+    sdk.call("verify", [output, manifest], { signal, onEvent, onProgress: countsFor(onEvent) }),
   checkRemoval: async (output, inputs, removed, options, signal, onEvent) => {
     const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onEvent, onProgress: countsFor(onEvent) });
     const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: new SdkHostError(check.refusal.error) } : check.refusal;
@@ -121,7 +121,7 @@ const engine = createQueueEngine({
         // A path something else moved or deleted first is gone, not kept.
         let state;
         try { state = await sdk.call("pathState", [p]); } catch { state = undefined; }
-        if (state?.kind === "gone") result.gone!.push(p);
+        if (state?.kind === "missing") result.gone!.push(p);
         else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }

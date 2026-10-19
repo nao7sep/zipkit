@@ -14,7 +14,7 @@ import { resolveSegments, toForwardSlash } from "./internal/path.ts";
 import { formatZodError } from "./internal/zodError.ts";
 import { fullFixSegment } from "./plan/nameFix.ts";
 import { isValidTimeZone } from "./internal/timeZone.ts";
-import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExtractSpec } from "./types.ts";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial } from "./types.ts";
 
 /**
  * A single archive-path segment that the name fixer would leave untouched — the
@@ -24,7 +24,7 @@ import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExtractSpec } from "./typ
  * drive prefix needs), control characters, trailing dots/spaces, and reserved
  * device names.
  *
- * Two uses share it. The metadata file name must satisfy it so the name is safe
+ * Two uses share it. The manifest name must satisfy it so the name is safe
  * as a ZIP entry. The invalid-char replacement
  * must satisfy it too: `name.invalid-char` substitutes it into a segment after
  * the path-traversal pass has already run (see `nameFix.ts`), so a replacement
@@ -91,11 +91,11 @@ const partialPolicySchema = z.strictObject({
   followExternal: z.boolean().optional(),
   // An IANA Time Zone Database name the runtime accepts (offsets and POSIX TZ
   // strings are rejected, so DST is always handled correctly).
-  timezone: z
+  timeZone: z
     .string()
     .optional()
     .refine((tz) => tz === undefined || isValidTimeZone(tz), {
-      error: "timezone must be a valid IANA time zone name (e.g. 'Asia/Tokyo', 'UTC')",
+      error: "timeZone must be a valid IANA time zone name (e.g. 'Asia/Tokyo', 'UTC')",
     }),
   compression: z
     .strictObject({
@@ -104,7 +104,7 @@ const partialPolicySchema = z.strictObject({
       level: z.number().int().min(1).max(9).optional(),
     })
     .optional(),
-  metadata: z
+  manifest: z
     .union([
       z.literal(false),
       z
@@ -115,7 +115,7 @@ const partialPolicySchema = z.strictObject({
         // The name becomes an archive entry name, so it must be a single safe
         // path component — never a traversal that would escape the archive root.
         .refine((m) => m.name === undefined || isSafePathComponent(m.name), {
-          error: "metadata.name must be a single path component (no slashes, not '.' or '..')",
+          error: "manifest.name must be a single path component (no slashes, not '.' or '..')",
           path: ["name"],
         }),
     ])
@@ -164,44 +164,6 @@ export function validateSpec(spec: ArchiveSpec): ArchiveSpec {
     throw new ZipKitError("spec.invalid", `invalid archive spec: ${formatZodError(result.error)}`);
   }
   return result.data as ArchiveSpec;
-}
-
-const extractSpecSchema = z.strictObject({
-  archive: absolutePath("archive"),
-  dest: absolutePath("dest").optional(),
-  overwrite: z.boolean().optional(),
-  dryRun: z.boolean().optional(),
-  checkMetadata: z.boolean().optional(),
-  // Becomes an archive entry name or is joined to the archive's directory, so it
-  // must be a single safe path component — never a traversal.
-  metadataName: z
-    .string()
-    .optional()
-    .refine((name) => name === undefined || isSafePathComponent(name), {
-      error: "metadataName must be a single path component (no slashes, not '.' or '..')",
-    }),
-  timestamps: z.enum(["restore", "none"]).optional(),
-  timezone: z
-    .string()
-    .optional()
-    .refine((tz) => tz === undefined || isValidTimeZone(tz), {
-      error: "timezone must be a valid IANA time zone name (e.g. 'Asia/Tokyo', 'UTC')",
-    }),
-  onUnsafe: z.enum(["skip", "abort"]).optional(),
-  symlinks: z.enum(["restore", "skip"]).optional(),
-  exclude: z.array(filterRuleSchema).optional(),
-});
-
-/** Validate an extract spec; cancellation is per-call control, not a spec field. */
-export function validateExtractSpec(spec: ExtractSpec): ExtractSpec {
-  const result = extractSpecSchema.safeParse(spec);
-  if (!result.success) {
-    throw new ZipKitError(
-      "spec.invalid",
-      `invalid extract spec: ${formatZodError(result.error)}`,
-    );
-  }
-  return result.data as ExtractSpec;
 }
 
 /**
@@ -330,6 +292,12 @@ export function validateManifestName(name: unknown): string | undefined {
     throw new ZipKitError("options.invalid", "a manifest name must be a single path component (no slashes, not '.' or '..')");
   }
   return name;
+}
+
+/** A switch given as an option: a boolean when present. */
+export function validateFlag(value: unknown, what: string): boolean | undefined {
+  if (value === undefined || typeof value === "boolean") return value;
+  throw new ZipKitError("options.invalid", `${what} must be a boolean`);
 }
 
 /** An IANA time zone name, when one is given. */

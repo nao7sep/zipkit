@@ -45,12 +45,14 @@ export function messageFor(body: LogEventBody): string {
       return `wrote ${body.path}`;
     case "write.done":
       return `archive written: ${body.bytes} bytes${body.zip64 ? " (zip64)" : ""}`;
-    case "extract.start":
-      return `${body.write ? "extracting" : "verifying"} ${entries(body.entries)}`;
+    case "verify.start":
+      return `verifying ${entries(body.entries)}`;
     case "entry.verified":
       return `verified ${body.path}`;
-    case "extract.done":
-      return `extract complete: ${body.written} written, ${body.skipped} skipped, ${body.crcFailed} CRC failure${s(body.crcFailed)}, ${body.shaMismatched} SHA mismatch${body.shaMismatched === 1 ? "" : "es"}, ${body.manifestMismatched} manifest mismatch${body.manifestMismatched === 1 ? "" : "es"}`;
+    case "verify.done": {
+      const problems = body.crc32Failed + body.unreadable + body.localMismatched + body.sha256Mismatched + body.manifestMismatched;
+      return `verify complete: ${entries(body.total)}, ${problems === 0 ? "no problems" : `${problems} problem${s(problems)}`}${body.ok ? "" : " (not ok)"}`;
+    }
     case "fault":
       return body.cause !== undefined
         ? `${body.code}: ${body.detail}: ${body.cause}`

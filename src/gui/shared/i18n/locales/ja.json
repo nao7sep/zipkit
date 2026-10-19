@@ -387,6 +387,7 @@
   "report.crcFailures": { "other": "CRC エラー {count} 件" },
   "report.shaMismatches": { "other": "SHA 不一致 {count} 件" },
   "report.manifestMismatches": {"other": "マニフェスト不一致 {count} 件"},
+  "report.unreadable": { "other": "読み取れない項目 {count} 件" },
   "report.zipInput": "この入力はすでに .zip です。もう一度圧縮してもほとんど小さくならず、zip の中に zip が入るだけです。代わりに中身をアーカイブするか、出力に別の名前を付けてください。",
   "report.excludedEmptyDir": "空のフォルダを除外",
   "report.excludedEmptyFile": "空のファイルを除外",
@@ -395,9 +396,9 @@
   "report.renamedFrom": "元の名前: {from}",
 
   "guidance.outputAmbiguous": "入力が別々のフォルダにあるため、ZipKit は保存場所を自動で決められません。ファイル名を指定すると（出力先フォルダは最初の入力のフォルダになります）、まとめてアーカイブされます。",
-  "guidance.inputMissing": "入力がディスク上に見つかりません。一覧から削除するか元に戻してから、もう一度お試しください。",
-  "guidance.statFailed": "入力を読み取れませんでした。ロックされているか、アクセス権で保護されている可能性があります。確認してから、もう一度お試しください。",
-  "guidance.walkFailed": "アクセス権または入出力の問題で、フォルダを最後まで読み取れませんでした。確認してから、もう一度お試しください。",
+  "guidance.pathMissing": "入力がディスク上に見つかりません。一覧から削除するか元に戻してから、もう一度お試しください。",
+  "guidance.pathDenied": "入力を読み取れませんでした。ロックされているか、アクセス権で保護されている可能性があります。確認してから、もう一度お試しください。",
+  "guidance.ioFailed": "アクセス権または入出力の問題で、フォルダを最後まで読み取れませんでした。確認してから、もう一度お試しください。",
 
   "finding.pathAbsolute": "絶対パスの先頭部分を取り除きました",
   "finding.pathTraversal": "パスがアーカイブのルートの外を指すため、除外しました",
@@ -453,7 +454,7 @@
   "findingKind.shaMismatch": "SHA-256 の不一致",
   "findingKind.manifestMismatch": "マニフェストとの不一致",
   "findingKind.localMismatch": "ヘッダーが食い違う項目",
-  "findingKind.unsafePath": "展開先の外を指すパス",
+  "findingKind.unreadable": "読み取れない項目",
   "findingKind.missing": "アーカイブにないエントリ",
   "findingKind.extra": "マニフェストにないエントリ",
 
@@ -479,13 +480,9 @@
   "event.written": "書き込み: {path}",
   "event.writeDone": "アーカイブを書き込みました: {size}",
   "event.writeDoneZip64": "アーカイブを書き込みました: {size}（ZIP64）",
-  "event.extractStart": { "other": "{count} エントリを展開中" },
   "event.verifyStart": { "other": "{count} エントリを検証中" },
   "event.verified": "検証済み: {path}",
-  "event.extractDone": "展開完了: {counts}",
   "event.verifyDone": "検証完了: {counts}",
-  "event.writtenCount": { "other": "書き込み {count}" },
-  "event.skippedCount": { "other": "スキップ {count}" },
 
   "settings.title": "設定",
   "settings.language": "言語",

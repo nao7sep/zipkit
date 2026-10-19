@@ -115,7 +115,7 @@ describe("JobDetails", () => {
   it("lists by name what a verification found missing or unexpected, and each way the originals changed", () => {
     render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["a/gone.txt"], added: ["a/new.txt"], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
       ok: true,
-      data: { reportOk: false, missing: ["a/one.txt", "b/two.txt"], extra: ["stray.bin"], summary: { total: 2, crcFailed: 0, shaMismatched: 0, manifestMismatched: 0, localMismatched: 0 } } as never,
+      data: { ok: false, missing: ["a/one.txt", "b/two.txt"], extra: ["stray.bin"], summary: { total: 2, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 } } as never,
     }} />);
     expect(screen.getByRole("heading", { name: /^Missing from the archive\s*2$/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /^Unexpected extra entries\s*1$/ })).toBeTruthy();
@@ -157,7 +157,7 @@ describe("JobDetails", () => {
     cleanup();
     // Nothing is measured once the job is no longer working.
     render(<JobDetails job={job({ state: "done" })} plan={plan()} verify={null} events={[]} rowLimit={5}
-      counts={{ stage: "extract", entriesDone: 1, entriesTotal: 1, bytesDone: 0, bytesTotal: 0 }} />);
+      counts={{ stage: "verify", entriesDone: 1, entriesTotal: 1, bytesDone: 0, bytesTotal: 0 }} />);
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
