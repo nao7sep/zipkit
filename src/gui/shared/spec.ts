@@ -6,7 +6,7 @@
  */
 
 import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExclusionPattern, InvalidCharStyle, NameAction } from "zipkitsdk/types";
-import { DEFAULT_EXCLUSIONS } from "zipkitsdk/defaults";
+import { BUILT_IN_EXCLUSIONS } from "./exclusions.js";
 import type { LanguagePreference } from "./i18n/languages.js";
 
 /** The visible option state for one job. Defaults mirror the SDK's own defaults. */
@@ -41,7 +41,7 @@ export interface GuiOptions {
 
 export const DEFAULT_OPTIONS: GuiOptions = {
   exclude: true,
-  exclusions: DEFAULT_EXCLUSIONS.map((p) => ({ ...p })),
+  exclusions: BUILT_IN_EXCLUSIONS.map((p) => ({ ...p })),
   strict: false,
   invalidChars: "tidy",
   level: 6,

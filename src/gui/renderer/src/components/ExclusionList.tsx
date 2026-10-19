@@ -1,18 +1,22 @@
 /**
  * The exclusion-pattern editor on Settings' Exclusion patterns tab: the whole
- * list new jobs leave out, in the order it is checked. Each row holds a
- * pattern, an optional note on it (never matched), its dialect, what it applies
- * to and whether case matters; rows are added, moved and removed, and the list
- * resets to the one ZipKit ships with. Under the config-sets conventions'
- * typed-list rule, a blank row is not a pattern and is dropped on save
- * ({@link cleanExclusions}), and a row that fails its check, a regular
- * expression that does not compile, carries its own message and holds Save.
+ * list new jobs leave out, in the order it is checked. Each row's first line
+ * holds the pattern, its dialect, what it applies to, whether case matters and
+ * the row's buttons; its second line holds an optional note across the full
+ * width, growing to more lines only when its text needs them. A note is never
+ * matched; a built-in pattern's description, in the interface language, is its
+ * placeholder. Rows are added, moved and removed, and the list resets to the
+ * one ZipKit ships with. Under the config-sets conventions' typed-list rule, a
+ * blank row is not a pattern and is dropped on save ({@link cleanExclusions}),
+ * and a row that fails its check, a regular expression that does not compile,
+ * carries its own message and holds Save.
  */
 
 import { useId, type CSSProperties } from "react";
 import type { ExclusionPattern } from "zipkitsdk/types";
 import { useI18n } from "../i18n/I18nContext";
-import { CloseIcon, MoveIcon } from "./Icon";
+import { CloseIcon, MatchCaseIcon, MoveIcon } from "./Icon";
+import { builtInDescription } from "../../../shared/exclusions";
 
 /** A row's text without the spaces typed around it. Only spaces and tabs go:
  *  a control character can be part of a real name, as the carriage return in
@@ -78,25 +82,19 @@ export function ExclusionList({
           const issueId = `${idBase}-issue-${row}`;
           return (
             <li key={row} style={S.row}>
-              <input
-                style={S.pattern}
-                value={p.pattern}
-                spellCheck={false}
-                disabled={disabled}
-                aria-label={t("exclusions.pattern", { number })}
-                aria-invalid={issue ? true : undefined}
-                aria-describedby={issue ? issueId : undefined}
-                onChange={(e) => update(row, { pattern: e.target.value })}
-              />
-              <input
-                style={S.note}
-                value={p.note ?? ""}
-                placeholder={t("exclusions.notePlaceholder")}
-                disabled={disabled}
-                aria-label={t("exclusions.note", { number })}
-                onChange={(e) => update(row, { note: e.target.value })}
-              />
-              <div style={S.controls}>
+              {/* First line: the pattern and how it matches, with the row's
+                  buttons; second line: its note across the full width. */}
+              <div style={S.line}>
+                <input
+                  style={S.pattern}
+                  value={p.pattern}
+                  spellCheck={false}
+                  disabled={disabled}
+                  aria-label={t("exclusions.pattern", { number })}
+                  aria-invalid={issue ? true : undefined}
+                  aria-describedby={issue ? issueId : undefined}
+                  onChange={(e) => update(row, { pattern: e.target.value })}
+                />
                 <select
                   value={p.match}
                   disabled={disabled}
@@ -116,15 +114,14 @@ export function ExclusionList({
                   <option value="file">{t("exclusions.targetFiles")}</option>
                   <option value="dir">{t("exclusions.targetFolders")}</option>
                 </select>
-                <label style={S.check}>
-                  <input
-                    type="checkbox"
-                    checked={p.ignoreCase}
-                    disabled={disabled}
-                    onChange={(e) => update(row, { ignoreCase: e.target.checked })}
-                  />
-                  {t("exclusions.ignoreCase")}
-                </label>
+                {/* A toggle drawn as editors' familiar "Aa" mark, pressed when
+                    case matters, so the line keeps room for the pattern. */}
+                <button type="button" style={p.ignoreCase ? S.caseToggle : { ...S.caseToggle, ...S.casePressed }} disabled={disabled}
+                  aria-pressed={!p.ignoreCase}
+                  aria-label={t("exclusions.matchCase", { number })} title={t("exclusions.matchCase", { number })}
+                  onClick={() => update(row, { ignoreCase: !p.ignoreCase })}>
+                  <MatchCaseIcon />
+                </button>
                 <span style={S.buttons}>
                   <button type="button" style={S.icon} disabled={disabled || row === 0}
                     aria-label={t("exclusions.moveUp", { number })} title={t("exclusions.moveUp", { number })}
@@ -143,6 +140,20 @@ export function ExclusionList({
                   </button>
                 </span>
               </div>
+              {/* One line of text that takes a second line, and more, only when
+                  the note or the description in its place needs them: a text
+                  area sized to its content, with Enter and pasted line breaks
+                  kept out, since a note is a single line. */}
+              <textarea
+                style={S.note}
+                rows={1}
+                value={p.note ?? ""}
+                placeholder={t(builtInDescription(p) ?? "exclusions.notePlaceholder")}
+                disabled={disabled}
+                aria-label={t("exclusions.note", { number })}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault(); }}
+                onChange={(e) => update(row, { note: e.target.value.replace(/[\r\n]+/g, " ") })}
+              />
               {/* Tied to its field, not announced on every keystroke
                   (operation-result conventions, field association). */}
               {issue && <p id={issueId} className="inline-issue" style={S.issue}>{t("exclusions.issueRegex")}</p>}
@@ -164,19 +175,15 @@ const S: Record<string, CSSProperties> = {
   list: { display: "grid", gap: "0.6rem" },
   empty: { margin: 0, color: "var(--text-2)" },
   rows: { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.5rem" },
-  // The pattern and its label on one line, the rest below, wrapping at need.
-  row: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)",
-    gap: "0.35rem 0.5rem",
-    paddingBottom: "0.5rem",
-    borderBottom: "1px solid var(--border)",
-  },
-  pattern: { minWidth: 0, fontFamily: "var(--font-mono)" },
-  note: { minWidth: 0 },
-  controls: { gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.4rem 0.75rem" },
-  check: { display: "flex", alignItems: "center", gap: "0.35rem" },
-  buttons: { display: "flex", gap: "0.25rem", marginLeft: "auto" },
+  row: { display: "grid", gap: "0.35rem", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" },
+  line: { display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0 },
+  pattern: { flex: "1 1 8rem", minWidth: 0, fontFamily: "var(--font-mono)" },
+  // `field-sizing: content` grows the area to its text or, when empty, its
+  // placeholder; one line is its least.
+  note: { width: "100%", boxSizing: "border-box", resize: "none", minHeight: "var(--control-h)", fieldSizing: "content" } as CSSProperties,
+  caseToggle: { flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "var(--control-h)", color: "var(--text-2)", background: "transparent" },
+  casePressed: { color: "var(--text)", background: "var(--surface-2)", borderColor: "var(--field-border)" },
+  buttons: { display: "flex", gap: "0.25rem", flexShrink: 0 },
   icon: { display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "var(--control-h)" },
-  issue: { gridColumn: "1 / -1", margin: 0 },
+  issue: { margin: 0 },
 };

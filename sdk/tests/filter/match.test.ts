@@ -135,12 +135,12 @@ describe("target applicability", () => {
 });
 
 describe("the default list, ordering, and the inclusive default", () => {
-  it("matches dotfiles at any depth, noted with their OS", () => {
+  it("matches dotfiles at any depth", () => {
     const m = matcher([], true);
-    expect(m.match(".DS_Store", false)?.pattern.note).toBe("macOS");
-    expect(m.match("a/.DS_Store", false)?.pattern.note).toBe("macOS");
-    expect(m.match("Thumbs.db", false)?.pattern.note).toBe("Windows");
-    expect(m.match("ehthumbs_vista.db", false)?.pattern.note).toBe("Windows");
+    expect(m.match(".DS_Store", false)).not.toBeNull();
+    expect(m.match("a/.DS_Store", false)).not.toBeNull();
+    expect(m.match("Thumbs.db", false)).not.toBeNull();
+    expect(m.match("ehthumbs_vista.db", false)).not.toBeNull();
   });
 
   it("keeps files people sometimes want, which only look like leftovers", () => {
@@ -153,10 +153,10 @@ describe("the default list, ordering, and the inclusive default", () => {
 
   it("matches the default list case-insensitively (OS names vary in case across file systems)", () => {
     const m = matcher([], true);
-    expect(m.match("thumbs.db", false)?.pattern.note).toBe("Windows");
-    expect(m.match(".ds_store", false)?.pattern.note).toBe("macOS");
-    expect(m.match("DESKTOP.INI", false)?.pattern.note).toBe("Windows");
-    expect(m.match("dir/.DS_STORE", false)?.pattern.note).toBe("macOS");
+    expect(m.match("thumbs.db", false)).not.toBeNull();
+    expect(m.match(".ds_store", false)).not.toBeNull();
+    expect(m.match("DESKTOP.INI", false)).not.toBeNull();
+    expect(m.match("dir/.DS_STORE", false)).not.toBeNull();
   });
 
   it("matches the added macOS metadata names", () => {
@@ -171,35 +171,35 @@ describe("the default list, ordering, and the inclusive default", () => {
       ".AppleDB",
       ".AppleDesktop",
     ]) {
-      expect(m.match(name, false)?.pattern.note).toBe("macOS");
+      expect(m.match(name, false)).not.toBeNull();
     }
   });
 
   it("matches Linux/freedesktop leftovers (.directory, .nfs* temporaries, .Trash-<uid>/)", () => {
     const m = matcher([], true);
-    expect(m.match(".directory", false)?.pattern.note).toBe("Linux");
-    expect(m.match(".nfs0000000000abcdef00000001", false)?.pattern.note).toBe("Linux");
-    expect(m.match(".fuse_hidden0000000a00000001", false)?.pattern.note).toBe("Linux");
+    expect(m.match(".directory", false)).not.toBeNull();
+    expect(m.match(".nfs0000000000abcdef00000001", false)).not.toBeNull();
+    expect(m.match(".fuse_hidden0000000a00000001", false)).not.toBeNull();
     // `.Trash-<uid>` is a directory-only rule (trailing slash).
-    expect(m.match(".Trash-1000", true)?.pattern.note).toBe("Linux");
+    expect(m.match(".Trash-1000", true)).not.toBeNull();
     expect(m.match(".Trash-1000", false)).toBeNull();
   });
 
   it("matches default folder patterns case-insensitively too", () => {
     const m = matcher([], true);
-    expect(m.match("__macosx", true)?.pattern.note).toBe("macOS");
-    expect(m.match(".trash-1000", true)?.pattern.note).toBe("Linux");
+    expect(m.match("__macosx", true)).not.toBeNull();
+    expect(m.match(".trash-1000", true)).not.toBeNull();
   });
 
   it("matches AppleDouble files", () => {
     const m = matcher([], true);
-    expect(m.match("._payload", false)?.pattern.note).toBe("macOS");
-    expect(m.match("dir/._payload", false)?.pattern.note).toBe("macOS");
+    expect(m.match("._payload", false)).not.toBeNull();
+    expect(m.match("dir/._payload", false)).not.toBeNull();
   });
 
   it("treats a trailing-slash default as folder-only", () => {
     const m = matcher([], true);
-    expect(m.match("__MACOSX", true)?.pattern.note).toBe("macOS");
+    expect(m.match("__MACOSX", true)).not.toBeNull();
     expect(m.match("__MACOSX", false)).toBeNull();
   });
 

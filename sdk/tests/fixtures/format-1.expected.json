@@ -8,182 +8,182 @@
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "Finder’s view settings for a folder, rebuilt when it is opened"
       },
       {
         "pattern": "__MACOSX/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "Mac file details left behind by unzipping a Mac-made ZIP"
       },
       {
         "pattern": "._*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "Mac file details stored as separate files on drives that aren’t Mac-formatted"
       },
       {
         "pattern": ".AppleDouble/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "Mac file details kept by a file server or a drive that isn’t Mac-formatted"
       },
       {
         "pattern": "Icon\r",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A custom folder icon, whose image a ZIP can’t hold"
       },
       {
         "pattern": ".Spotlight-V100",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A drive’s Spotlight search index (macOS)"
       },
       {
         "pattern": ".DocumentRevisions-V100",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A drive’s database of saved document versions (macOS)"
       },
       {
         "pattern": ".TemporaryItems",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A drive’s temporary files (macOS)"
       },
       {
         "pattern": ".Trashes",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A drive’s Trash (macOS)"
       },
       {
         "pattern": ".fseventsd",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A drive’s log of file changes (macOS)"
       },
       {
         "pattern": ".apdisk",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A shared drive’s AirPort Disk settings"
       },
       {
         "pattern": ".com.apple.timemachine.donotpresent",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "Time Machine’s marker on a backup drive"
       },
       {
         "pattern": ".VolumeIcon.icns",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "A drive’s custom icon (macOS)"
       },
       {
         "pattern": ".localized",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "Finder’s marker for a folder shown under a translated name"
       },
       {
         "pattern": ".AppleDB",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "An old Apple file server’s own database"
       },
       {
         "pattern": ".AppleDesktop",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "macOS"
+        "note": "An old Apple file server’s own database"
       },
       {
         "pattern": "Thumbs.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Windows"
+        "note": "Windows’ thumbnail cache"
       },
       {
         "pattern": "ehthumbs.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Windows"
+        "note": "Windows Media Center’s thumbnail cache"
       },
       {
         "pattern": "ehthumbs_vista.db",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Windows"
+        "note": "Windows Media Center’s thumbnail cache"
       },
       {
         "pattern": "desktop.ini",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Windows"
+        "note": "A folder’s display settings, added by Windows and sync apps"
       },
       {
         "pattern": "$RECYCLE.BIN/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "Windows"
+        "note": "A drive’s Recycle Bin (Windows)"
       },
       {
         "pattern": "System Volume Information/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "Windows"
+        "note": "A drive’s restore points and search index (Windows)"
       },
       {
         "pattern": ".Trash-*/",
         "match": "glob",
         "target": "dir",
         "ignoreCase": true,
-        "note": "Linux"
+        "note": "A drive’s Trash (Linux)"
       },
       {
         "pattern": ".directory",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Linux"
+        "note": "A folder’s display settings in KDE (Linux)"
       },
       {
         "pattern": ".nfs*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Linux"
+        "note": "A file deleted on a network share while still open"
       },
       {
         "pattern": ".fuse_hidden*",
         "match": "glob",
         "target": "both",
         "ignoreCase": true,
-        "note": "Linux"
+        "note": "A file deleted while still open (Linux)"
       }
     ],
     "emptyFiles": "keep",
@@ -392,7 +392,7 @@
       "archivePath": ".DS_Store",
       "originalPath": ".DS_Store",
       "type": "file",
-      "reason": "pattern .DS_Store (macOS)"
+      "reason": "pattern .DS_Store (Finder’s view settings for a folder, rebuilt when it is opened)"
     }
   ],
   "findings": [

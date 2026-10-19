@@ -348,8 +348,23 @@ describe("SettingsDialog exclusion patterns", () => {
     fireEvent.click(screen.getByText("Save"));
     expect(onSave.mock.calls[0]![0].defaults.exclusions).toEqual([
       { pattern: "\\.log$", match: "regex", target: "both", ignoreCase: false },
-      expect.objectContaining({ pattern: ".DS_Store", note: "macOS" }),
+      { pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true },
     ]);
+  });
+
+  it("describes a built-in pattern in the note's placeholder, and saves a note typed over it", () => {
+    const onSave = renderDialog();
+    fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
+    const panel = screen.getByRole("tabpanel", { name: "Exclusion patterns" });
+    const note = within(panel).getByLabelText("Note on pattern 1") as HTMLInputElement;
+    expect(note.value).toBe("");
+    expect(note.placeholder).toBe("Finder’s view settings for a folder, rebuilt when it is opened");
+    // A pattern changed from its built-in form is the user's own: no description.
+    fireEvent.change(within(panel).getByLabelText("Pattern 2"), { target: { value: "__MACOSX_old/" } });
+    expect((within(panel).getByLabelText("Note on pattern 2") as HTMLInputElement).placeholder).toBe("Note");
+    fireEvent.change(note, { target: { value: "  Finder clutter  " } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0]![0].defaults.exclusions[0]).toEqual({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true, note: "Finder clutter" });
   });
 
   it("resets the patterns alone to the list ZipKit ships with", () => {

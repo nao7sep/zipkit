@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { DEFAULT_EXCLUSIONS } from "zipkitsdk/defaults";
+import { BUILT_IN_EXCLUSIONS } from "../../../shared/exclusions";
 import { cleanExclusions, ExclusionList, patternInvalid } from "./ExclusionList";
 import { useTablist } from "../useTablist";
 import type { CSSProperties } from "react";
@@ -131,7 +131,7 @@ export function SettingsDialog({
     setDraft({ ...draft, defaults: { ...DEFAULT_PARAMETERS, exclusions: draft.defaults.exclusions } });
   }
   function resetExclusions() {
-    setDraft({ ...draft, defaults: { ...draft.defaults, exclusions: DEFAULT_EXCLUSIONS.map((p) => ({ ...p })) } });
+    setDraft({ ...draft, defaults: { ...draft.defaults, exclusions: BUILT_IN_EXCLUSIONS.map((p) => ({ ...p })) } });
   }
 
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):
