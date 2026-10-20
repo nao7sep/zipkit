@@ -14,7 +14,7 @@ import { resolveSegments, toForwardSlash } from "./internal/path.ts";
 import { formatZodError } from "./internal/zodError.ts";
 import { fullFixSegment } from "./plan/nameFix.ts";
 import { isValidTimeZone } from "./internal/timeZone.ts";
-import type { ArchivePolicy, ArchiveSpec, DeepPartial, RemovalRequest, VerifyRequest } from "./types.ts";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial, Program, RemovalRequest, VerifyRequest } from "./types.ts";
 
 /**
  * A single archive-path segment that the name fixer would leave untouched — the
@@ -41,6 +41,7 @@ function isSafePathComponent(name: string): boolean {
 
 const exclusionSchema = z
   .strictObject({
+    id: z.string().min(1).optional(),
     pattern: z.string().min(1),
     match: z.enum(["glob", "regex"]).default("glob"),
     target: z.enum(["file", "dir", "both"]).default("both"),
@@ -58,6 +59,10 @@ const exclusionSchema = z
       }
     },
     { error: "invalid regular expression pattern", path: ["pattern"] },
+  )
+  .refine(
+    (rule) => !(rule.match === "glob" && rule.pattern.endsWith("/") && rule.target === "file"),
+    { error: "a glob ending in / names folders, so its target cannot be file", path: ["target"] },
   );
 
 const nameActionSchema = z.enum(["fix", "warn", "error", "none"]);
@@ -268,7 +273,17 @@ export function validateCallOptions(options: unknown): void {
   }
 }
 
-const INSTANCE_OPTIONS = new Set(["policy", "concurrency", "chunkSize", "ioTimeoutMs", "debug"]);
+const INSTANCE_OPTIONS = new Set(["policy", "app", "concurrency", "chunkSize", "ioTimeoutMs", "debug"]);
+
+const programSchema = z.strictObject({ name: z.string().min(1).max(256), version: z.string().min(1).max(256).optional() });
+
+/** The app a caller names for its manifests: a name and an optional version,
+ *  each short enough that the manifest's size stays bounded. */
+export function validateApp(app: unknown): Program {
+  const result = programSchema.safeParse(app);
+  if (!result.success) throw new ZipKitError("options.invalid", `invalid app: ${formatZodError(result.error)}`);
+  return result.data as Program;
+}
 
 /** Instance options hold no key the SDK does not know, as specs do not. */
 export function validateInstanceOptionKeys(options: unknown): void {

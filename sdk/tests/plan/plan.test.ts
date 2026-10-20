@@ -337,7 +337,7 @@ describe("symlinks", () => {
   it("excludes a symlink under ignore with a warning", () => {
     const p = plan([scanEntry({ archivePath: "link", type: "symlink", linkTarget: "t" })]);
     expect(p.entries[0]).toMatchObject({ excluded: true, excludeCode: "symlink" });
-    expect(rules(p.findings)).toContain("entry.symlink");
+    expect(rules(p.findings)).toContain("entry.symlink-ignored");
   });
 
   it("keeps a symlink under preserve and writes it", () => {
@@ -346,7 +346,7 @@ describe("symlinks", () => {
     });
     expect(p.entries[0]?.excluded).toBe(false);
     expect(written(p)).toEqual(["link"]);
-    expect(rules(p.findings)).toContain("entry.symlink");
+    expect(rules(p.findings)).toContain("entry.symlink-preserved");
   });
 });
 

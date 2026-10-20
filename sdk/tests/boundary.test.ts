@@ -47,7 +47,9 @@ describe("the SDK boundary", () => {
       if (spec.startsWith("node:")) return [];
       if (spec.startsWith(".")) {
         const target = path.resolve(SRC, path.dirname(file), spec);
-        return target.startsWith(SRC + path.sep) ? [] : [`${file}: ${spec}`];
+        // Its own manifest is inside its package too: VERSION is read from it.
+        const own = target.startsWith(SRC + path.sep) || target === path.join(path.dirname(SRC), "package.json");
+        return own ? [] : [`${file}: ${spec}`];
       }
       const name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]!;
       return name in pkg.dependencies ? [] : [`${file}: ${spec}`];

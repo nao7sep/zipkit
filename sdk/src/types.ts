@@ -39,6 +39,10 @@ export type DeepPartial<T> = T extends ReadonlyArray<unknown>
  * folder; a regex matches the archive path anywhere unless anchored.
  */
 export interface ExclusionPattern {
+  /** A stable id, which every built-in pattern carries (`macos.ds-store`), so
+   *  a caller recognizes it again whatever its text or note says; a caller's
+   *  own pattern may carry one of its own. Recorded in the manifest. */
+  id?: string;
   pattern: string;
   /** Pattern dialect. Defaults to `"glob"`. */
   match: "glob" | "regex";
@@ -47,8 +51,15 @@ export interface ExclusionPattern {
   /** Match regardless of case. Defaults to `false`. */
   ignoreCase: boolean;
   /** A note on where the pattern comes from or what it is for, such as
-   *  `macOS`; shown beside it, never matched. */
+   *  `macOS`; shown beside it, never matched, and not recorded in the manifest. */
   note?: string;
+}
+
+/** The exclusion pattern that left an entry out: its id when it has one, and
+ *  its text. */
+export interface ExcludedBy {
+  id?: string;
+  pattern: string;
 }
 
 export interface CompressionPolicy {
@@ -188,6 +199,9 @@ export interface ArchiveSpec {
 
 export interface ZipKitOptions {
   policy?: DeepPartial<ArchivePolicy>;
+  /** The app calling the SDK, recorded in every manifest it writes beside the
+   *  SDK itself; each string at most 256 characters. */
+  app?: Program;
   concurrency?: number;
   /**
    * Whether `debug` events reach `onEvent`. Off by
@@ -264,7 +278,8 @@ export type RuleId =
   | "path.traversal"
   | "path.too-long"
   | "exclude.pattern"
-  | "entry.symlink"
+  | "entry.symlink-ignored"
+  | "entry.symlink-preserved"
   | "entry.unsupported"
   | "entry.unlisted"
   | "name.nfd"
@@ -336,9 +351,13 @@ export type ExcludeCode = "pattern" | "empty-dir" | "empty-file" | "duplicate" |
 export type UnsupportedKind = "socket" | "fifo" | "device" | "broken-link" | "external-link" | "unreadable-link";
 
 export interface Finding {
+  /** Stable across runs: the same finding on a fresh plan of the same tree
+   *  has the same id, whatever its message says, so a caller compares plans
+   *  by it. */
+  id: string; // identity
   /** What was found: a plan rule (`RuleId`) or, from verification, a
    *  `VerifyRuleId`. Both are listed in the registry and stable. */
-  rule: FindingRule; // identity
+  rule: FindingRule;
   severity: Severity; // classification (sourced from the registry)
   path: string; // locator
   message: string;
@@ -361,6 +380,11 @@ export interface PlannedEntry {
   excludeReason?: string;
   /** What it is, present exactly when `excludeCode` is `unsupported`. */
   unsupportedKind?: UnsupportedKind;
+  /** The pattern that left it out, present exactly when `excludeCode` is `pattern`. */
+  excludedBy?: ExcludedBy;
+  /** The name rules that renamed this entry's own name, or a folder above it
+   *  that has no entry of its own; empty when nothing of its own was renamed. */
+  nameFixes: NameFix[];
   findings: Finding[]; // nested detail
 }
 
@@ -504,7 +528,28 @@ export interface ManifestExcluded {
   archivePath: string;
   originalPath: string;
   type: "file" | "dir" | "symlink";
+  /** Why it was left out, as a stable code. */
+  excludeCode: ExcludeCode;
+  /** The same in English words, which may change. */
   reason?: string;
+  /** What it is, when `excludeCode` is `unsupported`. */
+  unsupportedKind?: UnsupportedKind;
+  /** The pattern that left it out, when `excludeCode` is `pattern`. */
+  excludedBy?: ExcludedBy;
+}
+
+/** The policy as a manifest records it: the resolved policy without what
+ *  only describes it (exclusion notes) or is recorded once elsewhere (the
+ *  time zone, the manifest's own `timeZone`). */
+export type RecordedPolicy = Omit<ArchivePolicy, "timeZone" | "exclusions"> & {
+  exclusions: Omit<ExclusionPattern, "note">[];
+};
+
+/** The program a manifest names: the SDK that wrote it, or the app that
+ *  called the SDK. */
+export interface Program {
+  name: string;
+  version?: string;
 }
 
 /** A file entry singled out for its modification time — the oldest or newest in
@@ -523,9 +568,10 @@ export interface Manifest {
   /** A plain-language sentence saying what the document is, for a recipient
    *  who opens it without knowing ZipKit. */
   about: string; // identity
-  app: string;
-  version: string; // provenance
-  repository: string;
+  /** The SDK that wrote it: `zipkitsdk` with its version and repository. */
+  writer: Program & { version: string; repository: string }; // provenance
+  /** The app that called the SDK, when the caller named it (`ZipKitOptions.app`). */
+  app?: Program;
   createdAtUtc: UtcTime;
   /** What kind of document this is, beside its version: always `zipkit.manifest`. */
   format: "zipkit.manifest";
@@ -535,7 +581,7 @@ export interface Manifest {
   timeZone: string;
   /** The archive comment, present only when one was set. */
   comment?: string;
-  policy: ArchivePolicy; // configuration
+  policy: RecordedPolicy; // configuration
   /** Quantities (aggregate); `sourceBytes` is absent from archives made
    *  before ZipKit recorded it. */
   summary: Omit<PlanSummary, "sourceBytes"> & { sourceBytes?: number };

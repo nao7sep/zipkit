@@ -1,0 +1,10 @@
+{
+  // The browser entry as a window loads it: no Node types and the DOM's
+  // libraries, so an import of Node or of a Node-only module fails here.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": []
+  },
+  "include": ["src/browser.ts"]
+}

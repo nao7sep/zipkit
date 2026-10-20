@@ -181,6 +181,17 @@ describe("scan over a real tree", () => {
     expect(names(allowed)).toContain("escape/secret.txt");
   });
 
+  it("follows a link to a folder inside the input whose name starts with two dots", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(path.join(proj, "..notes"), { recursive: true });
+    await writeFile(path.join(proj, "..notes", "n.txt"), "note");
+    await createDirectoryLink("..notes", path.join(proj, "notes-link"));
+
+    const result = await runScan({ inputs: [proj] }, { symlinks: "follow" });
+    expect(names(result)).toContain("notes-link/n.txt");
+    expect(result.skipped).toEqual([]);
+  });
+
   it.runIf(fileSymlinksSupported)("drops a broken symlink under follow", async () => {
     const proj = path.join(dir, "proj");
     await mkdir(proj, { recursive: true });

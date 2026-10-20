@@ -5,11 +5,13 @@
  * instead of writing something the user did not see.
  *
  * The Report shows each entry's path in the archive and on disk, whether it is
- * excluded and why, every finding, and the output path. Those are compared;
- * sizes and times are not, so editing a file's content does not stop a Save
- * (before Trash, the recheck against the manifest covers content). Entry and
- * finding order is not compared either: what the user reviewed is which
- * entries and findings there are, not their sequence.
+ * excluded and why, every finding, and the output path. Those are compared by
+ * the SDK's stable codes and ids, never its English text, so a reworded
+ * message or note stops nothing. Sizes and times are not compared, so editing
+ * a file's content does not stop a Save (before Trash, the recheck against
+ * the manifest covers content). Entry and finding order is not compared
+ * either: what the user reviewed is which entries and findings there are, not
+ * their sequence.
  */
 
 import type { PlanData } from "../shared/api.js";
@@ -30,12 +32,15 @@ function sameMultiset(a: Iterable<string>, b: Iterable<string>): boolean {
 
 function entryKeys(plan: PlanData): string[] {
   return plan.entries.map((e) =>
-    [e.archivePath, e.originalPath, e.type, e.excluded ? "excluded" : "", e.excludeReason ?? ""].join("\0"),
+    [
+      e.archivePath, e.originalPath, e.type, e.excluded ? "excluded" : "",
+      e.excludeCode ?? "", e.unsupportedKind ?? "", e.excludedBy?.id ?? e.excludedBy?.pattern ?? "",
+    ].join("\0"),
   );
 }
 
 function findingKeys(plan: PlanData): string[] {
-  return plan.findings.map((f) => [f.rule, f.severity, f.path, f.message, f.fix?.to ?? ""].join("\0"));
+  return plan.findings.map((f) => [f.id, f.severity, f.fix?.to ?? ""].join("\0"));
 }
 
 export function reportChanged(reviewed: PlanData, fresh: PlanData): boolean {

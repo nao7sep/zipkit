@@ -13,6 +13,7 @@
 import { rm } from "node:fs/promises";
 import { ZipKit, ZipKitError, type ErrorEffect, type ErrorKind, type PathResource, type PathState, type PlanData, type RemovalCheck, type VerifyRequest } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
+import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
@@ -71,10 +72,11 @@ function verifyRequest(archive: string, manifestName: string | null): VerifyRequ
   return manifestName === null ? { archive } : { archive, manifest: true, manifestName };
 }
 
-/** The SDK as the app runs it: debug events follow the app's own switch, and
- *  main records every event itself. */
+/** The SDK as the app runs it: its manifests name ZipKit and its version
+ *  beside the SDK, debug events follow the app's own switch, and main records
+ *  every event itself. */
 export function appZipKit(): ZipKit {
-  return new ZipKit({ debug: process.env.ZIPKIT_DEBUG === "1" });
+  return new ZipKit({ app: { name: APP_NAME, version: APP_VERSION }, debug: process.env.ZIPKIT_DEBUG === "1" });
 }
 
 export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = appZipKit()) {

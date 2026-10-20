@@ -12,12 +12,14 @@ const plan = await zip.plan({ inputs: ["/Users/me/my-project"] }); // decides ev
 for (const f of plan.findings) console.log(f.severity, f.rule, f.path, f.message);
 if (plan.writable) {
   const written = await zip.write(plan, { onProgress: (c) => console.log(c.bytesDone, "/", c.bytesTotal) });
-  const check = await zip.verify(written.output, { manifest: true });
-  console.log(check.ok, check.findings);
+  if (written.mode === "write") { // or the plan, blocked: its output appeared meanwhile
+    const check = await zip.verify({ archive: written.output, manifest: true });
+    console.log(check.ok, check.findings);
+  }
 }
 ```
 
-The public types in `src/types.ts`, the exported tables (`RULE_REGISTRY`, `ERROR_CODES`, `DEFAULT_EXCLUSIONS`) and the tests are the reference. Changes are in the [changelog](CHANGELOG.md).
+The public types in `src/types.ts`, the exported tables (`RULE_REGISTRY`, `ERROR_CODES`, `DEFAULT_POLICY`, `DEFAULT_EXCLUSIONS`) and the tests are the reference. Changes are in the [changelog](CHANGELOG.md).
 
 ## Develop
 

@@ -62,10 +62,12 @@ export function ExclusionList({
   disabled: boolean;
 }) {
   const { t } = useI18n();
-  const update = (row: number, change: Partial<ExclusionPattern>): void => {
+  // A note set to undefined is removed, so a built-in description follows the language again.
+  const update = (row: number, change: { [K in keyof ExclusionPattern]?: ExclusionPattern[K] | undefined }): void => {
     onChange(patterns.map((p, i) => {
       if (i !== row) return p;
-      return { ...p, ...change };
+      const { note, ...rest } = { ...p, ...change };
+      return note === undefined ? rest : { ...rest, note };
     }));
   };
   const invalid = patterns.map(patternInvalid);
@@ -150,12 +152,12 @@ export function ExclusionList({
               <textarea
                 style={S.note}
                 rows={1}
-                value={noteShown(p.note, t)}
+                value={noteShown(p, t)}
                 placeholder={t("exclusions.notePlaceholder")}
                 disabled={disabled}
                 aria-label={t("exclusions.note", { number })}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.preventDefault(); }}
-                onChange={(e) => update(row, { note: noteStored(e.target.value.replace(/[\r\n]+/g, " "), t) })}
+                onChange={(e) => update(row, { note: noteStored(e.target.value.replace(/[\r\n]+/g, " "), p, t) })}
               />
               {/* Tied to its field, not announced on every keystroke
                   (operation-result conventions, field association). */}

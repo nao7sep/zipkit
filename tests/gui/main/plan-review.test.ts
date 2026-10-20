@@ -16,6 +16,7 @@ const entry = (archivePath: string, over: Partial<Entry> = {}): Entry => ({
   type: "file",
   method: "deflate",
   excluded: false,
+  nameFixes: [],
   findings: [],
   ...over,
 });
@@ -31,7 +32,7 @@ const plan = (entries: Entry[], over: Partial<PlanData> = {}): PlanData =>
     ...over,
   }) as PlanData;
 
-const nfd: Finding = { rule: "name.nfd", severity: "info" as const, path: "café", message: "name normalized from NFD to NFC" };
+const nfd: Finding = { id: "name.nfd:café", rule: "name.nfd", severity: "info" as const, path: "café", message: "name normalized from NFD to NFC" };
 
 describe("reportChanged", () => {
   it("is false for the same Report in another order", () => {
@@ -48,6 +49,17 @@ describe("reportChanged", () => {
     expect(reportChanged(base, plan([entry("café", { originalPath: "café" })]))).toBe(true);
     expect(reportChanged(plan([entry("a")]), plan([entry("a", { excluded: true, excludeReason: "empty file skipped" })]))).toBe(true);
     expect(reportChanged(base, plan([entry("café", { originalPath: "café", findings: [{ ...nfd, severity: "warning" }] })]))).toBe(true);
+  });
+
+  it("compares by the SDK's codes and ids, so reworded English stops nothing, while another exclusion does", () => {
+    const pattern = { excluded: true, excludeCode: "pattern" as const, excludedBy: { id: "macos.ds-store", pattern: ".DS_Store" } };
+    const reviewed = plan([entry(".DS_Store", { ...pattern, excludeReason: "pattern .DS_Store" }), entry("café", { findings: [nfd] })]);
+    const reworded = plan([entry(".DS_Store", { ...pattern, excludeReason: "left out by .DS_Store" }), entry("café", { findings: [{ ...nfd, message: "composed" }] })]);
+    expect(reportChanged(reviewed, reworded)).toBe(false);
+    const other = plan([entry(".DS_Store", { ...pattern, excludedBy: { pattern: ".DS_*" } }), entry("café", { findings: [nfd] })]);
+    expect(reportChanged(reviewed, other)).toBe(true);
+    const empty = plan([entry(".DS_Store", { excluded: true, excludeCode: "empty-file" }), entry("café", { findings: [nfd] })]);
+    expect(reportChanged(reviewed, empty)).toBe(true);
   });
 
   it("is true when the output path differs", () => {

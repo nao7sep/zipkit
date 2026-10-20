@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `app`, `version`, `repository`, `createdAtUtc`, `format` (`zipkit.manifest`) and `formatVersion`, replacing `tool` and `createdUtc`. Verify looks for the job's manifest name only. A 0.1.0 manifest (`_metadata.json`) carries no `formatVersion`, so checking an archive against it fails with `manifest.invalid`; the check without the manifest still verifies such an archive.
+- The embedded manifest is now `zipkit.json` (was `_metadata.json`). Its header opens with `about`, `writer` (`zipkitsdk` with its version), `app` (ZipKit with its version), `createdAtUtc`, `format` (`zipkit.manifest`) and `formatVersion`, replacing `tool` and `createdUtc`. It records each left-out item's code and the exclusion pattern by its id, never the pattern's description. Verify looks for the job's manifest name only. A 0.1.0 manifest (`_metadata.json`) carries no `formatVersion`, so checking an archive against it fails with `manifest.invalid`; the check without the manifest still verifies such an archive.
 - "Drop OS junk files" is now "Leave out what the exclusion patterns match", and what it leaves out is the editable list in Settings.
 - A name ZipKit gives an archive from the folder it archives is fixed like the names inside it, so a folder named `Q1: Plans?` gives `Q1 Plans.zip`; a name you type is kept and warned about when Windows cannot hold it.
 - The warning for paths too long for Windows counts the folder Windows' Extract All makes, named after the archive, and room for where it is put.
@@ -43,7 +43,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - The "before 1980" and "after 2107" warnings are judged in the time zone the archive's DOS times are written in, so they appear exactly when a time is clamped.
-- Saving an archive without overwrite on a FAT volume that refuses hard links no longer fails as if the file already existed.
+- Saving an archive without overwrite on a FAT or exFAT volume that refuses hard links no longer fails as if the file already existed, and never leaves a partial archive there: the finished archive is renamed into place once its name is confirmed free.
+- A file that appears at the archive's path while the job runs stops the job for attention instead of failing it, and is kept.
+- Deleting originals for good reports one that was already gone as gone, not as a failure.
+- An archive whose name is taken, or a source file that disappears while it is archived, is reported by what happened and where, instead of as a failure to write the archive.
+- A link to a folder whose name starts with two dots, such as `..notes`, is followed like any other folder inside the input.
+- A pattern of yours ending in `/` leaves out folders only, as the built-in ones do.
 - Names longer than 255 bytes of UTF-8, which Linux file systems refuse, are flagged as too long; names that differ only by Greek final and medial sigma are caught as a case collision; `CON .txt` and the like are treated as reserved; entries are planned and written in the same order on every run.
 - The message after an unreadable settings or queue file was set aside names the `.invalid` file it was kept as.
 - A saved queue with some jobs that cannot be read restores the jobs it can read; the whole file, with every job in it, is set aside and reported.

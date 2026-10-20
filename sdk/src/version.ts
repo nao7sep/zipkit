@@ -1,6 +1,9 @@
 /**
- * The tool version, recorded in the manifest header.
- * A literal, so plain Node loads it without reading package.json; a test holds
- * it in lockstep with the package's version.
+ * The SDK's version, recorded in every manifest it writes and in its startup
+ * event. Read from the SDK's own package.json, the one place it is written;
+ * plain Node loads the JSON import, and an app's bundler inlines it.
  */
-export const VERSION = "0.1.0";
+
+import pkg from "../package.json" with { type: "json" };
+
+export const VERSION: string = pkg.version;

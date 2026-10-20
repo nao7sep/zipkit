@@ -34,7 +34,10 @@ export const RULE_REGISTRY: Record<FindingRule, RuleSpec> = {
   "path.traversal": { severity: "error", disposition: "abort" },
   "path.too-long": { severity: "warning", disposition: "keep" },
   "exclude.pattern": { severity: "info", disposition: "exclude" },
-  "entry.symlink": { severity: "warning", disposition: "exclude" },
+  // A link left out under `ignore`, or kept as a link under `preserve`, which
+  // Windows extracts as a text file: a portability defect either way.
+  "entry.symlink-ignored": { severity: "warning", disposition: "exclude" },
+  "entry.symlink-preserved": { severity: "warning", disposition: "keep as link" },
   // A socket, FIFO or device, or under `follow` a link that leads nowhere
   // archivable: ZIP cannot store it, so it is left out and reported.
   "entry.unsupported": { severity: "info", disposition: "exclude" },
@@ -69,7 +72,8 @@ export const RULE_REGISTRY: Record<FindingRule, RuleSpec> = {
 /**
  * Construct a finding — the single sanctioned way, so every finding carries a
  * tier: the registry's, or for the configurable name rules the `severity` the
- * call site chose per run from the policy action.
+ * call site chose per run from the policy action. Its id is its rule and the
+ * path it is about, so the same finding on a fresh plan has the same id.
  */
 export function finding(
   rule: FindingRule,
@@ -78,7 +82,7 @@ export function finding(
   opts?: { fix?: Finding["fix"]; severity?: Severity },
 ): Finding {
   const severity = opts?.severity ?? RULE_REGISTRY[rule].severity;
-  const f: Finding = { rule, severity, path, message };
+  const f: Finding = { id: `${rule}:${path}`, rule, severity, path, message };
   if (opts?.fix) f.fix = opts.fix;
   return f;
 }

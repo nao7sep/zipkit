@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "Empty directory pruned",
   "report.excludedEmptyFile": "Empty file skipped",
   "report.excludedFiltered": "Excluded by a filter",
-  "report.excludedReason": "Excluded: {reason}",
   "report.renamedFrom": "Renamed from {from}",
 
   "guidance.outputAmbiguous": "These inputs are in different folders, so ZipKit can’t choose a location on its own. Set a file name (the output directory defaults to the first input’s folder) and they’ll be archived together.",

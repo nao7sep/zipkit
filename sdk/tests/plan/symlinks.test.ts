@@ -1,6 +1,6 @@
 /**
  * Symlink policy (pass 8), tested directly. Whatever still reaches here as a
- * `symlink` is a portability defect, so both modes raise `entry.symlink`:
+ * `symlink` is a portability defect, raised as `entry.symlink-preserved` or `entry.symlink-ignored`:
  * `preserve` stores it as a Unix link entry (emitted, stored, loud warning),
  * while the default `ignore` excludes it. Non-symlink entries and already
  * excluded links are untouched.
@@ -18,7 +18,7 @@ describe("applySymlinks", () => {
     expect(items[0]!.excluded).toBe(false);
     expect(items[0]!.emitExplicit).toBe(true);
     expect(items[0]!.method).toBe("store");
-    expect(items[0]!.findings.map((f) => f.rule)).toEqual(["entry.symlink"]);
+    expect(items[0]!.findings.map((f) => f.rule)).toEqual(["entry.symlink-preserved"]);
     expect(items[0]!.findings[0]!.message).toMatch(/preserved as a Unix link entry/);
   });
 
@@ -29,7 +29,7 @@ describe("applySymlinks", () => {
     expect(items[0]!.emitExplicit).toBe(false);
     expect(items[0]!.excludeReason).toMatch(/symlink ignored/);
     expect(items[0]!.excludeCode).toBe("symlink");
-    expect(items[0]!.findings.map((f) => f.rule)).toEqual(["entry.symlink"]);
+    expect(items[0]!.findings.map((f) => f.rule)).toEqual(["entry.symlink-ignored"]);
   });
 
   it("leaves non-symlink entries alone", () => {

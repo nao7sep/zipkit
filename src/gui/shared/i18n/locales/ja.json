@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "空のフォルダを除外",
   "report.excludedEmptyFile": "空のファイルを除外",
   "report.excludedFiltered": "フィルタで除外",
-  "report.excludedReason": "除外: {reason}",
   "report.renamedFrom": "元の名前: {from}",
 
   "guidance.outputAmbiguous": "入力が別々のフォルダにあるため、ZipKit は保存場所を自動で決められません。ファイル名を指定すると（出力先フォルダは最初の入力のフォルダになります）、まとめてアーカイブされます。",

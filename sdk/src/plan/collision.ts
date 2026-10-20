@@ -9,7 +9,7 @@
  */
 
 import { finding } from "../registry.ts";
-import { caseFold } from "../internal/caseFold.ts";
+import { caseFold } from "../internal/name-equivalence.ts";
 import type { WorkItem } from "./workItem.ts";
 
 /**

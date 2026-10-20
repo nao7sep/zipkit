@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "已排除空文件夹",
   "report.excludedEmptyFile": "已跳过空文件",
   "report.excludedFiltered": "已被过滤规则排除",
-  "report.excludedReason": "已排除：{reason}",
   "report.renamedFrom": "原名称：{from}",
 
   "guidance.outputAmbiguous": "这些输入位于不同的文件夹中，因此 ZipKit 无法自行选择保存位置。设置一个文件名（输出文件夹默认为第一个输入所在的文件夹），它们就会被归档在一起。",

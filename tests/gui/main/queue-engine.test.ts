@@ -367,7 +367,7 @@ describe("queue engine", () => {
       plan: async () => {
         calls.plan++;
         const plan = planData(true);
-        plan.findings = [{ rule: "entry.unlisted", severity: "warning", path: "locked", message: "folder could not be read" }];
+        plan.findings = [{ id: "entry.unlisted:locked", rule: "entry.unlisted", severity: "warning", path: "locked", message: "folder could not be read" }];
         return plan;
       },
     });
@@ -570,6 +570,7 @@ describe("queue engine", () => {
           type: "file" as const,
           method: "deflate" as const,
           excluded: false,
+          nameFixes: [],
           findings: [],
         }));
         return plan;

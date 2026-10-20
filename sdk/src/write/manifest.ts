@@ -7,11 +7,14 @@
  * record how each entry compressed. The full record is always built and
  * returned from `write` and `create`; it is embedded as `zipkit.json` unless disabled.
  *
- * The document carries a header (what the document is, the app, its version and
- * repository, creation time, the document's format version, the zone the DOS
- * fields used, resolved policy, plan summary, and aggregate byte totals), one
- * record per written entry, the list of excluded entries with their reason, and
- * all findings. Keys follow the entity-record role order: the header leads with
+ * The document carries a header (what the document is, the SDK that wrote it
+ * with its version and repository, the calling app when it named itself,
+ * creation time, the document's format version, the zone the DOS fields used,
+ * the recorded policy, plan summary, and aggregate byte totals), one record per
+ * written entry, the list of excluded entries with their code and reason, and
+ * all findings. Nothing in it is English text the SDK may reword between
+ * builds other than the `about` sentence, reasons and finding messages:
+ * exclusion patterns are recorded by id and text, never by note. Keys follow the entity-record role order: the header leads with
  * identity and its own provenance time, then config and quantities; each entry
  * leads with identity, then classification, quantity, subject attributes, and
  * finally the nested list of name fixes.
@@ -25,15 +28,18 @@ import type {
   ManifestEntry,
   ManifestExcluded,
   PlanData,
+  Program,
+  RecordedPolicy,
   UtcTime,
 } from "../types.ts";
 import { VERSION } from "../version.ts";
 
 const ABOUT =
-  "ZipKit wrote this manifest when it created the archive. It lists every entry with its " +
-  "original name, size, CRC-32 and times, the entries left out, and what ZipKit found and " +
-  "fixed. ZipKit's Verify reads it to confirm the archive is complete and unchanged.";
-const REPOSITORY = "https://github.com/nao7sep/zipkit";
+  "zipkitsdk wrote this manifest when it created the archive. It lists every entry with its " +
+  "original name, size, CRC-32 and times, the entries left out and why, and what was found " +
+  "and fixed. A verifier reads it to confirm the archive is complete and unchanged.";
+/** The SDK that writes every manifest. */
+export const WRITER: Manifest["writer"] = { name: "zipkitsdk", version: VERSION, repository: "https://github.com/nao7sep/zipkit" };
 /** The manifest's format name, recorded beside its version so the document
  *  says what it is; a reader refuses a document that names another. */
 export const MANIFEST_FORMAT = "zipkit.manifest";
@@ -115,38 +121,58 @@ function computeTimeRange(entries: ManifestEntryInput[]): Manifest["timeRange"] 
   return { oldest: oldest.entry, newest: newest.entry };
 }
 
-export function buildManifest(
-  plan: PlanData,
-  policy: ArchivePolicy,
-  entries: ManifestEntryInput[],
-  createdNs: bigint,
-  timeZone: string,
-  comment?: string,
-): Manifest {
-  const excluded: ManifestExcluded[] = plan.entries
+/** The policy as the manifest records it: no exclusion notes, and the time
+ *  zone only in the manifest's own `timeZone`. */
+export function recordedPolicy(policy: ArchivePolicy): RecordedPolicy {
+  const { timeZone: _zone, exclusions, ...rest } = policy;
+  return { exclusions: exclusions.map(({ note: _note, ...pattern }) => pattern), ...rest };
+}
+
+/** The excluded entries of a plan as the manifest records them. */
+export function excludedRecords(plan: Pick<PlanData, "entries">): ManifestExcluded[] {
+  return plan.entries
     .filter((entry) => entry.excluded)
     .map((entry) => {
       const record: ManifestExcluded = {
         archivePath: entry.archivePath,
         originalPath: entry.originalPath,
         type: entry.type,
+        excludeCode: entry.excludeCode ?? "pattern",
       };
       if (entry.excludeReason !== undefined) record.reason = entry.excludeReason;
+      if (entry.unsupportedKind !== undefined) record.unsupportedKind = entry.unsupportedKind;
+      if (entry.excludedBy !== undefined) record.excludedBy = entry.excludedBy;
       return record;
     });
+}
 
+export interface ManifestHeader {
+  createdNs: bigint;
+  /** The zone the DOS local-time fields were rendered in. */
+  timeZone: string;
+  comment?: string | undefined;
+  /** The calling app, when it named itself. */
+  app?: Program | undefined;
+}
+
+export function buildManifest(
+  plan: PlanData,
+  policy: ArchivePolicy,
+  entries: ManifestEntryInput[],
+  header: ManifestHeader,
+): Manifest {
+  const { createdNs, timeZone, comment, app } = header;
   const document: Manifest = {
     about: ABOUT,
-    app: "ZipKit",
-    version: VERSION,
-    repository: REPOSITORY,
+    writer: WRITER,
+    ...(app !== undefined ? { app } : {}),
     createdAtUtc: utcTime(createdNs),
     format: MANIFEST_FORMAT,
     formatVersion: MANIFEST_FORMAT_VERSION,
     // The IANA zone the archive's DOS local-time fields were rendered in, so the
     // lossy local field stays interpretable.
     timeZone,
-    policy,
+    policy: recordedPolicy(policy),
     summary: plan.summary,
     // Aggregate byte totals across the written entries. The on-disk archive size
     // (which also counts ZIP headers, the central directory, and this embedded
@@ -161,7 +187,7 @@ export function buildManifest(
     // Dropped entries (an exclusion pattern's matches, ignored symlinks, pruned
     // directories, traversal) are not in the archive, so they are recorded
     // separately with the reason; the matching rule is also in `findings`.
-    excluded,
+    excluded: excludedRecords(plan),
     findings: plan.findings,
   };
   // The comment rides into the document only when set, so a commentless archive

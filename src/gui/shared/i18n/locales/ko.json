@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "빈 폴더 제외됨",
   "report.excludedEmptyFile": "빈 파일 건너뜀",
   "report.excludedFiltered": "필터로 제외됨",
-  "report.excludedReason": "제외됨: {reason}",
   "report.renamedFrom": "원래 이름: {from}",
 
   "guidance.outputAmbiguous": "입력이 서로 다른 폴더에 있어 ZipKit이 저장 위치를 스스로 정할 수 없습니다. 파일 이름을 설정하면(출력 폴더는 첫 번째 입력의 폴더가 기본값) 함께 아카이브됩니다.",

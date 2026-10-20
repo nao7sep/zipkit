@@ -10,7 +10,7 @@
  */
 
 import type { WriteEntry } from "../internal/types.ts";
-import type { ArchivePolicy, Finding } from "../types.ts";
+import type { ArchivePolicy, Finding, ManifestExcluded } from "../types.ts";
 
 const U32_MAX = 0xffffffff;
 const U16_MAX = 0xffff;
@@ -91,8 +91,9 @@ function jsonStringBytes(s: string): number {
 // width: per entry the four `{ns,iso}` time pairs, the size/compressedSize/crc32/
 // mode numbers, the type/method enums, and the sha256 (64 hex); per transform,
 // excluded entry, and finding the keys and small enums; and the header's fixed
-// scaffolding (about/app/version/repository/createdAtUtc/formatVersion, the resolved IANA timeZone, and the
-// summary/totals numbers) plus the policy's enum fields. Every *unbounded*
+// scaffolding (about, the writer, the caller's app, whose name and version are
+// at most 256 characters each, createdAtUtc, formatVersion, the resolved IANA
+// timeZone, and the summary/totals numbers) plus the policy's enum fields. Every *unbounded*
 // variable-length string (paths, name fixes, messages, comment, the policy's
 // patterns/extensions/zone/name, the time-range paths) is summed separately at
 // its worst-case escaped width, so the total is a true upper bound, not a
@@ -113,7 +114,7 @@ export interface ManifestContent {
   /** Written entries (the manifest's `entries`): paths and name fixes. */
   entries: WriteEntry[];
   /** Dropped entries (the manifest's `excluded`). */
-  excluded: { archivePath: string; originalPath: string; reason?: string }[];
+  excluded: ManifestExcluded[];
   /** Every finding from the run (the manifest's `findings`). */
   findings: Finding[];
   /** The archive comment, when one was set. */
@@ -127,7 +128,8 @@ function policyStringBytes(policy: ArchivePolicy): number {
   let bytes = jsonStringBytes(policy.names.invalidCharReplacement);
   if (policy.timeZone !== undefined) bytes += jsonStringBytes(policy.timeZone);
   if (policy.manifest !== false) bytes += jsonStringBytes(policy.manifest.name);
-  for (const p of policy.exclusions) bytes += MANIFEST_FILTER_FIXED + jsonStringBytes(p.pattern) + (p.note === undefined ? 0 : jsonStringBytes(p.note));
+  // Notes are not recorded; ids are.
+  for (const p of policy.exclusions) bytes += MANIFEST_FILTER_FIXED + jsonStringBytes(p.pattern) + (p.id === undefined ? 0 : jsonStringBytes(p.id));
   for (const ext of policy.compression.store) bytes += jsonStringBytes(ext);
   return bytes;
 }
@@ -169,11 +171,14 @@ export function estimateManifestSize(content: ManifestContent, policy: ArchivePo
   for (const x of content.excluded) {
     bytes += MANIFEST_EXCLUDED_FIXED + jsonStringBytes(x.archivePath) + jsonStringBytes(x.originalPath);
     if (x.reason !== undefined) bytes += jsonStringBytes(x.reason);
+    if (x.excludedBy !== undefined) {
+      bytes += jsonStringBytes(x.excludedBy.pattern) + (x.excludedBy.id === undefined ? 0 : jsonStringBytes(x.excludedBy.id));
+    }
   }
 
   for (const f of content.findings) {
     bytes +=
-      MANIFEST_FINDING_FIXED + jsonStringBytes(f.rule) + jsonStringBytes(f.path) + jsonStringBytes(f.message);
+      MANIFEST_FINDING_FIXED + jsonStringBytes(f.id) + jsonStringBytes(f.rule) + jsonStringBytes(f.path) + jsonStringBytes(f.message);
     if (f.fix?.to !== undefined) bytes += jsonStringBytes(f.fix.to);
   }
 

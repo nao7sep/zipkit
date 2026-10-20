@@ -6,6 +6,7 @@
 import path from "node:path";
 import type { Volume } from "./internal/volume.ts";
 import { aliasUnprovable, foldedName } from "./internal/name-equivalence.ts";
+import { isWithin } from "./internal/path.ts";
 import { fsFailure } from "./errors.ts";
 
 /** A path as a claim compares it (see `ZipKit.pathResources`). */
@@ -30,10 +31,6 @@ export interface PathClaims {
   claim(uses: PathUse[]): PathClaim | null;
 }
 
-function contains(a: string, b: string): boolean {
-  const relative = path.relative(a, b);
-  return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
-}
 function possibleNamespaceOverlap(a: PathUse, b: PathUse): boolean {
   const segments = (file: string) => file.split(path.sep).filter(Boolean);
   const left = segments(a.location), right = segments(b.location);
@@ -52,7 +49,7 @@ function possibleNamespaceOverlap(a: PathUse, b: PathUse): boolean {
 function overlaps(a: PathUse, b: PathUse): boolean {
   if (a.mode === "read" && b.mode === "read") return false;
   if (a.identity !== null && a.identity === b.identity) return true;
-  if (contains(a.location, b.location) || contains(b.location, a.location)) return true;
+  if (isWithin(a.location, b.location) || isWithin(b.location, a.location)) return true;
   // A missing leaf has no physical identity to disprove an insensitive alias.
   if (a.identity === null || b.identity === null) {
     return possibleNamespaceOverlap(a, b);

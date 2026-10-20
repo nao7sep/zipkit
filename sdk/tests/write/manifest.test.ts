@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from "vitest";
 import { DEFAULT_POLICY, resolvePolicy } from "../../src/policy.ts";
-import { buildManifest } from "../../src/write/manifest.ts";
+import { buildManifest, excludedRecords } from "../../src/write/manifest.ts";
+import { VERSION } from "../../src/version.ts";
 import type { ManifestEntryInput } from "../../src/write/manifest.ts";
 import { estimateManifestSize } from "../../src/plan/zip64.ts";
 import type { ManifestContent } from "../../src/plan/zip64.ts";
@@ -79,13 +80,7 @@ function metaEntries(doc: { entries: unknown }): Array<Record<string, unknown>> 
 
 describe("buildManifest", () => {
   it("records a symlink's classification and all four UTC times losslessly", () => {
-    const doc = buildManifest(
-      plan,
-      DEFAULT_POLICY,
-      [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }],
-      0n,
-      "Asia/Tokyo",
-    );
+    const doc = buildManifest(plan, DEFAULT_POLICY, [{ writeEntry: symlink, crc32: 123, compressedSize: 6 }], { createdNs: 0n, timeZone: "Asia/Tokyo" });
     const entry = metaEntries(doc)[0]!;
     expect(entry.type).toBe("symlink");
     expect(doc.createdAtUtc).toBeDefined();
@@ -97,34 +92,32 @@ describe("buildManifest", () => {
     }
   });
 
-  it("opens with what the document is, the app, its version, repository, time and format", () => {
-    const doc = buildManifest(plan, DEFAULT_POLICY, [], 0n, "UTC");
-    expect(Object.keys(doc).slice(0, 7)).toEqual([
-      "about",
-      "app",
-      "version",
-      "repository",
-      "createdAtUtc",
-      "format",
-      "formatVersion",
-    ]);
+  it("opens with what the document is, the SDK that wrote it, the calling app, time and format", () => {
+    const doc = buildManifest(plan, DEFAULT_POLICY, [], { createdNs: 0n, timeZone: "UTC", app: { name: "ZipKit", version: "1.2.3" } });
+    expect(Object.keys(doc).slice(0, 6)).toEqual(["about", "writer", "app", "createdAtUtc", "format", "formatVersion"]);
     expect(doc.format).toBe("zipkit.manifest");
-    expect(doc.about).toMatch(/^ZipKit wrote this manifest/);
-    expect(doc.app).toBe("ZipKit");
-    expect(doc.repository).toBe("https://github.com/nao7sep/zipkit");
+    expect(doc.about).toMatch(/^zipkitsdk wrote this manifest/);
+    expect(doc.about).not.toContain("ZipKit");
+    expect(doc.writer).toEqual({ name: "zipkitsdk", version: VERSION, repository: "https://github.com/nao7sep/zipkit" });
+    expect(doc.app).toEqual({ name: "ZipKit", version: "1.2.3" });
     expect(doc.createdAtUtc).toEqual({ ns: "0", iso: "1970-01-01T00:00:00.000Z" });
     expect(doc.formatVersion).toBe(1);
+    // No app named, none recorded.
+    expect(buildManifest(plan, DEFAULT_POLICY, [], { createdNs: 0n, timeZone: "UTC" })).not.toHaveProperty("app");
+  });
+
+  it("records the time zone once and exclusion patterns by id and text, never by note", () => {
+    const policy = resolvePolicy(undefined, { timeZone: "Asia/Tokyo" });
+    const doc = buildManifest(plan, policy, [], { createdNs: 0n, timeZone: "Asia/Tokyo" });
+    expect(doc.timeZone).toBe("Asia/Tokyo");
+    expect(doc.policy).not.toHaveProperty("timeZone");
+    expect(doc.policy.exclusions[0]).toEqual({ id: "macos.ds-store", pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true });
+    expect(JSON.stringify(doc)).not.toContain("Finder");
   });
 
   it("records btime as null when the platform reports no creation time", () => {
     const noBirth: WriteEntry = { ...symlink, birthtimeNs: 0n };
-    const doc = buildManifest(
-      plan,
-      DEFAULT_POLICY,
-      [{ writeEntry: noBirth, crc32: 123, compressedSize: 6 }],
-      0n,
-      "UTC",
-    );
+    const doc = buildManifest(plan, DEFAULT_POLICY, [{ writeEntry: noBirth, crc32: 123, compressedSize: 6 }], { createdNs: 0n, timeZone: "UTC" });
     const entry = metaEntries(doc)[0]!;
     expect(entry.btime).toBeNull();
     // The reliable times are still present.
@@ -132,38 +125,19 @@ describe("buildManifest", () => {
   });
 
   it("records the archive comment when one is given", () => {
-    const doc = buildManifest(
-      plan,
-      DEFAULT_POLICY,
-      [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }],
-      0n,
-      "UTC",
-      "release build",
-    );
+    const doc = buildManifest(plan, DEFAULT_POLICY, [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }], { createdNs: 0n, timeZone: "UTC", comment: "release build" });
     expect(doc.comment).toBe("release build");
   });
 
   it("omits the comment field entirely when none is given", () => {
-    const doc = buildManifest(
-      plan,
-      DEFAULT_POLICY,
-      [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }],
-      0n,
-      "UTC",
-    );
+    const doc = buildManifest(plan, DEFAULT_POLICY, [{ writeEntry: symlink, crc32: 0, compressedSize: 6 }], { createdNs: 0n, timeZone: "UTC" });
     expect("comment" in doc).toBe(false);
   });
 });
 
 describe("timeRange", () => {
   it("is null when the archive has only directory entries (no file to date)", () => {
-    const doc = buildManifest(
-      plan,
-      DEFAULT_POLICY,
-      [{ writeEntry: dirEntry, crc32: 0, compressedSize: 0 }],
-      0n,
-      "UTC",
-    );
+    const doc = buildManifest(plan, DEFAULT_POLICY, [{ writeEntry: dirEntry, crc32: 0, compressedSize: 0 }], { createdNs: 0n, timeZone: "UTC" });
     expect(doc.timeRange).toBeNull();
   });
 
@@ -171,19 +145,13 @@ describe("timeRange", () => {
     const old = 1_000_000_000_000_000_000n;
     const mid = 1_500_000_000_000_000_000n;
     const recent = 2_000_000_000_000_000_000n;
-    const doc = buildManifest(
-      plan,
-      DEFAULT_POLICY,
-      [
+    const doc = buildManifest(plan, DEFAULT_POLICY, [
         { writeEntry: fileAt("mid.txt", mid), crc32: 0, compressedSize: 5 },
         { writeEntry: fileAt("old.txt", old), crc32: 0, compressedSize: 5 },
         { writeEntry: fileAt("new.txt", recent), crc32: 0, compressedSize: 5 },
         // A directory whose mtime predates every file must not become the oldest.
         { writeEntry: dirEntry, crc32: 0, compressedSize: 0 },
-      ],
-      0n,
-      "UTC",
-    );
+      ], { createdNs: 0n, timeZone: "UTC" });
     expect(doc.timeRange).not.toBeNull();
     expect(doc.timeRange?.oldest.archivePath).toBe("old.txt");
     expect(doc.timeRange?.newest.archivePath).toBe("new.txt");
@@ -237,12 +205,16 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
       type: "file",
       method: "store",
       excluded: true,
+      excludeCode: "pattern",
       excludeReason: "excluded by the junk preset",
+      excludedBy: { id: "x".repeat(60), pattern: `**/${"p".repeat(120)}` },
+      nameFixes: [],
       findings: [],
     };
 
     // Many findings, with a control character to exercise worst-case JSON escaping.
     const findings: Finding[] = Array.from({ length: 40 }, (_, i) => ({
+      id: `name.invalid-char:path/${i}/${"w".repeat(80)}`,
       rule: "name.invalid-char",
       severity: "info",
       path: `path/${i}/${"w".repeat(80)}`,
@@ -254,7 +226,7 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
 
     const policy = resolvePolicy(undefined, {
       exclusions: [
-        { pattern: `**/${"p".repeat(120)}`, match: "glob", target: "both", ignoreCase: false, note: "l".repeat(40) },
+        { id: "x".repeat(60), pattern: `**/${"p".repeat(120)}`, match: "glob", target: "both", ignoreCase: false, note: "l".repeat(40) },
         { pattern: "a".repeat(90), match: "regex", target: "file", ignoreCase: true },
       ],
       compression: { store: [".aaa", ".bbb", ".ccc"] },
@@ -280,18 +252,12 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
       compressedSize: e.size,
       sha256: "f".repeat(64),
     }));
-    const doc = buildManifest(planDoc, policy, inputs, 1_893_456_000_000_000_000n, "Asia/Tokyo", comment);
+    const doc = buildManifest(planDoc, policy, inputs, { createdNs: 1_893_456_000_000_000_000n, timeZone: "Asia/Tokyo", comment: comment });
     const realBytes = Buffer.byteLength(JSON.stringify(doc, null, 2), "utf8");
 
     const content: ManifestContent = {
       entries: writeEntries,
-      excluded: [
-        {
-          archivePath: excludedPlanned.archivePath,
-          originalPath: excludedPlanned.originalPath,
-          reason: excludedPlanned.excludeReason,
-        },
-      ],
+      excluded: excludedRecords({ entries: [excludedPlanned] }),
       findings,
       comment,
     };

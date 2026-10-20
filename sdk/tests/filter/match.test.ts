@@ -121,6 +121,14 @@ describe("the regex dialect", () => {
 });
 
 describe("target applicability", () => {
+  it("a caller's glob ending in a slash names folders only, whatever its target", () => {
+    const m = matcher([rule({ pattern: "build/" })]);
+    expect(hit(m, "build", true)).toBe(true);
+    expect(hit(m, "x/build", true)).toBe(true);
+    expect(hit(m, "build", false)).toBe(false);
+    expect(hit(m, "x/build", false)).toBe(false);
+  });
+
   it("a directory-only rule ignores files", () => {
     const m = matcher([rule({ pattern: "node_modules", target: "dir" })]);
     expect(hit(m, "node_modules", true)).toBe(true);
@@ -212,10 +220,12 @@ describe("the default list, ordering, and the inclusive default", () => {
     expect(m.match("__MACOSX", false)).toBeNull();
   });
 
-  it("reports the first matching pattern in list order", () => {
+  it("reports the first matching pattern in list order, by id and text but never its note", () => {
     const m = matcher([rule({ pattern: ".DS_Store", note: "mine" })], true);
     expect(m.match(".DS_Store", false)?.pattern.note).toBe("mine");
-    expect(m.match(".DS_Store", false)?.describe).toBe("pattern .DS_Store (mine)");
+    expect(m.match(".DS_Store", false)?.describe).toBe("pattern .DS_Store");
+    expect(m.match(".DS_Store", false)?.excludedBy).toEqual({ pattern: ".DS_Store" });
+    expect(matcher([], true).match(".DS_Store", false)?.excludedBy).toEqual({ id: "macos.ds-store", pattern: ".DS_Store" });
   });
 
   it("matches regardless of case only for a pattern that says so", () => {

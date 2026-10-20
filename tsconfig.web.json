@@ -20,6 +20,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": false,
+    // The SDK's browser entry is TypeScript source that names its imports' .ts files.
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true,
     "composite": true,
@@ -28,8 +30,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"]
   },
-  // The renderer uses the SDK's pure data contract (types only, no Node) through
-  // the shared bridge; that single node-free file is listed so the composite web
+  // The renderer uses the SDK's browser entry (types and plain-data defaults,
+  // no Node) through the shared bridge; that single node-free file is listed so the composite web
   // project owns every file it references.
   "include": ["src/gui/renderer/**/*", "src/gui/shared/**/*", "src/gui/shared/i18n/locales/*.json"]
 }

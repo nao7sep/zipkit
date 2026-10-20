@@ -2,14 +2,15 @@
  * The options → ArchiveSpec mapping: the GUI's format-coercion edge. It turns
  * the visible option state into a typed spec; the SDK still owns all validation
  * and every default not set here. Pure (no Electron, no Node; from the SDK
- * only its types and its plain-data defaults), so it is unit-tested directly.
+ * only its browser entry's types and plain-data defaults), so it is
+ * unit-tested directly.
  */
 
-import type { ArchivePolicy, ArchiveSpec, DeepPartial, ExclusionPattern, InvalidCharStyle, NameAction } from "zipkitsdk/types";
+import { DEFAULT_POLICY, MANIFEST_DEFAULTS, type ArchivePolicy, type ArchiveSpec, type DeepPartial, type ExclusionPattern, type InvalidCharStyle, type NameAction } from "zipkitsdk/types";
 import { BUILT_IN_EXCLUSIONS } from "./exclusions.js";
 import type { LanguagePreference } from "./i18n/languages.js";
 
-/** The visible option state for one job. Defaults mirror the SDK's own defaults. */
+/** The visible option state for one job. Its defaults are the SDK's own. */
 export interface GuiOptions {
   /** Leave out what {@link GuiOptions.exclusions} matches. */
   exclude: boolean;
@@ -43,13 +44,13 @@ export const DEFAULT_OPTIONS: GuiOptions = {
   exclude: true,
   exclusions: BUILT_IN_EXCLUSIONS.map((p) => ({ ...p })),
   strict: false,
-  invalidChars: "tidy",
-  level: 6,
-  symlinks: "ignore",
-  emptyDirs: "keep",
-  manifest: true,
-  manifestName: "zipkit.json",
-  hash: true,
+  invalidChars: DEFAULT_POLICY.names.invalidCharStyle,
+  level: DEFAULT_POLICY.compression.level,
+  symlinks: DEFAULT_POLICY.symlinks,
+  emptyDirs: DEFAULT_POLICY.emptyDirs,
+  manifest: DEFAULT_POLICY.manifest !== false,
+  manifestName: MANIFEST_DEFAULTS.name,
+  hash: MANIFEST_DEFAULTS.hash,
   comment: "",
   outputDir: "",
   fileName: "",

@@ -9,7 +9,7 @@
 
 import { finding } from "../registry.ts";
 import type { NameFix, ScanEntry, ScanResult, SkipKind, WriteEntry } from "../internal/types.ts";
-import type { ExcludeCode, Finding, PlannedEntry, UnsupportedKind } from "../types.ts";
+import type { ExcludeCode, ExcludedBy, Finding, PlannedEntry, UnsupportedKind } from "../types.ts";
 
 export interface WorkItem {
   scan: ScanEntry;
@@ -20,6 +20,7 @@ export interface WorkItem {
   excludeCode?: ExcludeCode;
   excludeReason?: string;
   unsupportedKind?: UnsupportedKind;
+  excludedBy?: ExcludedBy;
   method: "store" | "deflate";
   /** Whether the writer emits an explicit ZIP entry (files, preserved
    *  symlinks, kept empty directories) versus leaving it implied by children. */
@@ -69,6 +70,7 @@ export function buildWorkItems(scan: ScanResult): WorkItem[] {
       excluded: true,
       excludeCode: "pattern",
       excludeReason: dir.reason,
+      excludedBy: dir.excludedBy,
       method: "store",
       emitExplicit: false,
       findings: [finding("exclude.pattern", dir.archivePath, `excluded by ${dir.reason}`)],
@@ -140,6 +142,8 @@ export function toPlannedEntry(item: WorkItem): PlannedEntry {
       ...(item.excludeCode ? { excludeCode: item.excludeCode } : {}),
       excludeReason: item.excludeReason,
       ...(item.unsupportedKind ? { unsupportedKind: item.unsupportedKind } : {}),
+      ...(item.excludedBy ? { excludedBy: item.excludedBy } : {}),
+      nameFixes: item.nameFixes,
       findings: item.findings,
     };
   }
@@ -150,6 +154,7 @@ export function toPlannedEntry(item: WorkItem): PlannedEntry {
     type,
     method: item.method,
     excluded: item.excluded,
+    nameFixes: item.nameFixes,
     findings: item.findings,
   };
 }

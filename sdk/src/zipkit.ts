@@ -43,6 +43,7 @@ import {
   requireAbsolute,
   requireAbsoluteList,
   validateCallOptions,
+  validateApp,
   validateInstanceOptionKeys,
   validateRemovalRequest,
   validateSpec,
@@ -60,6 +61,7 @@ import type {
   SourceComparison,
   PathEntry,
   PathState,
+  Program,
   ProgressCounts,
   RemovalCheck,
   RemovalRequest,
@@ -103,6 +105,7 @@ function defaultConcurrency(): number {
 
 export class ZipKit {
   readonly #policy: DeepPartial<ArchivePolicy> | undefined;
+  readonly #app: Program | undefined;
   readonly #concurrency: number;
   readonly #chunkSize: number;
   readonly #ioTimeoutMs: number;
@@ -114,6 +117,7 @@ export class ZipKit {
   constructor(options: ZipKitOptions = {}) {
     validateInstanceOptionKeys(options);
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
+    this.#app = options.app !== undefined ? validateApp(options.app) : undefined;
     this.#concurrency =
       options.concurrency !== undefined
         ? validateConcurrency(options.concurrency)
@@ -305,7 +309,7 @@ export class ZipKit {
   /** The shared write path of `write()` and `create()`. */
   #write(plan: PlanData, run: Run): Promise<WriteData | PlanData> {
     return writeArchive(plan, {
-      logger: run.logger, chunkSize: this.#chunkSize, signal: run.signal, volume: run.volume, onProgress: run.onProgress,
+      logger: run.logger, chunkSize: this.#chunkSize, signal: run.signal, volume: run.volume, onProgress: run.onProgress, app: this.#app,
     });
   }
 

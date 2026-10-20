@@ -11,6 +11,7 @@ export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.ts";
 
 export { RULE_REGISTRY } from "./registry.ts";
 export { DEFAULT_EXCLUSIONS } from "./filter/defaults.ts";
+export { DEFAULT_POLICY } from "./defaults.ts";
 export type { VerifyRuleId, FindingRule, RuleId, RuleSpec } from "./registry.ts";
 
 export type {
@@ -20,6 +21,7 @@ export type {
   CompressionPolicy,
   DeepPartial,
   ExcludeCode,
+  ExcludedBy,
   UnsupportedKind,
   ExtremeEntry,
   Finding,
@@ -43,6 +45,8 @@ export type {
   ManifestPolicy,
   PlanInstructions,
   PlanSummary,
+  Program,
+  RecordedPolicy,
   PlannedEntry,
   ProgressCounts,
   RemovalCheck,

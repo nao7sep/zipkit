@@ -17,20 +17,12 @@ export interface PlanReport {
   entries: PlannedEntry[];
 }
 
-function lastSegment(p: string): string {
-  return p.split("/").filter((s) => s !== "").pop() ?? "";
-}
-
-/** Whether an entry was renamed in its own right: its own name changed, or the
- *  SDK reported a rename on it (a parent segment with no folder entry of its
- *  own is reported on the entry). A name changed only because its folder was
- *  renamed is the folder's change, shown once on the folder's row. */
+/** Whether an entry was renamed in its own right: the SDK fixed its own name,
+ *  or a parent segment with no folder entry of its own, or reported another
+ *  rename on it (an absolute prefix stripped). A name changed only because its
+ *  folder was renamed is the folder's change, shown once on the folder's row. */
 export function renamedItself(entry: PlannedEntry): boolean {
-  if (entry.originalPath === entry.archivePath) return false;
-  return (
-    lastSegment(entry.originalPath) !== lastSegment(entry.archivePath) ||
-    entry.findings.some((f) => f.fix?.kind === "rename")
-  );
+  return entry.nameFixes.length > 0 || entry.findings.some((f) => f.fix?.kind === "rename");
 }
 
 /** The entries the report can show a row for: one with a finding, an excluded

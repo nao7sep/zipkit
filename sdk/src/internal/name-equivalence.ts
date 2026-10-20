@@ -12,8 +12,25 @@ export function aliasUnprovable(name: string, platform: NodeJS.Platform = proces
   return /[^\x00-\x7f]/.test(name) || (platform === "win32" && (/~\d/.test(name) || /[. ]$/.test(name)));
 }
 
+/**
+ * The key two names share when a case-insensitive file system treats them as
+ * one: composed (NFC), then each character uppercased by its single-character
+ * mapping, as NTFS's upcase table and APFS's case-insensitive comparison do.
+ * So `ς` and `σ` (both `Σ`) are one name, while `ß`, whose full uppercase is
+ * two characters, stays apart from `ss`.
+ */
+export function caseFold(name: string): string {
+  let folded = "";
+  for (const ch of name.normalize("NFC")) {
+    const upper = ch.toUpperCase();
+    folded += [...upper].length === 1 ? upper : ch;
+  }
+  return folded;
+}
+
 /** The spelling two names share when a case-insensitive, normalizing
- *  filesystem may treat them as one; Windows also drops trailing dots and spaces. */
+ *  filesystem may treat them as one ({@link caseFold}); Windows also drops
+ *  trailing dots and spaces. */
 export function foldedName(name: string, platform: NodeJS.Platform = process.platform): string {
-  return (platform === "win32" ? name.replace(/[. ]+$/, "") : name).normalize("NFC").toLowerCase();
+  return caseFold(platform === "win32" ? name.replace(/[. ]+$/, "") : name);
 }

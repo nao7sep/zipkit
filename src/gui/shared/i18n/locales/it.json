@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "Cartella vuota esclusa",
   "report.excludedEmptyFile": "File vuoto saltato",
   "report.excludedFiltered": "Escluso da un filtro",
-  "report.excludedReason": "Escluso: {reason}",
   "report.renamedFrom": "Rinominato da {from}",
 
   "guidance.outputAmbiguous": "Questi input si trovano in cartelle diverse, quindi ZipKit non può scegliere da solo una posizione. Imposta un nome di file (la cartella di destinazione predefinita è quella del primo input) e verranno archiviati insieme.",

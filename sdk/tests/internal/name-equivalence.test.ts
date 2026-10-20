@@ -18,12 +18,15 @@ describe("foldedName", () => {
   it("folds case and Unicode composition on every platform", () => {
     for (const platform of ["darwin", "linux", "win32"] as const) {
       expect(foldedName("Café", platform)).toBe(foldedName("café", platform));
-      expect(foldedName("README", platform)).toBe("readme");
+      expect(foldedName("README", platform)).toBe(foldedName("readme", platform));
+      // The one case rule collisions use too: final sigma meets sigma, ß stays apart from ss.
+      expect(foldedName("ΟΔΟΣ", platform)).toBe(foldedName("οδος", platform));
+      expect(foldedName("Straße", platform)).not.toBe(foldedName("STRASSE", platform));
     }
   });
 
   it("drops trailing dots and spaces only on Windows", () => {
-    expect(foldedName("Report. .", "win32")).toBe("report");
-    expect(foldedName("Report. .", "darwin")).toBe("report. .");
+    expect(foldedName("Report. .", "win32")).toBe(foldedName("report", "win32"));
+    expect(foldedName("Report. .", "darwin")).toBe(foldedName("report. .", "darwin"));
   });
 });

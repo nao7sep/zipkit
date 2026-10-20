@@ -9,7 +9,7 @@
  */
 
 import type { SegmentIssue } from "../plan/nameFix.ts";
-import type { NameFix, UnsupportedKind } from "../types.ts";
+import type { ExcludedBy, NameFix, UnsupportedKind } from "../types.ts";
 
 /** Raw metadata for one filesystem object, produced by the scan layer. */
 export interface ScanEntry {
@@ -62,6 +62,7 @@ export interface PrunedDir {
   archivePath: string;
   diskPath: string;
   reason: string;
+  excludedBy: ExcludedBy;
 }
 
 /** Why the walk left an object out that it found: ZIP stores only files,

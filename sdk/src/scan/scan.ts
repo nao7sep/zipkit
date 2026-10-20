@@ -24,7 +24,7 @@ import type { BigIntStats } from "node:fs";
 import path from "node:path";
 import { fsFailure, throwIfAborted, ZipKitError } from "../errors.ts";
 import type { FilterMatcher } from "../filter/match.ts";
-import { toForwardSlash } from "../internal/path.ts";
+import { isWithin, toForwardSlash } from "../internal/path.ts";
 import { machineTimeZone } from "../internal/timeZone.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { PrunedDir, ScanEntry, ScanResult, SkipKind, SkippedEntry } from "../internal/types.ts";
@@ -139,12 +139,6 @@ function skip(ctx: ScanContext, paths: EntryPaths, kind: SkipKind): void {
   ctx.skipped.push({ archivePath: paths.archive, sourcePath: paths.source, diskPath: paths.disk, kind });
 }
 
-function isWithin(root: string, target: string): boolean {
-  if (root === "") return true;
-  const rel = path.relative(root, target);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
-}
-
 /** Rethrow a stall or a cancel from a call whose ordinary failure is tolerated. */
 function rethrowClassified(err: unknown): void {
   if (err instanceof ZipKitError) throw err;
@@ -188,7 +182,7 @@ async function handleSymlink(
   }
 
   const root = ctx.inputRoots[inputIndex] ?? "";
-  if (!ctx.followExternal && !isWithin(root, real)) {
+  if (!ctx.followExternal && root !== "" && !isWithin(root, real)) {
     skip(ctx, paths, "external-link");
     return;
   }
@@ -297,6 +291,7 @@ async function walkTree(
                 archivePath: archive,
                 diskPath: path.join(anchors.disk, path.relative(absDir, abs)),
                 reason: rule.describe,
+                excludedBy: rule.excludedBy,
               };
               ctx.prunedDirs.push(pruned);
               continue;

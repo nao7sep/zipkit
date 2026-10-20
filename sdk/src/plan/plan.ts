@@ -28,6 +28,7 @@ import { applyPathFix, windowsPathBudget } from "./pathFix.ts";
 import { buildSummary } from "./summary.ts";
 import { applySymlinks } from "./symlinks.ts";
 import { applyTimestamps } from "./timestamps.ts";
+import { excludedRecords } from "../write/manifest.ts";
 import { planNeedsZip64, type ManifestContent } from "./zip64.ts";
 import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.ts";
 
@@ -79,17 +80,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   // The Zip64 verdict includes the manifest file the writer injects, sized from
   // its real content — the written entries, the dropped ones, and every finding —
   // so the dry run's `summary.zip64` matches what the write will emit.
-  const excluded = items
-    .filter((item) => item.excluded)
-    .map((item) => {
-      const record: ManifestContent["excluded"][number] = {
-        archivePath: item.archivePath,
-        originalPath: item.originalPath,
-      };
-      if (item.excludeReason !== undefined) record.reason = item.excludeReason;
-      return record;
-    });
-  const content: ManifestContent = { entries: writeEntries, excluded, findings };
+  const content: ManifestContent = { entries: writeEntries, excluded: excludedRecords({ entries }), findings };
   if (scan.comment !== undefined) content.comment = scan.comment;
   const zip64 = planNeedsZip64(content, policy);
 

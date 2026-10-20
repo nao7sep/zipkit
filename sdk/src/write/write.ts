@@ -25,7 +25,7 @@ import { fromInstructions } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { WriteEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
-import type { PlanData, ProgressCounts, WriteData } from "../types.ts";
+import type { PlanData, Program, ProgressCounts, WriteData } from "../types.ts";
 import { outputExists } from "../plan/plan.ts";
 import { contentBytes } from "../plan/summary.ts";
 import { Meter } from "../progress.ts";
@@ -44,6 +44,8 @@ export interface WriteDeps {
   volume: Volume;
   /** The caller's `onProgress`, for how far the write has got. */
   onProgress?: ((counts: ProgressCounts) => void) | undefined;
+  /** The calling app, recorded in the manifest when it named itself. */
+  app?: Program | undefined;
 }
 
 /** What each streamed entry contributed, gathered for the manifest record. */
@@ -322,14 +324,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       if (s.sha256 !== undefined) input.sha256 = s.sha256;
       return input;
     });
-    const manifest = buildManifest(
-      plan,
-      policy,
-      manifestEntries,
-      createdNs,
-      timeZone,
-      comment,
-    );
+    const manifest = buildManifest(plan, policy, manifestEntries, { createdNs, timeZone, comment, app: deps.app });
 
     if (policy.manifest !== false) {
       // A ZIP is a container, so the manifest rides inside it rather than as a

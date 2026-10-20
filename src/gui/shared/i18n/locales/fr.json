@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "Dossier vide écarté",
   "report.excludedEmptyFile": "Fichier vide ignoré",
   "report.excludedFiltered": "Exclu par un filtre",
-  "report.excludedReason": "Exclu\u00a0: {reason}",
   "report.renamedFrom": "Renommé depuis {from}",
 
   "guidance.outputAmbiguous": "Ces entrées se trouvent dans des dossiers différents, ZipKit ne peut donc pas choisir seul un emplacement. Indiquez un nom de fichier (le dossier de sortie est par défaut celui de la première entrée) et elles seront archivées ensemble.",

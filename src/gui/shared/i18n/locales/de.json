@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "Leerer Ordner weggelassen",
   "report.excludedEmptyFile": "Leere Datei übersprungen",
   "report.excludedFiltered": "Durch einen Filter ausgeschlossen",
-  "report.excludedReason": "Ausgeschlossen: {reason}",
   "report.renamedFrom": "Umbenannt von {from}",
 
   "guidance.outputAmbiguous": "Diese Eingaben liegen in verschiedenen Ordnern, daher kann ZipKit keinen Speicherort selbst wählen. Legen Sie einen Dateinamen fest (der Ausgabeordner ist standardmäßig der Ordner der ersten Eingabe), dann werden sie gemeinsam archiviert.",

@@ -25,7 +25,7 @@ const write = (plan: ReturnType<typeof planArchive>) => writeArchive(plan, {
 function document(plan: ReturnType<typeof planArchive>) {
   return buildManifest(plan, policy, fromInstructions(plan.instructions)!.writeEntries.map((writeEntry) => ({
     writeEntry, crc32: 0, compressedSize: 0,
-  })), Y2020_NS, "UTC");
+  })), { createdNs: Y2020_NS, timeZone: "UTC" });
 }
 
 describe("manifests of any size", () => {
@@ -46,9 +46,9 @@ describe("manifests of any size", () => {
     const plan = planArchive(scanResult(entries), policy);
     const metadata = buildManifest(plan, policy, fromInstructions(plan.instructions)!.writeEntries.map((writeEntry) => ({
       writeEntry, crc32: 0xffffffff, compressedSize: 512, sha256: "a".repeat(64),
-    })), Y2020_NS, "UTC", "a comment");
+    })), { createdNs: Y2020_NS, timeZone: "UTC", comment: "a comment" });
     expect([...manifestText(metadata)].join("")).toBe(JSON.stringify(metadata, null, 2));
-    const empty = buildManifest(planArchive(scanResult([]), policy), policy, [], Y2020_NS, "UTC");
+    const empty = buildManifest(planArchive(scanResult([]), policy), policy, [], { createdNs: Y2020_NS, timeZone: "UTC" });
     expect([...manifestText(empty)].join("")).toBe(JSON.stringify(empty, null, 2));
   });
 
@@ -59,7 +59,7 @@ describe("manifests of any size", () => {
     const output = path.join(root, "past-limit.zip");
     const plan = planArchive(scanResult(directories(1), { output }), policy);
     // One long finding message carries the manifest past the old limit cheaply.
-    plan.findings.push({ rule: "name.suspicious", severity: "warning", path: "folder-0", message: "é".repeat(33 * 1024 * 1024) });
+    plan.findings.push({ id: "name.suspicious:folder-0", rule: "name.suspicious", severity: "warning", path: "folder-0", message: "é".repeat(33 * 1024 * 1024) });
     await write(plan);
     const verified = await new ZipKit().verify({ archive: output, manifest: true });
     expect(verified.ok).toBe(true);

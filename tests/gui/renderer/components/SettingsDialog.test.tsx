@@ -377,7 +377,8 @@ describe("SettingsDialog exclusion patterns", () => {
     fireEvent.change(within(panel).getByLabelText("Note on pattern 2"), { target: { value: "  Mine  " } });
     fireEvent.click(screen.getByText("Save"));
     const saved = onSave.mock.calls[0]![0].defaults.exclusions;
-    expect(saved[0]).toEqual({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: false, note: "Finder’s view settings for a folder. Finder creates it again." });
+    // The description is the catalogue's for the pattern's id, so it is saved as no note at all.
+    expect(saved[0]).toEqual({ id: "macos.ds-store", pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: false });
     expect(saved[1].note).toBe("Mine");
   });
 

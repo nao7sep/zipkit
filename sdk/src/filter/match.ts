@@ -11,13 +11,13 @@
  * Pattern dialects follow gitignore conventions: a glob without a leading slash
  * is unanchored and matches at any depth; a leading slash (or any interior
  * slash) anchors to the root; `**` spans segments; a regex matches anywhere
- * unless anchored with `^`/`$`. The trailing-slash directory convention is
- * expressed through each pattern's `target`, not re-derived here. A pattern
+ * unless anchored with `^`/`$`. A glob's trailing slash marks a folder, as in
+ * gitignore: whatever its `target`, it never matches a file. A pattern
  * matches case-sensitively unless it says `ignoreCase`.
  */
 
 import picomatch from "picomatch";
-import type { ArchivePolicy, ExclusionPattern } from "../types.ts";
+import type { ArchivePolicy, ExcludedBy, ExclusionPattern } from "../types.ts";
 
 export interface CompiledRule {
   target: ExclusionPattern["target"];
@@ -26,6 +26,8 @@ export interface CompiledRule {
   pattern: ExclusionPattern;
   /** Human-readable description for an entry's `excludeReason`. */
   describe: string;
+  /** The pattern as an excluded entry records it. */
+  excludedBy: ExcludedBy;
 }
 
 export interface FilterMatcher {
@@ -65,9 +67,15 @@ function compileTest(pattern: ExclusionPattern): (path: string) => boolean {
   }
 }
 
-/** How an exclusion is described: the pattern, and its note when it has one. */
+/** How an exclusion is described: by its pattern, never its note, so
+ *  rewording a note changes no plan or manifest. */
 export function describePattern(pattern: ExclusionPattern): string {
-  return pattern.note === undefined ? `pattern ${pattern.pattern}` : `pattern ${pattern.pattern} (${pattern.note})`;
+  return `pattern ${pattern.pattern}`;
+}
+
+/** The pattern as an excluded entry records it: its id and its text. */
+export function excludedBy(pattern: ExclusionPattern): ExcludedBy {
+  return pattern.id === undefined ? { pattern: pattern.pattern } : { id: pattern.id, pattern: pattern.pattern };
 }
 
 function applies(target: CompiledRule["target"], isDir: boolean): boolean {
@@ -75,13 +83,19 @@ function applies(target: CompiledRule["target"], isDir: boolean): boolean {
   return isDir ? target === "dir" : target === "file";
 }
 
+/** Which entry kinds a pattern excludes: a glob ending in `/` names folders. */
+function targetOf(pattern: ExclusionPattern): CompiledRule["target"] {
+  return pattern.match === "glob" && pattern.pattern.endsWith("/") ? "dir" : pattern.target;
+}
+
 /** The ordered matcher for a list of exclusion patterns. */
 export function buildMatcher(patterns: readonly ExclusionPattern[]): FilterMatcher {
   const compiled: CompiledRule[] = patterns.map((pattern) => ({
-    target: pattern.target,
+    target: targetOf(pattern),
     test: compileTest(pattern),
     pattern,
     describe: describePattern(pattern),
+    excludedBy: excludedBy(pattern),
   }));
   return {
     match(path, isDir) {

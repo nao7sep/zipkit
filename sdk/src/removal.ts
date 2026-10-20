@@ -7,8 +7,8 @@
  * first, so the answer can say which file verified.
  */
 
-import path from "node:path";
 import { classify, type ZipKitError } from "./errors.ts";
+import { isWithin } from "./internal/path.ts";
 import type { Volume } from "./internal/volume.ts";
 import type { PathState, RemovalCheck, SourceComparison, VerifyReport } from "./types.ts";
 
@@ -18,11 +18,7 @@ import type { PathState, RemovalCheck, SourceComparison, VerifyReport } from "./
 export async function outputInsideInputs(output: string, inputs: readonly string[], volume: Volume): Promise<boolean> {
   const out = await volume.realpath(output);
   const roots = await Promise.all(inputs.map((input) => volume.realpath(input)));
-  return roots.some((root) => {
-    if (out === root) return true;
-    const rel = path.relative(root, out);
-    return rel !== "" && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
-  });
+  return roots.some((root) => isWithin(root, out));
 }
 
 /** The steps {@link checkRemoval} runs, each a look at the disk. */

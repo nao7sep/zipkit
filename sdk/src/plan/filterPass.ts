@@ -20,6 +20,7 @@ export function applyFilter(items: WorkItem[], matcher: FilterMatcher): void {
     item.excluded = true;
     item.excludeCode = "pattern";
     item.excludeReason = rule.describe;
+    item.excludedBy = rule.excludedBy;
     item.emitExplicit = false;
     item.findings.push(finding("exclude.pattern", item.archivePath, `excluded by ${rule.describe}`));
   }

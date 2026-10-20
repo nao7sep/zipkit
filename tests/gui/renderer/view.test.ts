@@ -311,7 +311,8 @@ describe("reportSummary", () => {
       type: "file",
       method: "deflate",
       excluded: false,
-      findings: [{ rule: "name.invalid-char", severity: "info", path: `f${i}:.txt`, message: "invalid characters substituted", fix: { kind: "rename", to: `f${i}_.txt` } }],
+      nameFixes: [{ rule: "name.invalid-char", before: `f${i}:.txt`, after: `f${i}_.txt` }],
+      findings: [{ id: `name.invalid-char:f${i}:.txt`, rule: "name.invalid-char", severity: "info", path: `f${i}:.txt`, message: "invalid characters substituted", fix: { kind: "rename", to: `f${i}_.txt` } }],
     }));
     return {
       writable,
@@ -326,9 +327,9 @@ describe("reportSummary", () => {
       writable: true,
       summary: { included: 3, excluded: 0, renamed: 3, warnings: 0, errors: 0 },
       entries: [
-        { archivePath: "Report.pages", originalPath: "Report.pages ", type: "dir", method: "store", excluded: false, findings: [{ rule: "name.trailing-dot-space", severity: "info", path: "Report.pages ", message: "trimmed", fix: folder }] },
-        { archivePath: "Report.pages/index.xml", originalPath: "Report.pages /index.xml", type: "file", method: "deflate", excluded: false, findings: [] },
-        { archivePath: "Report.pages/Data/a.png", originalPath: "Report.pages /Data/a.png", type: "file", method: "store", excluded: false, findings: [] },
+        { archivePath: "Report.pages", originalPath: "Report.pages ", type: "dir", method: "store", excluded: false, nameFixes: [{ rule: "name.trailing-dot-space", before: "Report.pages ", after: "Report.pages" }], findings: [{ id: "name.trailing-dot-space:Report.pages ", rule: "name.trailing-dot-space", severity: "info", path: "Report.pages ", message: "trimmed", fix: folder }] },
+        { archivePath: "Report.pages/index.xml", originalPath: "Report.pages /index.xml", type: "file", method: "deflate", excluded: false, nameFixes: [], findings: [] },
+        { archivePath: "Report.pages/Data/a.png", originalPath: "Report.pages /Data/a.png", type: "file", method: "store", excluded: false, nameFixes: [], findings: [] },
       ],
       findings: [],
     } as unknown as PlanData;
@@ -455,6 +456,7 @@ const entry = (over: Partial<Entry> & { archivePath: string }): Entry => ({
   type: "file",
   method: "deflate",
   excluded: false,
+  nameFixes: [],
   findings: [],
   ...over,
 });
@@ -465,7 +467,9 @@ describe("planReport", () => {
   it("uses each link's owning entry without scanning the complete entry list", () => {
     const entries = Array.from({ length: 1000 }, (_, i) => entry({
       archivePath: `link-${i}`, type: "file", excluded: i % 2 === 0,
-      findings: [{ rule: "entry.symlink", severity: "warning", path: `link-${i}`, message: "link" }],
+      findings: [i % 2 === 0
+        ? { id: `entry.symlink-ignored:link-${i}`, rule: "entry.symlink-ignored", severity: "warning", path: `link-${i}`, message: "link" }
+        : { id: `entry.symlink-preserved:link-${i}`, rule: "entry.symlink-preserved", severity: "warning", path: `link-${i}`, message: "link" }],
     }));
     const plan = planOf(entries);
     let inspections = 0;
@@ -486,13 +490,13 @@ describe("planReport", () => {
         archivePath: "a/café.txt",
         originalPath: "a/cafe\u0301.txt",
         findings: [
-          { rule: "name.nfd", severity: "info", path: "a/cafe\u0301.txt", message: "name normalized", fix: { kind: "rename", to: "a/café.txt" } },
-          { rule: "name.suspicious", severity: "warning", path: "a/cafe\u0301.txt", message: "suspicious" },
+          { id: `name.nfd:${"a/cafe\u0301.txt"}`, rule: "name.nfd", severity: "info", path: "a/cafe\u0301.txt", message: "name normalized", fix: { kind: "rename", to: "a/café.txt" } },
+          { id: `name.suspicious:${"a/cafe\u0301.txt"}`, rule: "name.suspicious", severity: "warning", path: "a/cafe\u0301.txt", message: "suspicious" },
         ],
       }),
-      entry({ archivePath: "b/X", findings: [{ rule: "collision.case", severity: "error", path: "b/X", message: "case-only collision" }] }),
-      entry({ archivePath: "b/CON_.txt", originalPath: "b/CON.txt", findings: [{ rule: "name.reserved", severity: "info", path: "b/CON.txt", message: "suffixed", fix: { kind: "rename", to: "b/CON_.txt" } }] }),
-      entry({ archivePath: "a/.DS_Store", excluded: true, excludeReason: "junk: .DS_Store", findings: [{ rule: "exclude.pattern", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" }] }),
+      entry({ archivePath: "b/X", findings: [{ id: "collision.case:b/X", rule: "collision.case", severity: "error", path: "b/X", message: "case-only collision" }] }),
+      entry({ archivePath: "b/CON_.txt", originalPath: "b/CON.txt", findings: [{ id: "name.reserved:b/CON.txt", rule: "name.reserved", severity: "info", path: "b/CON.txt", message: "suffixed", fix: { kind: "rename", to: "b/CON_.txt" } }] }),
+      entry({ archivePath: "a/.DS_Store", excluded: true, nameFixes: [], excludeReason: "junk: .DS_Store", findings: [{ id: "exclude.pattern:a/.DS_Store", rule: "exclude.pattern", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" }] }),
       entry({ archivePath: "a/kept.txt" }),
     ]);
     expect(planReport(plan, en)).toEqual([
@@ -516,7 +520,7 @@ describe("planReport", () => {
         archivePath: "Docs",
         originalPath: "Docs.",
         type: "dir",
-        findings: [{ rule: "name.trailing-dot-space", severity: "info", path: "Docs.", message: "trimmed", fix: fix("Docs") }],
+        findings: [{ id: "name.trailing-dot-space:Docs.", rule: "name.trailing-dot-space", severity: "info", path: "Docs.", message: "trimmed", fix: fix("Docs") }],
       }),
       entry({ archivePath: "Docs/plain.txt", originalPath: "Docs./plain.txt" }),
       entry({ archivePath: "Docs/X.pages", originalPath: "Docs./X.pages", type: "dir" }),
@@ -525,7 +529,7 @@ describe("planReport", () => {
       entry({
         archivePath: "Docs/a_b.txt",
         originalPath: "Docs./a:b.txt",
-        findings: [{ rule: "name.invalid-char", severity: "info", path: "Docs./a:b.txt", message: "substituted", fix: fix("Docs/a_b.txt") }],
+        findings: [{ id: "name.invalid-char:Docs./a:b.txt", rule: "name.invalid-char", severity: "info", path: "Docs./a:b.txt", message: "substituted", fix: fix("Docs/a_b.txt") }],
       }),
     ]);
     expect(planReport(plan, en)).toEqual([
@@ -543,7 +547,7 @@ describe("planReport", () => {
       entry({
         archivePath: "as_dir/file.txt",
         originalPath: "as:dir/file.txt",
-        findings: [{ rule: "name.invalid-char", severity: "info", path: "as:dir/file.txt", message: "substituted", fix: { kind: "rename", to: "as_dir/file.txt" } }],
+        findings: [{ id: "name.invalid-char:as:dir/file.txt", rule: "name.invalid-char", severity: "info", path: "as:dir/file.txt", message: "substituted", fix: { kind: "rename", to: "as_dir/file.txt" } }],
       }),
     ]);
     expect(planReport(plan, en)).toEqual([
@@ -579,13 +583,13 @@ describe("planReport", () => {
     });
   });
   it("reads a name finding as repaired only when the SDK gave it a rename target", () => {
-    const plan = planOf([entry({ archivePath: "CON", findings: [{ rule: "name.reserved", severity: "error", path: "CON", message: "reserved" }] })]);
+    const plan = planOf([entry({ archivePath: "CON", findings: [{ id: "name.reserved:CON", rule: "name.reserved", severity: "error", path: "CON", message: "reserved" }] })]);
     expect(planReport(plan, en)[0]?.rows[0]?.changes).toEqual(["The name is a reserved device name"]);
   });
-  it("tells a kept symlink from an ignored one by whether the plan excluded it", () => {
+  it("tells a kept symlink from an ignored one by the SDK's rule", () => {
     const plan = planOf([
-      entry({ archivePath: "kept", findings: [{ rule: "entry.symlink", severity: "warning", path: "kept", message: "symlink preserved" }] }),
-      entry({ archivePath: "dropped", excluded: true, excludeReason: "symlink ignored", findings: [{ rule: "entry.symlink", severity: "warning", path: "dropped", message: "symlink ignored" }] }),
+      entry({ archivePath: "kept", findings: [{ id: "entry.symlink-preserved:kept", rule: "entry.symlink-preserved", severity: "warning", path: "kept", message: "symlink preserved" }] }),
+      entry({ archivePath: "dropped", excluded: true, nameFixes: [], excludeReason: "symlink ignored", findings: [{ id: "entry.symlink-ignored:dropped", rule: "entry.symlink-ignored", severity: "warning", path: "dropped", message: "symlink ignored" }] }),
     ]);
     expect(planReport(plan, en)[0]?.rows.map((row) => row.changes)).toEqual([
       ["Symlink kept as a Unix link entry; Windows extracts it as a text file"],
@@ -598,12 +602,12 @@ describe("planReport", () => {
         archivePath: "pipe",
         excluded: true,
         excludeReason: "named pipe (FIFO) left out: a ZIP archive cannot hold it",
-        findings: [{ rule: "entry.unsupported", severity: "info", path: "pipe", message: "named pipe (FIFO) left out" }],
+        findings: [{ id: "entry.unsupported:pipe", rule: "entry.unsupported", severity: "info", path: "pipe", message: "named pipe (FIFO) left out" }],
       }),
       entry({
         archivePath: "locked",
         type: "dir",
-        findings: [{ rule: "entry.unlisted", severity: "warning", path: "locked", message: "folder could not be read" }],
+        findings: [{ id: "entry.unlisted:locked", rule: "entry.unlisted", severity: "warning", path: "locked", message: "folder could not be read" }],
       }),
     ]);
     expect(planReport(plan, en)).toEqual([
@@ -619,31 +623,31 @@ describe("planReport", () => {
       ["external-link", "Left out: a link that leads outside the inputs"]] as const;
     const plan = planOf(kinds.map(([kind]) => entry({
       archivePath: kind, excluded: true, excludeCode: "unsupported", unsupportedKind: kind, excludeReason: "left out",
-      findings: [{ rule: "entry.unsupported", severity: "info", path: kind, message: "left out" }],
+      findings: [{ id: `entry.unsupported:${kind}`, rule: "entry.unsupported", severity: "info", path: kind, message: "left out" }],
     })));
     expect(planReport(plan, en)[0]?.rows.map((row) => row.changes[0])).toEqual(kinds.map(([, text]) => text));
   });
   it("shows a rule the GUI does not know as the SDK wrote it", () => {
-    const plan = planOf([entry({ archivePath: "x", findings: [{ rule: "future.rule" as Finding["rule"], severity: "warning", path: "x", message: "something new" }] })]);
+    const plan = planOf([entry({ archivePath: "x", findings: [{ id: "future.rule:x", rule: "future.rule" as Finding["rule"], severity: "warning", path: "x", message: "something new" }] })]);
     expect(planReport(plan, en)[0]?.rows[0]?.changes).toEqual(["Something new"]);
   });
   it("gives a finding no entry carries a row of its own", () => {
-    const plan = planOf([], [{ rule: "output.exists", severity: "error", path: "/out/a.zip", message: "exists" }]);
+    const plan = planOf([], [{ id: "output.exists:/out/a.zip", rule: "output.exists", severity: "error", path: "/out/a.zip", message: "exists" }]);
     expect(planReport(plan, en)).toEqual([
       { kind: "blocking", rows: [{ path: "/out/a.zip", changes: ["The output archive already exists. Turn on “Overwrite an existing file” to replace it."] }] },
     ]);
   });
-  it("surfaces an excluded entry that has no finding (custom exclude, pruned empty dir)", () => {
+  it("surfaces an excluded entry that has no finding by its exclusion code, never the SDK's English reason", () => {
     const plan = planOf([
       entry({ archivePath: "keep.txt" }),
-      entry({ archivePath: "build/", type: "dir", excluded: true, excludeCode: "pattern", excludeReason: "pattern build/" }),
-      entry({ archivePath: "empty/", type: "dir", excluded: true, excludeCode: "empty-dir", excludeReason: "empty directory pruned" }),
+      entry({ archivePath: "build/", type: "dir", excluded: true, nameFixes: [], excludeCode: "pattern", excludeReason: "pattern build/" }),
+      entry({ archivePath: "empty/", type: "dir", excluded: true, nameFixes: [], excludeCode: "empty-dir", excludeReason: "empty directory pruned" }),
     ]);
     expect(planReport(plan, en)).toEqual([
       {
         kind: "excluded",
         rows: [
-          { path: "build/", changes: ["Excluded: pattern build/"], dir: true },
+          { path: "build/", changes: ["Excluded by a filter"], dir: true },
           { path: "empty/", changes: ["Empty directory pruned"], dir: true },
         ],
       },
@@ -736,7 +740,8 @@ describe("progressRuns", () => {
     expect(findingKind("name.nfd", "warning", en)).toBe("Names not in NFC");
     expect(findingKind("path.too-long", "warning", en)).toBe("Paths too long for Windows");
     expect(findingKind("exclude.pattern", "info", en)).toBe("Left out by exclusion patterns");
-    expect(findingKind("entry.symlink", "warning", en)).toBe("Symbolic links");
+    expect(findingKind("entry.symlink-ignored", "warning", en)).toBe("Symbolic links");
+    expect(findingKind("entry.symlink-preserved", "warning", en)).toBe("Symbolic links");
     expect(findingKind("entry.unsupported", "info", en)).toBe("Special files left out");
     expect(findingKind("verify.crc32-mismatch", "error", en)).toBe("CRC-32 mismatches");
     expect(findingKind("verify.manifest-mismatch", "error", en)).toBe("Mismatches with the manifest");
@@ -994,13 +999,13 @@ describe("Details pane sections and orders", () => {
   it("lists each item where it is on disk, a rename with only what it changed, and notes no duplicate as lost", () => {
     const planned = (archivePath: string, over: Record<string, unknown>) => ({
       archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file" as const, method: "deflate" as const,
-      excluded: false, findings: [], ...over,
+      excluded: false, nameFixes: [], findings: [], ...over,
     });
-    const rename = (from: string, to: string) => [{ rule: "name.invalid-char", severity: "info" as const, path: from, message: "", fix: { kind: "rename" as const, to } }];
+    const rename = (from: string, to: string) => [{ id: `name.invalid-char:${from}`, rule: "name.invalid-char", severity: "info" as const, path: from, message: "", fix: { kind: "rename" as const, to } }];
     const plan = { writable: true, summary: { total: 4, included: 2, excluded: 2, renamed: 2, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 }, findings: [], entries: [
       // The folder was renamed too, but this row's rule renamed the file; both show.
       planned("a_b/c_d.txt", { originalPath: "a:b/c:d.txt", diskPath: "C:\\Users\\me\\proj\\a:b\\c:d.txt", findings: rename("a:b/c:d.txt", "a_b/c_d.txt") }),
-      planned("dup.txt", { excluded: true, excludeCode: "duplicate", excludeReason: "duplicate", findings: [{ rule: "entry.duplicate", severity: "info", path: "dup.txt", message: "" }] }),
+      planned("dup.txt", { excluded: true, excludeCode: "duplicate", excludeReason: "duplicate", findings: [{ id: "entry.duplicate:dup.txt", rule: "entry.duplicate", severity: "info", path: "dup.txt", message: "" }] }),
       planned("skip.tmp", { excluded: true, excludeCode: "filter", excludeReason: "excluded by *.tmp" }),
     ] };
     const cards = detailsCards(job({ intent: TRASH }), plan as never, null, en, 5);

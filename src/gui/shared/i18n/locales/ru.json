@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "Пустая папка пропущена",
   "report.excludedEmptyFile": "Пустой файл пропущен",
   "report.excludedFiltered": "Исключено фильтром",
-  "report.excludedReason": "Исключено: {reason}",
   "report.renamedFrom": "Прежнее имя: {from}",
 
   "guidance.outputAmbiguous": "Эти исходные элементы лежат в разных папках, поэтому ZipKit не может сам выбрать место сохранения. Укажите имя файла (по умолчанию архив сохраняется в папку первого элемента), и они будут заархивированы вместе.",

@@ -394,7 +394,6 @@
   "report.excludedEmptyDir": "Pasta vazia omitida",
   "report.excludedEmptyFile": "Arquivo vazio ignorado",
   "report.excludedFiltered": "Excluído por um filtro",
-  "report.excludedReason": "Excluído: {reason}",
   "report.renamedFrom": "Renomeado de {from}",
 
   "guidance.outputAmbiguous": "Estas entradas estão em pastas diferentes, então o ZipKit não consegue escolher um local sozinho. Defina um nome de arquivo (a pasta de saída padrão é a da primeira entrada) e elas serão compactadas juntas.",

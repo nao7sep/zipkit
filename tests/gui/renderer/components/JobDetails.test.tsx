@@ -44,11 +44,11 @@ const plan = (entries: PlannedEntry[] = []): PlanData => ({
   writable: true,
 } as PlanData);
 const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEntry => ({
-  archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, findings: [], ...over,
+  archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, nameFixes: [], findings: [], ...over,
 });
 const junk = (path: string, type: "file" | "dir" = "file") =>
-  entry(path, { type, excluded: true, findings: [{ rule: "exclude.pattern", severity: "info", path, message: "junk" }] });
-const blocking = (path: string) => entry(path, { findings: [{ rule: "x.test" as Finding["rule"], severity: "error", path, message: "Blocks the archive" }] });
+  entry(path, { type, excluded: true, findings: [{ id: `exclude.pattern:${path}`, rule: "exclude.pattern", severity: "info", path, message: "junk" }] });
+const blocking = (path: string) => entry(path, { findings: [{ id: `x.test:${path}`, rule: "x.test" as Finding["rule"], severity: "error", path, message: "Blocks the archive" }] });
 const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = []) =>
   render(<JobDetails job={job(over)} plan={p} verify={null} events={events} rowLimit={5} />);
 
@@ -65,7 +65,7 @@ describe("JobDetails", () => {
 
   it("shows the existing archive by its name with no count, and leaves what to do to Details", () => {
     const exists = plan();
-    exists.findings = [{ rule: "output.exists", severity: "error", path: "/Users/me/Desktop/Desktop.zip", message: "exists" }];
+    exists.findings = [{ id: "output.exists:/Users/me/Desktop/Desktop.zip", rule: "output.exists", severity: "error", path: "/Users/me/Desktop/Desktop.zip", message: "exists" }];
     show(exists);
     const card = screen.getByRole("heading", { name: "Existing output archive" }).closest("section")!;
     expect(within(card).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Desktop.zip"]);
@@ -88,7 +88,7 @@ describe("JobDetails", () => {
   });
 
   it("says what is left out goes with the originals when they are to be removed, and raises anything but junk", () => {
-    show(plan([junk("a/.DS_Store"), entry("sock", { excluded: true, findings: [{ rule: "entry.unsupported", severity: "info", path: "sock", message: "socket" }] })]),
+    show(plan([junk("a/.DS_Store"), entry("sock", { excluded: true, findings: [{ id: "entry.unsupported:sock", rule: "entry.unsupported", severity: "info", path: "sock", message: "socket" }] })]),
       { intent: { verify: true, originals: "trash" } });
     expect(screen.getAllByText("These go to the Trash with the originals, without being archived.")).toHaveLength(2);
     const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
@@ -101,7 +101,7 @@ describe("JobDetails", () => {
     show(plan([entry("a/x_0.txt", {
       originalPath: "a/x:0.txt",
       diskPath: "/Users/me/a/x:0.txt",
-      findings: [{ rule: "name.invalid-char", severity: "info", path: "a/x:0.txt", message: "substituted", fix: { kind: "rename", to: "a/x_0.txt" } }],
+      findings: [{ id: "name.invalid-char:a/x:0.txt", rule: "name.invalid-char", severity: "info", path: "a/x:0.txt", message: "substituted", fix: { kind: "rename", to: "a/x_0.txt" } }],
     })]));
     fireEvent.click(screen.getByRole("button", { name: /\(1\)$/ }));
     const dialog = screen.getByRole("dialog");

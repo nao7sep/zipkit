@@ -4,242 +4,242 @@
   "policy": {
     "exclusions": [
       {
+        "id": "macos.ds-store",
         "pattern": ".DS_Store",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Finder’s view settings for a folder. Finder creates it again."
+        "ignoreCase": true
       },
       {
+        "id": "macos.apple-double-file",
         "pattern": "._*",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Mac-only data saved beside a file on a drive that isn’t Mac-formatted. ZipKit doesn’t keep such data."
+        "ignoreCase": true
       },
       {
+        "id": "macos.macosx",
         "pattern": "__MACOSX/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "Mac-only data left over from unzipping a ZIP made on a Mac. Not part of the files themselves."
+        "ignoreCase": true
       },
       {
+        "id": "macos.folder-icon",
         "pattern": "Icon\r",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A folder’s custom icon in Finder. A ZIP can’t hold its image."
+        "ignoreCase": true
       },
       {
+        "id": "macos.localized",
         "pattern": ".localized",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Tells Finder to show the folder’s name translated. Without it, the folder shows its own name."
+        "ignoreCase": true
       },
       {
+        "id": "macos.trashes",
         "pattern": ".Trashes",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A drive’s Trash (macOS). Holds what was deleted from that drive."
+        "ignoreCase": true
       },
       {
+        "id": "macos.spotlight",
         "pattern": ".Spotlight-V100",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A drive’s Spotlight search index. macOS rebuilds it."
+        "ignoreCase": true
       },
       {
+        "id": "macos.fseventsd",
         "pattern": ".fseventsd",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "macOS’s record of changes on a drive. Rebuilt as needed."
+        "ignoreCase": true
       },
       {
+        "id": "macos.temporary-items",
         "pattern": ".TemporaryItems",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Temporary files macOS keeps on a drive."
+        "ignoreCase": true
       },
       {
+        "id": "macos.document-revisions",
         "pattern": ".DocumentRevisions-V100",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Older versions of documents macOS saved on a drive. Only macOS can read them."
+        "ignoreCase": true
       },
       {
+        "id": "macos.mobile-backups",
         "pattern": ".MobileBackups/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "Time Machine snapshots kept on the Mac itself (older macOS). Only Time Machine can use them."
+        "ignoreCase": true
       },
       {
+        "id": "macos.volume-icon",
         "pattern": ".VolumeIcon.icns",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A drive’s custom icon in Finder. It belongs to the drive, not the files."
+        "ignoreCase": true
       },
       {
+        "id": "macos.time-machine-disk",
         "pattern": ".com.apple.timemachine.donotpresent",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Marks a drive as a Time Machine backup disk. Not a file of yours."
+        "ignoreCase": true
       },
       {
+        "id": "macos.apple-double-folder",
         "pattern": ".AppleDouble/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "Mac-only data kept by a file server or a drive that isn’t Mac-formatted. ZipKit doesn’t keep such data."
+        "ignoreCase": true
       },
       {
+        "id": "macos.apdisk",
         "pattern": ".apdisk",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Settings an AirPort base station saved on a shared drive."
+        "ignoreCase": true
       },
       {
+        "id": "macos.apple-db",
         "pattern": ".AppleDB",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "An old Apple file server’s own records. Not files of yours."
+        "ignoreCase": true
       },
       {
+        "id": "macos.apple-desktop",
         "pattern": ".AppleDesktop",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "An old Apple file server’s own records. Not files of yours."
+        "ignoreCase": true
       },
       {
+        "id": "macos.desktop-db",
         "pattern": "Desktop DB",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Classic Mac OS’s record of a drive’s files and icons. The system rebuilds it."
+        "ignoreCase": true
       },
       {
+        "id": "macos.desktop-df",
         "pattern": "Desktop DF",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Classic Mac OS’s record of a drive’s files and icons. The system rebuilds it."
+        "ignoreCase": true
       },
       {
+        "id": "windows.thumbs",
         "pattern": "Thumbs.db",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Windows’ thumbnail cache for a folder. Windows creates it again."
+        "ignoreCase": true
       },
       {
+        "id": "windows.desktop-ini",
         "pattern": "desktop.ini",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A folder’s icon and display name, set by Windows or a sync app. The files don’t need it."
+        "ignoreCase": true
       },
       {
+        "id": "windows.recycle-bin",
         "pattern": "$RECYCLE.BIN/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "A drive’s Recycle Bin. Holds what was deleted from that drive."
+        "ignoreCase": true
       },
       {
+        "id": "windows.recycler",
         "pattern": "RECYCLER/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "A drive’s Recycle Bin from older Windows. Holds what was deleted from that drive."
+        "ignoreCase": true
       },
       {
+        "id": "windows.recycled",
         "pattern": "RECYCLED/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "A drive’s Recycle Bin from older Windows. Holds what was deleted from that drive."
+        "ignoreCase": true
       },
       {
+        "id": "windows.system-volume-information",
         "pattern": "System Volume Information/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "Windows’ restore points and search index for a drive. Only Windows can use them."
+        "ignoreCase": true
       },
       {
+        "id": "windows.pagefile",
         "pattern": "pagefile.sys",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Windows’ memory or hibernation file, often several gigabytes. Windows creates it again at startup."
+        "ignoreCase": true
       },
       {
+        "id": "windows.hiberfil",
         "pattern": "hiberfil.sys",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Windows’ memory or hibernation file, often several gigabytes. Windows creates it again at startup."
+        "ignoreCase": true
       },
       {
+        "id": "windows.swapfile",
         "pattern": "swapfile.sys",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Windows’ memory or hibernation file, often several gigabytes. Windows creates it again at startup."
+        "ignoreCase": true
       },
       {
+        "id": "windows.ehthumbs",
         "pattern": "ehthumbs.db",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Windows Media Center’s thumbnail cache. Rebuilt when needed."
+        "ignoreCase": true
       },
       {
+        "id": "windows.ehthumbs-vista",
         "pattern": "ehthumbs_vista.db",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "Windows Media Center’s thumbnail cache. Rebuilt when needed."
+        "ignoreCase": true
       },
       {
+        "id": "linux.kde-directory",
         "pattern": ".directory",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A folder’s icon and view settings in KDE. The files don’t need it."
+        "ignoreCase": true
       },
       {
+        "id": "linux.trash",
         "pattern": ".Trash-*/",
         "match": "glob",
         "target": "dir",
-        "ignoreCase": true,
-        "note": "A drive’s Trash (Linux). Holds what was deleted from that drive."
+        "ignoreCase": true
       },
       {
+        "id": "linux.nfs",
         "pattern": ".nfs*",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A file deleted on a network share while still open. It disappears once closed."
+        "ignoreCase": true
       },
       {
+        "id": "linux.fuse-hidden",
         "pattern": ".fuse_hidden*",
         "match": "glob",
         "target": "both",
-        "ignoreCase": true,
-        "note": "A file deleted while still open (Linux). It disappears once closed."
+        "ignoreCase": true
       }
     ],
     "emptyFiles": "keep",
@@ -264,8 +264,7 @@
     "manifest": {
       "name": "zipkit.json",
       "hash": true
-    },
-    "timeZone": "UTC"
+    }
   },
   "summary": {
     "total": 11,
@@ -448,7 +447,12 @@
       "archivePath": ".DS_Store",
       "originalPath": ".DS_Store",
       "type": "file",
-      "reason": "pattern .DS_Store (Finder’s view settings for a folder. Finder creates it again.)"
+      "excludeCode": "pattern",
+      "reason": "pattern .DS_Store",
+      "excludedBy": {
+        "id": "macos.ds-store",
+        "pattern": ".DS_Store"
+      }
     }
   ],
   "findings": [

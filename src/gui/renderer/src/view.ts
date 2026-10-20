@@ -372,6 +372,8 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
   "path.traversal": "finding.pathTraversal",
   "path.too-long": "finding.pathTooLong",
   "exclude.pattern": "finding.excludedByPattern",
+  "entry.symlink-ignored": "finding.symlinkIgnored",
+  "entry.symlink-preserved": "finding.symlinkPreserved",
   "name.suspicious": "finding.suspicious",
   "entry.unsupported": "finding.unsupported",
   "entry.unlisted": "finding.unlisted",
@@ -384,16 +386,11 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
 };
 
 /** The catalogue entry for a plan finding, keyed on its stable rule, or null
- *  for a rule the GUI does not know (shown as the SDK wrote it). A symlink
- *  finding reads from the plan whether the link was kept or dropped: the SDK
- *  excludes the entry it ignores. */
-export function findingKey(f: Finding, excluded = false, unsupportedKind?: UnsupportedKind): MessageKey | null {
+ *  for a rule the GUI does not know (shown as the SDK wrote it). */
+export function findingKey(f: Finding, unsupportedKind?: UnsupportedKind): MessageKey | null {
   if (f.rule === "entry.unsupported" && unsupportedKind) return UNSUPPORTED_FINDINGS[unsupportedKind];
   const name = NAME_FINDINGS[f.rule];
   if (name) return f.fix?.kind === "rename" ? name.fixed : name.found;
-  if (f.rule === "entry.symlink") {
-    return excluded ? "finding.symlinkIgnored" : "finding.symlinkPreserved";
-  }
   return RULE_FINDINGS[f.rule] ?? null;
 }
 
@@ -409,24 +406,24 @@ const UNSUPPORTED_FINDINGS: Record<UnsupportedKind, MessageKey> = {
 
 /** A finding as a human sentence; one the GUI does not know reads as the SDK
  *  wrote it. */
-function findingText(f: Finding, t: Translator, excluded = false, unsupportedKind?: UnsupportedKind): string {
-  const key = findingKey(f, excluded, unsupportedKind);
+function findingText(f: Finding, t: Translator, unsupportedKind?: UnsupportedKind): string {
+  const key = findingKey(f, unsupportedKind);
   return key ? t.t(key) : humanSentence(f.message);
 }
 
 /** Why an entry no finding explains was left out, keyed on the SDK's stable
- *  exclusion code; a filter rule is named as the SDK describes it. */
-function excludedText(entry: Pick<PlannedEntry, "excludeCode" | "excludeReason">, t: Translator): string {
+ *  exclusion code, never its English reason. */
+function excludedText(entry: Pick<PlannedEntry, "excludeCode">, t: Translator): string {
   if (entry.excludeCode === "empty-dir") return t.t("report.excludedEmptyDir");
   if (entry.excludeCode === "empty-file") return t.t("report.excludedEmptyFile");
-  return entry.excludeReason === undefined ? t.t("report.excludedFiltered") : t.t("report.excludedReason", { reason: entry.excludeReason });
+  return t.t("report.excludedFiltered");
 }
 
 /** The rules whose finding already says why its entry was left out. */
 const EXCLUDING_RULES = new Set([
   "exclude.pattern",
   "path.traversal",
-  "entry.symlink",
+  "entry.symlink-ignored",
   "entry.unsupported",
   "entry.duplicate",
 ]);
@@ -466,13 +463,12 @@ function severityGroup(findings: readonly Finding[]): ReportGroupKind | null {
  *  and testable. */
 export function planReport(plan: PlanReport, t: Translator): ReportGroup[] {
   const rows: Record<ReportGroupKind, ReportRow[]> = { blocking: [], warnings: [], renamed: [], excluded: [], notes: [] };
-  const findingId = (f: Finding): string => `${f.rule}\0${f.path}\0${f.message}`;
   const onEntries = new Set<string>();
 
   for (const entry of plan.entries) {
     const findings = entry.findings;
-    for (const f of findings) onEntries.add(findingId(f));
-    const changes = [...new Set(findings.map((f) => findingText(f, t, entry.excluded, entry.unsupportedKind)))];
+    for (const f of findings) onEntries.add(f.id);
+    const changes = [...new Set(findings.map((f) => findingText(f, t, entry.unsupportedKind)))];
     if (entry.excluded && !findings.some((f) => EXCLUDING_RULES.has(f.rule))) {
       changes.push(excludedText(entry, t));
     }
@@ -483,7 +479,7 @@ export function planReport(plan: PlanReport, t: Translator): ReportGroup[] {
     rows[kind].push(renamed ? { path: entry.archivePath, from: entry.originalPath, changes, ...dir } : { path: entry.archivePath, changes, ...dir });
   }
   for (const f of plan.findings) {
-    if (onEntries.has(findingId(f))) continue;
+    if (onEntries.has(f.id)) continue;
     rows[severityGroup([f]) ?? "notes"].push({ path: f.path, changes: [findingText(f, t)] });
   }
   return REPORT_GROUPS.filter((kind) => rows[kind].length > 0).map((kind) => ({ kind, rows: rows[kind] }));
@@ -533,7 +529,8 @@ const RULE_KINDS: Record<string, MessageKey> = {
   "path.traversal": "findingKind.pathTraversal",
   "path.too-long": "findingKind.pathTooLong",
   "exclude.pattern": "findingKind.excludedByPattern",
-  "entry.symlink": "findingKind.symlink",
+  "entry.symlink-ignored": "findingKind.symlink",
+  "entry.symlink-preserved": "findingKind.symlink",
   "entry.unsupported": "findingKind.unsupported",
   "entry.unlisted": "findingKind.unlisted",
   "name.suspicious": "findingKind.suspicious",
@@ -889,7 +886,8 @@ const KIND_INFO: Record<string, MessageKey> = {
   "path.too-long": "kindInfo.pathTooLong",
   "exclude.pattern": "kindInfo.exclusions",
   "entry.duplicate": "kindInfo.duplicate",
-  "entry.symlink": "kindInfo.symlink",
+  "entry.symlink-ignored": "kindInfo.symlink",
+  "entry.symlink-preserved": "kindInfo.symlink",
   "entry.unsupported": "kindInfo.special",
   "entry.unlisted": "kindInfo.special",
   "time.pre-1980": "kindInfo.dates",
@@ -948,14 +946,13 @@ export function detailsCards(
     return found;
   };
   if (plan) {
-    const findingId = (f: Finding): string => `${f.rule}\0${f.path}\0${f.message}`;
     const onEntries = new Set<string>();
     for (const entry of plan.entries) {
       const dir = entry.type === "dir" ? { dir: true } : {};
       for (const f of entry.findings) {
-        onEntries.add(findingId(f));
+        onEntries.add(f.id);
         const c = card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, KIND_INFO[f.rule]);
-        c.rows.push({ ...entryRow(entry, f.fix?.kind === "rename"), changes: [findingText(f, t, entry.excluded, entry.unsupportedKind)], ...dir });
+        c.rows.push({ ...entryRow(entry, f.fix?.kind === "rename"), changes: [findingText(f, t, entry.unsupportedKind)], ...dir });
         // A duplicate is archived through another input, so it is not lost
         // with the originals (the SDK's `unarchived`).
         if (entry.excluded && entry.excludeCode !== "duplicate" && EXCLUDING_RULES.has(f.rule)) {
@@ -971,7 +968,7 @@ export function detailsCards(
       }
     }
     for (const f of plan.findings) {
-      if (onEntries.has(findingId(f))) continue;
+      if (onEntries.has(f.id)) continue;
       card(`rule:${f.rule}`, findingKind(f.rule, f.severity, t), f.severity, KIND_INFO[f.rule]).rows.push({ path: f.path, changes: [findingText(f, t)] });
     }
   }

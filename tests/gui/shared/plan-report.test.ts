@@ -3,12 +3,12 @@ import { toPlanReport } from "../../../src/gui/shared/plan-report";
 import type { Finding, PlanData, PlannedEntry } from "../../../src/gui/shared/api";
 
 const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEntry =>
-  ({ archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, findings: [], ...over });
+  ({ archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, nameFixes: [], findings: [], ...over });
 
 describe("toPlanReport", () => {
   it("sends the window only the entries the report shows, with the summary and every finding", () => {
-    // An untouched file, and one renamed only because its folder was, add no row.
-    const flagged: Finding = { rule: "name.nfd", severity: "info" as const, path: "b", message: "m" };
+    // An untouched file, and one renamed only because its folder was (no name fix of its own), add no row.
+    const flagged: Finding = { id: "name.nfd:b", rule: "name.nfd", severity: "info" as const, path: "b", message: "m" };
     const plan = {
       mode: "plan", output: "/out.zip", writable: true,
       summary: { total: 5, included: 4, excluded: 1, renamed: 1, warnings: 0, errors: 0, zip64: false },
@@ -17,7 +17,7 @@ describe("toPlanReport", () => {
         entry("a"),
         entry("b", { findings: [flagged] }),
         entry("c", { excluded: true }),
-        entry("Y", { originalPath: "y" }),
+        entry("Y", { originalPath: "y", nameFixes: [{ rule: "name.nfd", before: "y", after: "Y" }] }),
         entry("D/inside.txt", { originalPath: "d/inside.txt" }),
       ],
     } as PlanData;

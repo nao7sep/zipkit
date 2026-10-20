@@ -3,6 +3,15 @@
  * filesystem; archive paths are always forward-slash, relative strings.
  */
 
+import path from "node:path";
+
+/** Whether the disk path `target` is `root` or inside it, by spelling alone.
+ *  Only a `..` segment leads out, so a folder named `..notes` is inside. */
+export function isWithin(root: string, target: string): boolean {
+  const rel = path.relative(root, target);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+}
+
 export function toForwardSlash(p: string): string {
   return p.replace(/\\/g, "/");
 }
