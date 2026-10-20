@@ -30,15 +30,15 @@ it("presents a real publication flush failure safely and keeps originals out of 
     resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
     write: async (plan, signal, onEvent, onPhysicalSettlement) =>
-      (await zip.write(plan, { signal, onEvent, onPhysicalSettlement })).bytes,
-    verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
+      ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent, onPhysicalSettlement })),
+    verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
+      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),
     pathKinds: async (paths) => paths.map((location) => ({ path: location, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {
-      const data = await zip.verify(archive, manifestName === null ? { signal, onEvent } : { manifest: true, manifestName, signal, onEvent });
+      const data = await zip.verify(manifestName === null ? { archive } : { archive, manifest: true, manifestName }, { signal, onEvent });
       return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     trash, emit: () => {}, progress: () => () => {},
@@ -62,6 +62,6 @@ it("presents a real publication flush failure safely and keeps originals out of 
     expect(job.archiveWritten).toBe(false);
     expect(trash).not.toHaveBeenCalled();
     expect(await readFile(input, "utf8")).toBe("preserved original");
-    expect((await new ZipKit().verify(output, { manifest: true })).ok).toBe(true);
+    expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);
   } finally { await engine.shutdown(); await rm(root, { recursive: true, force: true }); }
 });

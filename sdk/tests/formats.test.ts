@@ -30,7 +30,7 @@ describe.each(SUPPORTED)("manifest format %i", (version) => {
   const archive = path.join(fixtures, `format-${version}.zip`);
 
   it("still verifies, entry by entry and against its manifest", async () => {
-    const result = await new ZipKit().verify(archive, { manifest: true });
+    const result = await new ZipKit().verify({ archive, manifest: true });
     expect(result.ok).toBe(true);
     expect(result.missing).toEqual([]);
     expect(result.extra).toEqual([]);

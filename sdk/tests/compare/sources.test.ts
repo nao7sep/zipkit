@@ -36,7 +36,7 @@ const SAME = { matches: true, added: [], missing: [], changed: [], unlisted: [] 
 
 /** The removal check's comparison: the same as archived, or what its refusal says changed. */
 async function compare(archive = output, spec = { inputs: [proj] }): Promise<SourceComparison> {
-  const { refusal } = await new ZipKit().checkRemoval(spec, archive);
+  const { refusal } = await new ZipKit().checkRemoval({ spec, archive });
   if (refusal === null) return SAME;
   if (refusal.reason !== "changed") throw new Error(`refused for ${refusal.reason}`);
   return refusal.comparison;
@@ -102,7 +102,7 @@ describe("the source check", () => {
   it("refuses when the archive holds no manifest", async () => {
     const bare = path.join(dir, "bare.zip");
     await new ZipKit().create({ inputs: [proj], output: bare, policy: { manifest: false } });
-    const { refusal } = await new ZipKit().checkRemoval({ inputs: [proj] }, bare);
+    const { refusal } = await new ZipKit().checkRemoval({ spec: { inputs: [proj] }, archive: bare });
     expect(refusal).toMatchObject({ reason: "error", step: "verify", error: { code: "manifest.missing" } });
   });
 });

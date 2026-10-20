@@ -101,7 +101,8 @@ describe("the SDK host", () => {
     await sdk.call("deletePath", [folder]);
     await sdk.call("deletePath", [link]);
     expect((await readdir(root)).sort()).toEqual(["target.txt"]);
-    await expect(sdk.call("deletePath", [path.join(root, "missing")])).rejects.toMatchObject({ message: expect.stringContaining("ENOENT") });
+    // The errno code crosses too, so main tells an original already gone from a deletion that failed.
+    await expect(sdk.call("deletePath", [path.join(root, "missing")])).rejects.toMatchObject({ code: "ENOENT", message: expect.stringContaining("ENOENT") });
   });
 
   it("carries an SDK failure back to main as the SDK's own data, which its guard still recognizes", async () => {

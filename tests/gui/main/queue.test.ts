@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
           paths: string[],
           signal: AbortSignal,
         ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }>;
+        deleteOriginals(
+          paths: string[],
+          signal: AbortSignal,
+        ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }>;
       },
 }));
 
@@ -38,6 +42,10 @@ vi.mock("../../../src/gui/main/queue-engine.js", () => ({
   createQueueEngine: (deps: {
     emit(jobs: unknown[]): void;
     trash(
+      paths: string[],
+      signal: AbortSignal,
+    ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }>;
+    deleteOriginals(
       paths: string[],
       signal: AbortSignal,
     ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }>;
@@ -239,6 +247,15 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
     const result = await mocks.deps!.trash(["/a"], new AbortController().signal);
 
     expect(mocks.sdkCall).toHaveBeenCalledWith("pathState", ["/a"]);
+    expect({ moved: result.moved, failed: result.failed, gone: result.gone }).toEqual({ moved: [], failed: [], gone: ["/a"] });
+  });
+
+  it("reports an original already gone when deleted for good as gone, by the errno code the host forwards", async () => {
+    const { SdkHostError } = await import("../../../src/gui/main/sdk-client.js");
+    mocks.sdkCall.mockRejectedValueOnce(new SdkHostError({ name: "Error", message: "ENOENT: no such file", code: "ENOENT" }));
+
+    const result = await mocks.deps!.deleteOriginals(["/a"], new AbortController().signal);
+
     expect({ moved: result.moved, failed: result.failed, gone: result.gone }).toEqual({ moved: [], failed: [], gone: ["/a"] });
   });
 

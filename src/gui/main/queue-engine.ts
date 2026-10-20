@@ -57,9 +57,10 @@ export interface EngineDeps {
   pathState(target: string, signal: AbortSignal): Promise<PathState>;
   /** Dry-run plan for the given inputs/options; progress events go to `onEvent`. */
   plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<PlanData>;
-  /** Write a planned archive; resolves to the byte count (or null if unknown). */
+  /** Write a planned archive; resolves to the byte count, or null when the SDK
+   *  refused because an output appeared at the path since the plan. */
   write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
-    onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number>;
+    onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number | null>;
   /** Verify a written archive: every entry's CRC-32, and against the manifest
    *  named, when one is; resolves to the SDK's verdict. */
   verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifestName: string | null): Promise<boolean>;
@@ -215,15 +216,15 @@ function archiveRemovable(job: Job): boolean {
   return job.state === "failed" && (job.intent.originals !== "delete" || originalsIntact(job));
 }
 
-/** The SDK's removal check as the engine receives it: a check that could not
- *  finish carries whatever ended it, the SDK's error or the host's own. */
-export type AppRemovalCheck = Omit<RemovalCheck, "refusal"> & {
-  refusal: Exclude<RemovalRefusal, { reason: "error" }> | { reason: "error"; step: "location" | "verify" | "recheck"; error: unknown } | null;
-};
-
 /** Why the originals may not be removed: the SDK's refusals, and the app's own
  *  finding that another file is at the archive's path. */
 type TrashRefusal = NonNullable<AppRemovalCheck["refusal"]> | { reason: "replaced" };
+
+/** A removal check as the engine handles it: the SDK's, or one that ended as a
+ *  whole, such as when the SDK host's process did, carrying whatever ended it. */
+export type AppRemovalCheck = Omit<RemovalCheck, "refusal"> & {
+  refusal: Exclude<RemovalRefusal, { reason: "error" }> | { reason: "error"; step: "location" | "verify" | "recheck"; error: unknown } | null;
+};
 
 /** The message for a refused Trash; only the location sentence differs between
  *  a Move-to-Trash run and the command on a finished job. */
@@ -613,7 +614,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return null;
     }
 
-    let bytes: number;
+    let bytes: number | null;
     let settlement: Promise<void> | undefined;
     let claim: PathClaim;
     const removing = removesOriginals(rec.job.intent);
@@ -633,6 +634,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       claim.release(settlement ?? (stalledWhileCommitting(err) ? null : undefined));
       set(rec, { state: "failed", message: writeFailureMessage(err, plan.output) });
       deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
+      return null;
+    }
+    if (bytes === null) {
+      // Another file took the archive's name since the plan; nothing was written.
+      claim.release(settlement);
+      set(rec, { state: "needs-attention", writable: false, message: message("job.noLongerWritable") });
+      deps.log.warn("job write refused: the output appeared since the plan", { jobId: id });
       return null;
     }
     rec.publishedOutput = plan.output;

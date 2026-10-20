@@ -51,7 +51,8 @@ export function errorInfo(err: unknown): LogFields {
 }
 
 function errorInfoInner(err: unknown, seen: WeakSet<Error>): LogFields {
-  if (!(err instanceof Error)) return { value: String(err) };
+  // A failure that crossed a process as plain data keeps its fields.
+  if (!(err instanceof Error)) return typeof err === "object" && err !== null ? { ...err } : { value: String(err) };
   if (seen.has(err)) return { name: err.name, message: err.message, circular: true };
   seen.add(err);
   const info: LogFields = { ...err, name: err.name, message: err.message };

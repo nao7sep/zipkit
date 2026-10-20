@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,9 +25,8 @@ function run(engine: QueueEngine, id: string): void {
 }
 
 const cases = [
-  { name: "a timed-out fallback copy", phase: "write", cancel: false },
-  { name: "a cancelled fallback copy", phase: "write", cancel: true },
-  { name: "a late exclusive output open", phase: "open", cancel: false },
+  { name: "a stalled publication on a file system without hard links", phase: "publish", cancel: false },
+  { name: "a cancelled temp file create that lands late", phase: "open", cancel: true },
 ] as const;
 
 it.each(cases)("reserves publication through full cleanup after $name", async ({ phase, cancel }) => {
@@ -34,47 +34,33 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
   const output = path.join(root, "archive.zip");
   const a = path.join(root, "a.txt"), b = path.join(root, "b.txt");
   const faultStarted = deferred(), releaseFault = deferred();
-  const unlinkStarted = deferred(), releaseUnlink = deferred();
   const firstFailed = deferred();
   const zip = new ZipKit();
   let firstVolume: Volume | undefined;
   let physical: Promise<void> | undefined;
-  let physicallySettled = false, oldClaimRemoved = false;
+  let physicallySettled = false;
   let ids = 0, writesStarted = 0;
   const writeErrors: unknown[] = [];
 
-  // Only the first writer uses this port. The real SDK takes its unsupported
-  // hard-link branch into noClobberPublish's exclusive-copy publication.
+  // Only the first writer uses this port. Without hard links the SDK publishes
+  // by renaming its staged temp file in; the held call lands after the job
+  // stopped waiting for it.
   const port: FileSystemPort = {
     ...nodeFileSystem,
     link: async () => { throw Object.assign(new Error("hard links unsupported"), { code: "EOPNOTSUPP" }); },
-    open: async (file, flags, mode) => {
-      if (file !== output || flags !== "wx") return nodeFileSystem.open(file, flags, mode);
-      if (phase === "open") {
+    rename: async (from, to) => {
+      if (phase === "publish" && to === output) {
         faultStarted.resolve();
         await releaseFault.promise;
       }
-      const handle = await nodeFileSystem.open(file, flags, mode);
-      return {
-        ...handle,
-        write: async (...args) => {
-          if (phase === "write") {
-            faultStarted.resolve();
-            await releaseFault.promise;
-          }
-          return handle.write(...args);
-        },
-      };
+      return nodeFileSystem.rename(from, to);
     },
-    unlink: async (file) => {
-      if (file === output) {
-        // The old cleanup has already checked its inode. A new publication
-        // here would be deleted when this issued native unlink finally lands.
-        unlinkStarted.resolve();
-        await releaseUnlink.promise;
+    open: async (file, flags, mode) => {
+      if (phase === "open" && file.endsWith(".tmp") && flags === "wx") {
+        faultStarted.resolve();
+        await releaseFault.promise;
       }
-      await nodeFileSystem.unlink(file);
-      if (file === output) oldClaimRemoved = true;
+      return nodeFileSystem.open(file, flags, mode);
     },
   };
   const volume = vi.spyOn(zip, "volume");
@@ -90,7 +76,7 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
         volume.mockReturnValueOnce(firstVolume);
       }
       try {
-        return (await zip.write(plan, {
+        const written = await zip.write(plan, {
           signal, onEvent,
           onPhysicalSettlement: (settlement) => {
             if (first) {
@@ -99,22 +85,23 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
             }
             onPhysicalSettlement(settlement);
           },
-        })).bytes;
+        });
+        return written.mode === "write" ? written.bytes : null;
       } catch (error) {
         writeErrors.push(error);
         throw error;
       }
     },
     verify: async (archive, signal, onEvent) =>
-      (await zip.verify(archive, { manifest: true, signal, onEvent })).ok,
+      (await zip.verify({ archive, manifest: true }, { signal, onEvent })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
+      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),
     pathKinds: async (files) => files.map((file) => ({ path: file, kind: "file" as const })),
     trash: async () => { throw new Error("save jobs must never call Trash"); },
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {
-      const data = await zip.verify(archive, manifestName === null ? { signal, onEvent } : { manifest: true, manifestName, signal, onEvent });
+      const data = await zip.verify(manifestName === null ? { archive } : { archive, manifest: true, manifestName }, { signal, onEvent });
       return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     emit: (jobs) => { if (jobs[0]?.state === "failed") firstFailed.resolve(); },
@@ -132,44 +119,42 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
     await state(first, "ready");
 
     // Native I/O settles normally without advancing the clock. Advance only
-    // after the held call starts, so the failure and cleanup budgets are exact.
+    // after the held call starts, so the budget expires exactly.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     run(engine, first);
     await faultStarted.promise;
     if (cancel) engine.cancel(first);
     await vi.advanceTimersByTimeAsync(1_000);
-    if (!cancel && phase === "write") await vi.advanceTimersByTimeAsync(1_000);
     await firstFailed.promise;
     vi.useRealTimers();
-    expect(writeErrors[0]).toMatchObject({ code: cancel ? "operation.cancelled" : "io.stalled" });
+    expect(writeErrors[0]).toMatchObject(cancel ? { code: "operation.cancelled" } : { code: "io.stalled", effect: "unknown" });
     expect(physical).toBeDefined();
     expect(physicallySettled).toBe(false);
 
-    releaseFault.resolve();
-    await unlinkStarted.promise;
-    expect(physicallySettled).toBe(false);
-    const oldBytes = await readFile(output);
+    // While the held call may still land, another job cannot take the output.
     const second = engine.add([b], { ...DEFAULT_OPTIONS, overwrite: true }, SAVE);
     await state(second, "ready");
     run(engine, second);
     await state(second, "failed");
     expect(writesStarted).toBe(1);
-    expect(await readFile(output)).toEqual(oldBytes);
 
-    releaseUnlink.resolve();
+    releaseFault.resolve();
     await physical;
     expect(physicallySettled).toBe(true);
-    expect(oldClaimRemoved).toBe(true);
+    // Nothing partial is left: no temp file, and an output only if a late
+    // publication landed it whole before the write's cleanup took the temp.
+    expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+    if (existsSync(output)) expect((await zip.verify({ archive: output, manifest: true })).ok).toBe(true);
+
     run(engine, second);
     await state(second, "done");
     expect(writesStarted).toBe(2);
-    const winner = await readFile(output);
-    expect((await zip.verify(output, { manifest: true })).ok).toBe(true);
-    expect(await readFile(output)).toEqual(winner);
-    expect(await readFile(b, "utf8")).toBe("NEW WINNER");
-  } finally {
+    expect((await zip.verify({ archive: output, manifest: true })).ok).toBe(true);
+    expect((await readFile(output)).includes("b.txt")).toBe(true);
+    expect((await readFile(output)).includes("a.txt")).toBe(false);
+    } finally {
     vi.useRealTimers();
-    releaseFault.resolve(); releaseUnlink.resolve();
+    releaseFault.resolve();
     await engine.shutdown();
     // Join the port even if the SDK notification itself is the regression.
     await firstVolume?.whenSettled();

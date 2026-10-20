@@ -19,7 +19,7 @@ const plan: PlanData = {
   summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
   findings: [],
   entries: [],
-  instructions: { policy: resolvePolicy(undefined, {}), overwrite: false, timeZone: "UTC", entries: [] },
+  instructions: { output: "/out.zip", writable: true, zip64: false, policy: resolvePolicy(undefined, {}), overwrite: false, timeZone: "UTC", entries: [] },
 };
 
 const symlink: WriteEntry = {
@@ -269,7 +269,7 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
       summary: { total: 99999, included: 99999, excluded: 99999, renamed: 99999, warnings: 99999, errors: 0, zip64: false, sourceBytes: 0 },
       findings,
       entries: [excludedPlanned],
-      instructions: { policy, overwrite: false, timeZone: "UTC", entries: [] },
+      instructions: { output: "/out.zip", writable: true, zip64: false, policy, overwrite: false, timeZone: "UTC", entries: [] },
     };
 
     // Build the real document with maximum-width write-time fields (crc32 at its

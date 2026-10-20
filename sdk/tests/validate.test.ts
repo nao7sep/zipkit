@@ -157,11 +157,11 @@ describe("locations", () => {
     expect(() => validateSpec({ inputs: ["/a"], outputDir: "out" })).toThrow(invalidError);
     const zip = new ZipKit();
     const relative = { code: "path.not-absolute", kind: "invalid", subject: "a.zip" };
-    await expect(zip.verify("a.zip")).rejects.toMatchObject(relative);
+    await expect(zip.verify({ archive: "a.zip" })).rejects.toMatchObject(relative);
     await expect(zip.pathState("a.zip")).rejects.toMatchObject(relative);
     await expect(zip.pathKinds(["a.zip"])).rejects.toMatchObject(relative);
     await expect(zip.pathResources(["a.zip"])).rejects.toMatchObject(relative);
-    await expect(zip.checkRemoval({ inputs: ["/a"] }, "a.zip")).rejects.toMatchObject(relative);
+    await expect(zip.checkRemoval({ spec: { inputs: ["/a"] }, archive: "a.zip" })).rejects.toMatchObject(relative);
   });
 });
 
@@ -171,14 +171,23 @@ describe("call options and arguments", () => {
     const invalid = { name: "ZipKitError", kind: "invalid" };
     expect(() => new ZipKit({ logDir: "/tmp" } as never)).toThrow(invalidError);
     await expect(zip.plan({ inputs: ["/a"] }, { signal: { aborted: false } as never })).rejects.toMatchObject({ code: "options.invalid" });
-    await expect(zip.verify("/a.zip", { onEvent: "log" as never })).rejects.toMatchObject({ code: "options.invalid" });
-    await expect(zip.verify("/a.zip", { manifest: "yes" as never })).rejects.toMatchObject({ code: "options.invalid" });
-    await expect(zip.verify("/a.zip", { manifestName: "a/b" })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.verify({ archive: "/a.zip" }, { onEvent: "log" as never })).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.verify({ archive: "/a.zip", manifest: "yes" as never })).rejects.toMatchObject({ code: "request.invalid" });
+    await expect(zip.verify({ archive: "/a.zip", manifestName: "a/b" })).rejects.toMatchObject({ code: "request.invalid" });
     await expect(zip.pathState("/a", { signal: {} as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.pathKinds("abc" as never)).rejects.toMatchObject(invalid);
     await expect(zip.pathResources(null as never)).rejects.toMatchObject(invalid);
     await expect(zip.write(null as never)).rejects.toMatchObject({ code: "plan.invalid", kind: "invalid" });
     await expect(zip.write({ mode: "plan", writable: true, instructions: { entries: "x" } } as never)).rejects.toMatchObject({ code: "plan.invalid" });
-    await expect(zip.checkRemoval({ inputs: ["/a"] }, "/a.zip", { removed: 5 as never })).rejects.toMatchObject(invalid);
+    await expect(zip.checkRemoval({ spec: { inputs: ["/a"] }, archive: "/a.zip", removed: 5 as never })).rejects.toMatchObject(invalid);
+  });
+
+  it("refuse unknown keys, so a misspelt setting is never silently ignored", async () => {
+    const zip = new ZipKit();
+    await expect(zip.verify({ archive: "/a.zip", manfest: true } as never)).rejects.toMatchObject({ code: "request.invalid" });
+    await expect(zip.checkRemoval({ spec: { inputs: ["/a"] }, archive: "/a.zip", remove: [] } as never)).rejects.toMatchObject({ code: "request.invalid" });
+    await expect(zip.plan({ inputs: ["/a"] }, { manifest: true } as never)).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.verify({ archive: "/a.zip" }, { manifest: true } as never)).rejects.toMatchObject({ code: "options.invalid" });
+    await expect(zip.pathState("/a", { onProgres: () => {} } as never)).rejects.toMatchObject({ code: "options.invalid" });
   });
 });

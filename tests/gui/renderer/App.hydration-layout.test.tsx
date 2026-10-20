@@ -363,7 +363,7 @@ describe("mounted run consent across queue projection changes", () => {
         writable: true,
         summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
         findings: [],
-        instructions: { policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
+        instructions: { output: "/out.zip", writable: true, zip64: false, policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
         entries: [],
       })),
       write: vi.fn(async () => 123),

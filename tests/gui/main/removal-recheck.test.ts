@@ -41,13 +41,11 @@ it("keeps the originals when one was edited to the same size with its time put b
       // After the archive is made: same size, first byte changed, time put back.
       await writeFile(edited, "Alpha");
       await utimes(edited, when, when);
-      return result.bytes;
+      return result.mode === "write" ? result.bytes : null;
     },
-    verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
+    verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval(buildSpec(inputs, options), archive, {
-        removed, signal, onEvent, onProgress: (counts) => { if (stages.at(-1) !== counts.stage) stages.push(counts.stage); },
-      }),
+      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent, onProgress: (counts) => { if (stages.at(-1) !== counts.stage) stages.push(counts.stage); } }),
     pathKinds: async (paths) => paths.map((p) => ({ path: p, kind: "directory" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,

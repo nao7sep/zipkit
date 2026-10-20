@@ -28,16 +28,16 @@ it("keeps originals when a real archive's file type changes after publication", 
       const central = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
       bytes.writeUInt32LE((0o120777 << 16) >>> 0, central + 38);
       await writeFile(output, bytes);
-      return result.bytes;
+      return result.mode === "write" ? result.bytes : null;
     },
-    verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
+    verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
+      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),
     pathKinds: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {
-      const data = await zip.verify(archive, manifestName === null ? { signal, onEvent } : { manifest: true, manifestName, signal, onEvent });
+      const data = await zip.verify(manifestName === null ? { archive } : { archive, manifest: true, manifestName }, { signal, onEvent });
       return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     trash, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,

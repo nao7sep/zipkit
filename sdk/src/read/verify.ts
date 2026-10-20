@@ -15,7 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { fsFailure, isStall, throwIfAborted, ZipKitError } from "../errors.ts";
+import { fsFailure, isStall, throwIfAborted, withSubject, ZipKitError } from "../errors.ts";
 import type { Volume, VolumeFile } from "../internal/volume.ts";
 import { reportFindings } from "../log/findings.ts";
 import type { Logger } from "../log/logger.ts";
@@ -35,11 +35,14 @@ export interface VerifyDeps {
   volume: Volume;
   /** The caller's `onProgress`, for how far the read has got. */
   onProgress?: ((counts: ProgressCounts) => void) | undefined;
+  /** Receives the manifest's records once loaded, under `manifest`, for a
+   *  caller that compares them with more than the archive. */
+  keepRecords?: (records: ManifestRecord[]) => void;
 }
 
-/** What a verification checks: the archive, and whether and under which name
- *  to hold it to its embedded manifest. */
-export interface VerifyRequest {
+/** What a verification checks, resolved: the archive, and whether and under
+ *  which name to hold it to its embedded manifest. */
+export interface VerifyCheck {
   archive: string;
   manifest: boolean;
   manifestName: string;
@@ -142,8 +145,9 @@ async function loadManifest(
 
 /** Open `archivePath`, parse its central directory and hand both to `use`,
  *  releasing the handle after. A failure to open or stat it is the disk's,
- *  reported by cause with the archive as its subject. */
-export async function withArchive<T>(volume: Volume, archivePath: string, use: (archive: VolumeFile, parsed: ParsedZip) => Promise<T>): Promise<T> {
+ *  reported by cause with the archive as its subject, and an archive fault
+ *  names the archive too. */
+async function withArchive<T>(volume: Volume, archivePath: string, use: (archive: VolumeFile, parsed: ParsedZip) => Promise<T>): Promise<T> {
   let archive: VolumeFile;
   try {
     archive = await volume.open(archivePath, "r");
@@ -158,14 +162,11 @@ export async function withArchive<T>(volume: Volume, archivePath: string, use: (
       throw fsFailure(err, archivePath);
     }
     return await use(archive, await parseZip(archive, fileSize));
+  } catch (err) {
+    throw err instanceof ZipKitError && err.code.startsWith("archive.") ? withSubject(err, archivePath) : err;
   } finally {
     await archive.release();
   }
-}
-
-/** The entry records of the manifest embedded in `archivePath`. */
-export async function readManifestRecords(volume: Volume, archivePath: string, name: string, chunkSize: number): Promise<ManifestRecord[]> {
-  return withArchive(volume, archivePath, async (archive, parsed) => (await loadManifest(archive, parsed.entries, name, chunkSize)).records);
 }
 
 /** Whether a manifest record's type, size or CRC-32 disagrees with the archive's central directory. */
@@ -211,7 +212,7 @@ async function readEntry(
   };
 }
 
-export async function verifyArchive(request: VerifyRequest, deps: VerifyDeps): Promise<VerifyData> {
+export async function verifyArchive(request: VerifyCheck, deps: VerifyDeps): Promise<VerifyData> {
   const signal = deps.signal;
   throwIfAborted(signal);
   return withArchive(deps.volume, request.archive, async (archive, parsed) => {
@@ -230,6 +231,7 @@ export async function verifyArchive(request: VerifyRequest, deps: VerifyDeps): P
       manifestEntryPath = loaded.entry.archivePath;
       manifest = { name: request.manifestName };
       for (const m of loaded.records) manifestMap.set(m.archivePath, m);
+      deps.keepRecords?.(loaded.records);
     }
 
     const manifestMismatches = new Set<string>();
@@ -276,20 +278,20 @@ export async function verifyArchive(request: VerifyRequest, deps: VerifyDeps): P
       if (r.archivePath !== manifestEntryPath) seen.add(r.archivePath);
       if (r.crc32 === "fail") {
         crc32Failed++;
-        findings.push(finding("verify.crc32-mismatch", r.archivePath, "CRC-32 mismatch: entry is corrupt", { severity: "error" }));
+        findings.push(finding("verify.crc32-mismatch", r.archivePath, "CRC-32 mismatch: entry is corrupt"));
       }
       const why = unreadable.get(r.archivePath);
-      if (why !== undefined) findings.push(finding("verify.unreadable", r.archivePath, `entry data cannot be read: ${why}`, { severity: "error" }));
+      if (why !== undefined) findings.push(finding("verify.unreadable", r.archivePath, `entry data cannot be read: ${why}`));
       if (r.sha256 === "mismatch") {
         sha256Mismatched++;
-        findings.push(finding("verify.sha256-mismatch", r.archivePath, "content hash does not match the manifest", { severity: "error" }));
+        findings.push(finding("verify.sha256-mismatch", r.archivePath, "content hash does not match the manifest"));
       }
       if (manifestMismatches.has(r.archivePath)) {
-        findings.push(finding("verify.manifest-mismatch", r.archivePath, "type, size or CRC-32 in the archive does not match the manifest", { severity: "error" }));
+        findings.push(finding("verify.manifest-mismatch", r.archivePath, "type, size or CRC-32 in the archive does not match the manifest"));
       }
       const local = localMismatches.get(r.archivePath);
       if (local !== undefined) {
-        findings.push(finding("verify.local-mismatch", r.archivePath, `local header disagrees with the central directory: ${local}`, { severity: "error" }));
+        findings.push(finding("verify.local-mismatch", r.archivePath, `local header disagrees with the central directory: ${local}`));
       }
     }
 
@@ -298,8 +300,8 @@ export async function verifyArchive(request: VerifyRequest, deps: VerifyDeps): P
     if (request.manifest) {
       for (const key of manifestMap.keys()) if (!seen.has(key)) missing.push(key);
       for (const key of seen) if (!manifestMap.has(key)) extra.push(key);
-      for (const m of missing) findings.push(finding("verify.missing", m, "entry is in the manifest but absent from the archive", { severity: "error" }));
-      for (const e of extra) findings.push(finding("verify.extra", e, "entry is in the archive but absent from the manifest", { severity: "warning" }));
+      for (const m of missing) findings.push(finding("verify.missing", m, "entry is in the manifest but absent from the archive"));
+      for (const e of extra) findings.push(finding("verify.extra", e, "entry is in the archive but absent from the manifest"));
     }
 
     const summary: VerifyData["summary"] = {
@@ -310,9 +312,8 @@ export async function verifyArchive(request: VerifyRequest, deps: VerifyDeps): P
       sha256Mismatched,
       manifestMismatched: manifestMismatches.size,
     };
-    const ok =
-      summary.crc32Failed === 0 && summary.unreadable === 0 && summary.localMismatched === 0 &&
-      (!request.manifest || (missing.length === 0 && extra.length === 0 && summary.sha256Mismatched === 0 && summary.manifestMismatched === 0));
+    // Severity alone decides, as it does for a plan: an error fails the check.
+    const ok = !findings.some((f) => f.severity === "error");
 
     // Each failure as its own line before the aggregate, so a corrupt or
     // tampered archive logs which entries failed, not just a count.

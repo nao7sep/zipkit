@@ -831,13 +831,13 @@ describe("progress presentation", () => {
     expect(event.message).toBe("warning: name.reserved at CON.txt");
   });
 
-  it("keeps a fault's code and diagnostic detail as the SDK wrote them", () => {
+  it("keeps a fault's code and diagnostic message as the SDK wrote them", () => {
     const event = {
       time: "2026-06-14T05:00:00.000Z",
+      stage: "scan",
       level: "error",
       event: "fault",
-      code: "path.denied",
-      detail: "cannot stat: /x",
+      error: { name: "ZipKitError", code: "path.denied", kind: "unavailable", effect: "none", message: "cannot stat: /x" },
       cause: "EACCES",
       message: "path.denied: cannot stat: /x: EACCES",
     } as LogEvent;

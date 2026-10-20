@@ -42,12 +42,12 @@
 
 import { dirname, join, parse } from "node:path";
 import { nanoid } from "nanoid";
-import { throwIfAborted } from "../errors.ts";
+import { fsFailure, throwIfAborted } from "../errors.ts";
 import { dosDateTime } from "../internal/dosTime.ts";
-import { publishNoOverwrite, volumePublishOperations } from "../internal/noClobberPublish.ts";
+import { publishNoOverwrite, volumePublishOperations, type Publication } from "../internal/noClobberPublish.ts";
 import type { Volume, VolumeFile } from "../internal/volume.ts";
 import { deflateBound } from "../plan/zip64.ts";
-import { EntryCompressor, type ChunkSink } from "./deflate.ts";
+import type { ChunkSink } from "./deflate.ts";
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
@@ -327,7 +327,13 @@ export class ZipWriter {
   }
 
   async open(): Promise<void> {
-    this.#file = await this.#volume.createTemp(this.#tempPath);
+    this.#file = await this.#io(this.#volume.createTemp(this.#tempPath));
+  }
+
+  /** A failure of the temp file or its publication, named by the archive it
+   *  becomes, so it is never taken for a source file's. */
+  #io<T>(work: Promise<T>): Promise<T> {
+    return work.catch((err: unknown) => { throw fsFailure(err, this.#output); });
   }
 
   #openFile(): VolumeFile {
@@ -338,7 +344,7 @@ export class ZipWriter {
   /** Append raw bytes at the current offset, advancing it. */
   async #append(buffer: Buffer): Promise<void> {
     if (buffer.length === 0) return;
-    await this.#openFile().writeAll(buffer, this.#offset);
+    await this.#io(this.#openFile().writeAll(buffer, this.#offset));
     this.#offset += buffer.length;
   }
 
@@ -431,7 +437,7 @@ export class ZipWriter {
     patch.writeUInt32LE(result.crc32 >>> 0, 0);
     patch.writeUInt32LE(g.useZip64 ? U32 : result.compressedSize, 4);
     patch.writeUInt32LE(g.useZip64 ? U32 : result.uncompressedSize, 8);
-    await this.#openFile().writeAll(patch, g.headerOffset + 14);
+    await this.#io(this.#openFile().writeAll(patch, g.headerOffset + 14));
 
     if (g.useZip64) {
       // The Zip64 local extra sits right after the name; overwrite its two
@@ -441,14 +447,14 @@ export class ZipWriter {
       sizes.writeBigUInt64LE(BigInt(result.compressedSize), 8);
       // local header(30) + name + extra-id(2) + extra-size(2) = start of values.
       const valuesOffset = g.headerOffset + 30 + g.nameBuf.length + 4;
-      await this.#openFile().writeAll(sizes, valuesOffset);
+      await this.#io(this.#openFile().writeAll(sizes, valuesOffset));
     }
   }
 
   /**
    * Stream one file/symlink entry. `produce` is called with a sink that the
    * caller pushes the entry's compressed/stored bytes into (typically by piping
-   * a read stream through an {@link EntryCompressor}); it returns the final crc
+   * a read stream through an `EntryCompressor`); it returns the final crc
    * and sizes. The header is written first (placeholders), then the data via the
    * sink, then the header is patched.
    */
@@ -506,15 +512,17 @@ export class ZipWriter {
 
   /**
    * Write the central directory and EOCD (with Zip64 records when needed),
-   * fsync, close, and atomically rename the temp file into place. Returns
-   * whether Zip64 structures were emitted and the final byte length. An optional
-   * archive comment is written into the EOCD comment field (UTF-8).
+   * fsync, close, and publish the temp file in place. Returns whether Zip64
+   * structures were emitted, the final byte length, and whether the archive
+   * was published or, without `overwrite`, found its name taken, which leaves
+   * the temp for {@link ZipWriter.abort}. An optional archive comment is
+   * written into the EOCD comment field (UTF-8).
    */
   async finalize(
     forceZip64: boolean,
     comment?: string,
     signal?: AbortSignal,
-  ): Promise<{ zip64: boolean; bytes: number }> {
+  ): Promise<{ zip64: boolean; bytes: number; publication: Publication }> {
     const cdStart = this.#offset;
     for (const record of this.#central) await this.#append(record);
     const cdSize = this.#offset - cdStart;
@@ -565,12 +573,14 @@ export class ZipWriter {
     const bytes = this.#offset;
     const file = this.#openFile();
     // Final permissions are part of the file flushed before publication.
-    if (this.#options.overwrite === true) {
-      if (!await this.#volume.keepMode(this.#output, this.#tempPath)) await this.#volume.prepareNewMode(this.#tempPath);
-    } else await this.#volume.prepareNewMode(this.#tempPath);
-    await file.sync();
-    this.#file = null;
-    await file.close();
+    await this.#io((async () => {
+      if (this.#options.overwrite === true) {
+        if (!await this.#volume.keepMode(this.#output, this.#tempPath)) await this.#volume.prepareNewMode(this.#tempPath);
+      } else await this.#volume.prepareNewMode(this.#tempPath);
+      await file.sync();
+      this.#file = null;
+      await file.close();
+    })());
     // Publication is the commit point: a cancellation that arrived during the
     // central-directory write or fsync must stop here, before the archive
     // becomes visible. The handle is already closed, so the caller's
@@ -579,17 +589,18 @@ export class ZipWriter {
     throwIfAborted(signal);
     // The archive is output written where the caller asked, never state the
     // SDK keeps.
+    let publication: Publication = "published";
     if (this.#options.overwrite === true) {
-      await this.#volume.publishRename(this.#tempPath, this.#output, true);
+      await this.#io(this.#volume.publishRename(this.#tempPath, this.#output, true));
     } else {
-      await publishNoOverwrite(this.#tempPath, this.#output, signal, volumePublishOperations(this.#volume, true));
+      publication = await this.#io(publishNoOverwrite(this.#tempPath, this.#output, signal, volumePublishOperations(this.#volume, true)));
     }
-    return { zip64: needZip64, bytes };
+    return { zip64: needZip64, bytes, publication };
   }
 
-  /** Close and remove the temp file after a failed write: best-effort and
-   *  bounded, and still attempted after a cancel or a stall. */
-  /** Abandon the write; whether its temporary file is gone. */
+  /** Abandon the write: close and remove the temp file, best-effort and
+   *  bounded, and still attempted after a cancel or a stall. Whether the temp
+   *  file is gone. */
   async abort(): Promise<boolean> {
     const file = this.#file;
     this.#file = null;
@@ -597,6 +608,3 @@ export class ZipWriter {
     return this.#volume.discard(this.#tempPath);
   }
 }
-
-export { EntryCompressor };
-export type { ChunkSink };

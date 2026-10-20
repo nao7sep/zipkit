@@ -46,7 +46,7 @@ export type {
   PlannedEntry,
   ProgressCounts,
   RemovalCheck,
-  RemovalOptions,
+  RemovalRequest,
   RemovalRefusal,
   VerifyReport,
   Severity,
@@ -54,7 +54,7 @@ export type {
   UtcTime,
   VerifiedEntry,
   VerifyData,
-  VerifyOptions,
+  VerifyRequest,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.ts";

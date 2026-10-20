@@ -30,7 +30,7 @@ it.each(lanes)("%s publication keeps its complete archive when cancellation acco
     await expect(zip.write(plan, { signal: controller.signal })).rejects.toMatchObject({ code: "write.durability", effect: "unknown", subject: output, cause: error });
     expect(await readFile(input, "utf8")).toBe("preserved original");
     // Read with the normal SDK, proving the public output is a complete ZIP.
-    expect((await new ZipKit().verify(output, { manifest: true })).ok).toBe(true);
+    expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -63,6 +63,6 @@ it.each(lanes)("%s publication ignores cancellation during its flush and retains
     flush.release(); await settlement;
     expect(physicallySettled).toBe(true);
     vi.useRealTimers();
-    expect((await new ZipKit().verify(output, { manifest: true })).ok).toBe(true);
+    expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);
   } finally { flush.release(); vi.useRealTimers(); await outcome; await settlement; await rm(root, { recursive: true, force: true }); }
 });

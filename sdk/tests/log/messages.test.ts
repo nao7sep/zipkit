@@ -6,10 +6,14 @@
 
 import { describe, expect, it } from "vitest";
 import { messageFor } from "../../src/log/messages.ts";
+import { resolvePolicy } from "../../src/policy.ts";
 import type { LogEventBody } from "../../src/types.ts";
 
+const startup = { event: "session.start", version: "0.1.0", concurrency: 8, chunkSize: 65536, ioTimeoutMs: 30000, debug: false, policy: resolvePolicy(undefined, undefined) } as const;
+const error = { name: "ZipKitError", code: "archive.not-zip", kind: "invalid", effect: "none", message: "not a zip" } as const;
+
 const samples: LogEventBody[] = [
-  { event: "session.start", version: "0.1.0", concurrency: 8, chunkSize: 65536 },
+  startup,
   { event: "scan.start", inputs: 2 },
   { event: "scan.dir", path: "a/b" },
   { event: "scan.done", entries: 3, prunedDirs: 1 },
@@ -23,7 +27,7 @@ const samples: LogEventBody[] = [
   { event: "verify.start", entries: 2 },
   { event: "entry.verified", path: "p" },
   { event: "verify.done", total: 2, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0, ok: true },
-  { event: "fault", code: "archive.not-zip", detail: "not a zip" },
+  { event: "fault", error },
 ];
 
 describe("messageFor", () => {
@@ -36,9 +40,9 @@ describe("messageFor", () => {
   });
 
   // The wording is a diagnostic, free to change; what a line must carry is pinned.
-  it("carries a fault's code, detail and cause", () => {
-    const m = messageFor({ event: "fault", code: "x.y", detail: "boom", cause: "ENOENT" });
-    for (const part of ["x.y", "boom", "ENOENT"]) expect(m).toContain(part);
+  it("carries a fault's code, message and cause", () => {
+    const m = messageFor({ event: "fault", error, cause: "ENOENT" });
+    for (const part of ["archive.not-zip", "not a zip", "ENOENT"]) expect(m).toContain(part);
   });
 
   it("notes zip64 only when present", () => {
@@ -52,9 +56,9 @@ describe("messageFor", () => {
   });
 
   it("renders the startup line with the version and runtime config", () => {
-    const m = messageFor({ event: "session.start", version: "0.1.0", concurrency: 8, chunkSize: 65536 });
-    expect(m).toContain("0.1.0");
-    expect(m).toContain("8");
-    expect(m).toContain("65536");
+    const m = messageFor(startup);
+    for (const part of ["0.1.0", "8", "65536", "30000"]) expect(m).toContain(part);
+    expect(m).not.toContain("debug");
+    expect(messageFor({ ...startup, debug: true })).toContain("debug");
   });
 });

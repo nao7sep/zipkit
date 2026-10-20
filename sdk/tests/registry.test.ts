@@ -6,9 +6,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { finding, isKnownRule, RULE_ORDER, RULE_REGISTRY } from "../src/registry.ts";
+import { finding, RULE_REGISTRY } from "../src/registry.ts";
+import type { FindingRule } from "../src/types.ts";
 
-const ALL_RULES = RULE_ORDER;
+const ALL_RULES = Object.keys(RULE_REGISTRY) as FindingRule[];
 
 describe("RULE_REGISTRY", () => {
   it("gives every rule a severity and a disposition", () => {
@@ -26,7 +27,7 @@ describe("RULE_REGISTRY", () => {
   });
 
   it("contains exactly the documented rule set in pipeline order", () => {
-    expect(RULE_ORDER).toEqual([
+    expect(ALL_RULES).toEqual([
       "path.absolute",
       "path.traversal",
       "path.too-long",
@@ -46,12 +47,18 @@ describe("RULE_REGISTRY", () => {
       "time.pre-1980",
       "time.post-2107",
       "output.exists",
+      "verify.crc32-mismatch",
+      "verify.unreadable",
+      "verify.local-mismatch",
+      "verify.sha256-mismatch",
+      "verify.manifest-mismatch",
+      "verify.missing",
+      "verify.extra",
     ]);
   });
 
-  it("recognizes known rules and rejects unknown ones", () => {
-    expect(isKnownRule("name.nfd")).toBe(true);
-    expect(isKnownRule("not.a.rule")).toBe(false);
+  it("keeps every verification rule at the error tier, so any of them fails a verification", () => {
+    for (const rule of ALL_RULES.filter((r) => r.startsWith("verify."))) expect(RULE_REGISTRY[rule].severity, rule).toBe("error");
   });
 });
 

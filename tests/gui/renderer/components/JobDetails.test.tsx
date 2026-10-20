@@ -37,7 +37,7 @@ const job = (over: Partial<Job> = {}): Job => ({ id: "job", inputs: ["/in"], opt
 const plan = (entries: PlannedEntry[] = []): PlanData => ({
   mode: "plan",
   output: "/output.zip",
-  instructions: { policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
+  instructions: { output: "/out.zip", writable: true, zip64: false, policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
   entries,
   findings: [],
   summary: { total: entries.length, included: 0, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },

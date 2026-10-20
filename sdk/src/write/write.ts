@@ -8,25 +8,32 @@
  * instructions are part of the plan (see `instructions.ts`), so `write(plan)`
  * needs no second argument.
  *
- * `writable` is the gate: a non-writable plan throws `write.not-writable`, with no
- * override for the error tier. The output is written to a temp file in its own
- * directory and atomically renamed into place by the writer.
+ * The instructions are the gate: a plan whose visible output, `writable` or
+ * Zip64 verdict disagree with them is `plan.invalid`, and one they do not let
+ * write is `write.not-writable`, with no override for the error tier. The
+ * output is written to a temp file in its own directory and published by the
+ * writer; an output that appeared since the plan, when replacing it was not
+ * authorized, returns the plan blocked by `output.exists`, as `create` returns
+ * a plan that blocks.
  */
 
 import { createHash, type Hash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
-import { fsFailure, isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
+import { classify, fsFailure, isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
+import type { PlanInternals } from "../internal/instructions.ts";
 import { fromInstructions } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { WriteEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
 import type { PlanData, ProgressCounts, WriteData } from "../types.ts";
+import { outputExists } from "../plan/plan.ts";
 import { contentBytes } from "../plan/summary.ts";
 import { Meter } from "../progress.ts";
 
 import { buildManifest, manifestText } from "./manifest.ts";
 import type { ManifestEntryInput } from "./manifest.ts";
-import { EntryCompressor, ZipWriter } from "./zipWriter.ts";
+import { EntryCompressor } from "./deflate.ts";
+import { ZipWriter } from "./zipWriter.ts";
 import type { StreamResult, WriteEntryInput } from "./zipWriter.ts";
 
 export interface WriteDeps {
@@ -70,8 +77,8 @@ function changedSinceScan(source: WriteEntry, stats: BigIntStats): boolean {
 function sourceChanged(source: WriteEntry): ZipKitError {
   return new ZipKitError(
     "write.source-changed",
-    `source changed while it was being archived: ${source.archivePath}`,
-    { subject: source.archivePath },
+    `source changed while it was being archived: ${source.absolutePath}`,
+    { subject: source.absolutePath },
   );
 }
 
@@ -181,13 +188,38 @@ async function streamPieces(
   });
 }
 
-export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<WriteData> {
-  const internals = plan !== null && typeof plan === "object" ? fromInstructions(plan.instructions) : undefined;
-  if (!internals) throw new ZipKitError("plan.invalid", "not a plan returned by plan(): its instructions are missing or malformed");
-  if (!plan.writable) {
+/** The writer's instructions from a plan, refused as `plan.invalid` when they
+ *  are malformed or the plan's visible fields say otherwise. */
+function checkedInstructions(plan: PlanData): PlanInternals {
+  const given = plan !== null && typeof plan === "object" ? plan : undefined;
+  const internals = given?.mode === "plan" ? fromInstructions(given.instructions) : undefined;
+  const subject = typeof given?.output === "string" ? { subject: given.output } : {};
+  if (!internals) throw new ZipKitError("plan.invalid", "not a plan returned by plan(): its instructions are missing or malformed", subject);
+  if (given!.output !== internals.output || given!.writable !== internals.writable || given!.summary?.zip64 !== internals.zip64) {
+    throw new ZipKitError("plan.invalid", "the plan's output, writable or summary.zip64 differ from its instructions", subject);
+  }
+  return internals;
+}
+
+/** The plan blocked by its output's name being taken since it was made. */
+function outputTaken(plan: PlanData): PlanData {
+  return {
+    ...plan,
+    writable: false,
+    summary: { ...plan.summary, errors: plan.summary.errors + 1 },
+    findings: [...plan.findings, outputExists(plan.output)],
+    instructions: { ...plan.instructions, writable: false },
+  };
+}
+
+export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<WriteData | PlanData> {
+  const internals = checkedInstructions(plan);
+  const { output, writable } = internals;
+  if (!writable) {
     throw new ZipKitError(
       "write.not-writable",
       "the plan is not writable: resolve blocking findings or authorize overwrite",
+      { subject: output },
     );
   }
 
@@ -209,7 +241,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   // rather than rebuilding and re-estimating here. `finalize()` recomputes the
   // truth from the real offsets and returns it as `zip64`; this up-front value
   // only forces Zip64 on when the estimate already requires it.
-  const zip64Needed = plan.summary.zip64;
+  const zip64Needed = internals.zip64;
 
   const meter = new Meter(
     "write",
@@ -217,7 +249,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     deps.onProgress,
   );
   const writer = new ZipWriter(
-    plan.output,
+    output,
     { timeZone, chunkSize: deps.chunkSize, overwrite },
     deps.volume,
   );
@@ -326,6 +358,10 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     }
 
     const final = await writer.finalize(zip64Needed, comment, signal);
+    if (final.publication === "exists") {
+      await writer.abort();
+      return outputTaken(plan);
+    }
     zip64 = final.zip64;
     bytes = final.bytes;
 
@@ -334,7 +370,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
 
     return {
       mode: "write",
-      output: plan.output,
+      output,
       // The exact post-write outcome from finalize.
       bytes,
       zip64,
@@ -354,7 +390,8 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     // even when cancellation arrived during that publication.
     if (isStall(err) || (err instanceof ZipKitError && err.code === "write.durability")) throw left(err);
     if (signal?.aborted) throw left(toAbortError(signal.reason));
-    if (err instanceof ZipKitError && err.code.startsWith("write.")) throw left(err);
-    throw left(new ZipKitError("write.failed", `failed to write ${plan.output}`, { cause: err, subject: plan.output }));
+    // The sources and the writer classify their own file failures; anything
+    // else is the SDK's own fault.
+    throw left(classify(err, output));
   }
 }

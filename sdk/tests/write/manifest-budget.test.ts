@@ -34,7 +34,7 @@ describe("manifests of any size", () => {
     expect(plan.writable).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(document(plan), null, 2))).toBeGreaterThan(16 * 1024 * 1024);
     await write(plan);
-    const verified = await new ZipKit().verify(plan.output, { manifest: true });
+    const verified = await new ZipKit().verify({ archive: plan.output, manifest: true });
     expect(verified.ok).toBe(true);
     expect(verified.entries).toHaveLength(25_001);
   }, 15_000); // 25,000 real ZIP directory writes, under ordinary suite concurrency
@@ -61,7 +61,7 @@ describe("manifests of any size", () => {
     // One long finding message carries the manifest past the old limit cheaply.
     plan.findings.push({ rule: "name.suspicious", severity: "warning", path: "folder-0", message: "é".repeat(33 * 1024 * 1024) });
     await write(plan);
-    const verified = await new ZipKit().verify(output, { manifest: true });
+    const verified = await new ZipKit().verify({ archive: output, manifest: true });
     expect(verified.ok).toBe(true);
     expect(await readdir(root)).toEqual(["past-limit.zip"]);
   }, 15_000); // a 66 MiB manifest deflated and inflated once each

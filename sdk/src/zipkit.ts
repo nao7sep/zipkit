@@ -6,13 +6,15 @@
  * plan carries the resolved output and the overwrite intent, so `write(plan)`
  * is self-contained. The per-call policy is merged over the instance policy.
  *
- * Events go only to each call's `onEvent` hook and progress to `onProgress`:
- * the SDK writes no log file, reads no environment variable, writes nothing
- * outside the paths it is given, and writes nothing to stdout or stderr. The
- * caller records events wherever it keeps its own. An instance emits one
- * `session.start` event, with the version and runtime configuration, before
- * its first verb's events. A failing hook is deliberately silent so it cannot
- * break a verb.
+ * Every method takes what it is asked to do as its arguments and one set of
+ * call options (`ZipKitCallOptions`). Events go only to each call's `onEvent`
+ * hook and progress to `onProgress`: the SDK writes no log file, reads no
+ * environment variable, writes nothing outside the paths it is given, and
+ * writes nothing to stdout or stderr. The caller records events wherever it
+ * keeps its own. An instance emits one `session.start` event, with the version
+ * and runtime configuration, to the first call that listens, before that
+ * call's own events; a call that fails ends with one `fault` event. A failing
+ * hook is deliberately silent so it cannot break a call.
  */
 
 import os from "node:os";
@@ -20,11 +22,10 @@ import pLimit from "p-limit";
 import { toAbortError, ZipKitError } from "./errors.ts";
 import { matcherFor } from "./filter/match.ts";
 import { reportFindings } from "./log/findings.ts";
-import { createLogger, type LogSink } from "./log/logger.ts";
-import type { Logger } from "./log/logger.ts";
+import { createLogger, type Logger } from "./log/logger.ts";
 import { recheckContent } from "./compare/content.ts";
 import { compareWithManifest, explainRemoved, onDisk } from "./compare/sources.ts";
-import { readManifestRecords, verifyArchive } from "./read/verify.ts";
+import { verifyArchive, type ManifestRecord } from "./read/verify.ts";
 import { fromInstructions } from "./internal/instructions.ts";
 import { pathKinds, pathState } from "./paths.ts";
 import { checkRemoval, outputInsideInputs } from "./removal.ts";
@@ -42,12 +43,12 @@ import {
   requireAbsolute,
   requireAbsoluteList,
   validateCallOptions,
-  validateFlag,
   validateInstanceOptionKeys,
-  validateManifestName,
+  validateRemovalRequest,
   validateSpec,
+  validateVerifyRequest,
 } from "./validate.ts";
-import { writeArchive, type WriteDeps } from "./write/write.ts";
+import { writeArchive } from "./write/write.ts";
 import { VERSION } from "./version.ts";
 import type {
   ArchivePolicy,
@@ -59,10 +60,11 @@ import type {
   SourceComparison,
   PathEntry,
   PathState,
+  ProgressCounts,
   RemovalCheck,
-  RemovalOptions,
+  RemovalRequest,
   VerifyData,
-  VerifyOptions,
+  VerifyRequest,
   ZipKitCallOptions,
   ZipKitOptions,
 } from "./types.ts";
@@ -104,9 +106,9 @@ export class ZipKit {
   readonly #concurrency: number;
   readonly #chunkSize: number;
   readonly #ioTimeoutMs: number;
-  /** Whether the once-per-instance startup event has been emitted yet. */
+  /** Whether the once-per-instance startup event has been delivered yet. */
   #startupLogged = false;
-  /** Whether `debug` events reach the sinks. */
+  /** Whether `debug` events reach the hook. */
   readonly #debug: boolean;
 
   constructor(options: ZipKitOptions = {}) {
@@ -129,18 +131,17 @@ export class ZipKit {
    * or JSON round trip, such as in another process.
    */
   async plan(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<PlanData> {
-    return this.#run(options, (logger) => this.#plan(spec, logger, options.signal, this.volume(options.signal)));
+    return this.#run("plan", options, (run) => this.#plan(spec, run));
   }
 
   /** Execute a plan produced by {@link ZipKit.plan}, or a copy of one. A plan
-   *  whose instructions are missing or malformed fails with `plan.invalid`. */
-  async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData> {
-    const volume = this.volume(options.signal);
-    try {
-      return await this.#run(options, (logger) => this.#runWrite(plan, {
-        logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onProgress: options.onProgress,
-      }));
-    } finally { this.#notifySettlement(options, volume); }
+   *  whose instructions are missing or malformed, or whose output, `writable`
+   *  or Zip64 verdict disagree with them, fails with `plan.invalid`. An output
+   *  that appeared since the plan, when replacing it was not authorized, is
+   *  refused like a plan that blocks: the plan is returned unwritten, blocked
+   *  by `output.exists`. */
+  async write(plan: PlanData, options: ZipKitCallOptions = {}): Promise<WriteData | PlanData> {
+    return this.#run("write", options, (run) => this.#write(plan, run));
   }
 
   /** Plan and write in one call. One logger and one signal serve both inner
@@ -149,56 +150,26 @@ export class ZipKit {
    *  such as on an existing output without `overwrite`, is returned unwritten
    *  as the refusal, with the findings that block it. */
   async create(spec: ArchiveSpec, options: ZipKitCallOptions = {}): Promise<WriteData | PlanData> {
-    const volume = this.volume(options.signal);
-    try {
-      return await this.#run<WriteData | PlanData>(options, async (logger) => {
-        const plan = await this.#plan(spec, logger, options.signal, volume);
-        if (!plan.writable) return plan;
-        return this.#runWrite(plan, { logger, chunkSize: this.#chunkSize, signal: options.signal, volume, onProgress: options.onProgress });
-      });
-    } finally { this.#notifySettlement(options, volume); }
-  }
-
-  #notifySettlement(options: ZipKitCallOptions, volume: Volume): void {
-    // Capture after logical cleanup: an earlier empty set could report idle
-    // before the first write, or omit continuations spawned by late calls.
-    try { options.onPhysicalSettlement?.(volume.whenSettled()); }
-    catch { /* Like an event sink, the observer cannot break the verb. */ }
+    return this.#run<WriteData | PlanData>("plan", options, async (run) => {
+      const plan = await this.#plan(spec, run);
+      if (!plan.writable) return plan;
+      return this.#write(plan, run);
+    });
   }
 
   /**
-   * Verify `archive`: read every entry through, checking its CRC-32 and its
+   * Verify an archive: read every entry through, checking its CRC-32 and its
    * local header, and under `manifest` hold the archive to its embedded
    * manifest and check each recorded SHA-256. Writes nothing. Without
    * `manifest` it is the archive's own integrity test and works on any ZIP.
    * What fails is reported in the result, not thrown: an error means the
    * check itself could not run.
    */
-  async verify(archive: string, options: VerifyOptions = {}): Promise<VerifyData> {
-    const { manifest, manifestName, ...call } = options;
-    const volume = this.volume(call.signal);
-    try {
-      return await this.#run(call, async (logger) => {
-        try {
-          const request = {
-            archive: requireAbsolute(archive, "archive"),
-            manifest: validateFlag(manifest, "manifest") ?? false,
-            manifestName: this.#manifestName(validateManifestName(manifestName)),
-          };
-          return await verifyArchive(request, {
-            limit: pLimit(this.#concurrency),
-            chunkSize: this.#chunkSize,
-            logger,
-            signal: call.signal,
-            volume,
-            onProgress: call.onProgress,
-          });
-        } catch (err) {
-          this.#reportError(logger, err, "verify");
-          throw err;
-        }
-      });
-    } finally { this.#notifySettlement(call, volume); }
+  async verify(request: VerifyRequest, options: ZipKitCallOptions = {}): Promise<VerifyData> {
+    return this.#run("verify", options, (run) => {
+      const { archive, manifest, manifestName } = validateVerifyRequest(request);
+      return this.#verify(archive, manifest ?? false, this.#manifestName(manifestName), run);
+    });
   }
 
   /** The manifest name a read looks for: the one given, else the instance
@@ -210,104 +181,36 @@ export class ZipKit {
   }
 
   /**
-   * Re-scan `spec`'s inputs and compare them with the manifest embedded in
-   * `archive` (see {@link SourceComparison}), the last check before the
-   * originals an archive was made from are removed. `spec` is the one the
-   * archive was created with, so the same entries are included and excluded.
-   * What inputs already removed (`removed`) took is not a difference. When
-   * nothing was added, changed by type, size or time, or left unlisted, every
-   * file and link is read again and compared by content. The answer names
-   * places on disk. Writes nothing; emits the scan's events but not a plan's
-   * findings, since this plan is never written.
-   */
-  async #compareSources(
-    spec: ArchiveSpec,
-    archive: string,
-    removed: readonly string[],
-    options: ZipKitCallOptions,
-  ): Promise<SourceComparison> {
-    return this.#run(options, async (logger) => {
-      try {
-        const validated = validateSpec(spec);
-        const policy = resolvePolicy(this.#policy, validated.policy);
-        const volume = this.volume(options.signal);
-        const limit = pLimit(this.#concurrency);
-        const scanned = await scan(validated, policy, {
-          matcher: matcherFor(policy),
-          limit,
-          logger,
-          signal: options.signal,
-          volume,
-        });
-        const plan = planArchive(scanned, policy);
-        const name = policy.manifest !== false ? policy.manifest.name : MANIFEST_DEFAULTS.name;
-        const records = await readManifestRecords(volume, archive, name, this.#chunkSize);
-        const unlistedDirs = new Set(scanned.unlistedDirs);
-        const unlisted = scanned.entries.filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath));
-        const fresh = fromInstructions(plan.instructions)?.writeEntries ?? [];
-        // Where each source path was found now, for the answer.
-        const diskPathOf = new Map(plan.entries.map((e) => [e.archivePath, e.diskPath]));
-        const found = new Map<string, string[]>();
-        const note = (sourcePath: string, diskPath: string | undefined): void => {
-          if (diskPath === undefined) return;
-          const list = found.get(sourcePath);
-          if (list) list.push(diskPath);
-          else found.set(sourcePath, [diskPath]);
-        };
-        for (const e of fresh) if (e.type !== "dir") note(e.sourcePath, diskPathOf.get(e.archivePath));
-        for (const e of unlisted) note(e.sourcePath, e.diskPath);
-
-        let comparison = explainRemoved(
-          compareWithManifest(fresh, unlisted.map((e) => e.sourcePath), records), validated.inputs, removed);
-        if (comparison.matches) {
-          const changed = await recheckContent(fresh, records, {
-            volume, limit, chunkSize: this.#chunkSize, signal: options.signal, onProgress: options.onProgress,
-          });
-          if (changed.length > 0) comparison = { ...comparison, matches: false, changed };
-        }
-        return onDisk(comparison, found, validated.inputs, removed);
-      } catch (err) {
-        this.#reportError(logger, err);
-        throw err;
-      }
-    });
-  }
-
-  /**
-   * Whether the originals `archive` was made from can be removed without
+   * Whether the originals an archive was made from can be removed without
    * losing data, checked in order: the archive does not sit at or inside an
-   * input, it verifies against its manifest, and a fresh scan of `spec`'s
+   * input, it verifies against its manifest, and a fresh scan of the spec's
    * inputs still matches that manifest, every file and link by its content.
-   * Reads every original once, reporting how far through `onProgress` (stage
-   * `recheck`, after the verification's `verify`). `spec` is the one the archive was
-   * created with, its inputs only those still to be removed; `removed` names
-   * inputs an earlier partial removal already took. Removes nothing. A check
-   * that cannot finish refuses, naming its step and carrying its error; a
-   * cancellation is thrown.
+   * Reads the archive once and every original once, reporting how far through
+   * `onProgress` (stage `verify`, then `recheck`). Removes nothing. A check
+   * that cannot finish refuses, naming its step and carrying its error, and is
+   * not a failure of the call; a cancellation is thrown.
    */
-  async checkRemoval(spec: ArchiveSpec, archive: string, options: RemovalOptions = {}): Promise<RemovalCheck> {
-    return this.#guard(options, async () => {
+  async checkRemoval(request: RemovalRequest, options: ZipKitCallOptions = {}): Promise<RemovalCheck> {
+    return this.#run("verify", options, async (run) => {
+      const { spec, archive, removed = [] } = validateRemovalRequest(request);
       const validated = validateSpec(spec);
-      requireAbsolute(archive, "archive");
-      const { removed: removedOption, ...call } = options;
-      const removed = removedOption === undefined ? [] : requireAbsoluteList(removedOption, "removed");
-      const manifest = resolvePolicy(this.#policy, validated.policy).manifest;
+      const policy = resolvePolicy(this.#policy, validated.policy);
+      const manifestName = policy.manifest !== false ? policy.manifest.name : MANIFEST_DEFAULTS.name;
       // The archive is the output, so the fresh scan never counts the archive
       // itself when it sits beside the inputs.
       const { outputDir: _dir, outputName: _name, ...rest } = validated;
       const rescan: ArchiveSpec = { ...rest, output: archive };
+      let records: ManifestRecord[] = [];
       const check = await checkRemoval({
-        state: () => this.pathState(archive, call),
-        inside: () => outputInsideInputs(archive, validated.inputs, this.volume(call.signal)),
+        state: () => pathState(archive, run.volume),
+        inside: () => outputInsideInputs(archive, validated.inputs, run.volume),
         verify: async () => {
-          const data = await this.verify(archive, {
-            ...call, manifest: true, ...(manifest !== false ? { manifestName: manifest.name } : {}),
-          });
+          const data = await this.#verify(archive, true, manifestName, run, (kept) => { records = kept; });
           return { ok: data.ok, report: { summary: data.summary, missing: data.missing, extra: data.extra, findings: data.findings } };
         },
-        compare: () => this.#compareSources(rescan, archive, removed, call),
+        compare: () => this.#compareSources(rescan, records, removed, run),
       }, archive);
-      call.signal?.throwIfAborted();
+      run.signal?.throwIfAborted();
       return check;
     });
   }
@@ -328,36 +231,37 @@ export class ZipKit {
    * fingerprints with `sameFile` to tell a file rewritten in place from another
    * file put in its place. Bounded like every look at a user volume.
    */
-  async pathState(target: string, options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathState> {
-    return this.#guard(options, () => pathState(requireAbsolute(target, "path"), this.volume(options.signal)));
+  async pathState(target: string, options: ZipKitCallOptions = {}): Promise<PathState> {
+    return this.#run("scan", options, (run) => pathState(requireAbsolute(target, "path"), run.volume));
   }
 
   /** Each path as a path claim compares it (see `createPathClaims`), resolved
    *  through links and folder aliases; a path that is a link to a file also
    *  yields the file it points to. Bounded like every look at a user volume. */
-  async pathResources(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathResource[]> {
-    return this.#guard(options, () => pathResources(requireAbsoluteList(paths, "paths"), this.volume(options.signal)));
+  async pathResources(paths: readonly string[], options: ZipKitCallOptions = {}): Promise<PathResource[]> {
+    return this.#run("scan", options, (run) => pathResources(requireAbsoluteList(paths, "paths"), run.volume));
   }
 
   /** What each path is on disk now, in order (see `PathKind`). */
-  async pathKinds(paths: readonly string[], options: Pick<ZipKitCallOptions, "signal"> = {}): Promise<PathEntry[]> {
-    return this.#guard(options, () => pathKinds(requireAbsoluteList(paths, "paths"), this.volume(options.signal)));
+  async pathKinds(paths: readonly string[], options: ZipKitCallOptions = {}): Promise<PathEntry[]> {
+    return this.#run("scan", options, (run) => pathKinds(requireAbsoluteList(paths, "paths"), run.volume));
   }
 
   /**
-   * The one seam every verb runs through: checks the call options, builds the
-   * run's logger on the per-call `onEvent` hook, runs the verb and classifies
-   * whatever it throws.
+   * The one seam every method runs through: checks the call options, builds
+   * the call's logger on its `onEvent` hook and its bounded volume, runs the
+   * method, classifies whatever it throws and records that as the call's one
+   * `fault` event, and hands `onPhysicalSettlement` the volume's settlement.
+   * `stage` is where a failure is recorded when its code names no domain.
    */
-  async #run<U>(options: ZipKitCallOptions, fn: (logger: Logger) => Promise<U>): Promise<U> {
+  async #run<U>(stage: LogStage, options: ZipKitCallOptions, fn: (run: Run) => Promise<U>): Promise<U> {
     validateCallOptions(options);
-    const sinks: LogSink[] = [];
-    if (options.onEvent) sinks.push(options.onEvent);
-    const logger = createLogger(sinks, this.#debug);
-    // Startup event, once per instance: the tool version and the effective
-    // runtime configuration, so a caller's record is tied to a version and the
-    // knobs it ran with (the logging convention's startup-coverage rule).
-    if (!this.#startupLogged) {
+    const logger = createLogger(options.onEvent, this.#debug);
+    // Startup event, once per instance, to the first call that listens: the
+    // tool version and the effective runtime configuration, so a caller's
+    // record is tied to a version and the knobs it ran with (the logging
+    // convention's startup-coverage rule).
+    if (!this.#startupLogged && options.onEvent) {
       this.#startupLogged = true;
       logger.emit({
         stage: "session",
@@ -366,108 +270,169 @@ export class ZipKit {
         version: VERSION,
         concurrency: this.#concurrency,
         chunkSize: this.#chunkSize,
+        ioTimeoutMs: this.#ioTimeoutMs,
+        debug: this.#debug,
+        policy: resolvePolicy(this.#policy, undefined),
       });
     }
-    try { return await fn(logger); }
-    catch (err) { throw classified(err, options.signal); }
-  }
-
-  /** The seam for the methods that only look (a path's state, an archive's
-   *  listing): the same option checks and error classification as `#run`,
-   *  without a run's events or log. */
-  async #guard<T>(options: object, fn: () => Promise<T>): Promise<T> {
-    validateCallOptions(options);
-    try { return await fn(); }
-    catch (err) { throw classified(err, (options as ZipKitCallOptions).signal); }
-  }
-
-  /** The shared plan path. `plan()` and `create()` both route through it with
-   *  the logger and signal from their own call's options. */
-  async #plan(
-    spec: ArchiveSpec,
-    logger: Logger,
-    signal: AbortSignal | undefined,
-    volume: Volume,
-  ): Promise<PlanData> {
+    const volume = this.volume(options.signal);
     try {
-      const validated = validateSpec(spec);
-      const policy = resolvePolicy(this.#policy, validated.policy);
-      const matcher = matcherFor(policy);
-      const limit = pLimit(this.#concurrency);
-
-      const scanResult = await scan(validated, policy, { matcher, limit, logger, signal, volume });
-      const plan = planArchive(scanResult, policy);
-      this.#reportPlan(logger, plan);
-      return plan;
+      return await fn({ logger, volume, signal: options.signal, onProgress: options.onProgress });
     } catch (err) {
-      this.#reportError(logger, err);
-      throw err;
+      const error = classified(err, options.signal);
+      reportFault(logger, error, stage);
+      throw error;
+    } finally {
+      // Capture after logical cleanup: an earlier empty set could report idle
+      // before the first write, or omit continuations spawned by late calls.
+      try { options.onPhysicalSettlement?.(volume.whenSettled()); }
+      catch { /* Like the event hook, the observer cannot break the call. */ }
     }
   }
 
-  /** Execute the writer, reporting any failure to the log stream before it
-   *  propagates. `#plan()` reports its own failures, so `create()` does not
-   *  double-report when its inner plan throws. */
-  async #runWrite(
-    plan: PlanData,
-    deps: WriteDeps,
-  ): Promise<WriteData> {
-    try {
-      return await writeArchive(plan, deps);
-    } catch (err) {
-      this.#reportError(deps.logger, err, "write");
-      throw err;
-    }
+  /** The shared plan path of `plan()` and `create()`. */
+  async #plan(spec: ArchiveSpec, run: Run): Promise<PlanData> {
+    const validated = validateSpec(spec);
+    const policy = resolvePolicy(this.#policy, validated.policy);
+    const scanResult = await scan(validated, policy, {
+      matcher: matcherFor(policy), limit: pLimit(this.#concurrency), logger: run.logger, signal: run.signal, volume: run.volume,
+    });
+    const plan = planArchive(scanResult, policy);
+    reportPlan(run.logger, plan);
+    return plan;
   }
 
-  /** Emit a terminal error event so the `onEvent` hook records the failure
-   *  instead of going silent mid-stream. Best-effort: the logger swallows its
-   *  own faults, and the original error is always rethrown by the caller. The stage is the domain the error's code names (a scan
-   *  failure inside a plan is recorded under scan), else the verb's own. */
-  #reportError(logger: Logger, err: unknown, verbStage: LogStage = "plan"): void {
-    const stage: LogStage = err instanceof ZipKitError ? STAGE_FOR_CODE_DOMAIN[err.code.split(".")[0]!] ?? verbStage : verbStage;
-    const code = err instanceof ZipKitError ? err.code : "unknown";
-    const message = err instanceof Error ? err.message : String(err);
-    const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
-    logger.emit(
-      cause !== undefined
-        ? { stage, level: "error", event: "fault", code, detail: message, cause }
-        : { stage, level: "error", event: "fault", code, detail: message },
-    );
-  }
-
-  #reportPlan(logger: Logger, plan: PlanData): void {
-    for (const entry of plan.entries) {
-      if (entry.excluded) {
-        logger.emit(
-          entry.excludeReason !== undefined
-            ? { stage: "plan", level: "debug", event: "entry.excluded", path: entry.archivePath, reason: entry.excludeReason }
-            : { stage: "plan", level: "debug", event: "entry.excluded", path: entry.archivePath },
-        );
-      } else if (entry.archivePath !== entry.originalPath) {
-        logger.emit({
-          stage: "plan",
-          level: "debug",
-          event: "entry.renamed",
-          path: entry.archivePath,
-          from: entry.originalPath,
-        });
-      }
-    }
-    reportFindings(logger, "plan", plan.findings);
-    logger.emit({
-      stage: "plan",
-      level: "info",
-      event: "plan.done",
-      total: plan.summary.total,
-      included: plan.summary.included,
-      excluded: plan.summary.excluded,
-      renamed: plan.summary.renamed,
-      warnings: plan.summary.warnings,
-      errors: plan.summary.errors,
-      writable: plan.writable,
+  /** The shared write path of `write()` and `create()`. */
+  #write(plan: PlanData, run: Run): Promise<WriteData | PlanData> {
+    return writeArchive(plan, {
+      logger: run.logger, chunkSize: this.#chunkSize, signal: run.signal, volume: run.volume, onProgress: run.onProgress,
     });
   }
+
+  /** The shared verification of `verify()` and `checkRemoval()`. */
+  #verify(
+    archive: string,
+    manifest: boolean,
+    manifestName: string,
+    run: Run,
+    keepRecords?: (records: ManifestRecord[]) => void,
+  ): Promise<VerifyData> {
+    return verifyArchive({ archive, manifest, manifestName }, {
+      limit: pLimit(this.#concurrency),
+      chunkSize: this.#chunkSize,
+      logger: run.logger,
+      signal: run.signal,
+      volume: run.volume,
+      onProgress: run.onProgress,
+      ...(keepRecords ? { keepRecords } : {}),
+    });
+  }
+
+  /**
+   * Re-scan `spec`'s inputs and compare them with the archive's manifest
+   * `records` (see {@link SourceComparison}), the last check before the
+   * originals an archive was made from are removed. `spec` is the one the
+   * archive was created with, so the same entries are included and excluded.
+   * What inputs already removed (`removed`) took is not a difference. When
+   * nothing was added, changed by type, size or time, or left unlisted, every
+   * file and link is read again and compared by content. The answer names
+   * places on disk. Writes nothing; emits the scan's events but not a plan's
+   * findings, since this plan is never written.
+   */
+  async #compareSources(
+    spec: ArchiveSpec,
+    records: readonly ManifestRecord[],
+    removed: readonly string[],
+    run: Run,
+  ): Promise<SourceComparison> {
+    const policy = resolvePolicy(this.#policy, spec.policy);
+    const limit = pLimit(this.#concurrency);
+    const scanned = await scan(spec, policy, {
+      matcher: matcherFor(policy), limit, logger: run.logger, signal: run.signal, volume: run.volume,
+    });
+    const plan = planArchive(scanned, policy);
+    const unlistedDirs = new Set(scanned.unlistedDirs);
+    const unlisted = scanned.entries.filter((e) => e.type === "dir" && unlistedDirs.has(e.archivePath));
+    const fresh = fromInstructions(plan.instructions)?.writeEntries ?? [];
+    // Where each source path was found now, for the answer.
+    const diskPathOf = new Map(plan.entries.map((e) => [e.archivePath, e.diskPath]));
+    const found = new Map<string, string[]>();
+    const note = (sourcePath: string, diskPath: string | undefined): void => {
+      if (diskPath === undefined) return;
+      const list = found.get(sourcePath);
+      if (list) list.push(diskPath);
+      else found.set(sourcePath, [diskPath]);
+    };
+    for (const e of fresh) if (e.type !== "dir") note(e.sourcePath, diskPathOf.get(e.archivePath));
+    for (const e of unlisted) note(e.sourcePath, e.diskPath);
+
+    let comparison = explainRemoved(
+      compareWithManifest(fresh, unlisted.map((e) => e.sourcePath), records), spec.inputs, removed);
+    if (comparison.matches) {
+      const changed = await recheckContent(fresh, records, {
+        volume: run.volume, limit, chunkSize: this.#chunkSize, signal: run.signal, onProgress: run.onProgress,
+      });
+      if (changed.length > 0) comparison = { ...comparison, matches: false, changed };
+    }
+    return onDisk(comparison, found, spec.inputs, removed);
+  }
+}
+
+/** What one call's work runs with: its logger, its bounded volume, its
+ *  signal and its progress hook. */
+interface Run {
+  logger: Logger;
+  volume: Volume;
+  signal: AbortSignal | undefined;
+  onProgress: ((counts: ProgressCounts) => void) | undefined;
+}
+
+/** Record a call's failure as its one `fault` event: the error as thrown,
+ *  under the stage its code's domain names (a scan failure inside a plan is
+ *  recorded under scan), else the call's own. A cancellation is no failure,
+ *  so it is recorded at `info`. */
+function reportFault(logger: Logger, error: ZipKitError, stage: LogStage): void {
+  const cause = error.cause instanceof Error && error.cause.message !== error.message ? error.cause.message : undefined;
+  logger.emit({
+    stage: STAGE_FOR_CODE_DOMAIN[error.code.split(".")[0]!] ?? stage,
+    level: error.kind === "cancelled" ? "info" : "error",
+    event: "fault",
+    error: error.toJSON(),
+    ...(cause !== undefined ? { cause } : {}),
+  });
+}
+
+function reportPlan(logger: Logger, plan: PlanData): void {
+  for (const entry of plan.entries) {
+    if (entry.excluded) {
+      logger.emit(
+        entry.excludeReason !== undefined
+          ? { stage: "plan", level: "debug", event: "entry.excluded", path: entry.archivePath, reason: entry.excludeReason }
+          : { stage: "plan", level: "debug", event: "entry.excluded", path: entry.archivePath },
+      );
+    } else if (entry.archivePath !== entry.originalPath) {
+      logger.emit({
+        stage: "plan",
+        level: "debug",
+        event: "entry.renamed",
+        path: entry.archivePath,
+        from: entry.originalPath,
+      });
+    }
+  }
+  reportFindings(logger, "plan", plan.findings);
+  logger.emit({
+    stage: "plan",
+    level: "info",
+    event: "plan.done",
+    total: plan.summary.total,
+    included: plan.summary.included,
+    excluded: plan.summary.excluded,
+    renamed: plan.summary.renamed,
+    warnings: plan.summary.warnings,
+    errors: plan.summary.errors,
+    writable: plan.writable,
+  });
 }
 
 /** Every failure a verb reports is a ZipKitError: a cancellation as the
@@ -480,7 +445,7 @@ function classified(err: unknown, signal: AbortSignal | undefined): ZipKitError 
 }
 
 /** The log stage of the domain an error code names; codes outside these
- *  domains (a policy, a stall, a cancellation) are recorded under the verb's
+ *  domains (a policy, a stall, a cancellation) are recorded under the call's
  *  own stage. */
 const STAGE_FOR_CODE_DOMAIN: Record<string, LogStage> = {
   scan: "scan",

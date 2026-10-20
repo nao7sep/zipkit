@@ -14,7 +14,6 @@ import type { JobAction, LogEvent, PlanReport, ProgressCounts, VerifyResult } fr
 import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
-import { SdkHostError } from "./sdk-client.js";
 import { createPathClaims } from "zipkitsdk";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
@@ -98,11 +97,8 @@ const engine = createQueueEngine({
     sdk.call("write", [plan], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
   verify: (output, signal, onEvent, manifestName) =>
     sdk.call("verify", [output, manifestName], { signal, onEvent, onProgress: countsFor(onEvent) }),
-  checkRemoval: async (output, inputs, removed, options, signal, onEvent) => {
-    const check = await sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onEvent, onProgress: countsFor(onEvent) });
-    const refusal = check.refusal?.reason === "error" ? { ...check.refusal, error: new SdkHostError(check.refusal.error) } : check.refusal;
-    return { ...check, refusal };
-  },
+  checkRemoval: (output, inputs, removed, options, signal, onEvent) =>
+    sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onEvent, onProgress: countsFor(onEvent) }),
   pathKinds: (paths) => sdk.call("pathKinds", [paths]),
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };

@@ -722,7 +722,7 @@ export function logLevelLabel(level: LogEvent["level"]): MessageKey {
 /** The Progress line for a typed SDK event, rendered from the event's own
  *  fields rather than from the SDK's English `message`. The structured event,
  *  its JSONL message, and its wire literals remain untouched. A fault keeps
- *  its code and diagnostic detail as the SDK wrote them. */
+ *  its error's code and diagnostic message as the SDK wrote them. */
 export function progressMessage(event: LogEvent, t: Translator): string {
   switch (event.event) {
     case "session.start":
@@ -782,8 +782,8 @@ export function progressMessage(event: LogEvent, t: Translator): string {
       });
     case "fault":
       return event.cause !== undefined
-        ? `${event.code}: ${event.detail}: ${event.cause}`
-        : `${event.code}: ${event.detail}`;
+        ? `${event.error.code}: ${event.error.message}: ${event.cause}`
+        : `${event.error.code}: ${event.error.message}`;
   }
 }
 

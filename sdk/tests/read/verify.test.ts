@@ -108,7 +108,7 @@ describe("integrity on any zip", () => {
   it("verifies every entry's CRC-32 and writes nothing", async () => {
     const archive = await writeArchive([fileEntry("a.txt", "x"), fileEntry("b.txt", "y")]);
     const before = await readdir(dir);
-    const report = await new ZipKit().verify(archive);
+    const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(true);
     expect(report.manifest).toBeNull();
     expect(report.entries.every((e) => e.crc32 === "ok" && e.sha256 === undefined)).toBe(true);
@@ -119,7 +119,7 @@ describe("integrity on any zip", () => {
     // The streaming writer computes a correct CRC, so corruption is introduced after the fact.
     const archive = await writeArchive([fileEntry("bad.txt", "payload"), fileEntry("good.txt", "fine")]);
     await corrupt(archive, "payload");
-    const report = await new ZipKit().verify(archive);
+    const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(false);
     expect(report.summary.crc32Failed).toBe(1);
     expect(report.entries.find((e) => e.archivePath === "bad.txt")?.crc32).toBe("fail");
@@ -130,7 +130,7 @@ describe("integrity on any zip", () => {
   it("reports an entry whose data disagrees with its declared size, and verifies the rest", async () => {
     const archive = await writeArchive([fileEntry("short.txt", "abc"), fileEntry("other.txt", "fine")]);
     await patchCentral(archive, 24, 999);
-    const report = await new ZipKit().verify(archive);
+    const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(false);
     expect(report.summary.unreadable).toBe(1);
     expect(report.entries.find((e) => e.archivePath === "short.txt")?.crc32).toBe("unreadable");
@@ -141,7 +141,7 @@ describe("integrity on any zip", () => {
   it("reports an entry stored with a method ZipKit cannot read", async () => {
     const archive = await writeArchive([fileEntry("odd.bin", "data")]);
     await patchCentral(archive, 10, 12, 2); // bzip2
-    const report = await new ZipKit().verify(archive);
+    const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(false);
     expect(report.entries[0]?.crc32).toBe("unreadable");
     expect(report.findings[0]).toMatchObject({ rule: "verify.unreadable", path: "odd.bin" });
@@ -150,13 +150,13 @@ describe("integrity on any zip", () => {
   it("fails as a whole only when the file is not a zip", async () => {
     const archive = path.join(dir, "not.zip");
     await writeFile(archive, "plain text, not an archive");
-    await expect(new ZipKit().verify(archive)).rejects.toMatchObject({ code: "archive.not-zip", kind: "invalid" });
-    await expect(new ZipKit().verify(path.join(dir, "absent.zip"))).rejects.toMatchObject({ code: "path.missing", kind: "unavailable" });
+    await expect(new ZipKit().verify({ archive })).rejects.toMatchObject({ code: "archive.not-zip", kind: "invalid", subject: archive });
+    await expect(new ZipKit().verify({ archive: path.join(dir, "absent.zip") })).rejects.toMatchObject({ code: "path.missing", kind: "unavailable" });
   });
 
   it("verifies a zero-byte file and a Zip64 archive", async () => {
-    expect((await new ZipKit().verify(await writeArchive([fileEntry("empty.txt", ""), fileEntry("a.txt", "x")]))).ok).toBe(true);
-    expect((await new ZipKit().verify(await writeArchive([fileEntry("z.txt", "zip64 content")], { zip64: true }))).ok).toBe(true);
+    expect((await new ZipKit().verify({ archive: await writeArchive([fileEntry("empty.txt", ""), fileEntry("a.txt", "x")]) })).ok).toBe(true);
+    expect((await new ZipKit().verify({ archive: await writeArchive([fileEntry("z.txt", "zip64 content")], { zip64: true }) })).ok).toBe(true);
   });
 });
 
@@ -164,7 +164,7 @@ describe("against the embedded manifest", () => {
   it("reads a manifest whatever size it declares, refusing data that disagrees with it", async () => {
     const archive = await writeArchive([fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [] }))]);
     await patchCentral(archive, 24, 64 * 1024 * 1024 + 1);
-    await expect(new ZipKit().verify(archive, { manifest: true })).rejects.toMatchObject({ code: "archive.size-mismatch" });
+    await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "archive.size-mismatch" });
   });
 
   it.each(["file", "symlink", "dir"] as const)("fails a %s entry whose manifest records a different type", async (type) => {
@@ -173,7 +173,7 @@ describe("against the embedded manifest", () => {
       : { ...fileEntry("link", "target.txt"), type, mode: type === "symlink" ? 0o120777 : 0o644 };
     const record = { ...manifestRecord(entry), type: type === "file" ? "symlink" : "file" };
     const archive = await writeArchive([entry, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [record] }))]);
-    const report = await new ZipKit().verify(archive, { manifest: true });
+    const report = await new ZipKit().verify({ archive, manifest: true });
     expect(report.ok).toBe(false);
     expect(report.summary.manifestMismatched).toBe(1);
   });
@@ -186,7 +186,7 @@ describe("against the embedded manifest", () => {
     const kit = new ZipKit();
     const archive = path.join(dir, "created.zip");
     await kit.create({ inputs: [input], output: archive, policy: { manifest: { name: "zipkit.json", hash: true } } });
-    const report = await kit.verify(archive, { manifest: true });
+    const report = await kit.verify({ archive, manifest: true });
     expect(report.ok).toBe(true);
     expect(report.summary.manifestMismatched).toBe(0);
     expect(report.entries.filter((entry) => entry.type === "dir").length).toBeGreaterThanOrEqual(2);
@@ -208,7 +208,7 @@ describe("against the embedded manifest", () => {
       fileEntry("zipkit.json", JSON.stringify(manifest)),
     ]);
 
-    const report = await new ZipKit().verify(archive, { manifest: true });
+    const report = await new ZipKit().verify({ archive, manifest: true });
     expect(report.manifest?.name).toBe("zipkit.json");
     expect(report.entries.find((e) => e.archivePath === "a.txt")?.sha256).toBe("ok");
     expect(report.entries.find((e) => e.archivePath === "b.txt")?.sha256).toBe("absent");
@@ -222,9 +222,9 @@ describe("against the embedded manifest", () => {
     const archive = path.join(dir, "named.zip");
     const policy = { manifest: { name: "record.json" } };
     await new ZipKit({ policy }).create({ inputs: [path.join(dir, "f.txt")], output: archive });
-    expect((await new ZipKit({ policy }).verify(archive, { manifest: true })).manifest).toEqual({ name: "record.json" });
-    expect((await new ZipKit().verify(archive, { manifest: true, manifestName: "record.json" })).ok).toBe(true);
-    await expect(new ZipKit().verify(archive, { manifest: true })).rejects.toMatchObject({ code: "manifest.missing", subject: "zipkit.json" });
+    expect((await new ZipKit({ policy }).verify({ archive, manifest: true })).manifest).toEqual({ name: "record.json" });
+    expect((await new ZipKit().verify({ archive, manifest: true, manifestName: "record.json" })).ok).toBe(true);
+    await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "manifest.missing", subject: "zipkit.json" });
   });
 
   it("refuses a document that names another format, and reads one that names none", async () => {
@@ -232,16 +232,16 @@ describe("against the embedded manifest", () => {
     const named = (format?: string) => writeArchive([a, fileEntry("zipkit.json", JSON.stringify({
       ...(format === undefined ? {} : { format }), formatVersion: MANIFEST_FORMAT_VERSION, entries: [manifestRecord(a)],
     }))]);
-    expect((await new ZipKit().verify(await named("zipkit.manifest"), { manifest: true })).ok).toBe(true);
-    expect((await new ZipKit().verify(await named(), { manifest: true })).ok).toBe(true);
-    await expect(new ZipKit().verify(await named("other.thing"), { manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
+    expect((await new ZipKit().verify({ archive: await named("zipkit.manifest"), manifest: true })).ok).toBe(true);
+    expect((await new ZipKit().verify({ archive: await named(), manifest: true })).ok).toBe(true);
+    await expect(new ZipKit().verify({ archive: await named("other.thing"), manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
   });
 
   it("refuses a manifest a newer ZipKit wrote, leaving the archive as it is", async () => {
     const manifest = { formatVersion: MANIFEST_FORMAT_VERSION + 1, entries: [{ archivePath: "a.txt" }] };
     const archive = await writeArchive([fileEntry("a.txt", "alpha"), fileEntry("zipkit.json", JSON.stringify(manifest))]);
     const before = await readFile(archive);
-    await expect(new ZipKit().verify(archive, { manifest: true })).rejects.toMatchObject({ kind: "invalid", code: "manifest.newer" });
+    await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ kind: "invalid", code: "manifest.newer" });
     expect((await readFile(archive)).equals(before)).toBe(true);
   });
 
@@ -250,7 +250,7 @@ describe("against the embedded manifest", () => {
       fileEntry("a.txt", "alpha"),
       fileEntry("zipkit.json", JSON.stringify({ formatVersion, entries: [{ archivePath: "a.txt" }] })),
     ]);
-    await expect(new ZipKit().verify(archive, { manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
+    await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
   });
 
   it("validates a manifest end to end via create()", async () => {
@@ -262,7 +262,7 @@ describe("against the embedded manifest", () => {
       output: archive,
       policy: { manifest: { name: "zipkit.json", hash: true } },
     });
-    const report = await new ZipKit().verify(archive, { manifest: true });
+    const report = await new ZipKit().verify({ archive, manifest: true });
     expect(report.manifest?.name).toBe("zipkit.json");
     expect(report.ok).toBe(true);
     expect(report.missing).toEqual([]);
@@ -278,7 +278,7 @@ describe("manifest size and CRC-32", () => {
       [...entries, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: records }))],
       opts,
     );
-    return new ZipKit().verify(archive, { manifest: true });
+    return new ZipKit().verify({ archive, manifest: true });
   }
 
   it("fails an entry whose size differs from the manifest", async () => {
@@ -326,7 +326,7 @@ describe("manifest size and CRC-32", () => {
     const a = fileEntry("a.txt", "alpha");
     await expect(verify([a], [recordFor(a), recordFor(a)])).rejects.toMatchObject({ code: "manifest.invalid" });
     const archive = await writeArchive([a, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION }))]);
-    await expect(new ZipKit().verify(archive, { manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
+    await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
   });
 
   it("ignores the manifest without `manifest`", async () => {
@@ -335,7 +335,7 @@ describe("manifest size and CRC-32", () => {
       a,
       fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [{ ...recordFor(a), size: 999 }] })),
     ]);
-    const report = await new ZipKit().verify(archive);
+    const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(true);
     expect(report.summary.manifestMismatched).toBe(0);
   });
@@ -358,7 +358,7 @@ describe("EOCD-locator robustness", () => {
     const comment = `${eocdSig}${"X".repeat(40)}`;
     await new ZipKit().create({ inputs: [src], output: archive, comment });
 
-    const report = await new ZipKit().verify(archive);
+    const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(true);
     expect(report.entries.find((e) => e.archivePath === "a.txt")?.crc32).toBe("ok");
   });
@@ -378,7 +378,7 @@ describe("EOCD-locator robustness", () => {
     bytes.writeUInt32LE(0xffffffff, eocd + 16);
     await writeFile(archive, bytes);
 
-    const report = await new ZipKit().verify(archive);
+    const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(true);
     expect(report.entries[0]).toMatchObject({ archivePath: "z.txt", crc32: "ok" });
   });
@@ -395,7 +395,7 @@ describe("large-file streaming", () => {
     const archive = path.join(dir, "big.zip");
     await new ZipKit({ chunkSize }).create({ inputs: [src], output: archive });
 
-    const report = await new ZipKit({ chunkSize }).verify(archive, { manifest: true });
+    const report = await new ZipKit({ chunkSize }).verify({ archive, manifest: true });
     expect(report.ok).toBe(true);
     expect(report.entries.find((e) => e.archivePath === "big.bin")?.sha256).toBe("ok");
   });
@@ -405,7 +405,7 @@ describe("per-failure logging", () => {
   /** Run `verify` and collect what reaches its `onEvent`, as plain data. */
   async function verifyWithEvents(archive: string, manifest: boolean) {
     const events: Array<Record<string, unknown>> = [];
-    const report = await new ZipKit().verify(archive, { manifest, onEvent: (e) => events.push({ ...e }) });
+    const report = await new ZipKit().verify({ archive, manifest }, { onEvent: (e) => events.push({ ...e }) });
     return { report, events };
   }
 
@@ -446,7 +446,7 @@ describe("per-failure logging", () => {
     expect(doneIndex).toBeGreaterThan(lastFlagged);
   });
 
-  it("emits error lines for SHA mismatch and missing entries and a warn line for an extra entry", async () => {
+  it("emits an error line for each SHA mismatch, missing entry and extra entry", async () => {
     // The manifest claims a.txt with a WRONG sha (→ mismatch) and a phantom
     // c.txt (→ missing), and omits the real b.txt (→ extra).
     const manifest = {
@@ -480,8 +480,8 @@ describe("per-failure logging", () => {
     });
     expect(flagged.find((e) => e.rule === "verify.extra")).toMatchObject({
       stage: "verify",
-      level: "warn",
-      severity: "warning",
+      level: "error",
+      severity: "error",
       path: "b.txt",
     });
   });

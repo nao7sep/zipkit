@@ -11,7 +11,8 @@
  * entry is then only a default; the call site is authoritative.
  *
  * The table is in pipeline order: path rooting, content selection, name
- * fixing, deduplication, collision detection, and timestamp resolution.
+ * fixing, deduplication, collision detection, and timestamp resolution, then
+ * verification's rules.
  */
 
 import type { Finding, FindingRule, RuleId, Severity, VerifyRuleId } from "./types.ts";
@@ -28,7 +29,7 @@ export interface RuleSpec {
   disposition: string;
 }
 
-export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
+export const RULE_REGISTRY: Record<FindingRule, RuleSpec> = {
   "path.absolute": { severity: "warning", disposition: "strip prefix" },
   "path.traversal": { severity: "error", disposition: "abort" },
   "path.too-long": { severity: "warning", disposition: "keep" },
@@ -55,46 +56,28 @@ export const RULE_REGISTRY: Record<RuleId, RuleSpec> = {
   "time.pre-1980": { severity: "warning", disposition: "clamp" },
   "time.post-2107": { severity: "warning", disposition: "clamp" },
   "output.exists": { severity: "error", disposition: "overwrite" },
+  // Verification's findings: every one fails the verification.
+  "verify.crc32-mismatch": { severity: "error", disposition: "fail" },
+  "verify.unreadable": { severity: "error", disposition: "fail" },
+  "verify.local-mismatch": { severity: "error", disposition: "fail" },
+  "verify.sha256-mismatch": { severity: "error", disposition: "fail" },
+  "verify.manifest-mismatch": { severity: "error", disposition: "fail" },
+  "verify.missing": { severity: "error", disposition: "fail" },
+  "verify.extra": { severity: "error", disposition: "fail" },
 };
-
-/** The rule ids in pipeline order. */
-export const RULE_ORDER = Object.keys(RULE_REGISTRY) as RuleId[];
-
-/** True if the rule is known to the registry. */
-export function isKnownRule(rule: string): rule is RuleId {
-  return Object.prototype.hasOwnProperty.call(RULE_REGISTRY, rule);
-}
 
 /**
  * Construct a finding — the single sanctioned way, so every finding carries a
- * tier. It takes either form:
- *
- * - a registry `RuleId`, whose severity defaults to the registry tier (a caller
- *   passes an explicit `severity` only for the configurable name rules, whose
- *   tier is chosen per run from the policy action); or
- * - a `VerifyRuleId` with an explicit `severity`, which is how verification
- *   records its CRC-32, header, hash and manifest findings.
+ * tier: the registry's, or for the configurable name rules the `severity` the
+ * call site chose per run from the policy action.
  */
-export function finding(
-  rule: RuleId,
-  path: string,
-  message: string,
-  opts?: { fix?: Finding["fix"]; severity?: Severity },
-): Finding;
-export function finding(
-  rule: VerifyRuleId,
-  path: string,
-  message: string,
-  opts: { fix?: Finding["fix"]; severity: Severity },
-): Finding;
 export function finding(
   rule: FindingRule,
   path: string,
   message: string,
   opts?: { fix?: Finding["fix"]; severity?: Severity },
 ): Finding {
-  const severity =
-    opts?.severity ?? (isKnownRule(rule) ? RULE_REGISTRY[rule].severity : "error");
+  const severity = opts?.severity ?? RULE_REGISTRY[rule].severity;
   const f: Finding = { rule, severity, path, message };
   if (opts?.fix) f.fix = opts.fix;
   return f;

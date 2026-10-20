@@ -106,8 +106,6 @@ export const nodeFileSystem: FileSystemPort = {
 type Mode = "work" | "commit" | "cleanup";
 
 interface RunOptions<T> {
-  /** Finish a completed exclusive publication even if cancellation just arrived. */
-  alreadyPublished?: boolean;
   /** Called synchronously when the owner stops waiting on the call. */
   onAbandon?: () => void;
   /** Receives the call's value if it arrives after the owner stopped waiting. */
@@ -213,28 +211,10 @@ export class Volume {
     });
   }
 
-  /** Complete the metadata flush of an already published exclusive copy.
-   * Failure retains the complete output; it never owns partial-copy cleanup. */
-  syncPublished(output: string): Promise<void> {
-    return this.#run("commit", "sync publication", output, () => this.#syncPublication(output), { alreadyPublished: true });
-  }
-
   async #syncPublication(output: string): Promise<void> {
     try { await this.#port.syncDirectory(path.dirname(output)); }
     catch (cause) {
       throw new ZipKitError("write.durability", `Archive published but its save could not be confirmed: ${output}`, { cause, subject: output, effect: "unknown" });
-    }
-  }
-
-  /** The identity (`dev:ino`) of a path, or null when it is absent. A cleanup
-   *  call: it decides whether a failed publication removes its own claim. */
-  async identity(path: string): Promise<string | null> {
-    try {
-      const st = await this.#run("cleanup", "lstat", path, () => this.#port.lstat(path));
-      return `${st.dev}:${st.ino}`;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw err;
     }
   }
 
@@ -244,9 +224,8 @@ export class Volume {
   }
 
   /** Remove a temp file this run created, best-effort: bounded, never stopped
-   *  by the cancel, and silent on failure. */
-  /** Remove a temporary file; whether it is gone afterwards. One that cannot
-   *  be removed stays visible under its `.tmp` name. */
+   *  by the cancel, and silent on failure. Whether it is gone afterwards; one
+   *  that cannot be removed stays visible under its `.tmp` name. */
   async discard(path: string): Promise<boolean> {
     try {
       await this.#run("cleanup", "remove", path, () => this.#port.rm(path));
@@ -261,16 +240,6 @@ export class Volume {
       onLateValue: (late) => late.close(),
     });
     return new VolumeFile(this, handle, path);
-  }
-
-  /** Claim a user-visible output exclusively. A late successful open still
-   * owns its created file through physical close and identity-checked removal. */
-  async claimExclusive(path: string): Promise<VolumeFile> {
-    const claim = (handle: FileHandlePort) => new VolumeFile(this, handle, path, this.#port);
-    const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx"), {
-      onLateValue: (late) => claim(late).discardClaim(),
-    });
-    return claim(handle);
   }
 
   /**
@@ -294,7 +263,7 @@ export class Volume {
 
   #run<T>(mode: Mode, operation: string, path: string, start: () => Promise<T>, options: RunOptions<T> = {}): Promise<T> {
     const signal = this.#signal;
-    if (mode !== "cleanup" && !options.alreadyPublished) {
+    if (mode !== "cleanup") {
       if (this.#stall) return Promise.reject(this.#stall);
       if (signal?.aborted) return Promise.reject(toAbortError(signal.reason));
     }
@@ -344,29 +313,15 @@ export class VolumeFile {
   readonly #path: string;
   /** Set when a call on this handle was abandoned and may still be running. */
   #abandoned = false;
-  readonly #claimPort: FileSystemPort | undefined;
-  readonly #inFlight = new Set<Promise<unknown>>();
-  #retired = false;
-  #settledClaim: Promise<string> | undefined;
-  #discardedClaim: Promise<void> | undefined;
 
-  constructor(volume: Volume, handle: FileHandlePort, path: string, claimPort?: FileSystemPort) {
+  constructor(volume: Volume, handle: FileHandlePort, path: string) {
     this.#volume = volume;
     this.#handle = handle;
     this.#path = path;
-    this.#claimPort = claimPort;
   }
 
   #run<T>(mode: Mode, operation: string, start: () => Promise<T>): Promise<T> {
-    if (mode === "work" && this.#retired) return Promise.reject(new Error(`publication claim retired: ${this.#path}`));
-    return this.#volume.runOnHandle(mode, operation, this.#path, () => {
-      const pending = start();
-      if (this.#claimPort) {
-        this.#inFlight.add(pending);
-        void pending.then(() => this.#inFlight.delete(pending), () => this.#inFlight.delete(pending));
-      }
-      return pending;
-    }, () => {
+    return this.#volume.runOnHandle(mode, operation, this.#path, start, () => {
       this.#abandoned = true;
     });
   }
@@ -398,15 +353,6 @@ export class VolumeFile {
     return this.#run("work", "stat", () => this.#handle.stat());
   }
 
-  /** The handle's identity (`dev:ino`). A cleanup call, like
-   *  {@link Volume.identity}: it decides whether a failed publication removes
-   *  its own claim, so a cancel does not stop it. */
-  async identity(): Promise<string> {
-    if (this.#settledClaim) return this.#run("cleanup", "fstat", () => this.#settledClaim!);
-    const st = await this.#run("cleanup", "fstat", () => this.#handle.stat());
-    return `${st.dev}:${st.ino}`;
-  }
-
   /**
    * Close the handle; bounded, and errors propagate. When a call on this handle
    * was abandoned, the close is left to run in the background: it completes
@@ -414,56 +360,11 @@ export class VolumeFile {
    * the same stall again.
    */
   async close(): Promise<void> {
-    if (this.#claimPort) {
-      await this.#volume.runOnHandle("cleanup", "close", this.#path, () => this.#settleClaim(), () => {});
-      return;
-    }
     if (this.#abandoned) {
       void this.#volume.trackPhysical(this.#handle.close()).catch(() => {});
       return;
     }
     await this.#run("cleanup", "close", () => this.#handle.close());
-  }
-
-  /** Stop accepting writes, join physically issued calls, then read identity
-   * before starting close (Node forbids fstat once close has begun). The one
-   * pipeline stays alive after the caller's bounded wait expires. */
-  #settleClaim(): Promise<string> {
-    if (!this.#settledClaim) {
-      this.#retired = true;
-      this.#settledClaim = this.#volume.trackPhysical((async () => {
-        await Promise.allSettled([...this.#inFlight]);
-        let identity: string;
-        try {
-          const st = await this.#handle.stat();
-          identity = `${st.dev}:${st.ino}`;
-        } finally {
-          await this.#handle.close();
-        }
-        return identity;
-      })());
-    }
-    return this.#settledClaim;
-  }
-
-  /** Remove only this exclusive claim, after physical settlement. A changing
-   * FAT identity is read from the settled handle, never an abandoned write's
-   * earlier state. Unknown identity/close outcomes retain the file. */
-  async discardClaim(): Promise<void> {
-    const port = this.#claimPort;
-    if (!port) throw new Error("not an exclusive publication claim");
-    this.#discardedClaim ??= this.#volume.trackPhysical((async () => {
-      const identity = await this.#settleClaim();
-      let current;
-      try {
-        current = await port.lstat(this.#path);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
-        throw err;
-      }
-      if (`${current.dev}:${current.ino}` === identity) await port.unlink(this.#path);
-    })());
-    await this.#volume.runOnHandle("cleanup", "discard", this.#path, () => this.#discardedClaim!, () => {});
   }
 
   /** Close after a failure, best-effort and silent. */

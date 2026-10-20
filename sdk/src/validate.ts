@@ -14,7 +14,7 @@ import { resolveSegments, toForwardSlash } from "./internal/path.ts";
 import { formatZodError } from "./internal/zodError.ts";
 import { fullFixSegment } from "./plan/nameFix.ts";
 import { isValidTimeZone } from "./internal/timeZone.ts";
-import type { ArchivePolicy, ArchiveSpec, DeepPartial } from "./types.ts";
+import type { ArchivePolicy, ArchiveSpec, DeepPartial, RemovalRequest, VerifyRequest } from "./types.ts";
 
 /**
  * A single archive-path segment that the name fixer would leave untouched — the
@@ -242,14 +242,23 @@ export function requireAbsolute(value: string, what: string): string {
 }
 
 const CALL_HOOKS = ["onEvent", "onProgress", "onPhysicalSettlement"] as const;
+const CALL_OPTIONS = new Set<string>(["signal", ...CALL_HOOKS]);
 
-/** Per-call options: a signal that is a real AbortSignal and hooks that are
- *  functions, so a wrong value fails as an invalid call rather than deep in
- *  a file operation. */
+/** Refuse any key of `value` outside `known`, as `code`: a misspelt setting
+ *  fails the call instead of being silently ignored. */
+function refuseUnknownKeys(value: object, known: ReadonlySet<string>, what: string, code: "options.invalid" | "request.invalid"): void {
+  const unknown = Object.keys(value).filter((key) => !known.has(key));
+  if (unknown.length > 0) throw new ZipKitError(code, `unknown ${what}: ${unknown.join(", ")}`);
+}
+
+/** Per-call options: only the known keys, a signal that is a real AbortSignal
+ *  and hooks that are functions, so a wrong value fails as an invalid call
+ *  rather than deep in a file operation. */
 export function validateCallOptions(options: unknown): void {
   if (options === null || typeof options !== "object") {
     throw new ZipKitError("options.invalid", "call options must be an object");
   }
+  refuseUnknownKeys(options, CALL_OPTIONS, "call option", "options.invalid");
   const o = options as Record<string, unknown>;
   if (o.signal !== undefined && !(o.signal instanceof AbortSignal)) {
     throw new ZipKitError("options.invalid", "signal must be an AbortSignal");
@@ -264,27 +273,55 @@ const INSTANCE_OPTIONS = new Set(["policy", "concurrency", "chunkSize", "ioTimeo
 /** Instance options hold no key the SDK does not know, as specs do not. */
 export function validateInstanceOptionKeys(options: unknown): void {
   if (options === null || typeof options !== "object") throw new ZipKitError("options.invalid", "options must be an object");
-  const unknown = Object.keys(options).filter((key) => !INSTANCE_OPTIONS.has(key));
-  if (unknown.length > 0) throw new ZipKitError("options.invalid", `unknown option: ${unknown.join(", ")}`);
+  refuseUnknownKeys(options, INSTANCE_OPTIONS, "option", "options.invalid");
+}
+
+const VERIFY_REQUEST = new Set(["archive", "manifest", "manifestName"]);
+
+/** What `verify` is asked to check: an absolute archive, and only the known
+ *  settings, each of its type. */
+export function validateVerifyRequest(request: unknown): VerifyRequest {
+  if (request === null || typeof request !== "object") throw new ZipKitError("request.invalid", "the verify request must be an object");
+  refuseUnknownKeys(request, VERIFY_REQUEST, "verify setting", "request.invalid");
+  const r = request as VerifyRequest;
+  const checked: VerifyRequest = { archive: requireAbsolute(r.archive, "archive") };
+  const manifest = validateFlag(r.manifest, "manifest");
+  if (manifest !== undefined) checked.manifest = manifest;
+  const manifestName = validateManifestName(r.manifestName);
+  if (manifestName !== undefined) checked.manifestName = manifestName;
+  return checked;
+}
+
+const REMOVAL_REQUEST = new Set(["spec", "archive", "removed"]);
+
+/** What `checkRemoval` is asked to check: a spec, an absolute archive, and
+ *  absolute removed inputs; the spec itself is validated as for a plan. */
+export function validateRemovalRequest(request: unknown): RemovalRequest {
+  if (request === null || typeof request !== "object") throw new ZipKitError("request.invalid", "the removal request must be an object");
+  refuseUnknownKeys(request, REMOVAL_REQUEST, "removal setting", "request.invalid");
+  const r = request as RemovalRequest;
+  const checked: RemovalRequest = { spec: r.spec, archive: requireAbsolute(r.archive, "archive") };
+  if (r.removed !== undefined) checked.removed = requireAbsoluteList(r.removed, "removed");
+  return checked;
 }
 
 /** The name of an embedded manifest: one safe path component. */
-export function validateManifestName(name: unknown): string | undefined {
+function validateManifestName(name: unknown): string | undefined {
   if (name === undefined) return undefined;
   if (typeof name !== "string" || !isSafePathComponent(name)) {
-    throw new ZipKitError("options.invalid", "a manifest name must be a single path component (no slashes, not '.' or '..')");
+    throw new ZipKitError("request.invalid", "a manifest name must be a single path component (no slashes, not '.' or '..')");
   }
   return name;
 }
 
-/** A switch given as an option: a boolean when present. */
-export function validateFlag(value: unknown, what: string): boolean | undefined {
+/** A switch given as a setting: a boolean when present. */
+function validateFlag(value: unknown, what: string): boolean | undefined {
   if (value === undefined || typeof value === "boolean") return value;
-  throw new ZipKitError("options.invalid", `${what} must be a boolean`);
+  throw new ZipKitError("request.invalid", `${what} must be a boolean`);
 }
 
 /** A list of absolute paths, as a verb that takes several paths needs. */
 export function requireAbsoluteList(values: unknown, what: string): string[] {
-  if (!Array.isArray(values)) throw new ZipKitError("options.invalid", `${what} must be a list of absolute paths`);
+  if (!Array.isArray(values)) throw new ZipKitError("request.invalid", `${what} must be a list of absolute paths`);
   return values.map((value) => requireAbsolute(value as string, `each of ${what}`));
 }

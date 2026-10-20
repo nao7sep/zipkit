@@ -11,10 +11,17 @@
  * since a caller may hand `write` anything.
  */
 
+import path from "node:path";
 import type { ArchivePolicy, InstructionEntry, PlanInstructions } from "../types.ts";
 import type { WriteEntry } from "./types.ts";
 
 export interface PlanInternals {
+  /** The archive's absolute path. */
+  output: string;
+  /** Whether nothing blocks the write. */
+  writable: boolean;
+  /** Whether the archive needs Zip64 structures, as the plan estimated. */
+  zip64: boolean;
   /** Included entries, in plan order, ready for the writer. */
   writeEntries: WriteEntry[];
   /** The resolved policy governing selection, naming, compression, and manifest. */
@@ -29,6 +36,9 @@ export interface PlanInternals {
 
 export function toInstructions(internals: PlanInternals): PlanInstructions {
   const instructions: PlanInstructions = {
+    output: internals.output,
+    writable: internals.writable,
+    zip64: internals.zip64,
     policy: internals.policy,
     overwrite: internals.overwrite,
     timeZone: internals.timeZone,
@@ -76,12 +86,17 @@ function isEntry(value: unknown): value is InstructionEntry {
 export function fromInstructions(value: unknown): PlanInternals | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const i = value as Record<string, unknown>;
-  if (typeof i.policy !== "object" || i.policy === null || typeof i.overwrite !== "boolean" ||
+  if (typeof i.output !== "string" || !path.isAbsolute(i.output) || typeof i.writable !== "boolean" ||
+    typeof i.zip64 !== "boolean" ||
+    typeof i.policy !== "object" || i.policy === null || typeof i.overwrite !== "boolean" ||
     typeof i.timeZone !== "string" || (i.comment !== undefined && typeof i.comment !== "string") ||
     !Array.isArray(i.entries) || !i.entries.every(isEntry)) {
     return undefined;
   }
   const internals: PlanInternals = {
+    output: i.output,
+    writable: i.writable,
+    zip64: i.zip64,
     policy: i.policy as ArchivePolicy,
     overwrite: i.overwrite,
     timeZone: i.timeZone,

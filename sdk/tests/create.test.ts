@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit, ZipKitError } from "../src/index.ts";
+import { ZipKit } from "../src/index.ts";
 import { readZip } from "./helpers/readZip.ts";
 import { createFileLink, fileSymlinksSupported } from "./helpers/symlink.ts";
 import { invalidError } from "./helpers/errors.ts";
@@ -257,12 +257,12 @@ describe("plan / inspect / write flow", () => {
 
     const result = await zip.write(plan);
     expect(result.mode).toBe("write");
-    expect(result.bytes).toBeGreaterThan(0);
+    expect(written(result).bytes).toBeGreaterThan(0);
     expect(existsSync(output)).toBe(true);
     const { entries } = readZip(await readFile(output));
     // The metadata document lists every written entry except the embedded
     // zipkit.json itself, which rides as the archive's final entry.
-    expect((result.manifest?.entries.length ?? 0) + 1).toBe(entries.length);
+    expect(written(result).manifest.entries.length + 1).toBe(entries.length);
   });
 });
 
@@ -305,7 +305,7 @@ describe("overwrite gate", () => {
     const plan = await zip.plan({ inputs: [proj], output });
     await writeFile(output, "another process won");
 
-    await expect(zip.write(plan)).rejects.toBeInstanceOf(ZipKitError);
+    expect(await zip.write(plan)).toMatchObject({ mode: "plan", writable: false });
     expect(await readFile(output, "utf8")).toBe("another process won");
   });
 
@@ -315,7 +315,7 @@ describe("overwrite gate", () => {
 
     await expect(
       new ZipKit().create({ inputs: [source], output: source, overwrite: true }),
-    ).rejects.toMatchObject({ code: "scan.output-is-input" });
+    ).rejects.toMatchObject({ code: "scan.output-is-input", subject: source });
     expect(await readFile(source, "utf8")).toBe("only copy");
   });
 
@@ -355,7 +355,7 @@ describe("symlink preservation and empty directories", () => {
     expect(empty?.type).toBe("dir"); // a leaf empty dir gets an explicit entry under keep
 
     // The produced archive is well-formed and round-trips on read.
-    const report = await new ZipKit().verify(output);
+    const report = await new ZipKit().verify({ archive: output });
     expect(report.ok).toBe(true);
   });
 });

@@ -214,33 +214,30 @@ export interface ZipKitOptions {
 }
 
 /**
- * Per-call control and observation. Every member is per-call rather than
- * per-instance, so each verb call decides where its events and progress go
- * and which cancellation it answers to.
- *
- * `onEvent` is the event hook: the one destination of the live event stream.
- * The SDK keeps no log of its own and writes nothing to stdout or stderr, so a
- * caller that wants a record writes these events where it keeps its own.
- *
- * `signal` is the cancellation signal. Every method that touches the disk
- * honors it, stopping cleanly at the next boundary (a phase edge, a
- * walked entry, a streamed chunk) and rejecting with the `operation.cancelled` error. It is
- * control, not data, so it lives here and not on the spec.
+ * Per-call control and observation, the one set every method accepts; a key
+ * outside it is refused as `options.invalid`. What a method is asked to do is
+ * in its arguments, never here. Every member is per-call rather than
+ * per-instance, so each call decides where its events and progress go and
+ * which cancellation it answers to. None of the hooks can break the call.
  */
 export interface ZipKitCallOptions {
+  /** The cancellation signal. Every method honors it, stopping cleanly at the
+   *  next boundary (a phase edge, a walked entry, a streamed chunk) and
+   *  rejecting with the `operation.cancelled` error. */
+  signal?: AbortSignal;
+  /** The event hook: the one destination of the live event stream. The SDK
+   *  keeps no log of its own and writes nothing to stdout or stderr, so a
+   *  caller that wants a record writes these events where it keeps its own.
+   *  The first call that listens also receives the instance's `session.start`. */
   onEvent?: (event: LogEvent) => void;
   /** How far `write`/`create`, `verify` and `checkRemoval` have got, for a
-   *  progress bar, as counts rather than events: at
-   *  the start, at most every 100 ms while entries stream, and once at the end
-   *  of a run that finishes. Other verbs ignore this hook, and like
-   *  `onEvent` it cannot break the verb. */
+   *  progress bar, as counts rather than events: at the start, at most every
+   *  100 ms while entries stream, and once at the end of a run that finishes.
+   *  The other methods report none. */
   onProgress?: (counts: ProgressCounts) => void;
-  signal?: AbortSignal;
-  /** `write`, `create` and `verify` deliver this after their logical
-   * outcome. The promise joins raw I/O and late cleanup that may outlive a
-   * cancelled or timed-out wait. Callers reserving output paths retain them
-   * until it settles. The observer cannot change the verb's outcome. Other
-   * verbs ignore this hook. */
+  /** Delivered after the call's logical outcome: the promise joins raw I/O
+   *  and late cleanup that may outlive a cancelled or timed-out wait. Callers
+   *  reserving output paths retain them until it settles. */
   onPhysicalSettlement?: (settlement: Promise<void>) => void;
 }
 
@@ -420,15 +417,20 @@ export interface WriteData {
 }
 
 /**
- * The writer's instructions a plan carries: the resolved policy, whether an
- * existing output may be replaced, the zone the DOS times are rendered in, the
- * archive comment, and every included entry with the absolute path it is read
- * from and its times as decimal nanosecond strings. They are for `write`, not
- * for the caller to change; `write` refuses instructions of the wrong shape
- * (`plan.invalid`). They hold absolute source paths, so a plan is for crossing
+ * The writer's instructions a plan carries: the output, whether the plan may
+ * be written, whether it needs Zip64, the resolved policy, whether an existing
+ * output may be replaced, the zone the DOS times are rendered in, the archive
+ * comment, and every included entry with the absolute path it is read from and
+ * its times as decimal nanosecond strings. `write` acts on these alone; they
+ * are not for the caller to change. It refuses instructions of the wrong shape,
+ * and a plan whose `output`, `writable` or `summary.zip64` disagree with them,
+ * as `plan.invalid`. They hold absolute source paths, so a plan is for crossing
  * between an app's own processes, never for sending off the machine.
  */
 export interface PlanInstructions {
+  output: string;
+  writable: boolean;
+  zip64: boolean;
   policy: ArchivePolicy;
   overwrite: boolean;
   timeZone: string;
@@ -555,8 +557,10 @@ export interface Manifest {
 // Verify
 // ---------------------------------------------------------------------------
 
-/** Options for `ZipKit.verify`. */
-export interface VerifyOptions extends ZipKitCallOptions {
+/** What `ZipKit.verify` checks. */
+export interface VerifyRequest {
+  /** The archive's absolute path. */
+  archive: string;
   /** Also hold the archive to its embedded manifest: every recorded entry
    *  present, nothing extra, and each type, size, CRC-32 and recorded SHA-256
    *  equal. Without it the check is the archive's own integrity and works on
@@ -664,8 +668,13 @@ export interface RemovalCheck {
   verified: { fingerprint: string | null } | null;
 }
 
-/** Options for `ZipKit.checkRemoval`. */
-export interface RemovalOptions extends ZipKitCallOptions {
+/** What `ZipKit.checkRemoval` checks. */
+export interface RemovalRequest {
+  /** The spec the archive was created with, its inputs only those still to be
+   *  removed, so the same entries are included and excluded. */
+  spec: ArchiveSpec;
+  /** The archive's absolute path. */
+  archive: string;
   /** Inputs of the spec that were already removed, such as by an earlier
    *  partial removal: what the archive holds from them is not counted as
    *  missing, and only the rest are checked. */
@@ -686,11 +695,20 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 /**
  * The typed body of a {@link LogEvent}, a discriminated union on `event`. Each
  * variant carries exactly the fields it means — there is no untyped `data` bag,
- * so a producer and every consumer (the SDK `onEvent` hook and the per-session
- * log) agree on each event's shape by the type system, not by string convention.
+ * so the SDK and the `onEvent` hook agree on each event's shape by the type
+ * system, not by string convention.
  */
 export type LogEventBody =
-  | { event: "session.start"; version: string; concurrency: number; chunkSize: number }
+  | {
+      event: "session.start";
+      version: string;
+      concurrency: number;
+      chunkSize: number;
+      ioTimeoutMs: number;
+      debug: boolean;
+      /** The instance policy, resolved: what every call starts from. */
+      policy: ArchivePolicy;
+    }
   | { event: "scan.start"; inputs: number }
   | { event: "scan.dir"; path: string }
   | { event: "scan.symlink-unreadable"; path: string }
@@ -714,7 +732,9 @@ export type LogEventBody =
   | { event: "verify.start"; entries: number }
   | { event: "entry.verified"; path: string }
   | ({ event: "verify.done"; ok: boolean } & VerifyData["summary"])
-  | { event: "fault"; code: string; detail: string; cause?: string };
+  /** A call failed: its error as thrown, serialized, and the message of what
+   *  caused it, when anything did. A cancellation is recorded at `info`. */
+  | { event: "fault"; error: ZipKitErrorData; cause?: string };
 
 /**
  * The common classification every event carries. `stage` is an additional field

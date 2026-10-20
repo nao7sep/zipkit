@@ -402,6 +402,7 @@ export async function scan(
       throw new ZipKitError(
         "scan.output-is-input",
         `output archive is the same physical file as input: ${inputs[sameInput]?.path ?? output}`,
+        { subject: output },
       );
     }
     artifactIds.add(outputId);

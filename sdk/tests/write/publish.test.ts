@@ -1,264 +1,69 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  publishNoOverwrite,
-  type PublishDestination,
-  type PublishOperations,
-  type PublishSource,
-} from "../../src/internal/noClobberPublish.ts";
+import { publishNoOverwrite, type PublishOperations } from "../../src/internal/noClobberPublish.ts";
 
 function failure(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });
 }
 
-function memoryOperations(
-  sourceBytes: Buffer,
-  overrides: Partial<PublishOperations> = {},
-): { operations: PublishOperations; destination: PublishDestination; published: Buffer[]; readLengths: number[] } {
-  const published: Buffer[] = [];
-  const readLengths: number[] = [];
-  const source: PublishSource = {
-    read: vi.fn(async (buffer, offset, length, position) => {
-      readLengths.push(length);
-      const bytesRead = Math.min(length, Math.max(0, sourceBytes.length - position));
-      sourceBytes.copy(buffer, offset, position, position + bytesRead);
-      return { bytesRead };
-    }),
-    close: vi.fn().mockResolvedValue(undefined),
-  };
-  let operations: PublishOperations;
-  const destination: PublishDestination = {
-    write: vi.fn(async (buffer, offset, length) => {
-      published.push(Buffer.from(buffer.subarray(offset, offset + length)));
-      return { bytesWritten: length };
-    }),
-    sync: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    identity: vi.fn().mockResolvedValue("claim"),
-    discard: vi.fn(async () => {
-      const identity = await destination.identity();
-      await destination.close();
-      if (await operations.pathIdentity("out") === identity) await operations.unlink("out");
-    }),
-  };
+function operations(overrides: Partial<PublishOperations> = {}): PublishOperations {
   return {
-    published,
-    readLengths,
-    destination,
-    operations: operations = {
-      link: vi.fn().mockResolvedValue(undefined),
-      openRead: vi.fn().mockResolvedValue(source),
-      openExclusive: vi.fn().mockResolvedValue(destination),
-      pathIdentity: vi.fn().mockResolvedValue("claim"),
-      unlink: vi.fn().mockResolvedValue(undefined),
-      syncPublished: vi.fn().mockResolvedValue(undefined),
-      ...overrides,
-    },
+    link: vi.fn().mockResolvedValue(undefined),
+    exists: vi.fn().mockResolvedValue(false),
+    rename: vi.fn().mockResolvedValue(undefined),
+    unlink: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
   };
 }
 
-describe("portable no-overwrite publication", () => {
-  it("keeps a completed fallback output when its publication flush fails", async () => {
-    const error = new Error("directory flush failed");
-    const fixture = memoryOperations(Buffer.from("complete"), {
-      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-      syncPublished: vi.fn().mockRejectedValue(error),
-    });
-    await expect(publishNoOverwrite("temp", "out", undefined, fixture.operations)).rejects.toBe(error);
-    expect(Buffer.concat(fixture.published).toString()).toBe("complete");
-    expect(fixture.destination.sync).toHaveBeenCalledOnce();
-    expect(fixture.destination.discard).not.toHaveBeenCalled();
-    expect(fixture.operations.unlink).not.toHaveBeenCalled();
-  });
-  it("falls back to a bounded exclusive copy when the filesystem rejects hard links", async () => {
-    const bytes = Buffer.alloc(600_000, 0x5a);
-    const fixture = memoryOperations(bytes, { link: vi.fn().mockRejectedValue(failure("EPERM")) });
-
-    await publishNoOverwrite("temp", "out", undefined, fixture.operations);
-
-    expect(fixture.operations.openExclusive).toHaveBeenCalledWith("out");
-    expect(Buffer.concat(fixture.published).equals(bytes)).toBe(true);
-    expect(Math.max(...fixture.readLengths)).toBeLessThanOrEqual(256 * 1024);
-    expect(fixture.operations.unlink).toHaveBeenCalledWith("temp");
+describe("no-overwrite publication", () => {
+  it("links the temp into place and removes the temp's own name", async () => {
+    const ops = operations();
+    expect(await publishNoOverwrite("temp", "out", undefined, ops)).toBe("published");
+    expect(ops.link).toHaveBeenCalledWith("temp", "out");
+    expect(ops.unlink).toHaveBeenCalledWith("temp");
+    expect(ops.rename).not.toHaveBeenCalled();
   });
 
-  it("preserves a concurrent destination winner in the fallback path", async () => {
-    const exists = failure("EEXIST");
-    const fixture = memoryOperations(Buffer.from("content"), {
-      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-      openExclusive: vi.fn().mockRejectedValue(exists),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", undefined, fixture.operations),
-    ).rejects.toBe(exists);
-    expect(fixture.operations.unlink).not.toHaveBeenCalled();
+  it("reports a taken name, leaving the temp for the caller", async () => {
+    const ops = operations({ link: vi.fn().mockRejectedValue(failure("EEXIST")) });
+    expect(await publishNoOverwrite("temp", "out", undefined, ops)).toBe("exists");
+    expect(ops.unlink).not.toHaveBeenCalled();
+    expect(ops.rename).not.toHaveBeenCalled();
   });
 
-  it("removes its exclusively claimed partial output when cancellation interrupts the copy", async () => {
-    const controller = new AbortController();
-    const fixture = memoryOperations(Buffer.alloc(600_000), {
-      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-    });
-    const source = await fixture.operations.openRead("unused");
-    vi.mocked(fixture.operations.openRead).mockResolvedValue({
-      ...source,
-      read: vi.fn(async (buffer, offset, length, position) => {
-        const result = await source.read(buffer, offset, length, position);
-        controller.abort();
-        return result;
-      }),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
-    ).rejects.toHaveProperty("name", "AbortError");
-    expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
-    expect(fixture.published).toHaveLength(0);
+  it.each(["ENOTSUP", "EPERM", "EOPNOTSUPP", "ENOSYS"])("without hard links (%s), renames the staged temp in once the name is free", async (code) => {
+    const ops = operations({ link: vi.fn().mockRejectedValue(failure(code)) });
+    expect(await publishNoOverwrite("temp", "out", undefined, ops)).toBe("published");
+    expect(ops.exists).toHaveBeenCalledWith("out");
+    expect(ops.rename).toHaveBeenCalledWith("temp", "out");
+    expect(ops.unlink).not.toHaveBeenCalled();
   });
 
-  it("removes its exclusively claimed partial output when a later write fails", async () => {
-    const writeFailure = failure("EIO");
-    const fixture = memoryOperations(Buffer.alloc(600_000), {
-      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-    });
-    const destination = await fixture.operations.openExclusive("unused");
-    vi.mocked(fixture.operations.openExclusive).mockResolvedValue({
-      ...destination,
-      write: vi.fn().mockRejectedValue(writeFailure),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", undefined, fixture.operations),
-    ).rejects.toBe(writeFailure);
-    expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
+  it("without hard links, reports a taken name instead of renaming over it", async () => {
+    const ops = operations({ link: vi.fn().mockRejectedValue(failure("ENOTSUP")), exists: vi.fn().mockResolvedValue(true) });
+    expect(await publishNoOverwrite("temp", "out", undefined, ops)).toBe("exists");
+    expect(ops.rename).not.toHaveBeenCalled();
   });
 
-  it("removes its exclusive output when cancellation arrives during destination sync", async () => {
-    const controller = new AbortController();
-    const fixture = memoryOperations(Buffer.from("complete bytes"), {
-      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-    });
-    const destination = await fixture.operations.openExclusive("unused");
-    vi.mocked(fixture.operations.openExclusive).mockResolvedValue({
-      ...destination,
-      sync: vi.fn(async () => { controller.abort(); }),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
-    ).rejects.toHaveProperty("name", "AbortError");
-    expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
-  });
-
-  it("removes its exclusive output when cancellation arrives during destination close", async () => {
-    const controller = new AbortController();
-    const fixture = memoryOperations(Buffer.from("complete bytes"), {
-      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-    });
-    const destination = await fixture.operations.openExclusive("unused");
-    vi.mocked(fixture.operations.openExclusive).mockResolvedValue({
-      ...destination,
-      close: vi.fn(async () => { controller.abort(); }),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
-    ).rejects.toHaveProperty("name", "AbortError");
-    expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
-  });
-
-  it("does not mask a real hard-link I/O failure with a copy attempt", async () => {
+  it("does not mask a real link failure with a rename", async () => {
     const io = failure("EIO");
-    const fixture = memoryOperations(Buffer.from("content"), {
-      link: vi.fn().mockRejectedValue(io),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", undefined, fixture.operations),
-    ).rejects.toBe(io);
-    expect(fixture.operations.openExclusive).not.toHaveBeenCalled();
+    const ops = operations({ link: vi.fn().mockRejectedValue(io) });
+    await expect(publishNoOverwrite("temp", "out", undefined, ops)).rejects.toBe(io);
+    expect(ops.rename).not.toHaveBeenCalled();
   });
 
-  it("rejects success when an authorized overwrite replaces the claimed pathname", async () => {
-    const fixture = memoryOperations(Buffer.from("complete bytes"), {
-      link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-      pathIdentity: vi.fn().mockResolvedValue("winner"),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", undefined, fixture.operations),
-    ).rejects.toMatchObject({ code: "EEXIST" });
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
-  });
-
-  it("preserves a replacement winner when cancellation follows its rename", async () => {
+  it("stops before the rename when cancelled during the name check", async () => {
     const controller = new AbortController();
-    const fixture = memoryOperations(Buffer.from("complete bytes"), {
+    const ops = operations({
       link: vi.fn().mockRejectedValue(failure("ENOTSUP")),
-      pathIdentity: vi.fn().mockResolvedValue("winner"),
+      exists: vi.fn(async () => { controller.abort(); return false; }),
     });
-    const destination = await fixture.operations.openExclusive("unused");
-    vi.mocked(fixture.operations.openExclusive).mockResolvedValue({
-      ...destination,
-      sync: vi.fn(async () => { controller.abort(); }),
-    });
-
-    await expect(
-      publishNoOverwrite("temp", "out", controller.signal, fixture.operations),
-    ).rejects.toHaveProperty("name", "AbortError");
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
-    expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
+    await expect(publishNoOverwrite("temp", "out", controller.signal, ops)).rejects.toMatchObject({ code: "operation.cancelled" });
+    expect(ops.rename).not.toHaveBeenCalled();
   });
 
-  describe("on a FAT volume whose file id changes once bytes are written", () => {
-    /** The claim reports one id while empty and another once written, from its
-     *  handle and from its path alike. */
-    function fatOperations(sourceBytes: Buffer, writeFailure?: Error) {
-      let written = false;
-      const fixture = memoryOperations(sourceBytes, {
-        link: vi.fn().mockRejectedValue(failure("EPERM")),
-        pathIdentity: vi.fn(async () => (written ? "written" : "empty")),
-      });
-      const destination = Object.assign(fixture.destination, {
-        write: vi.fn(async (buffer, offset, length) => {
-          if (written && writeFailure) throw writeFailure;
-          written = true;
-          fixture.published.push(Buffer.from(buffer.subarray(offset, offset + length)));
-          return { bytesWritten: length };
-        }),
-        sync: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-        identity: vi.fn(async () => (written ? "written" : "empty")),
-      });
-      vi.mocked(fixture.operations.openExclusive).mockResolvedValue(destination);
-      return fixture;
-    }
-
-    it("publishes a completed copy", async () => {
-      const bytes = Buffer.alloc(600_000, 0x5a);
-      const fixture = fatOperations(bytes);
-
-      await publishNoOverwrite("temp", "out", undefined, fixture.operations);
-
-      expect(Buffer.concat(fixture.published).equals(bytes)).toBe(true);
-      expect(fixture.operations.unlink).toHaveBeenCalledWith("temp");
-      expect(fixture.operations.unlink).not.toHaveBeenCalledWith("out");
-    });
-
-    it("removes its partially written claim when a later write fails", async () => {
-      const writeFailure = failure("EIO");
-      const fixture = fatOperations(Buffer.alloc(600_000), writeFailure);
-
-      await expect(
-        publishNoOverwrite("temp", "out", undefined, fixture.operations),
-      ).rejects.toBe(writeFailure);
-      expect(fixture.operations.unlink).toHaveBeenCalledWith("out");
-      expect(fixture.operations.unlink).not.toHaveBeenCalledWith("temp");
-    });
+  it("keeps a published archive when the temp's removal fails", async () => {
+    const ops = operations({ unlink: vi.fn().mockRejectedValue(failure("EIO")) });
+    expect(await publishNoOverwrite("temp", "out", undefined, ops)).toBe("published");
   });
 });

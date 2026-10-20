@@ -108,10 +108,10 @@ async function fixture() {
     resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
     write: async (plan, signal, onEvent, onPhysicalSettlement) =>
-      (await zip.write(plan, { signal, onEvent, onPhysicalSettlement })).bytes,
-    verify: async (archive, signal) => (await zip.verify(archive, { manifest: true, signal })).ok,
+      ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent, onPhysicalSettlement })),
+    verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval(buildSpec(inputs, options), archive, { removed, signal, onEvent }),
+      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),
     pathKinds: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       for (const file of paths) await rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
@@ -120,7 +120,7 @@ async function fixture() {
     deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {
-      const data = await zip.verify(archive, manifestName === null ? { signal, onEvent } : { manifest: true, manifestName, signal, onEvent });
+      const data = await zip.verify(manifestName === null ? { archive } : { archive, manifest: true, manifestName }, { signal, onEvent });
       return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
     emit: () => {}, progress: () => () => {}, newId: () => `job-${++ids}`, log: nullLog,

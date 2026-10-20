@@ -21,7 +21,7 @@ function entries(n: number): string {
 export function messageFor(body: LogEventBody): string {
   switch (body.event) {
     case "session.start":
-      return `zipkit ${body.version} (concurrency ${body.concurrency}, chunk ${body.chunkSize} bytes)`;
+      return `zipkitsdk ${body.version} (concurrency ${body.concurrency}, chunk ${body.chunkSize} bytes, I/O timeout ${body.ioTimeoutMs} ms${body.debug ? ", debug" : ""})`;
     case "scan.start":
       return `scanning ${body.inputs} input${s(body.inputs)}`;
     case "scan.dir":
@@ -54,7 +54,7 @@ export function messageFor(body: LogEventBody): string {
     }
     case "fault":
       return body.cause !== undefined
-        ? `${body.code}: ${body.detail}: ${body.cause}`
-        : `${body.code}: ${body.detail}`;
+        ? `${body.error.code}: ${body.error.message}: ${body.cause}`
+        : `${body.error.code}: ${body.error.message}`;
   }
 }

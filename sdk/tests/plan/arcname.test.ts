@@ -56,6 +56,7 @@ describe("checkAnchorCollisions", () => {
   it("rejects two inputs that resolve to the same non-empty prefix", () => {
     const inputs = normalizeInputs(["/a/src", "/b/src"]);
     expect(() => checkAnchorCollisions(inputs, ["src", "src"])).toThrow(invalidError);
+    expect(() => checkAnchorCollisions(inputs, ["src", "src"])).toThrow(expect.objectContaining({ code: "input.prefix-collision", subject: inputs[1]!.path }));
   });
 
   it("allows distinct prefixes and ignores root-level merges", () => {

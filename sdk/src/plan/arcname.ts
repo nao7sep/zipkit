@@ -57,6 +57,7 @@ export function checkAnchorCollisions(inputs: ResolvedInput[], anchors: string[]
       throw new ZipKitError(
         "input.prefix-collision",
         `inputs "${inputs[prev]?.path}" and "${inputs[i]?.path}" resolve to the same archive prefix "${anchor}"`,
+        { subject: inputs[i]?.path ?? anchor },
       );
     }
     seen.set(anchor, i);

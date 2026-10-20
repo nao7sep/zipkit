@@ -49,9 +49,9 @@ describe("ZipKitError", () => {
 
   it("marks a failure that may have left output behind, keeping everything else", () => {
     const cause = new Error("disk");
-    const err = new ZipKitError("write.failed", "cannot write a.zip", { cause, subject: "a.zip" });
+    const err = new ZipKitError("io.failed", "cannot write a.zip", { cause, subject: "a.zip" });
     const marked = withUnknownEffect(err) as ZipKitError;
-    expect(marked).toMatchObject({ code: "write.failed", effect: "unknown", subject: "a.zip", cause });
+    expect(marked).toMatchObject({ code: "io.failed", effect: "unknown", subject: "a.zip", cause });
     expect(withUnknownEffect(marked)).toBe(marked);
     const plain = new Error("not ours");
     expect(withUnknownEffect(plain)).toBe(plain);
@@ -64,13 +64,13 @@ describe("verification of the two headers", () => {
     await writeFile(file, "alpha");
     const archive = path.join(root, "a.zip");
     await new ZipKit().create({ inputs: [file], output: archive });
-    expect((await new ZipKit().verify(archive, { manifest: true })).ok).toBe(true);
+    expect((await new ZipKit().verify({ archive, manifest: true })).ok).toBe(true);
     const bytes = await readFile(archive);
     // The first entry's local header starts the file; its name follows the 30-byte header.
     expect(bytes.readUInt32LE(0)).toBe(0x04034b50);
     bytes[30] = "z".charCodeAt(0);
     await writeFile(archive, bytes);
-    const result = await new ZipKit().verify(archive);
+    const result = await new ZipKit().verify({ archive });
     expect(result.ok).toBe(false);
     expect(result.summary.localMismatched).toBe(1);
     expect(result.findings).toEqual([expect.objectContaining({ rule: "verify.local-mismatch", path: "a.txt", severity: "error" })]);

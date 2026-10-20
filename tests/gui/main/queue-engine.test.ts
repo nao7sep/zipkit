@@ -42,7 +42,7 @@ function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
     summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: writable ? 0 : 1, zip64: false, sourceBytes: 0 },
     findings: [],
     entries: [],
-    instructions: { policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
+    instructions: { output: "/out.zip", writable: true, zip64: false, policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
   };
 }
 
@@ -335,6 +335,18 @@ describe("queue engine", () => {
       "The drive or network share holding /Volumes/NAS/out-x.tmp stopped responding. " +
         "The archive could not be written. Check the output location and available storage, then try again.",
     );
+  });
+
+  it("stops for attention, keeping the originals, when the SDK refuses a write because the output appeared since the plan", async () => {
+    const { deps, calls } = makeDeps({ write: async () => null });
+    const engine = createQueueEngine(deps);
+    const id = engine.add(["/good"], DEFAULT_OPTIONS, TRASH);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    run(engine, id);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("needs-attention"));
+    expect(engine.snapshot()[0]).toMatchObject({ writable: false, archiveWritten: false });
+    expect(say(engine.snapshot()[0]?.message)).toBe("The archive can no longer be written. This was found when the job was checked again at run time.");
+    expect(calls.trash).toEqual([]);
   });
 
   it("refuses to run a Move-to-Trash job without the manifest, writing nothing", async () => {

@@ -1,9 +1,9 @@
 /**
  * The ZIP reader: parse a container's directory and stream an entry's bytes,
  * all through positioned reads on an open, bounded file handle so the whole archive
- * is never held in memory. It is the shared substrate beneath verification and
- * listing — this layer turns a file into structured entries and pipes
- * inflated content to a sink; what is done with it is the caller's job.
+ * is never held in memory. It is the substrate beneath verification: this
+ * layer turns a file into structured entries and pipes inflated content to a
+ * sink; what is done with it is the caller's job.
  *
  * The central directory is authoritative: names, CRC-32, sizes, the local-header
  * offset, and the timestamp extras are read from there, so the reader is correct

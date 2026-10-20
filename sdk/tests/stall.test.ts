@@ -132,7 +132,7 @@ describe("the time budget", () => {
       chunkSize: 1024,
       volume: new Volume(slow, BUDGET),
     });
-    expect(result.bytes).toBeGreaterThan(0);
+    expect(result.mode).toBe("write");
     expect(existsSync(path.join(dir, "slow.zip"))).toBe(true);
     expect(elapsed).toBeGreaterThan(2 * BUDGET);
   });

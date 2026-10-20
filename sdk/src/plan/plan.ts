@@ -67,11 +67,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
       ...(issue.applied ? { fix: { kind: "rename" as const, to: scan.output } } : {}),
     }));
   }
-  if (scan.outputExists && !scan.overwrite) {
-    globalFindings.push(
-      finding("output.exists", scan.output, "output archive already exists; authorize overwrite to replace it"),
-    );
-  }
+  if (scan.outputExists && !scan.overwrite) globalFindings.push(outputExists(scan.output));
 
   const entries = items.map(toPlannedEntry);
   const findings: Finding[] = [];
@@ -108,6 +104,9 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
     findings,
     entries,
     instructions: toInstructions({
+      output: scan.output,
+      writable,
+      zip64,
       writeEntries,
       policy,
       overwrite: scan.overwrite,
@@ -116,6 +115,12 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
     }),
   };
   return plan;
+}
+
+/** The finding that blocks a plan, or a write that finds its name taken,
+ *  because the output exists and replacing it was not authorized. */
+export function outputExists(output: string): Finding {
+  return finding("output.exists", output, "output archive already exists; authorize overwrite to replace it");
 }
 
 /** Paths compared segment by segment, by code unit, so `a` comes before

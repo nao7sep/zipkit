@@ -12,22 +12,20 @@ function gate() {
   return { promise, release };
 }
 
-it("write delivers its settlement observer before rejection and retains a late claim through physical cleanup", async () => {
+it("write delivers its settlement observer before rejection and retains a late temp file through physical cleanup", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-write-settlement-"));
   const input = path.join(root, "input.txt");
   const output = path.join(root, "archive.zip");
   const open = gate(), opened = gate(), close = gate(), closing = gate(), closed = gate();
   const controller = new AbortController();
-  let openStarted = false;
+  let temp: string | undefined;
   let physicallyClosed = false;
-  let checkedIdentity = false;
   let removed = false;
   const port: FileSystemPort = {
     ...nodeFileSystem,
-    link: async () => { throw Object.assign(new Error("hard links unsupported"), { code: "ENOTSUP" }); },
     open: async (file, flags, mode) => {
-      if (file !== output) return nodeFileSystem.open(file, flags, mode);
-      openStarted = true;
+      if (!file.endsWith(".tmp")) return nodeFileSystem.open(file, flags, mode);
+      temp = file;
       opened.release();
       await open.promise;
       const handle = await nodeFileSystem.open(file, flags, mode);
@@ -39,18 +37,9 @@ it("write delivers its settlement observer before rejection and retains a late c
         closed.release();
       } };
     },
-    lstat: async (file) => {
-      const result = await nodeFileSystem.lstat(file);
-      if (file === output && physicallyClosed) checkedIdentity = true;
-      return result;
-    },
-    unlink: async (file) => {
-      if (file === output) {
-        expect(physicallyClosed).toBe(true);
-        expect(checkedIdentity).toBe(true);
-      }
-      await nodeFileSystem.unlink(file);
-      if (file === output) removed = true;
+    rm: async (file) => {
+      await nodeFileSystem.rm(file);
+      if (file === temp && physicallyClosed) removed = true;
     },
   };
   const volumes: Volume[] = [];
@@ -78,18 +67,17 @@ it("write delivers its settlement observer before rejection and retains a late c
         void physical.then(() => { settled = true; });
       },
     }).catch((error: unknown) => { order.push("rejection"); return error; });
-    await Promise.race([opened.promise, outcome.then(() => { throw new Error("write ended before claiming its output"); })]);
+    await Promise.race([opened.promise, outcome.then(() => { throw new Error("write ended before creating its temp file"); })]);
     controller.abort();
     expect(await outcome).toMatchObject({ code: "operation.cancelled" });
     expect(order).toEqual(["observer", "rejection"]);
     expect(settlement).toBeDefined();
     expect(settled).toBe(false);
-    expect(existsSync(output)).toBe(false);
 
+    // The abandoned create lands late and makes the temp file.
     open.release();
     await closing.promise;
-    expect(existsSync(output)).toBe(true);
-    // Expire the late claim's bounded discard wait while its raw close remains held.
+    expect(existsSync(temp!)).toBe(true);
     await vi.advanceTimersByTimeAsync(50);
     expect(settled).toBe(false);
     expect(removed).toBe(false);
@@ -99,13 +87,14 @@ it("write delivers its settlement observer before rejection and retains a late c
     await settlement;
     expect(settled).toBe(true);
     expect(removed).toBe(true);
+    expect(existsSync(temp!)).toBe(false);
     expect(existsSync(output)).toBe(false);
     expect(await readFile(input, "utf8")).toBe("complete source");
   } finally {
     open.release(); close.release();
     vi.useRealTimers();
     await outcome;
-    if (openStarted) await closed.promise;
+    if (temp !== undefined) await closed.promise;
     await Promise.all(volumes.map((volume) => volume.whenSettled()));
     await settlement;
     await rm(root, { recursive: true, force: true });
@@ -129,7 +118,7 @@ it("create delivers a settled observer before returning a successful archive", a
     await settlement;
     expect(result.output).toBe(output);
     expect(existsSync(output)).toBe(true);
-    expect((await zip.verify(output, { manifest: true })).ok).toBe(true);
+    expect((await zip.verify({ archive: output, manifest: true })).ok).toBe(true);
   } finally {
     await settlement;
     await rm(root, { recursive: true, force: true });

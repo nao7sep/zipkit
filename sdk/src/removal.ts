@@ -1,13 +1,14 @@
 /**
  * The checks before the originals an archive was made from are removed, so
- * that removing them cannot lose data: the archive is still the one expected,
- * it does not sit inside an input (removing that input would take it along),
- * it verifies against its manifest, and a fresh scan of the inputs still
- * matches that manifest. Each check runs only once those before it passed.
+ * that removing them cannot lose data: the archive does not sit inside an
+ * input (removing that input would take it along), it verifies against its
+ * manifest, and a fresh scan of the inputs still matches that manifest. Each
+ * check runs only once those before it passed. The archive's state is read
+ * first, so the answer can say which file verified.
  */
 
 import path from "node:path";
-import { fsFailure, type ZipKitError } from "./errors.ts";
+import { classify, type ZipKitError } from "./errors.ts";
 import type { Volume } from "./internal/volume.ts";
 import type { PathState, RemovalCheck, SourceComparison, VerifyReport } from "./types.ts";
 
@@ -37,10 +38,10 @@ export interface RemovalSteps {
   compare(): Promise<SourceComparison>;
 }
 
-/** A step's failure as the refusal carries it, or thrown as it is when it
- *  is a cancellation, which ends the check rather than answering it. */
+/** A step's failure, classified, or thrown as it is when it is a
+ *  cancellation, which ends the check rather than answering it. */
 function stepFailure(error: unknown, subject: string): ZipKitError {
-  const failure = fsFailure(error, subject);
+  const failure = classify(error, subject);
   if (failure.kind === "cancelled") throw failure;
   return failure;
 }
@@ -59,20 +60,20 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   try {
     if (await steps.inside()) return refuse({ reason: "inside" });
   } catch (error) {
-    return refuse({ reason: "error", step: "location", error: stepFailure(error, archive) });
+    return refuse({ reason: "error", step: "location", error: stepFailure(error, archive).toJSON() });
   }
   try {
     const verification = await steps.verify();
     if (!verification.ok) return refuse({ reason: "verify-failed", report: verification.report });
   } catch (error) {
-    return refuse({ reason: "error", step: "verify", error: stepFailure(error, archive) });
+    return refuse({ reason: "error", step: "verify", error: stepFailure(error, archive).toJSON() });
   }
   const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
   try {
     const comparison = await steps.compare();
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
   } catch (error) {
-    return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive) }, verified);
+    return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive).toJSON() }, verified);
   }
   return { refusal: null, verified };
 }

@@ -2,16 +2,19 @@
  * The write edge's source check: a source file must still be what the scan
  * recorded when the writer reads it. A changed size or modification time, or
  * more bytes than were scanned, fails the whole write with
- * `write.source-changed` naming the entry, and no archive or temp file is left.
+ * `write.source-changed` naming the file, and no archive or temp file is left.
+ * The plan's visible fields must agree with its instructions, a source gone
+ * since the plan fails by cause, and an output that appeared since the plan
+ * is a refusal, on a file system with hard links or without.
  */
 
-import { existsSync, readdirSync } from "node:fs";
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ZipKit, ZipKitError } from "../../src/index.ts";
-import { Volume } from "../../src/internal/volume.ts";
+import { ZipKit, ZipKitError, type PlanData } from "../../src/index.ts";
+import { nodeFileSystem, Volume } from "../../src/internal/volume.ts";
 import { createLogger } from "../../src/log/logger.ts";
 import { writeArchive } from "../../src/write/write.ts";
 import { fileSystemWith } from "../helpers/volume.ts";
@@ -49,7 +52,7 @@ async function expectSourceChanged(run: Promise<unknown>): Promise<void> {
     (e: unknown) => e,
   );
   expect(err).toBeInstanceOf(ZipKitError);
-  expect(err).toMatchObject({ code: "write.source-changed", subject: "data.txt" });
+  expect(err).toMatchObject({ code: "write.source-changed", subject: source });
   expect(existsSync(output)).toBe(false);
   expect(readdirSync(dir)).toEqual(["proj"]); // no temp left behind
 }
@@ -93,7 +96,68 @@ describe("a source file changed during Create", () => {
   it("writes the archive when nothing changed", async () => {
     const plan = await new ZipKit().plan({ inputs: [proj], output });
     const result = await write(plan);
-    expect(result.bytes).toBeGreaterThan(0);
+    expect(result).toMatchObject({ mode: "write" });
     expect(existsSync(output)).toBe(true);
+  });
+});
+
+describe("a plan whose visible fields disagree with its instructions", () => {
+  it.each([
+    ["a relative output", (p: PlanData) => ({ ...p, output: "out.zip" })],
+    ["another output", (p: PlanData) => ({ ...p, output: path.join(dir, "elsewhere.zip") })],
+    ["writable set by hand", (p: PlanData) => ({ ...p, writable: true })],
+    ["the Zip64 verdict flipped", (p: PlanData) => ({ ...p, summary: { ...p.summary, zip64: !p.summary.zip64 } })],
+  ])("is refused as plan.invalid: %s", async (_name, edit) => {
+    await writeFile(output, "already here");
+    const plan = await new ZipKit().plan({ inputs: [proj], output });
+    expect(plan.writable).toBe(false);
+    const edited = edit(plan);
+    // Writable by hand only matters on a blocked plan; the others start writable.
+    const given = edited.writable === plan.writable ? edit({ ...plan, writable: true, instructions: { ...plan.instructions, writable: true } }) : edited;
+    await expect(write(given)).rejects.toMatchObject({ code: "plan.invalid", kind: "invalid" });
+    expect(readFileSync(output, "utf8")).toBe("already here");
+    expect(existsSync(path.join(process.cwd(), "out.zip"))).toBe(false);
+  });
+
+  it("is refused as write.not-writable, naming the output, when the instructions block it", async () => {
+    await writeFile(output, "already here");
+    const plan = await new ZipKit().plan({ inputs: [proj], output });
+    await expect(write(plan)).rejects.toMatchObject({ code: "write.not-writable", subject: output });
+  });
+});
+
+describe("a source gone since the plan", () => {
+  it("fails as path.missing naming the file, not the archive", async () => {
+    const plan = await new ZipKit().plan({ inputs: [proj], output });
+    await unlink(source);
+    await expect(write(plan)).rejects.toMatchObject({ code: "path.missing", kind: "unavailable", subject: source });
+    expect(existsSync(output)).toBe(false);
+    expect(readdirSync(dir)).toEqual(["proj"]);
+  });
+});
+
+/** A file system without hard links, as exFAT and FAT are. */
+const noHardLinks = { ...nodeFileSystem, link: async (): Promise<never> => { throw Object.assign(new Error("not supported"), { code: "ENOTSUP" }); } };
+
+describe.each([
+  ["with hard links", nodeFileSystem],
+  ["without hard links", noHardLinks],
+])("an output that appeared since the plan, %s", (_name, port) => {
+  it("is a refusal like a plan that blocks, and the other file is kept", async () => {
+    const plan = await new ZipKit().plan({ inputs: [proj], output });
+    await writeFile(output, "someone else's");
+    const result = await write(plan, new Volume(port, 30_000));
+    expect(result).toMatchObject({ mode: "plan", output, writable: false, instructions: { writable: false } });
+    expect((result as PlanData).findings.at(-1)).toMatchObject({ rule: "output.exists", severity: "error", path: output });
+    expect(result.summary.errors).toBe(plan.summary.errors + 1);
+    expect(readFileSync(output, "utf8")).toBe("someone else's");
+    expect(readdirSync(dir).sort()).toEqual(["out.zip", "proj"]);
+  });
+
+  it("is not in the way when the name is free: the archive is published whole", async () => {
+    const plan = await new ZipKit().plan({ inputs: [proj], output });
+    expect(await write(plan, new Volume(port, 30_000))).toMatchObject({ mode: "write", output });
+    expect(readdirSync(dir).sort()).toEqual(["out.zip", "proj"]);
+    expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);
   });
 });

@@ -31,6 +31,7 @@ export const ERROR_CODES = {
   "spec.invalid": "invalid",
   "policy.invalid": "invalid",
   "options.invalid": "invalid",
+  "request.invalid": "invalid",
   "output.ambiguous": "invalid",
   "input.prefix-collision": "invalid",
   "plan.invalid": "invalid",
@@ -43,7 +44,6 @@ export const ERROR_CODES = {
   "write.not-writable": "invalid",
   "write.source-changed": "unavailable",
   "write.durability": "unavailable",
-  "write.failed": "unavailable",
   "archive.not-zip": "invalid",
   "archive.malformed": "invalid",
   "archive.unsupported-method": "invalid",
@@ -147,6 +147,16 @@ export function withUnknownEffect(err: unknown): unknown {
   return new ZipKitError(err.code, err.message, options);
 }
 
+/** `err` naming `subject` when it names nothing yet, such as an archive fault
+ *  found deep in a read that does not know which file it reads. A value that
+ *  is not a ZipKit error, or one that has a subject, is returned as it is. */
+export function withSubject(err: unknown, subject: string): unknown {
+  if (!(err instanceof ZipKitError) || err.subject !== undefined) return err;
+  const options: ZipKitErrorOptions<ErrorCode> = { effect: err.effect, cause: err.cause, subject };
+  if (err.details !== undefined) options.details = err.details as never;
+  return new ZipKitError(err.code, err.message, options);
+}
+
 /** A file-system failure at `subject` as a ZipKit error, by what the system
  *  reported: the path is missing, access was denied, or the operation failed
  *  otherwise. A ZipKit error is returned as it is. */
@@ -157,6 +167,15 @@ export function fsFailure(err: unknown, subject: string): ZipKitError {
   if (code === "ENOENT" || code === "ENOTDIR") return new ZipKitError("path.missing", message, { cause: err, subject });
   if (code === "EACCES" || code === "EPERM") return new ZipKitError("path.denied", message, { cause: err, subject });
   return new ZipKitError("io.failed", message, { cause: err, subject });
+}
+
+/** Whatever `err` is, as a ZipKit error: itself when it is one, a file-system
+ *  failure at `subject` when the system reported one (it carries an errno
+ *  `code`), and otherwise a fault in the SDK itself. */
+export function classify(err: unknown, subject: string): ZipKitError {
+  if (err instanceof ZipKitError) return err;
+  if (typeof (err as { code?: unknown } | null)?.code === "string") return fsFailure(err, subject);
+  return new ZipKitError("internal.unexpected", err instanceof Error ? err.message : String(err), { cause: err, subject });
 }
 
 /** Whether `err` is a stalled-volume failure. */

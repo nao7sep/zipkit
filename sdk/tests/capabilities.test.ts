@@ -11,6 +11,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../src/index.ts";
 import type { ProgressCounts } from "../src/index.ts";
+import { written as writtenArchive } from "./helpers/written.ts";
 import { Meter } from "../src/progress.ts";
 import { createDirectoryLink } from "./helpers/symlink.ts";
 import { readZipFile } from "./helpers/readZip.ts";
@@ -53,7 +54,7 @@ describe("planned entries", () => {
     const written = await zip.write(plan, { onProgress: (c) => counts.push(c) });
     expect(counts[0]).toEqual({ stage: "write", entriesDone: 0, entriesTotal: 3, bytesDone: 0, bytesTotal: 11 });
     expect(counts.at(-1)).toEqual({ stage: "write", entriesDone: 3, entriesTotal: 3, bytesDone: 11, bytesTotal: 11 });
-    expect(written.manifest?.summary.sourceBytes).toBe(11);
+    expect(writtenArchive(written).manifest.summary.sourceBytes).toBe(11);
   });
 });
 
@@ -64,7 +65,7 @@ describe("onProgress", () => {
     await zip.create({ inputs: [proj], output: archive });
     const listing = readZipFile(archive).entries;
     const counts: ProgressCounts[] = [];
-    await zip.verify(archive, { manifest: true, onProgress: (c) => counts.push(c) });
+    await zip.verify({ archive, manifest: true }, { onProgress: (c) => counts.push(c) });
     const bytes = listing.reduce((sum, e) => sum + e.uncompSize, 0);
     expect(counts[0]).toMatchObject({ stage: "verify", entriesDone: 0, bytesDone: 0 });
     expect(counts.at(-1)).toEqual({ stage: "verify", entriesDone: listing.length, entriesTotal: listing.length, bytesDone: bytes, bytesTotal: bytes });
@@ -75,7 +76,7 @@ describe("onProgress", () => {
     const archive = path.join(root, "o.zip");
     await zip.create({ inputs: [proj], output: archive });
     const counts: ProgressCounts[] = [];
-    expect((await zip.checkRemoval({ inputs: [proj] }, archive, { onProgress: (c) => counts.push(c) })).refusal).toBeNull();
+    expect((await zip.checkRemoval({ spec: { inputs: [proj] }, archive }, { onProgress: (c) => counts.push(c) })).refusal).toBeNull();
     expect(counts.at(-1)).toEqual({ stage: "recheck", entriesDone: 2, entriesTotal: 2, bytesDone: 11, bytesTotal: 11 });
     expect(counts.map((c) => c.stage).join(" ")).toMatch(/^(verify )+(recheck ?)+$/);
   });
