@@ -22,7 +22,7 @@ const define = { __APP_VERSION__: JSON.stringify(version) };
 export default defineConfig({
   main: {
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         // The records, backups and managed-write threads and the SDK host's
         // utility process are their own entries: log.ts, backupStore.ts,
         // managed-write.ts and sdk-process.ts start them from the file beside
@@ -47,7 +47,7 @@ export default defineConfig({
   },
   preload: {
     build: {
-      rollupOptions: { input: { index: resolve(import.meta.dirname, "src/gui/preload/index.ts") } },
+      rolldownOptions: { input: { index: resolve(import.meta.dirname, "src/gui/preload/index.ts") } },
     },
     plugins: [externalizeDepsPlugin()],
     define,
@@ -61,7 +61,7 @@ export default defineConfig({
     },
     build: {
       minify: true,
-      rollupOptions: {
+      rolldownOptions: {
         // The Records window is its own page beside the main one.
         input: {
           index: resolve(import.meta.dirname, "src/gui/renderer/index.html"),

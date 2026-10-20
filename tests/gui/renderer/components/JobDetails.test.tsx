@@ -22,14 +22,22 @@ import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { SAVE } from "../../../helpers/intents.js";
 
 // jsdom lays nothing out, so the dialog's virtualized list would draw no row:
-// each line measures 40 px and the view 600 px.
+// each line measures 40 px and the view 600 px, by its offset or its client
+// size, whichever the list reads.
 let restoreLayout: () => void = () => {};
 beforeEach(() => {
   const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
     .mockReturnValue({ top: 0, bottom: 40, height: 40, width: 600, left: 0, right: 600, x: 0, y: 0, toJSON() {} } as DOMRect);
-  const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight")!;
-  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 600 });
-  restoreLayout = () => { rect.mockRestore(); Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight); };
+  const sizes = { offsetHeight: 600, offsetWidth: 600, clientHeight: 600, clientWidth: 600 };
+  const saved = Object.keys(sizes).map((key) => [key, Object.getOwnPropertyDescriptor(HTMLElement.prototype, key)] as const);
+  for (const [key, value] of Object.entries(sizes)) Object.defineProperty(HTMLElement.prototype, key, { configurable: true, get: () => value });
+  restoreLayout = () => {
+    rect.mockRestore();
+    for (const [key, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[key];
+    }
+  };
 });
 afterEach(() => { restoreLayout(); cleanup(); localStorage.clear(); });
 
