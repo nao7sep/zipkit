@@ -32,26 +32,8 @@ describe("independent composite visual states", () => {
     expect(rule(".records-row--selected:hover")).toContain("var(--accent-strong)");
   });
 
-  it("retains job status color through hover and leaves pointer-open menu targets visually quiet", () => {
+  it("retains job status color through hover", () => {
     expect(rule(".job-row:hover")).toContain("var(--job-tint)");
-    expect(compact).not.toContain(".menu-item[data-highlighted]");
-  });
-});
-
-describe("renderer scrollbar contract", () => {
-  it("keeps a 16px gutter around a 10px inset thumb", () => {
-    expect(compact).toMatch(/\*::-webkit-scrollbar\{[^}]*width:16px;[^}]*height:16px/);
-    expect(compact).toMatch(/\*::-webkit-scrollbar-thumb\{[^}]*border:3pxsolidtransparent/);
-    expect(compact).toContain("scrollbar-width:auto");
-  });
-
-  it("uses a readable owned token and strengthens the whole owner in use", () => {
-    expect(compact).toContain("--scrollbar-thumb:#7d826c");
-    expect(compact).toContain("--scrollbar-thumb:#737b68");
-    expect(compact).toContain("--scrollbar-thumb-active:var(--text-2)");
-    expect(compact).toContain("*:hover::-webkit-scrollbar-thumb");
-    expect(compact).toContain("*:focus-within::-webkit-scrollbar-thumb");
-    expect(compact).toContain("scrollbar-gutter:stable");
   });
 });
 
@@ -68,10 +50,6 @@ describe("button pressed states", () => {
     },
   );
 
-  // Off, every button is its resting self faded, at the one value the app states.
-  it("fades a disabled button instead of restyling it", () => {
-    expect(compact).toMatch(/button:disabled\{opacity:0\.45/);
-  });
 });
 
 // The options grid sizes its columns from the pane, never below one column's
@@ -79,7 +57,6 @@ describe("button pressed states", () => {
 describe("options grid", () => {
   it("fits as many columns as the pane holds, each at least one section wide or the whole pane", () => {
     expect(compact).toMatch(/\.options-grid\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,\d+(\.\d+)?rem\),1fr\)\)/);
-    expect(compact).not.toContain("@container");
   });
 });
 

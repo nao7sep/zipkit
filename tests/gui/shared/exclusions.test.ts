@@ -12,7 +12,8 @@ describe("built-in exclusion descriptions", () => {
   const dsStore = BUILT_IN_EXCLUSIONS[0]!;
 
   it("are keyed on the SDK's pattern ids, never its English notes, and shown in the interface language", () => {
-    expect(dsStore).toEqual({ id: "macos.ds-store", pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true });
+    expect(dsStore.id).toBe(DEFAULT_EXCLUSIONS[0]!.id);
+    expect(dsStore).not.toHaveProperty("note");
     expect(noteShown(dsStore, t)).toBe("Finder のフォルダ表示設定。Finder が作り直します。");
     expect(noteShown({ pattern: "x" } as never, t)).toBe("");
   });

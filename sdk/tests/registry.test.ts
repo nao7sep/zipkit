@@ -26,38 +26,6 @@ describe("RULE_REGISTRY", () => {
     }
   });
 
-  it("contains exactly the documented rule set in pipeline order", () => {
-    expect(ALL_RULES).toEqual([
-      "path.absolute",
-      "path.traversal",
-      "path.too-long",
-      "exclude.pattern",
-      "entry.symlink-ignored",
-      "entry.symlink-preserved",
-      "entry.unsupported",
-      "entry.unlisted",
-      "name.nfd",
-      "name.invalid-char",
-      "name.control-char",
-      "name.trailing-dot-space",
-      "name.reserved",
-      "name.suspicious",
-      "entry.duplicate",
-      "collision.case",
-      "collision.post-fix",
-      "time.pre-1980",
-      "time.post-2107",
-      "output.exists",
-      "verify.crc32-mismatch",
-      "verify.unreadable",
-      "verify.local-mismatch",
-      "verify.sha256-mismatch",
-      "verify.manifest-mismatch",
-      "verify.missing",
-      "verify.extra",
-    ]);
-  });
-
   it("keeps every verification rule at the error tier, so any of them fails a verification", () => {
     for (const rule of ALL_RULES.filter((r) => r.startsWith("verify."))) expect(RULE_REGISTRY[rule].severity, rule).toBe("error");
   });

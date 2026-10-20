@@ -2,9 +2,9 @@ import en from "./locales/en.json";
 import type { Language } from "./languages.js";
 
 // English defines the key set; every other catalogue carries every key, with
-// plural entries keyed by the language's own CLDR categories. The catalogue
-// gate (tests/i18n/catalogues.test.ts) checks keys, placeholders, plural forms,
-// hidden characters, and untranslated English.
+// plural entries keyed by the language's own CLDR categories. A test holds
+// every catalogue to that: keys, placeholders, plural forms, hidden
+// characters, and untranslated English.
 export type MessageKey = keyof typeof en;
 
 export type CatalogueEntry = string | Readonly<Record<string, string>>;

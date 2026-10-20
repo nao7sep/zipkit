@@ -30,9 +30,13 @@ function imports(dirs: string[]): Array<{ file: string; spec: string }> {
     }));
 }
 
-/** Whether a specifier reaches into the SDK's package other than by name. */
+/** The specifiers the SDK's package exports, as its manifest declares them. */
+const ENTRIES = new Set(Object.keys(JSON.parse(readFileSync(path.join("sdk", "package.json"), "utf8")).exports)
+  .map((subpath) => (subpath === "." ? "zipkitsdk" : `zipkitsdk/${subpath.slice(2)}`)));
+
+/** Whether a specifier reaches into the SDK's package other than by an entry it exports. */
 function intoPackage(file: string, spec: string): boolean {
-  if (!spec.startsWith(".")) return /^zipkitsdk\/(?!types$|defaults$|testing$)/.test(spec);
+  if (!spec.startsWith(".")) return (spec === "zipkitsdk" || spec.startsWith("zipkitsdk/")) && !ENTRIES.has(spec);
   return path.resolve(path.dirname(file), spec).startsWith(path.resolve("sdk"));
 }
 

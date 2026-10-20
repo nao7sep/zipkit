@@ -22,9 +22,9 @@ const READ_ATTRIBUTES = new Set([
 
 const LITERAL_TEXT = new Set([
   "ZipKit",
-  // The manifest's file name, filled into its option label.
-  "zipkit.json",
 ]);
+/** The listed literals the scan met, so an entry that matches nothing fails. */
+const literalsSeen = new Set<string>();
 
 type Node = { type: string; loc?: { start: { line: number } }; [key: string]: unknown };
 
@@ -37,7 +37,11 @@ function tsxFiles(dir: string): string[] {
 }
 
 function hasWords(text: string): boolean {
-  return /\p{L}/u.test(text) && !LITERAL_TEXT.has(text.trim());
+  if (LITERAL_TEXT.has(text.trim())) {
+    literalsSeen.add(text.trim());
+    return false;
+  }
+  return /\p{L}/u.test(text);
 }
 
 function literalText(node: Node | undefined): string | null {
@@ -49,8 +53,8 @@ function literalText(node: Node | undefined): string | null {
   return null;
 }
 
-function findings(file: string): string[] {
-  const ast = parse(readFileSync(file, "utf8"), { sourceType: "module", plugins: ["jsx", "typescript"] });
+function findings(file: string, code = readFileSync(file, "utf8")): string[] {
+  const ast = parse(code, { sourceType: "module", plugins: ["jsx", "typescript"] });
   const found: string[] = [];
   const report = (node: Node, text: string) =>
     found.push(`${relative(process.cwd(), file)}:${node.loc?.start.line}: ${JSON.stringify(text.trim())}`);
@@ -95,8 +99,14 @@ function findings(file: string): string[] {
 }
 
 describe("interface text", () => {
-  it("comes from the catalogues, not from JSX literals", () => {
-    const all = tsxFiles(SOURCE).flatMap(findings);
+  it("comes from the catalogues, not from JSX literals, and every listed literal is still met", () => {
+    const all = tsxFiles(SOURCE).flatMap((file) => findings(file));
     expect(all).toEqual([]);
+    expect([...LITERAL_TEXT].filter((text) => !literalsSeen.has(text))).toEqual([]);
+  });
+
+  it("fails on a planted violation of each kind", () => {
+    const planted = `const a = <p>Hello</p>; const b = <p>{"Hello"}</p>; const c = <img alt="A picture" />;`;
+    expect(findings(join(SOURCE, "planted.tsx"), planted)).toHaveLength(3);
   });
 });

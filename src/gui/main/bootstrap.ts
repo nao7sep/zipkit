@@ -196,7 +196,7 @@ app.whenReady().then(async () => {
   });
   // Just-in-case data backup (data-backup conventions): write-through, not a startup scan. A settings
   // save records the exact bytes into `~/.zipkit/backups.sqlite3` strictly after its atomic rename
-  // lands (see managedJson.ts's writeManagedJson + the backup store). There is nothing to kick off here.
+  // lands, from the write itself. There is nothing to kick off here.
   registerIpc();
   registerQueueIpc();
   log.onStored(notifyRecordsChanged);

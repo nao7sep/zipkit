@@ -1,10 +1,5 @@
 appId: io.github.nao7sep.zipkit
-productName: ZipKit
-
-# The repository package is the SDK, built to dist/, so its `main` points at the
-# SDK authority. Only packaged Electron metadata needs the compiled GUI entry.
-extraMetadata:
-  main: out/main/index.js
+# The product name is package.json's productName.
 
 # Packaged installers land in release/ — kept clear of electron-vite's out/ (the
 # app bundle this packages). Icons and other build resources are read from build/.
@@ -12,7 +7,7 @@ directories:
   output: release
   buildResources: build
 
-# Ship only the three app outputs; other out/ folders may hold measurement builds.
+# Ship only the app's three outputs.
 # Prod dependencies and package.json are included automatically; source and tests are not.
 files:
   - out/main/**
@@ -33,10 +28,6 @@ extraResources:
     to: Assets.car
   - from: LICENSE
     to: LICENSE.txt
-  - from: node_modules/electron/dist/LICENSE
-    to: electron/LICENSE
-  - from: node_modules/electron/dist/LICENSES.chromium.html
-    to: electron/LICENSES.chromium.html
 
 mac:
   category: public.app-category.utilities
@@ -45,8 +36,8 @@ mac:
     CFBundleIconName: zipper-z-olive
     # Every interface language, so AppKit draws the menu items macOS adds itself
     # (Emoji & Symbols, Start Dictation, Services) in the interface language
-    # (localization-conventions). Kept equal to src/gui/shared/i18n/languages.ts
-    # by tests/main/installer-config.test.ts.
+    # (localization-conventions). A test holds this list equal to the app's own
+    # language list.
     CFBundleLocalizations:
       - en
       - de

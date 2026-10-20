@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { claimRuntime, isRuntimeOwner, ownsProcess, releaseRuntime, stopRuntime, REPO_ROOT } from "../../scripts/launcher-runtime.mjs";
 
 describe("launcher process identity", () => {
-  const identity = { kind: "electron", label: "ZipKit", executable: "ZipKit" };
+  const identity = { label: "ZipKit", executable: "ZipKit" };
 
   it("owns only this repository's ZipKit runtime", () => {
     expect(ownsProcess({
@@ -51,7 +51,7 @@ describe("launcher process identity", () => {
 
 
 describe("Windows launcher stop", () => {
-  const identity = { kind: "electron", label: "ZipKit", executable: "ZipKit" };
+  const identity = { label: "ZipKit", executable: "ZipKit" };
   const owned = (pid: number, parentPid = 1) => ({
     pid, parentPid, executablePath: `${REPO_ROOT}/release/win-unpacked/ZipKit.exe`, commandLine: "",
   });

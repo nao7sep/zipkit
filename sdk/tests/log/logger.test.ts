@@ -24,12 +24,9 @@ describe("createLogger", () => {
     expect(e.event).toBe("scan.done"); // the typed fields ride alongside
   });
 
-  it("drops debug unless asked for it, whatever the environment says", () => {
+  it("drops debug unless asked for it", () => {
     const { sink, events } = collect();
-    process.env.ZIPKIT_DEBUG = "1";
-    try {
-      createLogger(sink).emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });
-    } finally { delete process.env.ZIPKIT_DEBUG; }
+    createLogger(sink).emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });
     expect(events).toHaveLength(0);
 
     createLogger(sink, true).emit({ stage: "scan", level: "debug", event: "scan.dir", path: "a" });

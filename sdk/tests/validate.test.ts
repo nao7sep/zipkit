@@ -28,9 +28,9 @@ describe("validateSpec", () => {
     });
   });
 
-  it("rejects a exclusion pattern with an unknown 'action' key (include is gone)", () => {
+  it("rejects an exclusion pattern with an unknown key", () => {
     expect(() =>
-      validateSpec({ inputs: ["/a"], policy: { exclusions: [{ action: "include", pattern: "x" }] } as never }),
+      validateSpec({ inputs: ["/a"], policy: { exclusions: [{ colour: "red", pattern: "x" }] } as never }),
     ).toThrow(invalidError);
   });
 
@@ -175,7 +175,7 @@ describe("call options and arguments", () => {
   it("are checked at every method, so a wrong value fails as an invalid call, never deep in a file operation", async () => {
     const zip = new ZipKit();
     const invalid = { name: "ZipKitError", kind: "invalid" };
-    expect(() => new ZipKit({ logDir: "/tmp" } as never)).toThrow(invalidError);
+    expect(() => new ZipKit({ colour: "red" } as never)).toThrow(invalidError);
     expect(() => new ZipKit({ app: { name: "" } })).toThrow(invalidError);
     expect(() => new ZipKit({ app: { name: "x".repeat(257) } })).toThrow(invalidError);
     expect(() => new ZipKit({ app: { name: "App", build: 1 } as never })).toThrow(invalidError);

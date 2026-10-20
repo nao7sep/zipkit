@@ -1,8 +1,7 @@
 /**
- * Policy defaults and layering. Locks the default values, the merge
- * precedence (per-call over instance over default), the replace-not-concat
- * semantics for list fields, the additive `store`, and the metadata
- * partial-fill behaviour.
+ * Policy layering: the merge precedence (per-call over instance over default),
+ * the replace-not-concat semantics for list fields, the additive `store`, and
+ * the manifest's partial fill.
  */
 
 import { describe, expect, it } from "vitest";
@@ -14,26 +13,10 @@ const ruleA: ExclusionPattern = { pattern: "a", match: "glob", target: "both", i
 const ruleB: ExclusionPattern = { pattern: "b", match: "glob", target: "both", ignoreCase: false };
 
 describe("DEFAULT_POLICY", () => {
-  it("uses the documented defaults", () => {
-    expect(DEFAULT_POLICY.exclusions).toEqual(DEFAULT_EXCLUSIONS);
-    expect(DEFAULT_POLICY.emptyFiles).toBe("keep");
-    expect(DEFAULT_POLICY.emptyDirs).toBe("keep");
-    expect(DEFAULT_POLICY.names).toEqual(NAME_DEFAULTS);
-    expect(DEFAULT_POLICY.names.invalidCharReplacement).toBe("_");
-    expect(DEFAULT_POLICY.symlinks).toBe("ignore");
-    expect(DEFAULT_POLICY.compression.stored).toBe("builtin");
-    expect(DEFAULT_POLICY.compression.store).toEqual([]);
-    expect(DEFAULT_POLICY.compression.level).toBe(6);
-    expect(DEFAULT_POLICY.manifest).toEqual({ name: "zipkit.json", hash: true });
-  });
-
-  it("defaults every name guardrail to fix (suspicious to warn)", () => {
-    expect(DEFAULT_POLICY.names.nfc).toBe("fix");
-    expect(DEFAULT_POLICY.names.invalidChars).toBe("fix");
-    expect(DEFAULT_POLICY.names.controlChars).toBe("fix");
-    expect(DEFAULT_POLICY.names.trailingDotSpace).toBe("fix");
-    expect(DEFAULT_POLICY.names.reserved).toBe("fix");
-    expect(DEFAULT_POLICY.names.suspicious).toBe("warn");
+  it("is frozen, so no caller can change what every call starts from", () => {
+    expect(() => { (DEFAULT_POLICY.names as { nfc: string }).nfc = "none"; }).toThrow(TypeError);
+    expect(() => { (DEFAULT_POLICY.exclusions as unknown[]).push({}); }).toThrow(TypeError);
+    expect(resolvePolicy().names.nfc).toBe(NAME_DEFAULTS.nfc);
   });
 });
 

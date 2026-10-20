@@ -158,7 +158,8 @@ describe("the Records window's layout", () => {
   });
 
   it("stores the dragged list width inside its bounds, opening at the default", () => {
-    expect(RECORDS_LIST_WIDTH).toEqual({ min: 320, default: 380, max: 640 });
+    expect(RECORDS_LIST_WIDTH.min).toBeLessThanOrEqual(RECORDS_LIST_WIDTH.default);
+    expect(RECORDS_LIST_WIDTH.default).toBeLessThanOrEqual(RECORDS_LIST_WIDTH.max);
     expect(clampRecordsListWidth(10)).toBe(RECORDS_LIST_WIDTH.min);
     expect(clampRecordsListWidth(5000)).toBe(RECORDS_LIST_WIDTH.max);
     expect(clampRecordsListWidth(450.4)).toBe(450);

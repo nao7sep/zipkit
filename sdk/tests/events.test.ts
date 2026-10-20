@@ -2,8 +2,7 @@
  * End-to-end: the event stream reaches only each call's `onEvent`. Events carry
  * the `time`/`message` envelope; one `session.start` per instance reaches the
  * first call that listens; `debug` is gated; a failure ends in one `fault`
- * carrying the error as thrown; and the SDK writes no file of its own and reads
- * no environment variable for one.
+ * carrying the error as thrown; and the SDK writes no file of its own.
  */
 
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
@@ -111,24 +110,15 @@ describe("the event stream", () => {
     expect(seen.map((e) => e.event)).toEqual(expect.arrayContaining(["entry.written", "entry.verified"]));
   });
 
-  it("ends a failed run with a fault, and writes no file and reads no environment variable for a log", async () => {
-    const dir = path.join(root, "env-logs");
-    const previous = process.env.ZIPKIT_LOG_DIR;
-    process.env.ZIPKIT_LOG_DIR = dir;
-    try {
-      const { seen, onEvent } = collector();
-      const zip = new ZipKit();
-      const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onEvent });
-      const written = await zip.write(plan, { onEvent });
-      await zip.verify({ archive: written.output }, { onEvent });
-      await expect(zip.verify({ archive: path.join(root, "missing.zip") }, { onEvent })).rejects.toThrow();
-      expect(seen.map((e) => e.event)).toEqual(expect.arrayContaining(["plan.done", "write.done", "verify.done", "fault"]));
-      await expect(readdir(dir)).rejects.toMatchObject({ code: "ENOENT" });
-      expect((await readdir(root)).sort()).toEqual(["o.zip", "proj"]);
-    } finally {
-      if (previous === undefined) delete process.env.ZIPKIT_LOG_DIR;
-      else process.env.ZIPKIT_LOG_DIR = previous;
-    }
+  it("ends a failed run with a fault, and writes no file of its own", async () => {
+    const { seen, onEvent } = collector();
+    const zip = new ZipKit();
+    const plan = await zip.plan({ inputs: [proj], output: path.join(root, "o.zip") }, { onEvent });
+    const output = written(await zip.write(plan, { onEvent })).output;
+    await zip.verify({ archive: output }, { onEvent });
+    await expect(zip.verify({ archive: path.join(root, "missing.zip") }, { onEvent })).rejects.toThrow();
+    expect(seen.map((e) => e.event)).toEqual(expect.arrayContaining(["plan.done", "write.done", "verify.done", "fault"]));
+    expect((await readdir(root)).sort()).toEqual(["o.zip", "proj"]);
   });
 });
 
