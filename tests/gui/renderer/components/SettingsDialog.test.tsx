@@ -13,6 +13,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Every test mounts the whole dialog in jsdom, its 34 exclusion rows included;
+// on a busy machine or a Windows runner one has taken over 6 s.
+vi.setConfig({ testTimeout: 20_000 });
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { languageNameIn, SettingsDialog } from "../../../../src/gui/renderer/src/components/SettingsDialog";
 import { loadCatalogue } from "../../../../src/gui/shared/i18n/catalogues";
@@ -363,7 +367,7 @@ describe("SettingsDialog exclusion patterns", () => {
       { pattern: "\\.log$", match: "regex", target: "both", ignoreCase: false },
       expect.objectContaining({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true }),
     ]);
-  }, 20_000); // every built-in row renders and re-renders; a Windows runner took over 6 s
+  });
 
   it("shows a built-in note as real text in the interface language, kept through other edits, and saves a note typed over it", () => {
     const onSave = renderDialog();
