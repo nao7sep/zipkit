@@ -35,7 +35,9 @@ function rows(file: string): Row[] {
 /** A temp dir removed when the test that made it finishes; each test closes its log first. */
 function tempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "zipkit-log-"));
-  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  // Retried: on Windows a records thread that is still stopping holds the
+  // database open for a moment after `close`, which does not wait for it.
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }));
   return dir;
 }
 

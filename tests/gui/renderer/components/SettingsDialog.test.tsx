@@ -363,7 +363,7 @@ describe("SettingsDialog exclusion patterns", () => {
       { pattern: "\\.log$", match: "regex", target: "both", ignoreCase: false },
       expect.objectContaining({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true }),
     ]);
-  });
+  }, 20_000); // every built-in row renders and re-renders; a Windows runner took over 6 s
 
   it("shows a built-in note as real text in the interface language, kept through other edits, and saves a note typed over it", () => {
     const onSave = renderDialog();

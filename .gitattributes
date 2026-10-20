@@ -1,0 +1,2 @@
+# Every checkout keeps LF line endings, so scripts with a #! line and source-reading tests match on Windows.
+* text=auto eol=lf

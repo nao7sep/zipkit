@@ -14,7 +14,9 @@ import type { ArchiveSpec } from "zipkitsdk";
 
 /** Expand a leading `~`/`~/` to the home directory; leave any other string unchanged. */
 function expandHome(p: string): string {
-  return p === "~" || p.startsWith("~/") || p.startsWith("~\\") ? homedir() + p.slice(1) : p;
+  if (p === "~") return homedir();
+  // Joined, not appended, so the rest takes the platform's separator.
+  return p.startsWith("~/") || p.startsWith("~\\") ? path.join(homedir(), p.slice(2)) : p;
 }
 
 /**

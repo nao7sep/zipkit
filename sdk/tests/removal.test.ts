@@ -127,12 +127,12 @@ describe("checkRemoval", () => {
     expect(onDisk(comparison, found, ["/one/a"], ["/gone/b"])).toEqual({
       matches: false,
       added: ["/one/a/new.txt"],
-      missing: ["/gone/b/old.txt", "/one/a/gone.txt"],
+      missing: [path.join("/gone/b", "old.txt"), path.join("/one/a", "gone.txt")],
       changed: ["/one/a/x.txt", "/two/a/x.txt"],
       unlisted: [],
     });
     // An input still present wins over a removed one of the same name.
-    expect(onDisk({ ...comparison, added: [], changed: [], missing: ["a/y.txt"] }, new Map(), ["/one/a"], ["/old/a"]).missing).toEqual(["/one/a/y.txt"]);
+    expect(onDisk({ ...comparison, added: [], changed: [], missing: ["a/y.txt"] }, new Map(), ["/one/a"], ["/old/a"]).missing).toEqual([path.join("/one/a", "y.txt")]);
   });
 });
 

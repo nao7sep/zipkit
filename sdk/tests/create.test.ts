@@ -144,13 +144,16 @@ describe("metadata", () => {
     expect(range.newest.mtime.iso).toBe("2021-12-31T23:59:58.000Z");
   });
 
-  it("warns about a DOS-range clamp exactly when the writer clamps, in the writer's zone", async () => {
+  it("warns about a DOS-range clamp exactly when the writer clamps, in the writer's zone", async (ctx) => {
     const proj = path.join(dir, "edge");
     await mkdir(proj, { recursive: true });
     await writeFile(path.join(proj, "late.txt"), "late");
     // 2107-12-31T23:00:00Z: in range in UTC and Los Angeles, 2108 in Tokyo.
     const sec = Date.UTC(2107, 11, 31, 23) / 1000;
     await utimes(path.join(proj, "late.txt"), sec, sec);
+    // The case needs a file time past 2106. Where the file system or runtime
+    // cannot hold one, the input this test describes cannot be made.
+    if ((await stat(path.join(proj, "late.txt"))).mtimeMs !== sec * 1000) ctx.skip();
     const dosMaxDate = ((2107 - 1980) << 9) | (12 << 5) | 31;
     const dosMaxTime = (23 << 11) | (59 << 5) | 29;
 

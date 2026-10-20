@@ -36,16 +36,19 @@ it("retains an unknown effect through settlement despite a second finally releas
 });
 
 it.each([
-  ["a short name", "/missing/PROGRA~1/a.zip", "/missing/Program Files/a.zip"],
-  ["a trailing dot", "/missing/report.zip.", "/missing/report.zip"],
-])("refuses missing outputs that %s may alias only on Windows", (_label, first, second) => {
+  ["a short name", ["PROGRA~1", "a.zip"], ["Program Files", "a.zip"]],
+  ["a trailing dot", ["report.zip."], ["report.zip"]],
+])("refuses missing outputs that %s may alias only on Windows", (_label, firstNames, secondNames) => {
+  // Built with the host's separators, which the claims split on.
+  const root = path.parse(process.cwd()).root;
+  const first = path.join(root, "missing", ...firstNames), second = path.join(root, "missing", ...secondNames);
   const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
   const claimBoth = (platform: NodeJS.Platform) => {
     Object.defineProperty(process, "platform", { ...descriptor, value: platform });
     try {
       const owner = createPathClaims();
-      owner.claim([{ ...use(first, "change", null), existingPrefix: "/" }]);
-      return owner.claim([{ ...use(second, "change", null), existingPrefix: "/" }]);
+      owner.claim([{ ...use(first, "change", null), existingPrefix: root }]);
+      return owner.claim([{ ...use(second, "change", null), existingPrefix: root }]);
     } finally { Object.defineProperty(process, "platform", descriptor); }
   };
   expect(claimBoth("win32")).toBeNull();
