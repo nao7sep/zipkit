@@ -883,7 +883,7 @@ function JobView({
     };
   }
   async function addInputs(): Promise<ReceiverOutcome | null> {
-    const paths = await window.zipkit.chooseInputs();
+    const paths = await window.zipkit.chooseInputs(job.inputs);
     if (paths.length === 0) return null;
     return {
       operationKey: receiverOperationKey(`inputs:${job.id}`, paths),
@@ -1044,6 +1044,8 @@ function JobView({
             <DirectoryField
               label={t.t("options.outputDir")}
               value={opts.outputDir}
+              inputs={job.inputs}
+              fileName={opts.fileName}
               disabled={!editable}
               onChange={(outputDir) => commitOptions({ ...opts, outputDir })}
               placeholder={outputPreview(job, opts, t).dir}

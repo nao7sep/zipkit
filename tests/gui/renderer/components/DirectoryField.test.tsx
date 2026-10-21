@@ -6,6 +6,21 @@ import { DirectoryField } from "../../../../src/gui/renderer/src/components/Dire
 afterEach(cleanup);
 
 describe("DirectoryField picker failure", () => {
+  it("passes current text and source context on every Choose without filling a cancelled blank", async () => {
+    const chooseOutputDir = vi.fn(async () => "");
+    Object.defineProperty(window, "zipkit", { configurable: true, value: { chooseOutputDir, reportError: vi.fn() } });
+    const onChange = vi.fn();
+    const inputs = ["/source/a.txt"];
+    const view = render(<DirectoryField label="Output" value="" inputs={inputs} fileName="bundle" onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    await waitFor(() => expect(screen.getByRole("button").hasAttribute("disabled")).toBe(false));
+    expect(chooseOutputDir).toHaveBeenLastCalledWith("", inputs, "bundle");
+    expect(onChange).not.toHaveBeenCalled();
+    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("");
+    view.rerender(<DirectoryField label="Output" value="~/typed" inputs={inputs} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    await waitFor(() => expect(chooseOutputDir).toHaveBeenLastCalledWith("~/typed", inputs, undefined));
+  });
   it("sends typing immediately and uses the latest parent owner when a picker settles late", async () => {
     let finish!: (value: string) => void;
     Object.defineProperty(window, "zipkit", { configurable: true, value: {

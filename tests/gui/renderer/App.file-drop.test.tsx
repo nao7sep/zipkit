@@ -144,6 +144,10 @@ describe("App file-drop receivers", () => {
     const inputs = container.querySelector<HTMLElement>('[data-drop-receiver="inputs"]')!;
     expect(inputs).not.toBeNull();
 
+    const addInputs = inputs.querySelector<HTMLButtonElement>("button")!;
+    await act(async () => addInputs.click());
+    expect(chooseInputs).toHaveBeenLastCalledWith(["/tmp/existing.txt"]);
+
     const dropped = new File([], "ZIPKIT-DRAG-ME");
     await act(async () => inputs.dispatchEvent(fileEvent("drop", [dropped])));
 
@@ -260,6 +264,7 @@ describe("App file-drop receivers", () => {
       await Promise.resolve();
     });
     expect(chooseInputs).toHaveBeenCalledTimes(1);
+    expect(chooseInputs).toHaveBeenLastCalledWith();
     expect(container.querySelector<HTMLElement>('[role="alert"]')?.textContent)
       .toContain("The input picker could not be opened");
 

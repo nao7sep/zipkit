@@ -5,6 +5,8 @@
  */
 
 import { dialog, ipcMain, shell } from "electron";
+import path from "node:path";
+import { outputRequest } from "./output.js";
 import type { AppInfo, JobEvent, SystemChoices } from "../shared/api.js";
 import type { GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
@@ -64,10 +66,11 @@ export function registerIpc(): void {
     }
   });
 
-  ipcMain.handle("zipkit:chooseInputs", async (): Promise<string[]> => {
+  ipcMain.handle("zipkit:chooseInputs", async (_event, existingInputs?: string[]): Promise<string[]> => {
     const owner = getMainWindow();
     const options: Electron.OpenDialogOptions = {
       title: mainTranslator().t("picker.inputsTitle"),
+      defaultPath: sharedInputParent(existingInputs),
       properties: ["openDirectory", "openFile", "multiSelections"],
     };
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
@@ -76,10 +79,13 @@ export function registerIpc(): void {
     return chosen;
   });
 
-  ipcMain.handle("zipkit:chooseOutputDir", async (): Promise<string> => {
+  ipcMain.handle("zipkit:chooseOutputDir", async (_event, currentDir = "", inputs?: string[], fileName = ""): Promise<string> => {
     const owner = getMainWindow();
     const options: Electron.OpenDialogOptions = {
       title: mainTranslator().t("picker.outputTitle"),
+      // Invalid typed text must not turn into a cwd-relative picker location.
+      // Leave it editable and let the platform open the picker without a hint.
+      defaultPath: outputPickerDirectory(currentDir, inputs, fileName),
       properties: ["openDirectory", "createDirectory"],
     };
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
@@ -163,4 +169,24 @@ export function registerIpc(): void {
       log.warn("openExternal refused non-http url", { url });
     }
   });
+}
+
+/** Only an agreed source parent supplies context; never choose an arbitrary input. */
+function sharedInputParent(inputs: string[] = []): string | undefined {
+  if (inputs.length === 0 || inputs.some((input) => !path.isAbsolute(input))) return undefined;
+  const parent = path.dirname(inputs[0]!);
+  return inputs.every((input) => path.dirname(input) === parent) ? parent : undefined;
+}
+
+function outputPickerDirectory(currentDir: string, inputs: string[] = [], fileName: string): string | undefined {
+  if (currentDir !== "") {
+    try {
+      return outputRequest(currentDir, "").outputDir;
+    } catch {
+      return undefined;
+    }
+  }
+  // The SDK uses the first source's parent for mixed inputs only when the
+  // user supplied an archive name; otherwise their output is ambiguous.
+  return sharedInputParent(inputs) ?? (fileName.trim() && inputs[0] && path.isAbsolute(inputs[0]) ? path.dirname(inputs[0]) : undefined);
 }

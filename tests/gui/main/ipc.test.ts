@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { dialog } from "electron";
+import path from "node:path";
+import { homedir } from "node:os";
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -199,5 +202,65 @@ describe("Records window IPC", () => {
     mocks.openRecordsWindow.mockRejectedValueOnce(failure);
     await expect(invoke("zipkit:openRecordsWindow")).rejects.toBe(failure);
     expect(mocks.logError).toHaveBeenCalledWith("records window failed to open", expect.anything());
+  });
+});
+
+
+describe("contextual native pickers", () => {
+  const source = path.join(path.sep, "source");
+  const first = path.join(source, "first.txt");
+  const second = path.join(source, "second");
+
+  beforeEach(() => {
+    registerIpc();
+    vi.mocked(dialog.showOpenDialog).mockReset().mockResolvedValue({ canceled: true, filePaths: [] });
+  });
+
+  async function output(currentDir = "", inputs: string[] = [], fileName = "") {
+    return mocks.handlers.get("zipkit:chooseOutputDir")!({}, currentDir, inputs, fileName);
+  }
+
+  it("uses current authored output text before source context and expands its leading home", async () => {
+    await output("~/delivery", [first]);
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: path.join(homedir(), "delivery") }));
+    const literal = path.join(source, "$NOT_EXPANDED", "%LITERAL%", " spaced ");
+    await output(literal, [first]);
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: literal }));
+  });
+
+  it("infers blank output beside unambiguous sources, and follows the named mixed-input rule", async () => {
+    await output("", [first, second]);
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: source }));
+    const other = path.join(path.sep, "other", "third.txt");
+    await output("", [first, other]);
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: undefined }));
+    await output("", [first, other], "bundle");
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: source }));
+  });
+
+  it("leaves invalid relative output and absent context to the platform", async () => {
+    await output("relative/path", [first]);
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: undefined }));
+    await output();
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: undefined }));
+  });
+
+  it("uses only a shared parent for adding inputs and keeps a new job generic", async () => {
+    const choose = mocks.handlers.get("zipkit:chooseInputs")!;
+    await choose({}, [first, second]);
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: source }));
+    await choose({}, [first, path.join(path.sep, "other", "third.txt")]);
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: undefined }));
+    await choose({});
+    expect(dialog.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultPath: undefined }));
+  });
+
+  it("returns cancellation without a selection and keeps picker failures rejectable", async () => {
+    expect(await output("", [first])).toBe("");
+    expect(await mocks.handlers.get("zipkit:chooseInputs")!({}, [first])).toEqual([]);
+    const failure = new Error("picker unavailable");
+    vi.mocked(dialog.showOpenDialog).mockRejectedValue(failure);
+    await expect(output("", [first])).rejects.toBe(failure);
+    await expect(mocks.handlers.get("zipkit:chooseInputs")!({}, [first])).rejects.toBe(failure);
   });
 });

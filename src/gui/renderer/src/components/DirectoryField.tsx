@@ -1,9 +1,7 @@
 /**
- * A labelled output-directory field: a text input plus a native "Choose" picker.
- * Used for the per-job output directory and the default output directory in
- * Settings. The value is an absolute directory (or empty to write beside the
- * input). Edits immediately reach the parent: Settings owns its modal draft,
- * and main owns job saves and debounces planning. Stacked so it fits a column.
+ * A labelled per-job output directory with a native picker. Blank keeps the
+ * archive beside its inputs; picker context never writes a default into it.
+ * Edits reach main's job-save owner immediately, which debounces planning.
  */
 
 import { useRef, useState } from "react";
@@ -19,12 +17,16 @@ export function DirectoryField({
   onChange,
   disabled,
   placeholder,
+  inputs,
+  fileName,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  inputs?: string[];
+  fileName?: string;
 }) {
   const { t } = useI18n();
   const [pickerError, setPickerError] = useState(false);
@@ -39,7 +41,7 @@ export function DirectoryField({
     setIsPicking(true);
     setPickerError(false);
     try {
-      const dir = await window.zipkit.chooseOutputDir();
+      const dir = await window.zipkit.chooseOutputDir(value, inputs, fileName);
       // A picker can settle after other options were edited. Use the current
       // parent callback rather than the options snapshot at the initial click.
       if (dir) change.current(dir);

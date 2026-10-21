@@ -34,8 +34,8 @@ ipcRenderer.on("zipkit:resumeJobEdits", () => {
 });
 
 const api = {
-  chooseInputs: (): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs"),
-  chooseOutputDir: (): Promise<string> => ipcRenderer.invoke("zipkit:chooseOutputDir"),
+  chooseInputs: (existingInputs?: string[]): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs", existingInputs),
+  chooseOutputDir: (currentDir?: string, inputs?: string[], fileName?: string): Promise<string> => ipcRenderer.invoke("zipkit:chooseOutputDir", currentDir, inputs, fileName),
   // The absolute path for a drag-dropped File (Electron 32+ removed File.path, so
   // this is the supported route). Synchronous, no IPC — webUtils runs in preload.
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
