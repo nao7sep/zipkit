@@ -41,9 +41,10 @@ async function prepare(dir) {
 }
 
 /**
- * Write the fixture into `dir` and return what it made. `fifo` is false where the
- * platform has no named pipes (Windows); `large` adds a 256 MiB file for the
- * "grow a file during Create" check.
+ * Write the fixture into `dir` and return what it made. `invalidChar` and `fifo`
+ * are false where the platform cannot hold a `:` in a name or a named pipe
+ * (Windows); `large` adds a 256 MiB file for the "grow a file during Create"
+ * check.
  */
 export async function makeFixture(dir, { large = false } = {}) {
   await prepare(dir);
@@ -55,7 +56,10 @@ export async function makeFixture(dir, { large = false } = {}) {
   await writeFile(path.join(files, nfd("パスポート.pdf")), "an NFD-only name\n");
   await writeFile(path.join(files, nfd("ガイド.txt")), "an NFD-only name\n");
   // NFD and a Windows-invalid character in one name: two fixes, marked separately.
-  await writeFile(path.join(files, `${nfd("ゲーム")}:draft.txt`), "a mixed rename\n");
+  // Windows cannot hold the `:` (it would name an alternate data stream of
+  // another file instead), so there the name is NFD only.
+  const invalidChar = process.platform !== "win32";
+  await writeFile(path.join(files, `${nfd("ゲーム")}${invalidChar ? ":" : "_"}draft.txt`), "a mixed rename\n");
   await writeFile(path.join(files, "plain.txt"), "a name that needs nothing\n");
 
   // A renamed folder holding a package bundle, which ZipKit keeps as one unit.
@@ -82,7 +86,7 @@ export async function makeFixture(dir, { large = false } = {}) {
     await writeFile(path.join(grow, "grows-during-create.bin"), Buffer.alloc(256 * 1024 * 1024));
   }
 
-  return { dir, inputs, data: path.join(dir, "data"), fifo };
+  return { dir, inputs, data: path.join(dir, "data"), invalidChar, fifo };
 }
 
 /** Delete a fixture folder, refusing any folder without the marker. */
@@ -118,6 +122,7 @@ async function main(argv) {
       `Fixture: ${made.dir}`,
       `Inputs:  ${made.inputs}`,
       `Start ZipKit on the empty data folder: ZIPKIT_DATA_DIR="${made.data}" npm run dev`,
+      made.invalidChar ? "" : "No `:` in a name on this platform; the mixed-rename check is NFD only.",
       made.fifo ? "" : "No named pipe on this platform; the FIFO check is skipped.",
       `Delete it afterwards: node scripts/make-acceptance-fixture.mjs --clean "${made.dir}"`,
       "",

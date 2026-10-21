@@ -20,13 +20,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-it("writes NFD names, a bundle, a broken link and, where possible, a named pipe, beside an empty data folder", async () => {
+it("writes NFD names, a bundle, a broken link and, where possible, a Windows-invalid name and a named pipe, beside an empty data folder", async () => {
   const dir = path.join(root, "fixture");
   const made = await makeFixture(dir);
 
   const names = await readdir(path.join(made.inputs, "zipkit-fixture-names"));
   expect(names).toContain("パスポート.pdf".normalize("NFD"));
-  expect(names.some((name) => name.includes(":") && name !== name.normalize("NFC"))).toBe(true);
+  const mixed = names.filter((name) => name.startsWith("ゲーム".normalize("NFD")) && name.endsWith("draft.txt"));
+  expect(mixed).toHaveLength(1);
+  expect(mixed[0]!.includes(":")).toBe(made.invalidChar);
   const bundle = path.join(made.inputs, "zipkit-fixture-bundle", "データ".normalize("NFD"), "企画.pages");
   expect((await stat(path.join(bundle, "Data", "preview.png"))).isFile()).toBe(true);
   const special = path.join(made.inputs, "zipkit-fixture-special");
