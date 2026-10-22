@@ -18,6 +18,7 @@ import { resolvePolicy } from "../../src/policy.ts";
 import { scan } from "../../src/scan/scan.ts";
 import type { ArchivePolicy, ArchiveSpec } from "../../src/types.ts";
 import { realVolume } from "../helpers/volume.ts";
+import { ZipKit } from "../../src/index.ts";
 import { nodeFileSystem, Volume } from "../../src/internal/volume.ts";
 import { createDirectoryLink, createFileLink, fileSymlinksSupported } from "../helpers/symlink.ts";
 
@@ -292,5 +293,20 @@ describe("folders whose names start with a dot", () => {
     await writeFile(path.join(home, ".config", "app.toml"), "x = 1");
     await writeFile(path.join(home, ".DS_Store"), "finder");
     expect(names(await runScan({ inputs: [home] }))).toEqual([".DS_Store", ".config", ".config/app.toml", ".zipkit", ".zipkit/logs", ".zipkit/logs/session.log"]);
+  });
+});
+
+describe("a backslash in a name", () => {
+  // Only Windows separates folders with a backslash; elsewhere a file may be
+  // named with one, and it stays one file whose name the name rules fix.
+  it.runIf(process.platform !== "win32")("stays part of the name on a file system that allows it", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj, { recursive: true });
+    await writeFile(path.join(proj, "a\\b.txt"), "one file");
+    const result = await runScan({ inputs: [proj] });
+    expect(names(result)).toEqual(["a\\b.txt"]);
+    const plan = await new ZipKit().plan({ inputs: [proj], output: path.join(dir, "out.zip") });
+    expect(plan.entries.map((e) => e.archivePath)).toEqual(["a_b.txt"]);
+    expect(plan.findings.map((f) => f.rule)).toContain("name.invalid-char");
   });
 });

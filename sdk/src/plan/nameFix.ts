@@ -205,6 +205,10 @@ export function processSegment(segment: string, names: NameRules): SegmentFix {
   // the folder itself or its parent, and Windows drops such a name to nothing.
   // A name that came in that way is the path pass's to judge, not changed here.
   if (nameFixes.length > 0 && /^[.\s]+$/u.test(s)) s = names.invalidCharReplacement;
+  // The fix that led there owns the fallback, so the recorded fixes still lead
+  // from the name found to the name written.
+  const last = nameFixes.at(-1);
+  if (last && last.after !== s) last.after = s;
 
   if (hasSuspicious(s)) {
     if (names.suspicious === "warn") {

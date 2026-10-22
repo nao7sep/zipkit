@@ -5,6 +5,13 @@
 
 import path from "node:path";
 
+/** A relative disk path with the platform's separator turned into the
+ *  archive's `/`. Only Windows separates with a backslash; elsewhere it is part
+ *  of a name, which the name rules replace, never a folder boundary. */
+export function toArchiveSeparators(relative: string, separator: string = path.sep): string {
+  return separator === "\\" ? relative.replaceAll("\\", "/") : relative;
+}
+
 /** Whether the disk path `target` is `root` or inside it, by spelling alone.
  *  Only a `..` segment leads out, so a folder named `..notes` is inside. */
 export function isWithin(root: string, target: string): boolean {

@@ -11,7 +11,7 @@
 
 import path from "node:path";
 import { ZipKitError } from "../errors.ts";
-import { toForwardSlash, trimSlashes } from "../internal/path.ts";
+import { toArchiveSeparators, trimSlashes } from "../internal/path.ts";
 import type { ArchiveInput } from "../types.ts";
 
 export interface ResolvedInput {
@@ -36,7 +36,7 @@ export function computeAnchor(input: ResolvedInput, isDir: boolean, inputCount: 
 }
 
 export function joinArchivePath(anchor: string, relative: string): string {
-  const rel = trimSlashes(toForwardSlash(relative));
+  const rel = trimSlashes(toArchiveSeparators(relative));
   if (anchor === "") return rel;
   if (rel === "") return anchor;
   return `${anchor}/${rel}`;

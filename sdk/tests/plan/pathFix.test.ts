@@ -1,7 +1,7 @@
 /**
  * Path-level rooting table tests: absolute/drive-letter stripping,
- * `.`/`..` resolution and root-escape detection, backslash normalization, and
- * length limits. Tested directly because filesystem-scanned entries are already
+ * `.`/`..` resolution and root-escape detection, backslashes kept as part of
+ * a name, and length limits. Tested directly because filesystem-scanned entries are already
  * clean relatives.
  */
 
@@ -14,8 +14,8 @@ describe("fixPath", () => {
     expect(r).toMatchObject({ path: "a/b/c.txt", strippedAbsolute: false, escaped: false });
   });
 
-  it("normalizes backslashes to forward slashes", () => {
-    expect(fixPath("a\\b\\c").path).toBe("a/b/c");
+  it("keeps a backslash as part of a name, for the name rules to replace, never a folder boundary", () => {
+    expect(fixPath("a\\b\\c").path).toBe("a\\b\\c");
   });
 
   it("strips a leading slash and flags it absolute", () => {
@@ -25,7 +25,7 @@ describe("fixPath", () => {
   });
 
   it("strips a Windows drive prefix", () => {
-    const r = fixPath("C:\\Users\\me\\file.txt");
+    const r = fixPath("C:/Users/me/file.txt");
     expect(r.path).toBe("Users/me/file.txt");
     expect(r.strippedAbsolute).toBe(true);
   });

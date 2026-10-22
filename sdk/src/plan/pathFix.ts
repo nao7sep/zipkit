@@ -19,7 +19,7 @@
  */
 
 import { finding } from "../registry.ts";
-import { resolveSegments, toForwardSlash } from "../internal/path.ts";
+import { resolveSegments } from "../internal/path.ts";
 import type { WorkItem } from "./workItem.ts";
 
 const MAX_COMPONENT = 255;
@@ -45,12 +45,13 @@ export interface PathFixResult {
 }
 
 export function fixPath(input: string, maxPath = MAX_PATH): PathFixResult {
-  let p = toForwardSlash(input);
+  // Archive paths separate with `/` only; a backslash is part of a name.
+  let p = input;
 
   let strippedAbsolute = false;
-  // A drive prefix is a letter and colon followed by a separator (`C:/`,
-  // originally `C:\`). A bare `a:b` is a filename whose colon is invalid on
-  // Windows and is left for `name.invalid-char` to substitute, not stripped.
+  // A drive prefix is a letter and colon followed by a separator (`C:/`). A
+  // bare `a:b` is a filename whose colon is invalid on Windows and is left for
+  // `name.invalid-char` to substitute, not stripped.
   if (/^[A-Za-z]:\//.test(p)) {
     p = p.replace(/^[A-Za-z]:\/+/, "");
     strippedAbsolute = true;

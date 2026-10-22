@@ -24,7 +24,7 @@ import type { BigIntStats } from "node:fs";
 import path from "node:path";
 import { fsFailure, throwIfAborted, ZipKitError } from "../errors.ts";
 import type { FilterMatcher } from "../filter/match.ts";
-import { isWithin, toForwardSlash } from "../internal/path.ts";
+import { isWithin, toArchiveSeparators } from "../internal/path.ts";
 import { machineTimeZone } from "../internal/timeZone.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { PrunedDir, ScanEntry, ScanResult, SkipKind, SkippedEntry } from "../internal/types.ts";
@@ -275,7 +275,7 @@ async function walkTree(
             if (dir === absDir) {
               throw fsFailure(err, absDir);
             }
-            ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, dir))));
+            ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toArchiveSeparators(path.relative(absDir, dir))));
             return { dir, entries: [] };
           }
         }),
@@ -284,7 +284,7 @@ async function walkTree(
         for (const entry of entries) {
           const abs = path.join(dir, entry.name);
           if (entry.isDirectory()) {
-            const archive = joinArchivePath(anchors.archive, toForwardSlash(path.relative(absDir, abs)));
+            const archive = joinArchivePath(anchors.archive, toArchiveSeparators(path.relative(absDir, abs)));
             const rule = archive === "" ? null : ctx.matcher.match(archive, true);
             if (rule) {
               const pruned: PrunedDir = {
@@ -318,7 +318,7 @@ async function crawlDirectory(
   const tasks: Promise<void>[] = [];
   for (const abs of results) {
     throwIfAborted(ctx.signal);
-    const fwdRel = toForwardSlash(path.relative(absDir, abs));
+    const fwdRel = toArchiveSeparators(path.relative(absDir, abs));
     const archive = joinArchivePath(anchors.archive, fwdRel);
     if (archive === "") continue;
     const source = joinArchivePath(anchors.source, fwdRel);
