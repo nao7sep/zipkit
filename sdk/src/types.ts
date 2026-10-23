@@ -11,7 +11,10 @@ import type { ZipKitErrorData } from "./errors.ts";
  */
 
 
-export type Severity = "error" | "warning" | "info";
+/** Every value of each closed set below, as data: a check of plain data a
+ *  caller hands back reads its allowed values from here, never from a copy. */
+export const SEVERITIES = ["error", "warning", "info"] as const;
+export type Severity = (typeof SEVERITIES)[number];
 
 /**
  * Recursively optional, but treating arrays as atomic — a provided list replaces
@@ -343,13 +346,25 @@ export interface PathEntry {
  * - `unsupported`: a socket, pipe, device or link that cannot be followed;
  *   which of these is its {@link UnsupportedKind}.
  */
-export type ExcludeCode = "pattern" | "empty-dir" | "empty-file" | "duplicate" | "path-traversal" | "symlink" | "unsupported";
+export const EXCLUDE_CODES = ["pattern", "empty-dir", "empty-file", "duplicate", "path-traversal", "symlink", "unsupported"] as const;
+export type ExcludeCode = (typeof EXCLUDE_CODES)[number];
 
 /** What an `unsupported` item is: ZIP stores only files, folders and links,
  *  and under `follow` a link must lead to one of those inside the inputs
  *  (`external-link` unless `followExternal`), exist (`broken-link`) and be
  *  readable (`unreadable-link`). */
-export type UnsupportedKind = "socket" | "fifo" | "device" | "broken-link" | "external-link" | "unreadable-link";
+export const UNSUPPORTED_KINDS = ["socket", "fifo", "device", "broken-link", "external-link", "unreadable-link"] as const;
+export type UnsupportedKind = (typeof UNSUPPORTED_KINDS)[number];
+
+/** What a planned entry is in the archive: a preserved link is stored as a file. */
+export const PLANNED_TYPES = ["file", "dir"] as const;
+/** What an entry is as written and recorded, a preserved link included. */
+export const ENTRY_TYPES = [...PLANNED_TYPES, "symlink"] as const;
+export type EntryType = (typeof ENTRY_TYPES)[number];
+/** How an entry's data is stored. */
+export const METHODS = ["store", "deflate"] as const;
+/** What a finding's fix does. */
+export const FIX_KINDS = ["rename", "exclude", "normalize-attrs"] as const;
 
 export interface Finding {
   /** Stable across runs: the same finding on a fresh plan of the same tree
@@ -362,7 +377,7 @@ export interface Finding {
   severity: Severity; // classification (sourced from the registry)
   path: string; // locator
   message: string;
-  fix?: { kind: "rename" | "exclude" | "normalize-attrs"; to?: string };
+  fix?: { kind: (typeof FIX_KINDS)[number]; to?: string };
 }
 
 export interface PlannedEntry {
@@ -372,8 +387,8 @@ export interface PlannedEntry {
    *  path inside it, through any followed link, so it names the place the
    *  user sees rather than a link's target. Absolute. */
   diskPath: string;
-  type: "file" | "dir"; // classification
-  method: "store" | "deflate";
+  type: (typeof PLANNED_TYPES)[number]; // classification
+  method: (typeof METHODS)[number];
   excluded: boolean; // state
   /** Why it was left out, as a stable code; present exactly when `excluded`. */
   excludeCode?: ExcludeCode;
@@ -468,8 +483,8 @@ export interface InstructionEntry {
   archivePath: string;
   originalPath: string;
   sourcePath: string;
-  type: "file" | "dir" | "symlink";
-  method: "store" | "deflate";
+  type: EntryType;
+  method: (typeof METHODS)[number];
   /** Where it is read from; empty for a folder entry the plan adds. */
   absolutePath: string;
   size: number;
@@ -507,8 +522,8 @@ export interface ManifestEntry {
   archivePath: string; // identity
   originalPath: string;
   sourcePath: string;
-  type: "file" | "dir" | "symlink"; // classification
-  method: "store" | "deflate";
+  type: EntryType; // classification
+  method: (typeof METHODS)[number];
   size: number; // quantities
   compressedSize: number;
   crc32: number;
@@ -528,7 +543,7 @@ export interface ManifestEntry {
 export interface ManifestExcluded {
   archivePath: string;
   originalPath: string;
-  type: "file" | "dir" | "symlink";
+  type: EntryType;
   /** Why it was left out, as a stable code. */
   excludeCode: ExcludeCode;
   /** The same in English words, which may change. */
@@ -621,7 +636,7 @@ export interface VerifyRequest {
 /** One entry's verification. */
 export interface VerifiedEntry {
   archivePath: string; // identity
-  type: "file" | "dir" | "symlink"; // classification
+  type: EntryType; // classification
   /** Its data against its CRC-32, or `unreadable` when the data could not be
    *  decompressed (an unsupported method, a broken stream, a wrong size). */
   crc32: "ok" | "fail" | "unreadable"; // outcome

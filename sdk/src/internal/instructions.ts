@@ -20,8 +20,8 @@ import { isValidTimeZone } from "./timeZone.ts";
 import { caseFold } from "./name-equivalence.ts";
 import { RULE_REGISTRY } from "../registry.ts";
 import { buildSummary } from "../plan/summary.ts";
-import type { PlanData } from "../types.ts";
-import type { ArchivePolicy, InstructionEntry, PlanInstructions } from "../types.ts";
+import { ENTRY_TYPES, EXCLUDE_CODES, FIX_KINDS, METHODS, PLANNED_TYPES, SEVERITIES, UNSUPPORTED_KINDS } from "../types.ts";
+import type { ArchivePolicy, Finding, InstructionEntry, NameFix, PlanData, PlannedEntry, PlanInstructions, PlanSummary } from "../types.ts";
 import type { WriteEntry } from "./types.ts";
 
 export interface PlanInternals {
@@ -85,12 +85,12 @@ const ns = z.string().refine(t => /^-?\d+$/.test(t) && Number.isFinite(new Date(
 const rule = z.string().refine(r => Object.hasOwn(RULE_REGISTRY, r));
 const fixes = z.array(z.strictObject({ rule: rule.refine(r => !r.startsWith("verify.")), before: z.string(), after: z.string() }));
 const finding = z.strictObject({
-  id: z.string(), rule, severity: z.enum(["info", "warning", "error"]), path: z.string(), message: z.string(),
-  fix: z.strictObject({ kind: z.enum(["rename", "exclude", "normalize-attrs"]), to: z.string().optional() }).optional(),
+  id: z.string(), rule, severity: z.enum(SEVERITIES), path: z.string(), message: z.string(),
+  fix: z.strictObject({ kind: z.enum(FIX_KINDS), to: z.string().optional() }).optional(),
 });
 const entrySchema = z.strictObject({
   archivePath: relative, originalPath: z.string().min(1), sourcePath: sourceRelative,
-  absolutePath: z.string(), type: z.enum(["file", "dir", "symlink"]), method: z.enum(["store", "deflate"]),
+  absolutePath: z.string(), type: z.enum(ENTRY_TYPES), method: z.enum(METHODS),
   size: count, mode: z.number().int().min(0).max(0xffff),
   mtimeNs: ns, atimeNs: ns, ctimeNs: ns, birthtimeNs: ns,
   linkTarget: z.string().optional(), nameFixes: fixes,
@@ -132,14 +132,32 @@ const visibleSchema = z.strictObject({
   instructions: z.unknown(),
   summary: z.strictObject({ total: count, included: count, excluded: count, renamed: count, warnings: count, errors: count, zip64: z.boolean(), sourceBytes: count }),
   entries: z.array(z.strictObject({ archivePath: z.string(), originalPath: z.string(), diskPath: absolute,
-    type: z.enum(["file", "dir"]), method: z.enum(["store", "deflate"]), excluded: z.boolean(), nameFixes: fixes, findings: z.array(finding),
-    excludeCode: z.enum(["pattern", "empty-file", "empty-dir", "symlink", "duplicate", "path-traversal", "unsupported"]).optional(),
+    type: z.enum(PLANNED_TYPES), method: z.enum(METHODS), excluded: z.boolean(), nameFixes: fixes, findings: z.array(finding),
+    excludeCode: z.enum(EXCLUDE_CODES).optional(),
     excludeReason: z.string().optional(),
-    unsupportedKind: z.enum(["socket", "fifo", "device", "broken-link", "external-link", "unreadable-link"]).optional(),
+    unsupportedKind: z.enum(UNSUPPORTED_KINDS).optional(),
     excludedBy: z.strictObject({ id: z.string().optional(), pattern: z.string() }).optional(),
   }).refine(e => e.excluded === (e.excludeCode !== undefined) && e.excluded === (e.excludeReason !== undefined) &&
     (e.unsupportedKind !== undefined) === (e.excludeCode === "unsupported") && (e.excludedBy !== undefined) === (e.excludeCode === "pattern"))),
 });
+
+/** Whether two types are the same, in both directions and field by field. */
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Parsed<S extends z.ZodType> = z.infer<S>;
+type VisibleEntry = Parsed<typeof visibleSchema>["entries"][number];
+// Each schema is the type it checks: a field, a kind or a reason added to or
+// removed from the plan's types fails the typecheck here until the check
+// follows. The finding's rule is checked against the registry at run time.
+const typesTied: [
+  Same<Omit<Parsed<typeof finding>, "rule">, Omit<Finding, "rule">>,
+  Same<Omit<Parsed<typeof fixes>[number], "rule">, Omit<NameFix, "rule">>,
+  Same<Omit<Parsed<typeof entrySchema>, "nameFixes">, Omit<InstructionEntry, "nameFixes">>,
+  Same<Omit<Parsed<typeof instructionsSchema>, "entries" | "policy">, Omit<PlanInstructions, "entries" | "policy">>,
+  Same<Omit<VisibleEntry, "findings" | "nameFixes">, Omit<PlannedEntry, "findings" | "nameFixes">>,
+  Same<Parsed<typeof visibleSchema>["summary"], PlanSummary>,
+  Same<keyof Parsed<typeof visibleSchema>, keyof PlanData>,
+] = [true, true, true, true, true, true, true];
+void typesTied;
 
 /** Validate the reviewed report against the instructions without scanning or
  *  deciding again. Every included entry has its own write instruction.
