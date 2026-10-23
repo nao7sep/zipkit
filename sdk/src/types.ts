@@ -293,7 +293,8 @@ export type RuleId =
   | "collision.post-fix"
   | "time.pre-1980"
   | "time.post-2107"
-  | "output.exists";
+  | "output.exists"
+  | "output.busy";
 
 /** The findings verification reports: an entry that fails its CRC-32, whose
  *  data cannot be read, whose local header disagrees with the central

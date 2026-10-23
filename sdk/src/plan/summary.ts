@@ -19,7 +19,14 @@ export function contentBytes(entry: WriteEntry): number {
   return 0;
 }
 
-export function buildSummary(items: WorkItem[], findings: Finding[], zip64: boolean, writeEntries: WriteEntry[]): PlanSummary {
+/** The summary of a plan's entries and findings. Built by the planner, and
+ *  rebuilt by the writer from a plan it is handed, so both count alike. */
+export function buildSummary(
+  items: readonly Pick<WorkItem, "excluded" | "archivePath" | "originalPath">[],
+  findings: readonly Pick<Finding, "severity">[],
+  zip64: boolean,
+  writeEntries: readonly WriteEntry[],
+): PlanSummary {
   let included = 0;
   let excluded = 0;
   let renamed = 0;

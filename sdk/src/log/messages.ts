@@ -53,6 +53,9 @@ export function messageFor(body: LogEventBody): string {
       return `verify complete: ${entries(body.total)}, ${problems === 0 ? "no problems" : `${problems} problem${s(problems)}`}${body.ok ? "" : " (not ok)"}`;
     }
     case "fault":
-      return `${body.error.code}: ${body.error.message}`;
+      // The line names what caused the failure too, read from the error itself.
+      return body.error.cause !== undefined && body.error.cause.message !== body.error.message
+        ? `${body.error.code}: ${body.error.message}: ${body.error.cause.message}`
+        : `${body.error.code}: ${body.error.message}`;
   }
 }

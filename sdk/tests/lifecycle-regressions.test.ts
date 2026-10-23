@@ -191,7 +191,7 @@ it.each([false, true])("excludes own overlapping fallback publication through ph
     await entered.promise;
     if (stall) { await vi.advanceTimersByTimeAsync(50); expect(await outcome).toMatchObject({ code: "io.stalled" }); vi.useRealTimers(); }
     const other = await new ZipKit().write(second);
-    expect(other).toMatchObject({ mode: "plan", writable: false, findings: expect.arrayContaining([expect.objectContaining({ rule: "output.exists" })]) });
+    expect(other).toMatchObject({ mode: "plan", writable: false, findings: expect.arrayContaining([expect.objectContaining({ rule: "output.busy", severity: "error" })]) });
     expect(renames).toBe(1);
   } finally { rename.release(); vi.useRealTimers(); await outcome; await settlement; }
   expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);

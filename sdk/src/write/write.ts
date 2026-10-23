@@ -26,7 +26,8 @@ import { fromPlan } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { WriteEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
-import type { PlanData, Program, ProgressCounts, WriteData } from "../types.ts";
+import { finding } from "../registry.ts";
+import type { Finding, PlanData, Program, ProgressCounts, WriteData } from "../types.ts";
 import { outputExists } from "../plan/plan.ts";
 import { contentBytes } from "../plan/summary.ts";
 import { Meter } from "../progress.ts";
@@ -206,12 +207,12 @@ function checkedInstructions(plan: PlanData): PlanInternals {
 }
 
 /** The plan blocked by its output's name being taken since it was made. */
-function outputTaken(plan: PlanData): PlanData {
+function blocked(plan: PlanData, reason: Finding): PlanData {
   return {
     ...plan,
     writable: false,
     summary: { ...plan.summary, errors: plan.summary.errors + 1 },
-    findings: [...plan.findings, outputExists(plan.output)],
+    findings: [...plan.findings, reason],
     instructions: { ...plan.instructions, writable: false },
   };
 }
@@ -259,7 +260,9 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   );
 
   const claim = outputClaims.claim((await pathResources([output], deps.volume)).map((resource) => ({ ...resource, mode: "change" })));
-  if (!claim) return outputTaken(plan);
+  // Refused like a plan that blocks, whether or not overwriting was allowed:
+  // neither write may silently replace the other.
+  if (!claim) return blocked(plan, finding("output.busy", output, "another write to this output has not finished"));
 
   let zip64 = false;
   let bytes = 0;
@@ -367,7 +370,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     const final = await writer.finalize(zip64Needed, comment, signal);
     if (final.publication === "exists") {
       await writer.abort();
-      return outputTaken(plan);
+      return blocked(plan, outputExists(plan.output));
     }
     zip64 = final.zip64;
     bytes = final.bytes;

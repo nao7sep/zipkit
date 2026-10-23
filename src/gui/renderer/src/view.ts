@@ -383,6 +383,7 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
   "time.pre-1980": "finding.pre1980",
   "time.post-2107": "finding.post2107",
   "output.exists": "finding.outputExists",
+  "output.busy": "finding.outputBusy",
 };
 
 /** The catalogue entry for a plan finding, keyed on its stable rule, or null
@@ -540,6 +541,7 @@ const RULE_KINDS: Record<string, MessageKey> = {
   "time.pre-1980": "findingKind.pre1980",
   "time.post-2107": "findingKind.post2107",
   "output.exists": "findingKind.outputExists",
+  "output.busy": "findingKind.outputBusy",
   "verify.crc32-mismatch": "findingKind.crcFail",
   "verify.unreadable": "findingKind.unreadable",
   "verify.local-mismatch": "findingKind.localMismatch",
@@ -778,7 +780,9 @@ export function progressMessage(event: LogEvent, t: Translator): string {
         ]),
       });
     case "fault":
-      return `${event.error.code}: ${event.error.message}`;
+      return event.error.cause !== undefined && event.error.cause.message !== event.error.message
+        ? `${event.error.code}: ${event.error.message}: ${event.error.cause.message}`
+        : `${event.error.code}: ${event.error.message}`;
   }
 }
 

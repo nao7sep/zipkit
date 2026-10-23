@@ -432,6 +432,7 @@
   "finding.pre1980": "Modification time predates 1980 and is clamped to the DOS minimum",
   "finding.post2107": "Modification time is after 2107 and is clamped to the DOS maximum",
   "finding.outputExists": "The output archive already exists. Turn on “Overwrite an existing file” to replace it.",
+  "finding.outputBusy": "Another write to the output archive has not finished yet. Try again once it has.",
 
   "findingKind.pathAbsolute": "Absolute path prefixes stripped",
   "findingKind.pathTraversal": "Paths outside the archive root excluded",
@@ -457,6 +458,7 @@
   "findingKind.pre1980": "Times before 1980 clamped",
   "findingKind.post2107": "Times after 2107 clamped",
   "findingKind.outputExists": "Existing output archive",
+  "findingKind.outputBusy": "Output archive in use",
   "findingKind.crcFail": "CRC-32 mismatches",
   "findingKind.shaMismatch": "SHA-256 mismatches",
   "findingKind.manifestMismatch": "Mismatches with the manifest",

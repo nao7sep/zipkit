@@ -432,6 +432,7 @@
   "finding.pre1980": "修改时间早于 1980 年，将被调整为 DOS 允许的最早时间",
   "finding.post2107": "修改时间晚于 2107 年，将被调整为 DOS 允许的最晚时间",
   "finding.outputExists": "输出归档已存在。要替换它，请打开“覆盖已有文件”。",
+  "finding.outputBusy": "对输出归档的另一次写入尚未完成。完成后请重试。",
 
   "findingKind.pathAbsolute": "已移除的绝对路径前缀",
   "findingKind.pathTraversal": "已排除的归档根目录之外的路径",
@@ -457,6 +458,7 @@
   "findingKind.pre1980": "已校正的 1980 年之前的时间",
   "findingKind.post2107": "已校正的 2107 年之后的时间",
   "findingKind.outputExists": "已存在的输出归档",
+  "findingKind.outputBusy": "正在使用的输出归档",
   "findingKind.crcFail": "CRC-32 不匹配",
   "findingKind.shaMismatch": "SHA-256 不匹配",
   "findingKind.manifestMismatch": "与清单不一致",

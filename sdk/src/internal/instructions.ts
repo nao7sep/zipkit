@@ -19,6 +19,7 @@ import { resolvePolicy } from "../policy.ts";
 import { isValidTimeZone } from "./timeZone.ts";
 import { caseFold } from "./name-equivalence.ts";
 import { RULE_REGISTRY } from "../registry.ts";
+import { buildSummary } from "../plan/summary.ts";
 import type { PlanData } from "../types.ts";
 import type { ArchivePolicy, InstructionEntry, PlanInstructions } from "../types.ts";
 import type { WriteEntry } from "./types.ts";
@@ -169,10 +170,7 @@ export function fromPlan(value: unknown): PlanInternals | undefined {
     if (match < 0) return undefined;
     group!.splice(match, 1);
   }
-  const s = p.summary;
-  if (s.total !== p.entries.length || s.included !== included.length || s.excluded !== p.entries.length - included.length ||
-      s.renamed !== included.filter(e => e.archivePath !== e.originalPath).length ||
-      s.warnings !== p.findings.filter(f => f.severity === "warning").length || s.errors !== p.findings.filter(f => f.severity === "error").length ||
-      p.writable !== (s.errors === 0) || s.sourceBytes !== i.writeEntries.reduce((n, e) => n + (e.type === "dir" ? 0 : e.size), 0)) return undefined;
+  // The summary the planner would have built from these entries and findings.
+  if (!isDeepStrictEqual(p.summary, buildSummary(p.entries, p.findings, i.zip64, i.writeEntries)) || p.writable !== (p.summary.errors === 0)) return undefined;
   return i;
 }

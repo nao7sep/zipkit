@@ -432,6 +432,7 @@
   "finding.pre1980": "A data de modificação é anterior a 1980 e é ajustada para o mínimo do DOS",
   "finding.post2107": "A data de modificação é posterior a 2107 e é ajustada para o máximo do DOS",
   "finding.outputExists": "O arquivo compactado de saída já existe. Ative “Substituir um arquivo existente” para substituí-lo.",
+  "finding.outputBusy": "Outra gravação do arquivo compactado de saída ainda não terminou. Tente novamente quando ela terminar.",
 
   "findingKind.pathAbsolute": "Prefixos de caminho absoluto removidos",
   "findingKind.pathTraversal": "Caminhos fora da raiz do arquivo compactado excluídos",
@@ -457,6 +458,7 @@
   "findingKind.pre1980": "Datas anteriores a 1980 ajustadas",
   "findingKind.post2107": "Datas posteriores a 2107 ajustadas",
   "findingKind.outputExists": "Arquivo compactado de saída existente",
+  "findingKind.outputBusy": "Arquivo compactado de saída em uso",
   "findingKind.crcFail": "Divergências de CRC-32",
   "findingKind.shaMismatch": "Divergências de SHA-256",
   "findingKind.manifestMismatch": "Divergências com o manifesto",

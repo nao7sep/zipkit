@@ -432,6 +432,7 @@
   "finding.pre1980": "Der Änderungszeitpunkt liegt vor 1980 und wird auf das DOS-Minimum gesetzt",
   "finding.post2107": "Der Änderungszeitpunkt liegt nach 2107 und wird auf das DOS-Maximum gesetzt",
   "finding.outputExists": "Das Ausgabearchiv ist bereits vorhanden. Aktivieren Sie „Vorhandene Datei überschreiben“, um es zu ersetzen.",
+  "finding.outputBusy": "Ein anderer Schreibvorgang für das Ausgabearchiv ist noch nicht abgeschlossen. Versuchen Sie es erneut, sobald er beendet ist.",
 
   "findingKind.pathAbsolute": "Absolute Pfadpräfixe entfernt",
   "findingKind.pathTraversal": "Pfade außerhalb des Archivstamms ausgeschlossen",
@@ -457,6 +458,7 @@
   "findingKind.pre1980": "Auf 1980 begrenzte Zeitpunkte",
   "findingKind.post2107": "Auf 2107 begrenzte Zeitpunkte",
   "findingKind.outputExists": "Vorhandenes Ausgabearchiv",
+  "findingKind.outputBusy": "Ausgabearchiv in Verwendung",
   "findingKind.crcFail": "CRC-32-Abweichungen",
   "findingKind.shaMismatch": "SHA-256-Abweichungen",
   "findingKind.manifestMismatch": "Abweichungen vom Manifest",

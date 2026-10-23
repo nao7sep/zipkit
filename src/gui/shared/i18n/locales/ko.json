@@ -432,6 +432,7 @@
   "finding.pre1980": "수정 시각이 1980년 이전이어서 DOS 최솟값으로 맞춥니다",
   "finding.post2107": "수정 시각이 2107년 이후여서 DOS 최댓값으로 맞춥니다",
   "finding.outputExists": "출력 아카이브가 이미 있습니다. 바꾸려면 “기존 파일 덮어쓰기”를 켜십시오.",
+  "finding.outputBusy": "출력 아카이브에 대한 다른 쓰기가 아직 끝나지 않았습니다. 끝난 후 다시 시도하십시오.",
 
   "findingKind.pathAbsolute": "제거된 절대 경로 접두사",
   "findingKind.pathTraversal": "제외된 아카이브 루트 밖 경로",
@@ -457,6 +458,7 @@
   "findingKind.pre1980": "보정된 1980년 이전 시간",
   "findingKind.post2107": "보정된 2107년 이후 시간",
   "findingKind.outputExists": "이미 있는 출력 아카이브",
+  "findingKind.outputBusy": "사용 중인 출력 아카이브",
   "findingKind.crcFail": "CRC-32 불일치",
   "findingKind.shaMismatch": "SHA-256 불일치",
   "findingKind.manifestMismatch": "매니페스트 불일치",
