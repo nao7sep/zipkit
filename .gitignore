@@ -15,3 +15,6 @@ release/
 *.log
 coverage/
 .vitest/
+
+# Clean candidates and an interrupted local package swap.
+/.rebuild-*/

@@ -52,6 +52,7 @@ $runtimeHelper = Join-Path $scriptDir "launcher-runtime.mjs"
 $runtimeToken = [guid]::NewGuid().ToString("N")
 $appName = "ZipKit"
 $outDir = "release"
+$candidate = ".rebuild-$runtimeToken"
 $exePath = Join-Path $repoDir "$outDir/win-unpacked/$appName.exe"
 
 try {
@@ -71,17 +72,10 @@ try {
         Invoke-Native -FilePath "node" -ArgumentList @("node_modules/electron/install.js")
     }
 
-    # Windows locks the packaged executable while it runs, so replacement must
-    # happen before cleaning the package directory.
-    Write-Step "Replacing any existing ZipKit runtime"
-    Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "claim", $runtimeToken)
-    Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "stop")
-
-    # Remove stale output so a build that fails to emit a file can't be masked by
-    # a leftover artifact from a previous run.
-    Write-Step "Cleaning previous build"
+    # The runnable package stays available until its replacement is complete.
+    Write-Step "Preparing clean build output"
     if (Test-Path "out") { Remove-Item -Recurse -Force "out" }
-    if (Test-Path $outDir) { Remove-Item -Recurse -Force $outDir }
+    New-Item -ItemType Directory -Path $candidate | Out-Null
 
     # The release build type-checks the shipped sources (main/preload + renderer);
     # the dev server skips this entirely. Tests are checked separately and are not
@@ -97,11 +91,17 @@ try {
     # installer. This is what gives the app its own identity (correct name and
     # icon) instead of running under the generic Electron runtime.
     Write-Step "Packaging the app bundle"
-    Invoke-Native -FilePath "node_modules/.bin/electron-builder.cmd" -ArgumentList @("--dir")
+    Invoke-Native -FilePath "node_modules/.bin/electron-builder.cmd" -ArgumentList @("--dir", "--config.directories.output=$candidate")
 
-    if (-not (Test-Path $exePath)) {
-        throw "Packaging did not produce $appName.exe under $outDir/win-unpacked/."
+    if (-not (Test-Path "$candidate/win-unpacked/$appName.exe" -PathType Leaf)) {
+        throw "Packaging did not produce $appName.exe under $candidate/win-unpacked/."
     }
+
+    # Only a complete candidate may replace the runnable package.
+    Write-Step "Publishing the verified package"
+    Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "claim", $runtimeToken)
+    Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "stop")
+    Invoke-Native -FilePath "node" -ArgumentList @((Join-Path $scriptDir "publish-package.mjs"), $candidate, $outDir, "win-unpacked/$appName.exe")
 
     # GUI app: launch non-blocking via Start-Process.
     Write-Step "Launching the packaged app"

@@ -14,6 +14,7 @@ APP_NAME="ZipKit"
 RUNTIME_HELPER="$SCRIPT_DIR/launcher-runtime.mjs"
 RUNTIME_TOKEN="rebuild-$$-$(date +%s)-$RANDOM"
 OUT_DIR="release"
+CANDIDATE=".rebuild-$RUNTIME_TOKEN"
 
 log_step() {
   printf '\n==> %s\n' "$1"
@@ -54,8 +55,9 @@ fi
 
 # Remove stale output so a build that fails to emit a file can't be masked by a
 # leftover artifact from a previous run.
-log_step "Cleaning previous build"
-rm -rf out "$OUT_DIR"
+log_step "Preparing clean build output"
+rm -rf out
+mkdir "$CANDIDATE"
 
 # The release build type-checks the shipped sources (main/preload + renderer);
 # the dev server skips this entirely. Tests are checked separately and are not
@@ -72,16 +74,24 @@ node_modules/.bin/electron-vite build
 # the app its own identity, so the dock and menu show "ZipKit" rather than the
 # generic "Electron".
 log_step "Packaging the app bundle"
-node_modules/.bin/electron-builder --dir
+node_modules/.bin/electron-builder --dir --config.directories.output="$CANDIDATE"
 
-APP_BUNDLE="$(find "$OUT_DIR" -maxdepth 2 -name "$APP_NAME.app" -type d 2>/dev/null | head -1 || true)"
+APP_BUNDLE="$(find "$CANDIDATE" -maxdepth 2 -name "$APP_NAME.app" -type d 2>/dev/null | head -1 || true)"
 if [[ -z "$APP_BUNDLE" ]]; then
-  echo "Packaging did not produce $APP_NAME.app under $OUT_DIR/." >&2
+  echo "Packaging did not produce $APP_NAME.app under $CANDIDATE/." >&2
   exit 1
 fi
 
-log_step "Launching the packaged app"
+APP_RELATIVE="${APP_BUNDLE#"$CANDIDATE"/}"
+if [[ ! -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" || ! -x "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ]]; then
+  echo "Packaging did not produce a runnable $APP_NAME executable." >&2
+  exit 1
+fi
+log_step "Publishing the verified package"
 node "$RUNTIME_HELPER" claim "$RUNTIME_TOKEN"
 node "$RUNTIME_HELPER" stop
+node "$SCRIPT_DIR/publish-package.mjs" "$CANDIDATE" "$OUT_DIR" "$APP_RELATIVE/Contents/MacOS/$APP_NAME"
+APP_BUNDLE="$OUT_DIR/$APP_RELATIVE"
+log_step "Launching the packaged app"
 open -n "$APP_BUNDLE"
 node "$RUNTIME_HELPER" wait-process "$APP_BUNDLE/Contents/MacOS/$APP_NAME" 30000
