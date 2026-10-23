@@ -427,6 +427,10 @@ describe("per-failure logging", () => {
     expect(report.ok).toBe(false);
 
     const flagged = events.filter((e) => e.event === "entry.flagged");
+    expect(flagged).toHaveLength(report.findings.length);
+    for (const f of report.findings) {
+      expect(flagged.find((event) => event.rule === f.rule && event.path === f.path)?.reason).toBe(f.message);
+    }
 
     expect(flagged.find((e) => e.rule === "verify.crc32-mismatch")).toMatchObject({
       stage: "verify",

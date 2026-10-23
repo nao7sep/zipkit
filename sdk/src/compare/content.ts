@@ -11,6 +11,7 @@
  * run's bounded {@link Volume} and run concurrently within the pool.
  */
 
+import { boundedMap, workerCount } from "../internal/bounded-map.ts";
 import { createHash } from "node:crypto";
 import { crc32 } from "node:zlib";
 import { fsFailure, isStall, throwIfAborted } from "../errors.ts";
@@ -105,8 +106,7 @@ export async function recheckContent(
   const changed: string[] = [];
   // `allSettled`, as verification does, so no read is still using the volume
   // when the check returns; a stall is reported ahead of what it caused.
-  const settled = await Promise.allSettled(
-    checked.map((entry) =>
+  const settled = await boundedMap(checked, workerCount(deps.limit), (entry) =>
       deps.limit(async () => {
         throwIfAborted(deps.signal);
         const candidates = (bySource.get(entry.sourcePath) ?? []).filter((record) =>
@@ -132,7 +132,6 @@ export async function recheckContent(
         }
         meter.entry();
       }),
-    ),
   );
   const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
   const failure = failures.find((f) => isStall(f)) ?? failures[0];

@@ -8,8 +8,9 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { crc32, deflateRawSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseZip, readEntryData, type ReadEntry } from "../../src/read/zipReader.ts";
+import { localHeaderMismatch, parseZip, readEntryData, type ReadEntry } from "../../src/read/zipReader.ts";
 import type { VolumeFile } from "../../src/internal/volume.ts";
 import { openRead } from "../helpers/volume.ts";
 
@@ -34,20 +35,24 @@ function eocd(opts: { count: number; cdSize: number; cdOffset: number; comment?:
 }
 
 function central(opts: {
-  name: string;
+  name: string | Buffer;
+  gpFlag?: number;
+  crc32?: number;
   method?: number;
   compSize?: number;
   uncompSize?: number;
   localOffset?: number;
   extra?: Buffer;
 }): Buffer {
-  const nb = Buffer.from(opts.name, "utf8");
+  const nb = typeof opts.name === "string" ? Buffer.from(opts.name, "utf8") : opts.name;
   const extra = opts.extra ?? Buffer.alloc(0);
   const c = Buffer.alloc(46);
   c.writeUInt32LE(0x02014b50, 0);
   c.writeUInt16LE(20, 4); // version made by
   c.writeUInt16LE(20, 6); // version needed
+  c.writeUInt16LE(opts.gpFlag ?? 0, 8);
   c.writeUInt16LE(opts.method ?? 0, 10);
+  c.writeUInt32LE(opts.crc32 ?? 0, 16);
   c.writeUInt32LE(opts.compSize ?? 0, 20);
   c.writeUInt32LE(opts.uncompSize ?? 0, 24);
   c.writeUInt16LE(nb.length, 28);
@@ -323,4 +328,198 @@ it("supports maximum format-sized name and extra fields across read-ahead blocks
   const parsed = await parse(Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0 })]));
   expect(parsed.entries[0]?.archivePath).toBe(name);
   expect(parsed.entries[0]?.extra.equals(extra)).toBe(true);
+});
+
+describe("filename encodings", () => {
+  async function nameFrom(name: Buffer, gpFlag = 0, extra = Buffer.alloc(0)): Promise<string> {
+    const cd = central({ name, gpFlag, extra });
+    return (await parse(Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0 })]))).entries[0]!.archivePath;
+  }
+
+  it("decodes legacy raw filenames as CP437", async () => {
+    expect(await nameFrom(Buffer.from([0x82, 0x2e, 0x74, 0x78, 0x74]))).toBe("é.txt");
+  });
+
+  it("decodes filenames marked as UTF-8", async () => {
+    expect(await nameFrom(Buffer.from("日本語.txt", "utf8"), 0x0800)).toBe("日本語.txt");
+    expect(await nameFrom(Buffer.from("\ufeffname.txt", "utf8"), 0x0800)).toBe("\ufeffname.txt");
+  });
+
+  it.each([true, false])("uses a version-1 Unicode path only when its raw-name CRC matches: %s", async (matches) => {
+    const rawName = Buffer.from([0x82, 0x2e, 0x74, 0x78, 0x74]);
+    const unicodeName = Buffer.from("別名.txt", "utf8");
+    const extra = Buffer.alloc(9 + unicodeName.length);
+    extra.writeUInt16LE(0x7075, 0);
+    extra.writeUInt16LE(5 + unicodeName.length, 2);
+    extra[4] = 1;
+    extra.writeUInt32LE(matches ? crc32(rawName) : (crc32(rawName) ^ 1) >>> 0, 5);
+    unicodeName.copy(extra, 9);
+    expect(await nameFrom(rawName, 0, extra)).toBe(matches ? "別名.txt" : "é.txt");
+  });
+
+  it("rejects malformed filenames marked as UTF-8", async () => {
+    await expect(nameFrom(Buffer.from([0xc3, 0x28]), 0x0800)).rejects.toMatchObject({ code: "archive.malformed" });
+  });
+});
+
+/** Build a streaming ZIP record directly; no archive writer participates. */
+function descriptorFixture(signed: boolean, wide: boolean): { bytes: Buffer; descriptorStart: number; descriptorLength: number } {
+  const name = Buffer.from("stream.txt");
+  const data = Buffer.from("streamed payload");
+  const checksum = crc32(data);
+  const extra = wide ? Buffer.alloc(20) : Buffer.alloc(0);
+  if (wide) {
+    extra.writeUInt16LE(0x0001, 0);
+    extra.writeUInt16LE(16, 2);
+    extra.writeBigUInt64LE(BigInt(data.length), 4);
+    extra.writeBigUInt64LE(BigInt(data.length), 12);
+  }
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(wide ? 45 : 20, 4);
+  local.writeUInt16LE(0x0008, 6);
+  local.writeUInt16LE(name.length, 26);
+  local.writeUInt16LE(extra.length, 28);
+  const descriptor = Buffer.alloc((signed ? 4 : 0) + (wide ? 20 : 12));
+  const start = signed ? 4 : 0;
+  if (signed) descriptor.writeUInt32LE(0x08074b50, 0);
+  descriptor.writeUInt32LE(checksum, start);
+  if (wide) {
+    descriptor.writeBigUInt64LE(BigInt(data.length), start + 4);
+    descriptor.writeBigUInt64LE(BigInt(data.length), start + 12);
+  } else {
+    descriptor.writeUInt32LE(data.length, start + 4);
+    descriptor.writeUInt32LE(data.length, start + 8);
+  }
+  const payload = Buffer.concat([local, name, extra, data]);
+  const cd = central({
+    name, gpFlag: 0x0008, crc32: checksum,
+    compSize: wide ? 0xffffffff : data.length,
+    uncompSize: wide ? 0xffffffff : data.length,
+    extra,
+  });
+  return {
+    bytes: Buffer.concat([payload, descriptor, cd, eocd({ count: 1, cdSize: cd.length, cdOffset: payload.length + descriptor.length })]),
+    descriptorStart: payload.length,
+    descriptorLength: descriptor.length,
+  };
+}
+
+async function withFirstEntry(bytes: Buffer, run: (file: VolumeFile, entry: ReadEntry) => Promise<void>): Promise<void> {
+  const file = path.join(dir, "fixture.zip");
+  await writeFile(file, bytes);
+  const fd = await openRead(file);
+  try {
+    const parsed = await parseZip(fd, bytes.length);
+    await run(fd, parsed.entries[0]!);
+  } finally {
+    await fd.close();
+  }
+}
+
+describe("streaming data descriptors", () => {
+  const forms = [
+    { signed: false, wide: false }, { signed: true, wide: false },
+    { signed: false, wide: true }, { signed: true, wide: true },
+  ];
+
+  it("does not mistake a ZIP64 offset alone for wide descriptor sizes", async () => {
+    const { bytes, descriptorStart, descriptorLength } = descriptorFixture(true, false);
+    const payload = bytes.subarray(0, descriptorStart + descriptorLength);
+    const extra = Buffer.alloc(12);
+    extra.writeUInt16LE(1, 0);
+    extra.writeUInt16LE(8, 2);
+    extra.writeBigUInt64LE(0n, 4);
+    const cd = central({ name: "stream.txt", gpFlag: 8, crc32: crc32(Buffer.from("streamed payload")),
+      compSize: 16, uncompSize: 16, localOffset: 0xffffffff, extra });
+    const fixture = Buffer.concat([payload, cd, eocd({ count: 1, cdSize: cd.length, cdOffset: payload.length })]);
+    await withFirstEntry(fixture, async (file, entry) => {
+      expect(await localHeaderMismatch(file, entry)).toBeNull();
+    });
+  });
+
+  it.each(forms)("accepts a matching descriptor: %j", async ({ signed, wide }) => {
+    await withFirstEntry(descriptorFixture(signed, wide).bytes, async (file, entry) => {
+      expect(await localHeaderMismatch(file, entry)).toBeNull();
+    });
+  });
+
+  it.each([false, true])("rejects disagreement between local and central bit 3: local=%s", async (localSet) => {
+    const { bytes, descriptorStart, descriptorLength } = descriptorFixture(true, false);
+    bytes.writeUInt16LE(localSet ? 0x0008 : 0, 6);
+    bytes.writeUInt16LE(localSet ? 0 : 0x0008, descriptorStart + descriptorLength + 8);
+    await withFirstEntry(bytes, async (file, entry) => {
+      expect(await localHeaderMismatch(file, entry)).toBe("data descriptor flag differs");
+    });
+  });
+
+  it.each(forms.flatMap((form) => ["crc", "compressed size", "uncompressed size"].map((field) => ({ ...form, field }))))(
+    "rejects an incorrect descriptor field: %j", async ({ signed, wide, field }) => {
+      const { bytes, descriptorStart } = descriptorFixture(signed, wide);
+      const fieldOffset = field === "crc" ? 0 : field === "compressed size" ? 4 : wide ? 12 : 8;
+      const offset = descriptorStart + (signed ? 4 : 0) + fieldOffset;
+      bytes[offset] = bytes[offset]! ^ 1;
+      await withFirstEntry(bytes, async (file, entry) => {
+        expect(await localHeaderMismatch(file, entry)).toBe("data descriptor differs");
+      });
+    },
+  );
+
+  it.each(forms)("rejects a descriptor truncated before its last byte: %j", async ({ signed, wide }) => {
+    const { bytes, descriptorStart, descriptorLength } = descriptorFixture(signed, wide);
+    const entry = (await parse(bytes)).entries[0]!;
+    const target = path.join(dir, "truncated-descriptor.zip");
+    await writeFile(target, bytes.subarray(0, descriptorStart + descriptorLength - 1));
+    const file = await openRead(target);
+    try {
+      await expect(localHeaderMismatch(file, entry)).rejects.toMatchObject({ code: "archive.malformed" });
+    } finally {
+      await file.close();
+    }
+  });
+});
+
+describe("compressed read failure ownership", () => {
+  function compressedFixture(corrupt = false): { bytes: Buffer; dataStart: number } {
+    const name = Buffer.from("compressed.txt");
+    const content = Buffer.from("the original decompressed payload");
+    const data = corrupt ? Buffer.from([0x07]) : deflateRawSync(content);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(crc32(content), 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(content.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const cd = central({ name, method: 8, compSize: data.length, uncompSize: content.length, crc32: crc32(content) });
+    const payload = Buffer.concat([local, name, data]);
+    return { bytes: Buffer.concat([payload, cd, eocd({ count: 1, cdSize: cd.length, cdOffset: payload.length })]), dataStart: local.length + name.length };
+  }
+
+  it("preserves an EIO failure from reading compressed bytes", async () => {
+    const { bytes, dataStart } = compressedFixture();
+    const failure = Object.assign(new Error("disk read failed"), { code: "EIO" });
+    await withFirstEntry(bytes, async (file, entry) => {
+      const read = file.read.bind(file);
+      file.read = async (buffer, offset, length, position) => {
+        if (position >= dataStart) throw failure;
+        return read(buffer, offset, length, position);
+      };
+      await expect(readEntryData(file, entry, async () => {}, 64)).rejects.toBe(failure);
+    });
+  });
+
+  it("preserves a SyntaxError thrown by the decompressed-data sink", async () => {
+    const failure = new SyntaxError("sink rejected the payload");
+    await withFirstEntry(compressedFixture().bytes, async (file, entry) => {
+      await expect(readEntryData(file, entry, async () => { throw failure; }, 64)).rejects.toBe(failure);
+    });
+  });
+
+  it("classifies an invalid deflate block as corrupt archive data", async () => {
+    await withFirstEntry(compressedFixture(true).bytes, async (file, entry) => {
+      await expect(readEntryData(file, entry, async () => {}, 64)).rejects.toMatchObject({ code: "archive.corrupt-data" });
+    });
+  });
 });

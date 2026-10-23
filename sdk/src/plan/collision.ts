@@ -8,6 +8,7 @@
  * the error tier. The finding is attached to every entry in the colliding group.
  */
 
+import { ancestorCollisions } from "../internal/archive-namespace.ts";
 import { finding } from "../registry.ts";
 import { caseFold } from "../internal/name-equivalence.ts";
 import type { WorkItem } from "./workItem.ts";
@@ -42,6 +43,10 @@ export function applyCollision(items: WorkItem[], reserved: readonly string[] = 
     for (const item of group) {
       item.findings.push(finding(rule, item.archivePath, message));
     }
+  }
+
+  for (const item of ancestorCollisions(items.filter((item) => !item.excluded), reserved)) {
+    item.findings.push(finding("collision.post-fix", item.archivePath, "a file or manifest also names an ancestor directory"));
   }
 
   for (const name of reserved) {

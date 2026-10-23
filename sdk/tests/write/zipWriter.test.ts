@@ -19,6 +19,7 @@ import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/
 import { findExtra, readZipFile } from "../helpers/readZip.ts";
 import { CENTRAL_TIMESTAMP_EXTRA_MAX, LOCAL_TIMESTAMP_EXTRA_MAX } from "../../src/plan/zip64.ts";
 import { ZipWriter } from "../../src/write/zipWriter.ts";
+import { nodeFileSystem, Volume, type FileSystemPort } from "../../src/internal/volume.ts";
 import { realVolume } from "../helpers/volume.ts";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
@@ -265,6 +266,111 @@ describe("temp file shape", () => {
 });
 
 describe("zip64", () => {
+  it.each([
+    { label: "sizes exactly at the sentinel", payload: 0xffffffff },
+    { label: "sizes with nonzero high bits", payload: 0x1_1234_5678 },
+    // A classic first header: 30 + one-byte name + 53 timestamp-extra bytes.
+    { label: "second local offset exactly at the sentinel", payload: 0xffffffff - 84 },
+  ])("encodes actual writer geometry for $label", async ({ payload }) => {
+    const writes: { position: number; bytes: Buffer }[] = [];
+    // This token never reaches native I/O. Its length stands for a sparse data
+    // extent while the real Volume and writer still advance their own offsets.
+    const extent = Buffer.alloc(0);
+    Object.defineProperty(extent, "length", { value: payload });
+    const port: FileSystemPort = {
+      ...nodeFileSystem,
+      open: async () => ({
+        write: async (buffer, offset, length, position) => {
+          expect(position).not.toBeNull();
+          if (buffer !== extent) writes.push({ position: position!, bytes: Buffer.from(buffer.subarray(offset, offset + length)) });
+          return { bytesWritten: length };
+        },
+        read: async () => { throw new Error("writer must not read its output"); },
+        stat: async () => { throw new Error("writer must not stat its open output"); },
+        sync: async () => {}, close: async () => {},
+      }),
+      stat: async () => { throw Object.assign(new Error("no previous output"), { code: "ENOENT" }); },
+      chmod: async () => {}, rename: async () => {}, syncDirectory: async () => {},
+    };
+    const writer = new ZipWriter(path.join(tmpdir(), "zipkit-synthetic.zip"), { ...baseOptions, overwrite: true }, new Volume(port, 30_000));
+    // Decode the captured on-wire bytes independently, overlaying positioned
+    // local-header patches without allocating the unwritten sparse payload.
+    const read = (position: number, length: number) => {
+      const result = Buffer.alloc(length);
+      for (const write of writes) {
+        const start = Math.max(position, write.position);
+        const end = Math.min(position + length, write.position + write.bytes.length);
+        if (end > start) write.bytes.copy(result, start - position, start - write.position, end - write.position);
+      }
+      return result;
+    };
+    const local = (position: number) => {
+      const header = read(position, 30);
+      expect(header.readUInt32LE(0)).toBe(0x04034b50);
+      expect(header.readUInt16LE(6) & 8).toBe(0); // Patched headers; no data descriptors.
+      const extra = read(position + 30 + header.readUInt16LE(26), header.readUInt16LE(28));
+      return { header, extra, end: position + 30 + header.readUInt16LE(26) + extra.length };
+    };
+    await writer.open();
+    const large = { ...fileEntry("a", Buffer.alloc(0), false), uncompressedSize: payload };
+    await writer.streamEntry(large, async (sink) => {
+      await sink(extent);
+      return { crc32: 0x12345678, compressedSize: payload, uncompressedSize: payload };
+    });
+    const first = local(0);
+    const secondOffset = first.end + payload;
+    expect(secondOffset).toBeGreaterThanOrEqual(0xffffffff);
+    if (payload === 0xffffffff - 84) expect(secondOffset).toBe(0xffffffff);
+    await writer.streamEntry(fileEntry("b", Buffer.alloc(0), false), async () => ({ crc32: 0, compressedSize: 0, uncompressedSize: 0 }));
+    const second = local(secondOffset);
+    const cdStart = second.end;
+    const result = await writer.finalize(false);
+    expect(result.zip64).toBe(true);
+    expect(result.publication).toBe("published");
+    expect(first.header.readUInt32LE(14)).toBe(0x12345678);
+    const firstZip64 = payload >= 0xffffffff;
+    expect(first.header.readUInt32LE(18)).toBe(firstZip64 ? 0xffffffff : payload);
+    expect(first.header.readUInt32LE(22)).toBe(firstZip64 ? 0xffffffff : payload);
+    if (firstZip64) {
+      const sizes = findExtra(first.extra, 1)!;
+      expect(sizes.readBigUInt64LE(0)).toBe(BigInt(payload));
+      expect(sizes.readBigUInt64LE(8)).toBe(BigInt(payload));
+    } else expect(findExtra(first.extra, 1)).toBeNull();
+    expect(second.header.readUInt32LE(18)).toBe(0xffffffff);
+    expect(second.header.readUInt32LE(22)).toBe(0xffffffff);
+    expect(findExtra(second.extra, 1)!.readBigUInt64LE(0)).toBe(0n);
+    expect(findExtra(second.extra, 1)!.readBigUInt64LE(8)).toBe(0n);
+
+    let centralAt = cdStart;
+    for (const [size, offset, zip64] of [[payload, 0, firstZip64], [0, secondOffset, true]] as const) {
+      const header = read(centralAt, 46);
+      expect(header.readUInt32LE(0)).toBe(0x02014b50);
+      expect(header.readUInt32LE(20)).toBe(zip64 ? 0xffffffff : size);
+      expect(header.readUInt32LE(24)).toBe(zip64 ? 0xffffffff : size);
+      expect(header.readUInt32LE(42)).toBe(zip64 ? 0xffffffff : offset);
+      const extra = read(centralAt + 46 + header.readUInt16LE(28), header.readUInt16LE(30));
+      if (zip64) {
+        const values = findExtra(extra, 1)!;
+        expect(values.readBigUInt64LE(0)).toBe(BigInt(size));
+        expect(values.readBigUInt64LE(8)).toBe(BigInt(size));
+        expect(values.readBigUInt64LE(16)).toBe(BigInt(offset));
+      } else expect(findExtra(extra, 1)).toBeNull();
+      centralAt += 46 + header.readUInt16LE(28) + extra.length;
+    }
+    const end64 = read(centralAt, 56);
+    expect(end64.readUInt32LE(0)).toBe(0x06064b50);
+    expect(end64.readBigUInt64LE(32)).toBe(2n);
+    expect(end64.readBigUInt64LE(40)).toBe(BigInt(centralAt - cdStart));
+    expect(end64.readBigUInt64LE(48)).toBe(BigInt(cdStart));
+    const locator = read(centralAt + 56, 20);
+    expect(locator.readUInt32LE(0)).toBe(0x07064b50);
+    expect(locator.readBigUInt64LE(8)).toBe(BigInt(centralAt));
+    const end = read(centralAt + 76, 22);
+    expect(end.readUInt32LE(0)).toBe(0x06054b50);
+    expect(end.readUInt32LE(16)).toBe(0xffffffff);
+    expect(result.bytes).toBe(centralAt + 98);
+  });
+
   it("emits the Zip64 end-of-central-directory and locator when forced", async () => {
     const result = await build([fileEntry("a.txt", Buffer.from("x"), false)], { zip64: true });
     expect(result.zip64).toBe(true);

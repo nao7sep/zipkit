@@ -10,34 +10,10 @@
 import path from "node:path";
 import { z } from "zod";
 import { ZipKitError } from "./errors.ts";
-import { resolveSegments, toForwardSlash } from "./internal/path.ts";
+import { isSafePathComponent, exclusionIssue } from "./input-checks.ts";
 import { formatZodError } from "./internal/zodError.ts";
-import { fullFixSegment } from "./plan/nameFix.ts";
 import { isValidTimeZone } from "./internal/timeZone.ts";
 import type { ArchivePolicy, ArchiveSpec, DeepPartial, Program, RemovalRequest, VerifyRequest } from "./types.ts";
-
-/**
- * A single archive-path segment that the name fixer would leave untouched — the
- * standard every archive name is held to. This rejects slashes and traversal
- * (`resolveSegments`), and, via `fixSegment`, anything the fixer would rewrite:
- * non-NFC forms, Windows-invalid characters (including the bare colon a Windows
- * drive prefix needs), control characters, trailing dots/spaces, and reserved
- * device names.
- *
- * Two uses share it. The manifest name must satisfy it so the name is safe
- * as a ZIP entry. The invalid-char replacement
- * must satisfy it too: `name.invalid-char` substitutes it into a segment after
- * the path-traversal pass has already run (see `nameFix.ts`), so a replacement
- * carrying a separator or resolving to `..` would re-introduce exactly the
- * absolute/traversal paths that pass stripped — holding it to a clean single
- * component closes that off at the boundary rather than mid-pipeline.
- */
-function isSafePathComponent(name: string): boolean {
-  const { segments, escaped } = resolveSegments(toForwardSlash(name));
-  if (escaped || segments.length !== 1) return false;
-  const segment = segments[0] as string;
-  return fullFixSegment(segment, "_") === segment;
-}
 
 const exclusionSchema = z
   .strictObject({
@@ -49,19 +25,11 @@ const exclusionSchema = z
     note: z.string().optional(),
   })
   .refine(
-    (rule) => {
-      if (rule.match !== "regex") return true;
-      try {
-        new RegExp(rule.pattern);
-        return true;
-      } catch {
-        return false;
-      }
-    },
+    (rule) => exclusionIssue(rule) !== "regex",
     { error: "invalid regular expression pattern", path: ["pattern"] },
   )
   .refine(
-    (rule) => !(rule.match === "glob" && rule.pattern.endsWith("/") && rule.target === "file"),
+    (rule) => exclusionIssue(rule) !== "target",
     { error: "a glob ending in / names folders, so its target cannot be file", path: ["target"] },
   );
 

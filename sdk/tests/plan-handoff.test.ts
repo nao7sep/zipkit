@@ -40,6 +40,23 @@ it.each(mutations)("rejects %s before output creation", async (_name, mutate) =>
   await expect(zip.write(plan)).rejects.toMatchObject({ code: "plan.invalid", effect: "none" });
   expect(await readdir(root)).toEqual(["a.txt"]);
 });
+
+it.each(["parent", "PARENT"])("rejects a transferred plan with file %s and its descendant before output creation", async (parent) => {
+  const inputs = [path.join(root, "a.txt"), path.join(root, "b.txt")];
+  await writeFile(inputs[0]!, "alpha");
+  await writeFile(inputs[1]!, "beta");
+  const zip = new ZipKit();
+  const plan: PlanData = JSON.parse(JSON.stringify(await zip.plan({ inputs, output: path.join(root, "out.zip") })));
+  expect(plan.writable).toBe(true);
+  for (const [index, archivePath] of [parent, "parent/child"].entries()) {
+    plan.instructions.entries[index]!.archivePath = archivePath;
+    plan.entries[index]!.archivePath = archivePath;
+  }
+
+  await expect(zip.write(plan)).rejects.toMatchObject({ code: "plan.invalid", effect: "none" });
+  expect((await readdir(root)).sort()).toEqual(["a.txt", "b.txt"]);
+});
+
 it("executes JSON and structured-clone plans unchanged", async () => {
   const input = path.join(root, "a.txt");
   await writeFile(input, "alpha");

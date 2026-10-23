@@ -37,6 +37,28 @@ async function makeTree(): Promise<string> {
 }
 
 describe("output resolution and round-trip", () => {
+  it.each([1, 63, 64])("creates and verifies deflated and stored content with chunkSize %i", async (chunkSize) => {
+    const input = path.join(dir, "small-buffers");
+    await mkdir(input);
+    const compressed = Buffer.from("small source buffers preserve all content ".repeat(16));
+    const stored = Buffer.from(Array.from({ length: 129 }, (_, index) => index));
+    await writeFile(path.join(input, "text.txt"), compressed);
+    await writeFile(path.join(input, "image.png"), stored);
+    const kit = new ZipKit({ chunkSize });
+    const output = path.join(dir, "small-buffers.zip");
+
+    await kit.create({ inputs: [input], output });
+
+    const { entries } = readZip(await readFile(output));
+    expect(entries.find((entry) => entry.name === "text.txt")).toMatchObject({ method: 8, content: compressed });
+    expect(entries.find((entry) => entry.name === "image.png")).toMatchObject({ method: 0, content: stored });
+    const report = await kit.verify({ archive: output, manifest: true });
+    expect(report.ok).toBe(true);
+    for (const archivePath of ["text.txt", "image.png"]) {
+      expect(report.entries.find((entry) => entry.archivePath === archivePath)).toMatchObject({ crc32: "ok", sha256: "ok" });
+    }
+  });
+
   it("writes <dirname>.zip beside a single directory and flattens its contents", async () => {
     const proj = await makeTree();
     const result = await new ZipKit().create({ inputs: [proj] });

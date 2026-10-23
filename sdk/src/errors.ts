@@ -44,6 +44,7 @@ export const ERROR_CODES = {
   "write.not-writable": "invalid",
   "write.source-changed": "unavailable",
   "write.durability": "unavailable",
+  "archive.changed": "unavailable",
   "archive.not-zip": "invalid",
   "archive.malformed": "invalid",
   "archive.unsupported-method": "invalid",

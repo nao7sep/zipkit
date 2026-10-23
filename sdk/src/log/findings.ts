@@ -31,6 +31,7 @@ export function reportFindings(logger: Logger, stage: LogStage, findings: Findin
       rule: f.rule,
       path: f.path,
       severity: f.severity,
+      reason: f.message,
     });
   }
 }

@@ -91,7 +91,127 @@ describe("scan over a real tree", () => {
     }
     const policy = resolvePolicy(undefined, { symlinks: "follow", followExternal: true });
     const result = await scan({ inputs: [proj] }, policy, { ...deps(policy), limit: pLimit(concurrency) });
-    expect(names(result)).toEqual(Array.from({ length: concurrency }, (_, i) => `link-${i}/file.txt`));
+    expect(names(result)).toEqual(Array.from({ length: concurrency }, (_, i) => [`link-${i}`, `link-${i}/file.txt`]).flat());
+  });
+
+  it("includes each named root when multiple input directories are empty", async () => {
+    const roots = [path.join(dir, "first"), path.join(dir, "second")];
+    await Promise.all(roots.map((root) => mkdir(root)));
+
+    const result = await runScan({ inputs: roots });
+
+    expect(result.entries.map((entry) => ({ archivePath: entry.archivePath, type: entry.type, diskPath: entry.diskPath }))).toEqual([
+      { archivePath: "first", type: "dir", diskPath: roots[0] },
+      { archivePath: "second", type: "dir", diskPath: roots[1] },
+    ]);
+  });
+
+  it("prunes an excluded named root before listing its contents", async () => {
+    const excluded = path.join(dir, "__MACOSX"), kept = path.join(dir, "kept");
+    await mkdir(excluded); await mkdir(kept);
+    await writeFile(path.join(excluded, "hidden.txt"), "hidden");
+    const listed: string[] = [];
+    const volume = new Volume({ ...nodeFileSystem, openDirectory: async (name) => {
+      listed.push(name);
+      return nodeFileSystem.openDirectory(name);
+    } }, 30_000);
+
+    const result = await runScan({ inputs: [excluded, kept] }, {}, volume);
+
+    expect(names(result)).toEqual(["kept"]);
+    expect(result.prunedDirs.map((entry) => entry.archivePath)).toEqual(["__MACOSX"]);
+    expect(listed).toEqual([kept]);
+  });
+
+  it("admits no more than two unresolved tasks for a flat directory with a two-slot pool", async () => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    const fileNames = Array.from({ length: 257 }, (_, i) => `file-${String(i).padStart(3, "0")}.txt`);
+    await Promise.all(fileNames.map((name) => writeFile(path.join(proj, name), "x")));
+    let delivered = 0, completed = 0, peakAhead = 0;
+    const volume = new Volume({ ...nodeFileSystem,
+      openDirectory: async (name) => {
+        const handle = await nodeFileSystem.openDirectory(name);
+        return {
+          read: async () => {
+            const entry = await handle.read();
+            if (entry !== null) {
+              delivered++;
+              peakAhead = Math.max(peakAhead, delivered - completed);
+            }
+            return entry;
+          },
+          close: () => handle.close(),
+        };
+      },
+      lstat: async (name) => {
+        const result = await nodeFileSystem.lstat(name);
+        if (path.dirname(name) === proj) completed++;
+        return result;
+      },
+    }, 30_000);
+    const pool = pLimit(2);
+    let unresolved = 0, maximum = 0, submitted = 0;
+    const limit = Object.assign(<T>(run: () => Promise<T>): Promise<T> => {
+      submitted++;
+      unresolved++;
+      maximum = Math.max(maximum, unresolved);
+      return pool(run).finally(() => { unresolved--; });
+    }, { concurrency: pool.concurrency });
+    const policy = resolvePolicy();
+
+    const result = await scan({ inputs: [proj] }, policy, { ...deps(policy), limit, volume });
+
+    expect(names(result)).toEqual(fileNames);
+    expect(submitted).toBe(fileNames.length);
+    expect(maximum).toBe(2);
+    expect(unresolved).toBe(0);
+    expect(delivered).toBe(fileNames.length);
+    expect(completed).toBe(fileNames.length);
+    expect(peakAhead).toBe(2);
+  });
+
+  it.each(["open", "read"])("retains required-root versus unlisted-descendant policy for an incremental %s failure", async (stage) => {
+    const proj = path.join(dir, "proj"), locked = path.join(proj, "locked");
+    await mkdir(locked, { recursive: true });
+    const denied = Object.assign(new Error("denied"), { code: "EACCES" });
+    const inaccessible = (blocked: string) => new Volume({ ...nodeFileSystem,
+      openDirectory: async (name) => {
+        if (name === blocked && stage === "open") throw denied;
+        const handle = await nodeFileSystem.openDirectory(name);
+        return {
+          read: async () => {
+            if (name === blocked) throw denied;
+            return handle.read();
+          },
+          close: () => handle.close(),
+        };
+      },
+    }, 30_000);
+    await expect(runScan({ inputs: [proj] }, {}, inaccessible(proj))).rejects.toMatchObject({ code: "path.denied", subject: proj });
+    const result = await runScan({ inputs: [proj] }, {}, inaccessible(locked));
+    expect(names(result)).toEqual(["locked"]);
+    expect(result.unlistedDirs).toEqual(["locked"]);
+  });
+
+  it("bounds open directory handles by traversal depth while retaining all metadata", async () => {
+    const proj = path.join(dir, "proj");
+    for (let i = 0; i < 12; i++) {
+      const child = path.join(proj, `branch-${i}`, "child");
+      await mkdir(child, { recursive: true });
+      await writeFile(path.join(child, "file.txt"), "x");
+    }
+    let active = 0, peak = 0;
+    const volume = new Volume({ ...nodeFileSystem, openDirectory: async (name) => {
+      const handle = await nodeFileSystem.openDirectory(name);
+      peak = Math.max(peak, ++active);
+      return { read: () => handle.read(), close: async () => { try { await handle.close(); } finally { active--; } } };
+    } }, 30_000);
+    const result = await runScan({ inputs: [proj] }, {}, volume);
+    expect(result.entries).toHaveLength(36);
+    expect(peak).toBe(3);
+    expect(active).toBe(0);
+    await volume.whenSettled();
   });
 
   it("surfaces files and directories with forward-slash archive paths", async () => {
@@ -129,7 +249,27 @@ describe("scan over a real tree", () => {
 
     const link = result.entries.find((e) => e.archivePath === "link");
     expect(link?.type).toBe("symlink");
-    expect(link?.linkTarget).toBe("real.txt");
+    expect(link?.linkTarget).toBeUndefined();
+  });
+
+  it.runIf(fileSymlinksSupported).each(["ignore", "follow", "preserve"] as const)("reads a symlink target only for preservation under %s", async (symlinks) => {
+    const proj = path.join(dir, "proj");
+    await mkdir(proj);
+    await writeFile(path.join(proj, "real.txt"), "real");
+    const linkPath = path.join(proj, "link");
+    await createFileLink("real.txt", linkPath);
+    const reads: string[] = [];
+    const volume = new Volume({ ...nodeFileSystem, readlink: async (name) => {
+      reads.push(name);
+      return nodeFileSystem.readlink(name);
+    } }, 30_000);
+
+    const result = await runScan({ inputs: [proj] }, { symlinks }, volume);
+
+    expect(reads).toEqual(symlinks === "preserve" ? [linkPath] : []);
+    const entry = result.entries.find((item) => item.archivePath === "link");
+    expect(entry?.type).toBe(symlinks === "follow" ? "file" : "symlink");
+    expect(entry?.linkTarget).toBe(symlinks === "preserve" ? "real.txt" : undefined);
   });
 
   it("follows an internal symlinked directory under follow", async () => {
@@ -216,6 +356,16 @@ describe("scan over a real tree", () => {
 
     expect(names(result)).toEqual(["real.txt"]);
     expect(result.skipped).toEqual([{ archivePath: "pipe", sourcePath: "proj/pipe", diskPath: path.join(proj, "pipe"), kind: "fifo" }]);
+  });
+
+  it.skipIf(process.platform === "win32")("classifies a directly named FIFO as unsupported", async () => {
+    const pipe = path.join(dir, "pipe");
+    execFileSync("mkfifo", [pipe]);
+
+    const result = await runScan({ inputs: [pipe] });
+
+    expect(result.entries).toEqual([]);
+    expect(result.skipped).toEqual([{ archivePath: "pipe", sourcePath: "pipe", diskPath: pipe, kind: "fifo" }]);
   });
 
   // POSIX permissions decide whether a folder can be listed; root lists anything.

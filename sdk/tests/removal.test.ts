@@ -88,7 +88,7 @@ describe("checkRemoval", () => {
   it("runs every check in order and passes with the fingerprint that verified", async () => {
     const ran: string[] = [];
     expect(await check(steps({}, ran))).toEqual({ refusal: null, verified: { fingerprint: "f1" } });
-    expect(ran).toEqual(["state", "inside", "verify", "compare"]);
+    expect(ran).toEqual(["state", "inside", "verify", "state", "compare", "state"]);
   });
 
   it("stops at the first refusal, carrying what failed, and refuses with a ZipKit error when a check cannot finish", async () => {
@@ -113,6 +113,16 @@ describe("checkRemoval", () => {
     // A fault in the SDK itself is not taken for the disk's.
     expect((await check(steps({ verify: async () => { throw new TypeError("bug"); } }))).refusal)
       .toMatchObject({ reason: "error", step: "verify", error: { code: "internal.unexpected", kind: "internal" } });
+  });
+
+  it.each((["verify", "compare"] as const).flatMap((stage) => ["missing", "changed", "unavailable"].map((state) => ({ stage, state }))))("refuses archive changes during $stage: $state", async ({ stage, state }) => {
+    let changed = false;
+    const result = await check(steps({
+      state: async () => !changed ? { kind: "present", fingerprint: "f1" } : state === "changed" ? { kind: "present", fingerprint: "f2" } : state === "missing" ? { kind: "missing" } : { kind: "unavailable" },
+      verify: async () => { changed = stage === "verify"; return { ok: true, report }; },
+      compare: async () => { changed = true; return same; },
+    }));
+    expect(result.refusal).toMatchObject({ reason: "error", step: stage === "verify" ? "verify" : "recheck" });
   });
 
   it("throws a cancellation from any step instead of answering", async () => {

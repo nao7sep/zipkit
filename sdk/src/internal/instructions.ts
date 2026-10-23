@@ -17,6 +17,7 @@ import { z } from "zod";
 import { validatePolicy } from "../validate.ts";
 import { resolvePolicy } from "../policy.ts";
 import { isValidTimeZone } from "./timeZone.ts";
+import { ancestorCollisions } from "./archive-namespace.ts";
 import { caseFold } from "./name-equivalence.ts";
 import { RULE_REGISTRY } from "../registry.ts";
 import { buildSummary } from "../plan/summary.ts";
@@ -119,6 +120,7 @@ export function fromInstructions(value: unknown): PlanInternals | undefined {
     if (i.writable && (paths.has(folded) || folded === reserved)) return undefined;
     paths.add(folded);
   }
+  if (i.writable && ancestorCollisions(i.entries, policy.manifest === false ? [] : [policy.manifest.name]).size > 0) return undefined;
   const { entries, ...rest } = i;
   return {
     ...rest, policy,

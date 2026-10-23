@@ -7,7 +7,7 @@
  * first, so the answer can say which file verified.
  */
 
-import { classify, type ZipKitError } from "./errors.ts";
+import { classify, ZipKitError } from "./errors.ts";
 import { isWithin } from "./internal/path.ts";
 import type { Volume } from "./internal/volume.ts";
 import type { PathState, RemovalCheck, SourceComparison, VerifyReport } from "./types.ts";
@@ -51,8 +51,12 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   const refuse = (refusal: NonNullable<RemovalCheck["refusal"]>, verified: RemovalCheck["verified"] = null): RemovalCheck =>
     ({ refusal, verified });
   let seen: PathState | null = null;
-  // Unknown is an answer here: the verification says whether the archive is there.
-  try { seen = await steps.state(); } catch (error) { stepFailure(error, archive); }
+  try {
+    seen = await steps.state();
+    if (seen.kind !== "present") throw new ZipKitError("path.missing", "Archive identity could not be established", { subject: archive });
+  } catch (error) {
+    return refuse({ reason: "error", step: "verify", error: stepFailure(error, archive).toJSON() });
+  }
   try {
     if (await steps.inside()) return refuse({ reason: "inside" });
   } catch (error) {
@@ -61,6 +65,10 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   try {
     const verification = await steps.verify();
     if (!verification.ok) return refuse({ reason: "verify-failed", report: verification.report });
+    const after = await steps.state();
+    if (after.kind !== "present" || after.fingerprint !== seen.fingerprint) {
+      throw new ZipKitError("archive.changed", "Archive changed during verification", { subject: archive });
+    }
   } catch (error) {
     return refuse({ reason: "error", step: "verify", error: stepFailure(error, archive).toJSON() });
   }
@@ -68,6 +76,10 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   try {
     const comparison = await steps.compare();
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
+    const after = await steps.state();
+    if (after.kind !== "present" || after.fingerprint !== verified.fingerprint) {
+      throw new ZipKitError("archive.changed", "Archive changed during source comparison", { subject: archive });
+    }
   } catch (error) {
     return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive).toJSON() }, verified);
   }

@@ -14,6 +14,7 @@
  * file-system call goes through the run's bounded {@link Volume}.
  */
 
+import { boundedMap, workerCount } from "../internal/bounded-map.ts";
 import { createHash } from "node:crypto";
 import { fsFailure, isStall, throwIfAborted, withSubject, ZipKitError } from "../errors.ts";
 import type { Volume, VolumeFile } from "../internal/volume.ts";
@@ -252,8 +253,7 @@ export async function verifyArchive(request: VerifyCheck, deps: VerifyDeps): Pro
     // reading the handle the caller is about to release. Each task's calls are
     // bounded, and once one stalls the volume refuses the rest, so this wait is
     // bounded too. A stall is reported ahead of the refusals it caused.
-    const settled = await Promise.allSettled(
-      parsed.entries.map((entry) =>
+    const settled = await boundedMap(parsed.entries, workerCount(deps.limit), (entry) =>
         deps.limit(async (): Promise<VerifiedEntry> => {
           throwIfAborted(signal);
           const isManifestEntry = entry.archivePath === manifestEntryPath;
@@ -277,7 +277,6 @@ export async function verifyArchive(request: VerifyCheck, deps: VerifyDeps): Pro
           if (read.sha256 !== undefined) result.sha256 = read.sha256;
           return result;
         }),
-      ),
     );
     const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
     const failure = failures.find((f) => isStall(f)) ?? failures[0];

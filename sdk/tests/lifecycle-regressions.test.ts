@@ -113,21 +113,18 @@ it("stops queued scan admission on failure and joins issued logical reads", asyn
   expect(starts).toHaveLength(2);
 });
 
-it("joins issued directory listings before a failed walk returns", async () => {
+it("does not open sibling directories after a directory read fails", async () => {
   const input = path.join(root, "input"), a = path.join(input, "a"), b = path.join(input, "b");
   await mkdir(a, { recursive: true }); await mkdir(b);
-  const fail = gate(), held = gate(), started = gate();
   const original = new ZipKitError("io.failed", "listing failed", { subject: a });
-  const zip = withPort({ ...nodeFileSystem, readdir: async (file) => {
-    if (file === a) { await fail.promise; throw original; }
-    if (file === b) { started.release(); await held.promise; }
-    return nodeFileSystem.readdir(file);
+  const opened: string[] = [];
+  const zip = withPort({ ...nodeFileSystem, openDirectory: async (file) => {
+    opened.push(file);
+    if (file !== input) throw original;
+    return nodeFileSystem.openDirectory(file);
   } });
-  let terminal = false;
-  const outcome = zip.plan({ inputs: [input], output: path.join(root, "out.zip") }).catch((error: unknown) => error).finally(() => { terminal = true; });
-  try { await started.promise; fail.release(); await turn(); expect(terminal).toBe(false); }
-  finally { fail.release(); held.release(); await outcome; }
-  expect(await outcome).toBe(original);
+  await expect(zip.plan({ inputs: [input], output: path.join(root, "out.zip") })).rejects.toBe(original);
+  expect(opened).toHaveLength(2);
 });
 
 it("bounds pathKinds admission using the instance concurrency and preserves order", async () => {

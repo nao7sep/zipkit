@@ -110,15 +110,15 @@ describe("safe single-component fields", () => {
     },
   );
 
-  it.each(["a/b", "..", ".", "with/slash", "dir/zipkit.json"])(
+  it.each(["a/b", "a/../b", "..", ".", "with/slash", "dir/zipkit.json", "CON", "bad:name.json"])(
     "rejects an unsafe metadata.name %j",
     (name) => {
       expect(() => validatePolicy({ manifest: { name } } as never)).toThrow(invalidError);
     },
   );
 
-  it("accepts a safe metadata.name", () => {
-    expect(() => validatePolicy({ manifest: { name: "zipkit.json" } } as never)).not.toThrow();
+  it.each(["zipkit.json", "record.json", "記録.json"])("accepts a safe metadata.name %j", (name) => {
+    expect(() => validatePolicy({ manifest: { name } } as never)).not.toThrow();
   });
 });
 

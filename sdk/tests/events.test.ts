@@ -83,7 +83,7 @@ describe("the event stream", () => {
     const zip = new ZipKit();
     const { seen, onEvent } = collector();
     const check = await zip.checkRemoval({ spec: { inputs: [proj] }, archive: path.join(root, "absent.zip") }, { onEvent });
-    expect(check.refusal).toMatchObject({ reason: "error", step: "location", error: { code: "path.missing" } });
+    expect(check.refusal).toMatchObject({ reason: "error", step: "verify", error: { code: "path.missing" } });
     const junk = path.join(root, "junk.zip");
     await writeFile(junk, "not a zip");
     const failed = await zip.checkRemoval({ spec: { inputs: [proj] }, archive: junk }, { onEvent });

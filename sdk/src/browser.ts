@@ -13,3 +13,4 @@ export type { FindingRule, RuleId, RuleSpec, VerifyRuleId } from "./registry.ts"
 export { DEFAULT_POLICY, MANIFEST_DEFAULTS } from "./defaults.ts";
 export { DEFAULT_EXCLUSIONS } from "./filter/defaults.ts";
 export { RULE_REGISTRY } from "./registry.ts";
+export { isSafePathComponent, exclusionIssue } from "./input-checks.ts";

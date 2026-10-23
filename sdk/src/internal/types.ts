@@ -13,7 +13,8 @@ import type { ExcludedBy, NameFix, UnsupportedKind } from "../types.ts";
 
 /** Raw metadata for one filesystem object, produced by the scan layer. */
 export interface ScanEntry {
-  /** Absolute source path on disk. Internal only; never serialized. */
+  /** Absolute source path on disk. Serialized in plan write instructions,
+   *  but omitted from manifest provenance. */
   absolutePath: string;
   /** Index into the resolved input list this entry was produced from. */
   inputIndex: number;

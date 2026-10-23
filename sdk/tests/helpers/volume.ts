@@ -65,6 +65,13 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
         close: () => track(() => handle.close()),
       };
     },
+    openDirectory: async (path) => {
+      const handle = await gate("readdir", path, () => real.openDirectory(path));
+      return {
+        read: () => gate("readdir", path, () => handle.read()),
+        close: () => track(() => handle.close()),
+      };
+    },
     stat: (path) => gate("stat", path, () => real.stat(path)),
     lstat: (path) => gate("lstat", path, () => real.lstat(path)),
     realpath: (path) => gate("realpath", path, () => real.realpath(path)),

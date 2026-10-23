@@ -80,4 +80,38 @@ describe("applyCollision", () => {
     applyCollision(items, ["manifest.json"]);
     expect(items[0]!.findings).toEqual([]);
   });
+
+  it.each(["parent", "PARENT"])("flags a file and its implicit-directory descendant: %s", (parent) => {
+    const items = [workItem({ archivePath: parent }), workItem({ archivePath: "parent/child" })];
+    applyCollision(items);
+    for (const item of items) {
+      expect(item.findings).toEqual([expect.objectContaining({ rule: "collision.post-fix", severity: "error", path: item.archivePath })]);
+    }
+  });
+
+  it("flags both a reserved manifest name and an entry below that name", () => {
+    const items = [workItem({ archivePath: "zipkit.json" }), workItem({ archivePath: "zipkit.json/child" })];
+    applyCollision(items, ["zipkit.json"]);
+    for (const item of items) {
+      expect(item.findings).toEqual(expect.arrayContaining([expect.objectContaining({ rule: "collision.post-fix", severity: "error", path: item.archivePath })]));
+    }
+  });
+
+  it("flags a descendant of the reserved manifest when the manifest has no source entry", () => {
+    const item = workItem({ archivePath: "ZIPKIT.JSON/child" });
+    applyCollision([item], ["zipkit.json"]);
+    expect(item.findings).toEqual([expect.objectContaining({ rule: "collision.post-fix", severity: "error" })]);
+  });
+
+  it("allows files to share an implicit directory", () => {
+    const items = [workItem({ archivePath: "parent/a" }), workItem({ archivePath: "parent/b" })];
+    applyCollision(items);
+    expect(items.map((item) => item.findings)).toEqual([[], []]);
+  });
+
+  it("allows an explicit directory with a descendant", () => {
+    const items = [workItem({ archivePath: "parent", type: "dir" }), workItem({ archivePath: "parent/child" })];
+    applyCollision(items);
+    expect(items.map((item) => item.findings)).toEqual([[], []]);
+  });
 });

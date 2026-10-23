@@ -22,11 +22,12 @@
 
 import type { BigIntStats } from "node:fs";
 import path from "node:path";
+import { workerCount } from "../internal/bounded-map.ts";
 import { fsFailure, throwIfAborted, ZipKitError } from "../errors.ts";
 import type { FilterMatcher } from "../filter/match.ts";
-import { isWithin, toArchiveSeparators } from "../internal/path.ts";
+import { isWithin } from "../internal/path.ts";
 import { machineTimeZone } from "../internal/timeZone.ts";
-import type { Volume } from "../internal/volume.ts";
+import type { DirEntry, Volume } from "../internal/volume.ts";
 import type { PrunedDir, ScanEntry, ScanResult, SkipKind, SkippedEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
 import {
@@ -164,14 +165,9 @@ async function handleSymlink(
   link: BigIntStats,
 ): Promise<FollowedDirectory | void> {
   let target: string | undefined;
-  try {
-    target = await ctx.volume.readlink(abs);
-  } catch (err) {
-    rethrowClassified(err);
-    if (ctx.symlinks === "preserve") throw fsFailure(err, abs);
-    // Ignored/followed links do not consume the link text. Never substitute
-    // invented bytes for a preserved target.
-    ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.symlink-unreadable", path: abs });
+  if (ctx.symlinks === "preserve") {
+    try { target = await ctx.volume.readlink(abs); }
+    catch (error) { throw fsFailure(error, abs); }
   }
 
   if (ctx.symlinks !== "follow") {
@@ -213,6 +209,7 @@ async function handleSymlink(
     // silent: the first visit already archived that content.
     if (ctx.followedDirs.has(real)) return;
     ctx.followedDirs.add(real);
+    ctx.entries.push(makeEntry(real, inputIndex, paths, "dir", resolved));
     return { real, paths, inputIndex };
   } else if (resolved.isFile()) {
     ctx.entries.push(makeEntry(real, inputIndex, paths, "file", resolved));
@@ -240,6 +237,7 @@ async function processPath(
     return handleSymlink(ctx, abs, paths, inputIndex, st);
   } else if (st.isDirectory()) {
     ctx.entries.push(makeEntry(abs, inputIndex, paths, "dir", st));
+    return { real: abs, paths, inputIndex };
   } else if (st.isFile()) {
     ctx.entries.push(makeEntry(abs, inputIndex, paths, "file", st));
   } else {
@@ -248,107 +246,63 @@ async function processPath(
   }
 }
 
-/** How many directories the walk lists at once. */
-const WALK_BATCH = 16;
-
-/**
- * Walk a directory tree breadth-first, listing each directory through the
- * bounded volume and pruning excluded subtrees through the shared matcher
- * before descending into them. Returns every path under `absDir` (not
- * `absDir` itself). A symlink is listed, never descended into; following one
- * is `handleSymlink`'s decision. A subdirectory that cannot be listed is
- * recorded in `unlistedDirs` and its contents are missing, while a stall or a
- * cancel ends the scan. Only the input root itself failing to list is a scan
- * fault.
- */
-async function walkTree(
-  ctx: ScanContext,
-  absDir: string,
-  anchors: EntryPaths,
-): Promise<string[]> {
-  const found: string[] = [];
-  let level = [absDir];
-  while (level.length > 0) {
-    const next: string[] = [];
-    for (let i = 0; i < level.length; i += WALK_BATCH) {
+/** Stream one directory and admit only one batch of stat work. Descendants run
+ * after the batch releases its slots, so nested links cannot deadlock the shared
+ * pool. Open directory handles follow traversal depth rather than tree width. */
+async function crawlDirectory(ctx: ScanContext, absDir: string, anchors: EntryPaths, inputIndex: number, required = true): Promise<void> {
+  checkFailure(ctx);
+  throwIfAborted(ctx.signal);
+  const iterator = ctx.volume.directoryEntries(absDir);
+  const count = workerCount(ctx.limit);
+  let done = false;
+  let failed = false;
+  try {
+    while (!done) {
       checkFailure(ctx);
       throwIfAborted(ctx.signal);
-      const batch = level.slice(i, i + WALK_BATCH);
-      const settled = await Promise.allSettled(
-        batch.map(async (dir) => {
-          try {
-            return { dir, entries: await ctx.volume.readdir(dir) };
-          } catch (err) {
-            if (err instanceof ZipKitError || dir === absDir) {
-              const error = fsFailure(err, dir);
-              ctx.failure ??= { error };
-              throw error;
-            }
-            ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toArchiveSeparators(path.relative(absDir, dir))));
-            return { dir, entries: [] };
-          }
-        }),
-      );
-      checkFailure(ctx);
-      for (const listing of settled) {
-        if (listing.status === "rejected") throw listing.reason;
-        const { dir, entries } = listing.value;
-        for (const entry of entries) {
-          const abs = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            const archive = joinArchivePath(anchors.archive, toArchiveSeparators(path.relative(absDir, abs)));
-            const rule = archive === "" ? null : ctx.matcher.match(archive, true);
-            if (rule) {
-              const pruned: PrunedDir = {
-                archivePath: archive,
-                diskPath: path.join(anchors.disk, path.relative(absDir, abs)),
-                reason: rule.describe,
-                excludedBy: rule.excludedBy,
-              };
-              ctx.prunedDirs.push(pruned);
-              continue;
-            }
-            next.push(abs);
-          }
-          found.push(abs);
+      const batch: DirEntry[] = [];
+      while (batch.length < count && !done) {
+        try {
+          const next = await iterator.next();
+          if (next.done) done = true;
+          else batch.push(next.value);
+        } catch (error) {
+          throwIfAborted(ctx.signal);
+          if (required || error instanceof ZipKitError) throw fsFailure(error, absDir);
+          ctx.unlistedDirs.push(anchors.archive);
+          done = true;
+        }
+      }
+      if (batch.length === 0) break;
+      const results = await Promise.allSettled(batch.map((entry) => ctx.limit(async () => {
+        const paths = {
+          archive: joinArchivePath(anchors.archive, entry.name),
+          source: joinArchivePath(anchors.source, entry.name),
+          disk: path.join(anchors.disk, entry.name),
+        };
+        const rule = entry.isDirectory() ? ctx.matcher.match(paths.archive, true) : null;
+        if (rule) {
+          ctx.prunedDirs.push({ archivePath: paths.archive, diskPath: paths.disk, reason: rule.describe, excludedBy: rule.excludedBy });
+          return;
+        }
+        return processPath(ctx, path.join(absDir, entry.name), paths, inputIndex);
+      })));
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") { ctx.failure = { error: failure.reason }; throw failure.reason; }
+      for (const result of results) {
+        if (result.status === "fulfilled" && result.value) {
+          const next = result.value;
+          await crawlDirectory(ctx, next.real, next.paths, next.inputIndex, false);
         }
       }
     }
-    level = next;
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    try { await iterator.return(undefined); }
+    catch (error) { if (!failed) throw error; }
   }
-  return found;
-}
-
-async function crawlDirectory(
-  ctx: ScanContext,
-  absDir: string,
-  anchors: EntryPaths,
-  inputIndex: number,
-): Promise<void> {
-  if (ctx.failure) return;
-  const results = await walkTree(ctx, absDir, anchors);
-
-  const tasks: Promise<void>[] = [];
-  for (const abs of results) {
-    throwIfAborted(ctx.signal);
-    const fwdRel = toArchiveSeparators(path.relative(absDir, abs));
-    const archive = joinArchivePath(anchors.archive, fwdRel);
-    if (archive === "") continue;
-    const source = joinArchivePath(anchors.source, fwdRel);
-    const disk = path.join(anchors.disk, path.relative(absDir, abs));
-    // Descendants acquire this same pool. Release the entry's slot before
-    // awaiting them, including when every slot discovers a followed directory.
-    tasks.push(ctx.limit(async () => {
-      if (ctx.failure) return;
-      try { return await processPath(ctx, abs, { archive, source, disk }, inputIndex); }
-      catch (error) { ctx.failure ??= { error }; throw error; }
-    })
-      .then(async (followed) => {
-        if (followed && !ctx.failure) await crawlDirectory(ctx, followed.real, followed.paths, followed.inputIndex);
-      }).catch((error: unknown) => { ctx.failure ??= { error }; }));
-  }
-  await Promise.allSettled(tasks);
-  checkFailure(ctx);
 }
 
 export async function scan(
@@ -477,6 +431,14 @@ export async function scan(
       disk: inputs[i]?.path ?? real,
     };
     if (isDir[i]) {
+      if (anchorPaths.archive !== "") {
+        const rule = ctx.matcher.match(anchorPaths.archive, true);
+        if (rule) {
+          ctx.prunedDirs.push({ archivePath: anchorPaths.archive, diskPath: anchorPaths.disk, reason: rule.describe, excludedBy: rule.excludedBy });
+          continue;
+        }
+        ctx.entries.push(makeEntry(real, i, anchorPaths, "dir", inputStats[i]!));
+      }
       ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.dir", path: real });
       await crawlDirectory(ctx, real, anchorPaths, i);
     } else {
@@ -488,7 +450,8 @@ export async function scan(
       }
       // A file named directly as input that is itself the output archive.
       if (ctx.artifactIds.has(fileId(fileStats))) continue;
-      ctx.entries.push(makeEntry(real, i, anchorPaths, "file", fileStats));
+      if (fileStats.isFile()) ctx.entries.push(makeEntry(real, i, anchorPaths, "file", fileStats));
+      else skip(ctx, anchorPaths, specialKind(fileStats));
     }
   }
 

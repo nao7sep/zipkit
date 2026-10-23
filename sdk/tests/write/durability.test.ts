@@ -66,3 +66,42 @@ it.each(lanes)("%s publication ignores cancellation during its flush and retains
     expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);
   } finally { flush.release(); vi.useRealTimers(); await outcome; await settlement; await rm(root, { recursive: true, force: true }); }
 });
+
+it("synchronizes the links of newly created output ancestors after publication", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "zipkit-durable-parents-"));
+  const input = path.join(root, "input.txt");
+  const output = path.join(root, "new", "nested", "archive.zip");
+  const synced: string[] = [];
+  const port: FileSystemPort = { ...nodeFileSystem, syncDirectory: async (directory) => { synced.push(directory); } };
+  class TestZipKit extends ZipKit { override volume(signal?: AbortSignal) { return new Volume(port, 30_000, signal); } }
+  try {
+    await writeFile(input, "original");
+    await new TestZipKit().create({ inputs: [input], output });
+    expect(synced).toEqual([path.dirname(output), path.join(root, "new"), root]);
+    synced.length = 0;
+    await new TestZipKit().create({ inputs: [input], output, overwrite: true });
+    expect(synced).toEqual([path.dirname(output)]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it("retains the archive and reports uncertainty when an ancestor flush fails", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "zipkit-durable-ancestor-"));
+  const input = path.join(root, "input.txt");
+  const output = path.join(root, "new", "nested", "archive.zip");
+  const failure = Object.assign(new Error("ancestor flush failed"), { code: "EIO" });
+  const synced: string[] = [];
+  const port: FileSystemPort = { ...nodeFileSystem, syncDirectory: async (directory) => {
+    synced.push(directory);
+    if (directory === path.join(root, "new")) throw failure;
+  } };
+  class TestZipKit extends ZipKit { override volume(signal?: AbortSignal) { return new Volume(port, 30_000, signal); } }
+  try {
+    await writeFile(input, "original");
+    await expect(new TestZipKit().create({ inputs: [input], output })).rejects.toMatchObject({
+      code: "write.durability", effect: "unknown", subject: output, cause: failure,
+    });
+    expect(synced).toEqual([path.dirname(output), path.join(root, "new")]);
+    expect(await readFile(input, "utf8")).toBe("original");
+    expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

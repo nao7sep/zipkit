@@ -18,40 +18,37 @@ function chunksOf(data: Buffer): Buffer[] {
   return out;
 }
 
-/** Whether `promise` settles within `ms` of real time. */
-async function settlesWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const elapsed = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), ms); });
-  try {
-    return await Promise.race([promise.then(() => true, () => true), elapsed]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 describe("EntryCompressor", () => {
   it("stops taking input while the sink holds its first chunk, instead of queueing the output", async () => {
     // Random bytes do not compress, so every byte fed becomes about a byte of output.
     const input = randomBytes(16 * 1024 * 1024);
     let release!: () => void;
     const held = new Promise<void>((resolve) => { release = resolve; });
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
     let sinkCalls = 0;
     const compressor = new EntryCompressor("deflate", async () => {
       sinkCalls++;
-      await held;
+      if (sinkCalls === 1) { enter(); await held; }
     }, CHUNK, 1);
 
     let fed = 0;
-    for (const chunk of chunksOf(input)) {
-      if (!(await settlesWithin(compressor.update(chunk), 200))) break;
-      fed += chunk.length;
+    const producer = (async () => {
+      for (const chunk of chunksOf(input)) {
+        await compressor.update(chunk);
+        fed += chunk.length;
+      }
+    })();
+    try {
+      await entered;
+      expect(sinkCalls).toBe(1);
+      // A few stream buffers' worth, not the 16 MiB the source holds.
+      expect(fed).toBeLessThan(2 * 1024 * 1024);
+    } finally {
+      release();
+      await producer;
+      await compressor.finish();
     }
-
-    expect(sinkCalls).toBe(1);
-    // A few stream buffers' worth, not the 16 MiB the source holds.
-    expect(fed).toBeLessThan(2 * 1024 * 1024);
-    release();
-    await compressor.dispose();
   });
 
   it("delivers the whole stream in order to a sink with random delays", async () => {

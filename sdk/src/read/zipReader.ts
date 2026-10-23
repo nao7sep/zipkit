@@ -70,6 +70,20 @@ function safeAdd(left: number, right: number, field: string): number {
   return sum;
 }
 
+// ZIP's legacy name encoding maps the upper byte range to IBM code page 437.
+const CP437_HIGH = "\u00c7\u00fc\u00e9\u00e2\u00e4\u00e0\u00e5\u00e7\u00ea\u00eb\u00e8\u00ef\u00ee\u00ec\u00c4\u00c5\u00c9\u00e6\u00c6\u00f4\u00f6\u00f2\u00fb\u00f9\u00ff\u00d6\u00dc\u00a2\u00a3\u00a5\u20a7\u0192\u00e1\u00ed\u00f3\u00fa\u00f1\u00d1\u00aa\u00ba\u00bf\u2310\u00ac\u00bd\u00bc\u00a1\u00ab\u00bb\u2591\u2592\u2593\u2502\u2524\u2561\u2562\u2556\u2555\u2563\u2551\u2557\u255d\u255c\u255b\u2510\u2514\u2534\u252c\u251c\u2500\u253c\u255e\u255f\u255a\u2554\u2569\u2566\u2560\u2550\u256c\u2567\u2568\u2564\u2565\u2559\u2558\u2552\u2553\u256b\u256a\u2518\u250c\u2588\u2584\u258c\u2590\u2580\u03b1\u00df\u0393\u03c0\u03a3\u03c3\u00b5\u03c4\u03a6\u0398\u03a9\u03b4\u221e\u03c6\u03b5\u2229\u2261\u00b1\u2265\u2264\u2320\u2321\u00f7\u2248\u00b0\u2219\u00b7\u221a\u207f\u00b2\u25a0\u00a0";
+function decodeName(bytes: Buffer, flags: number, extra: Buffer): string {
+  const unicode = findExtra(extra, 0x7075);
+  let utf8: Buffer | undefined;
+  if (flags & 0x0800) utf8 = bytes;
+  else if (unicode && unicode.length >= 5 && unicode[0] === 1 && unicode.readUInt32LE(1) === (zlib.crc32(bytes) >>> 0)) utf8 = unicode.subarray(5);
+  if (utf8) {
+    try { return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(utf8); }
+    catch (cause) { throw new ZipKitError("archive.malformed", "Invalid UTF-8 filename", { cause }); }
+  }
+  return Array.from(bytes, (byte) => byte < 128 ? String.fromCharCode(byte) : CP437_HIGH[byte - 128]).join("");
+}
+
 export interface ReadEntry {
   /** Final archive path: forward slashes, relative, no trailing slash. */
   archivePath: string;
@@ -78,6 +92,8 @@ export interface ReadEntry {
   crc32: number;
   compSize: number;
   uncompSize: number;
+  /** ZIP64 sizes, distinct from a ZIP64 offset alone. */
+  zip64Sizes?: boolean;
   localOffset: number;
   gpFlag: number;
   externalAttr: number;
@@ -214,10 +230,11 @@ async function parseCentral(file: VolumeFile, cdOffset: number, cdSize: number, 
     // Names and extras are at most two u16 lengths. Skip the unused comment,
     // and retain only this record's metadata rather than the whole directory.
     const metadata = Buffer.from(await bytes(p + 46, nameLen + extraLen));
-    const rawName = metadata.toString("utf8", 0, nameLen);
     const extra = metadata.subarray(nameLen);
+    const rawName = decodeName(metadata.subarray(0, nameLen), gpFlag, extra);
 
-    if (compSize === U32 || uncompSize === U32 || localOffset === U32) {
+    const zip64Sizes = compSize === U32 || uncompSize === U32;
+    if (zip64Sizes || localOffset === U32) {
       const z = findExtra(extra, 0x0001);
       const required =
         (uncompSize === U32 ? 8 : 0) +
@@ -252,6 +269,7 @@ async function parseCentral(file: VolumeFile, cdOffset: number, cdSize: number, 
       crc32,
       compSize,
       uncompSize,
+      zip64Sizes,
       localOffset,
       gpFlag,
       externalAttr,
@@ -345,7 +363,20 @@ export async function localHeaderMismatch(file: VolumeFile, entry: ReadEntry): P
   if (!rest.subarray(0, nameLen).equals(entry.nameBytes)) return "name differs";
   if ((flags & GP_UTF8) !== (entry.gpFlag & GP_UTF8)) return "UTF-8 flag differs";
   if (header.readUInt16LE(8) !== entry.method) return "compression method differs";
-  if (flags & GP_DATA_DESCRIPTOR) return null;
+  if ((flags & GP_DATA_DESCRIPTOR) !== (entry.gpFlag & GP_DATA_DESCRIPTOR)) return "data descriptor flag differs";
+  if (flags & GP_DATA_DESCRIPTOR) {
+    const wide = findExtra(rest.subarray(nameLen), 0x0001) !== null || entry.zip64Sizes === true;
+    const offset = safeAdd(entry.localOffset + 30 + nameLen + extraLen, entry.compSize, "data descriptor offset");
+    const length = wide ? 20 : 12;
+    let bytes = await readExact(file, offset, length);
+    const matches = (data: Buffer): boolean => data.readUInt32LE(0) === (entry.crc32 >>> 0) &&
+      (wide ? data.readBigUInt64LE(4) === BigInt(entry.compSize) && data.readBigUInt64LE(12) === BigInt(entry.uncompSize)
+        : data.readUInt32LE(4) === entry.compSize && data.readUInt32LE(8) === entry.uncompSize);
+    // A CRC can equal the optional signature; try the unsigned form first.
+    if (matches(bytes)) return null;
+    if (bytes.readUInt32LE(0) === 0x08074b50) bytes = await readExact(file, offset + 4, length);
+    return matches(bytes) ? null : "data descriptor differs";
+  }
   if ((header.readUInt32LE(14) >>> 0) !== (entry.crc32 >>> 0)) return "CRC-32 differs";
   let compSize = header.readUInt32LE(18);
   let uncompSize = header.readUInt32LE(22);
@@ -427,18 +458,27 @@ export async function readEntryData(
     // throw (an abort, a size overrun) — so a large entry stops at the failing
     // chunk rather than draining. The handle is shared across concurrent
     // entries and is never closed here.
+    const externalErrors = new Set<unknown>();
+    async function* input(): AsyncGenerator<Buffer> {
+      try { yield* source; }
+      catch (error) { externalErrors.add(error); throw error; }
+    }
     try {
       await pipeline(
-        Readable.from(source),
-        zlib.createInflateRaw({ chunkSize }),
+        Readable.from(input()),
+        zlib.createInflateRaw({ chunkSize: Math.max(64, chunkSize) }), // zlib's minimum is independent of the read buffer.
         async (inflated: AsyncIterable<Buffer>) => {
-          for await (const chunk of inflated) await consume(chunk);
+          for await (const chunk of inflated) {
+            try { await consume(chunk); }
+            catch (error) { externalErrors.add(error); throw error; }
+          }
         },
       );
     } catch (err) {
-      // An already-classified failure (abort, stall, the sink's own read error)
-      // propagates unwrapped; a genuine inflate/read failure is a corrupt stream.
-      if (err instanceof ZipKitError) throw err;
+      // Only zlib's own data errors describe corrupt content. Disk and sink
+      // failures retain their original identity for the operation boundary.
+      if (externalErrors.has(err) || err instanceof ZipKitError ||
+          !["Z_DATA_ERROR", "Z_BUF_ERROR"].includes((err as NodeJS.ErrnoException)?.code ?? "")) throw err;
       throw new ZipKitError("archive.corrupt-data", `cannot inflate ${entry.archivePath}`, {
         cause: err,
       });

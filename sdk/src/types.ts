@@ -381,7 +381,7 @@ export interface Finding {
 }
 
 export interface PlannedEntry {
-  archivePath: string; // identity (final, NFC, forward-slash, relative)
+  archivePath: string; // identity (final, forward-slash, relative; NFC when the nfc policy is "fix")
   originalPath: string; // identity (as found on disk, pre-fix)
   /** Where the item is on disk: the input as given joined with the item's
    *  path inside it, through any followed link, so it names the place the
@@ -787,7 +787,7 @@ export type LogEventBody =
     }
   | { event: "entry.excluded"; path: string; reason?: string }
   | { event: "entry.renamed"; path: string; from: string }
-  | { event: "entry.flagged"; rule: FindingRule; path: string; severity: Severity }
+  | { event: "entry.flagged"; rule: FindingRule; path: string; severity: Severity; reason?: string }
   | { event: "write.start"; entries: number }
   | { event: "entry.written"; path: string }
   | { event: "write.done"; bytes: number; zip64: boolean }
