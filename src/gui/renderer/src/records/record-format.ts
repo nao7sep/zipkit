@@ -49,9 +49,10 @@ export function recordDetails(record: RecordDetail): string | null {
     return text.trim() === "" ? null : text;
   }
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const details = record.kind === "job-event" ? { ...value, action: record.action, run: record.run } : value;
     const shown = shownValues(record);
     value = Object.fromEntries(
-      Object.entries(value).filter(([key, v]) => !(Object.hasOwn(shown, key) && shown[key] !== null && shown[key] === v)),
+      Object.entries(details).filter(([key, v]) => !(Object.hasOwn(shown, key) && shown[key] !== null && shown[key] === v)),
     );
   }
   return isEmpty(value) ? null : JSON.stringify(value, null, 2);

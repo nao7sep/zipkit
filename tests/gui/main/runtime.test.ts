@@ -12,7 +12,6 @@ import {
   clearMainWindow,
   ensureMainWindow,
   getMainWindow,
-  setMainWindow,
   startProgressRun,
   EVENT_BATCH_MS,
   toGuiError,
@@ -27,9 +26,12 @@ function fakeWindow() {
   };
 }
 
-describe("main-window ownership", () => {
-  beforeEach(() => setMainWindow(null));
+afterEach(() => {
+  const current = getMainWindow();
+  if (current) clearMainWindow(current);
+});
 
+describe("main-window ownership", () => {
   it("creates at most one live owner", () => {
     const first = fakeWindow();
     const second = fakeWindow();
@@ -45,8 +47,9 @@ describe("main-window ownership", () => {
   it("a stale closed callback cannot clear a replacement owner", () => {
     const first = fakeWindow();
     const replacement = fakeWindow();
-    setMainWindow(first as never);
-    setMainWindow(replacement as never);
+    ensureMainWindow(() => first as never);
+    first.destroyed = true;
+    ensureMainWindow(() => replacement as never);
 
     clearMainWindow(first as never);
 
@@ -60,7 +63,6 @@ describe("SDK events", () => {
   // Each test's batch is sent before the next begins.
   beforeEach(() => {
     vi.useFakeTimers();
-    setMainWindow(null);
     hoisted.jobEvent.mockClear();
   });
   afterEach(() => {
@@ -91,7 +93,7 @@ describe("SDK events", () => {
   it("records each event at once and sends the window one batch of them", () => {
     {
       const win = fakeWindow();
-      setMainWindow(win as never);
+      ensureMainWindow(() => win as never);
       const sink = startProgressRun("job-1", "verify");
       sink(event);
       sink(event);

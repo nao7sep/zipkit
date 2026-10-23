@@ -8,7 +8,7 @@
  *    that shape and explicitly NOT the `yyyymmdd-hhmmss-fff-utc` filename stamp.
  *  - one row per path per session (one launch): the session's first save inserts it, later saves replace
  *    its content, a save equal to the path's latest row writes nothing, and rows of earlier sessions are
- *    never changed; a store from before sessions gains the column and keeps its rows.
+ *    never changed; an incompatible store reports an open failure and keeps its schema and rows.
  *  - best-effort: an insert failure (raised by a real SQLite trigger inside the backups thread) never
  *    rejects out of record, logs exactly one warn, leaves prior rows untouched, and is rolled back so
  *    the next record lands.
@@ -188,7 +188,7 @@ describe("one row per path per session", () => {
     expect(rows.map((row) => [row.path, text(row)])).toEqual([[p1, "changed"], [p2, "shared"]]);
   });
 
-  it("gives a store from before sessions the session column and keeps its rows as earlier history", async () => {
+  it("reports an incompatible store without converting its schema or changing its rows", async () => {
     const db = new DatabaseSync(path.join(root, "backups.sqlite3"));
     db.exec(`
       CREATE TABLE backups (id INTEGER PRIMARY KEY, path TEXT NOT NULL, content BLOB NOT NULL,
@@ -200,19 +200,23 @@ describe("one row per path per session", () => {
     for (const old of ["old 1", "old 2"]) {
       insert.run(file, Buffer.from(old), createHash("sha256").update(old).digest("hex"), old.length, "2026-10-01T00:00:00.000Z");
     }
+    const schema = db.prepare("SELECT type, name, sql FROM sqlite_schema ORDER BY name").all();
+    const rows = db.prepare("SELECT * FROM backups ORDER BY id").all();
     db.close();
-    const { record } = await import("../../../src/gui/main/backupStore.js");
+    const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
 
-    await record(file, Buffer.from("new", "utf8"));
-    await record(file, Buffer.from("newer", "utf8"));
+    await expect(record(file, Buffer.from("new", "utf8"))).resolves.toBeUndefined();
+    await expect(record(file, Buffer.from("newer", "utf8"))).resolves.toBeUndefined();
+    await closeBackupStore();
 
-    const rows = readRows(root);
-    expect(rows.map((row) => [row.session_id, text(row)])).toEqual([
-      [null, "old 1"],
-      [null, "old 2"],
-      ["2026-10-09T01:00:00.000Z", "newer"],
-    ]);
-    expect(logCalls.warn).toHaveLength(0);
+    const unchanged = new DatabaseSync(path.join(root, "backups.sqlite3"));
+    try {
+      expect(unchanged.prepare("SELECT type, name, sql FROM sqlite_schema ORDER BY name").all()).toEqual(schema);
+      expect(unchanged.prepare("SELECT * FROM backups ORDER BY id").all()).toEqual(rows);
+    } finally { unchanged.close(); }
+    expect(logCalls.warn).toHaveLength(1);
+    expect(logCalls.warn[0]!.message).toMatch(/could not open/i);
+    expect(logCalls.error).toHaveLength(0);
   });
 });
 

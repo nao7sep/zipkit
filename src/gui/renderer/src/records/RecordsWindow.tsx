@@ -7,7 +7,8 @@
  * new records are stored.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode } from "react";
 import {
   BODY_PADDING,
@@ -25,10 +26,10 @@ import {
   type RecordDetail,
   type RecordKind,
   type RecordLevelFilter,
-  type RecordSources,
   type RecordsQuery,
   type RecordSummary,
 } from "../../../shared/records";
+import type { GuiSettings } from "../../../shared/spec";
 import { Splitter } from "../components/Splitter";
 import { isComposing } from "../composition";
 import { reportableError } from "../externalDropBoundary";
@@ -39,11 +40,11 @@ import {
   LEVEL_FILTER_LABELS,
   LEVEL_LABELS,
   LEVEL_MARKS,
-  cursorAfter,
-  mergeNewestPage,
   recordDetails,
   recordKey,
 } from "./record-format";
+
+import { useRecordsPages } from "./use-records-pages";
 
 function report(context: string, error: unknown): void {
   window.zipkit.reportError(context, reportableError(error));
@@ -65,15 +66,24 @@ export function RecordsApp(): ReactElement | null {
         if (!cancelled) setListWidth(RECORDS_LIST_WIDTH.default);
       },
     );
+    let settingsUpdated = false;
+    const applyFont = (settings: GuiSettings) => {
+      if (cancelled) return;
+      const family = settings.uiFontFamily.trim();
+      if (family) document.documentElement.style.setProperty("--font-ui", family);
+      else document.documentElement.style.removeProperty("--font-ui");
+    };
+    const unsubscribe = window.zipkit.onSettingsChanged((settings) => {
+      settingsUpdated = true;
+      applyFont(settings);
+    });
     window.zipkit.getSettings().then(
-      (settings) => {
-        const family = settings.uiFontFamily.trim();
-        if (!cancelled && family) document.documentElement.style.setProperty("--font-ui", family);
-      },
+      (settings) => { if (!settingsUpdated) applyFont(settings); },
       (error: unknown) => report("read the UI font for the Records window", error),
     );
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
@@ -87,11 +97,6 @@ const NO_FILTERS: Filters = { session: null, kind: null, level: null, search: ""
 const SEARCH_DELAY_MS = 300;
 // New records are read at most this often while they keep arriving.
 const LIVE_INTERVAL_MS = 1000;
-
-type ListState =
-  | { status: "loading" }
-  | { status: "failed" }
-  | { status: "ready"; records: RecordSummary[]; more: boolean; loadingMore: boolean; moreFailed: boolean };
 
 type DetailState =
   | { status: "none" }
@@ -112,10 +117,10 @@ function atTop(scroll: HTMLElement): boolean {
 
 export function RecordsWindow({ initialListWidth }: { initialListWidth: number }): ReactElement {
   const t = useI18n();
-  const [sources, setSources] = useState<RecordSources | null>(null);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [searchText, setSearchText] = useState("");
-  const [list, setList] = useState<ListState>({ status: "loading" });
+  const list = useRecordsPages(filters);
+  const { cache, sources, loadMore, readNewest } = list;
   const [selected, setSelected] = useState<Selection | null>(null);
   const [detail, setDetail] = useState<DetailState>({ status: "none" });
   // The list width the user dragged to (the persisted intent), the width while
@@ -127,16 +132,10 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
   const dragBase = useRef(initialListWidth);
   const [shellWidth, setShellWidth] = useState(0);
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const listGeneration = useRef(0);
-  // The busy claim for the next page (PLAYBOOK, Own the work in flight).
-  const fetchingMore = useRef(false);
-  // The filters the current list was read for, for the live reads below.
-  const filtersRef = useRef(filters);
-  // New records arrived while the list was scrolled away from the top.
   const newestPending = useRef(false);
-  // A failed read is itself logged as a record, whose signal would start the
-  // next read; live reads stop after a failure and resume after a read succeeds.
-  const liveSuspended = useRef(false);
+  const pendingFocus = useRef<number | null>(null);
+  const transferringFocus = useRef(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -177,78 +176,13 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
     return () => clearTimeout(timer);
   }, [searchText]);
 
-  // The launches only grow by a new launch, never while this one runs, so they
-  // are read once.
-  useEffect(() => {
-    let cancelled = false;
-    window.zipkit.readRecordSources().then(
-      (next) => {
-        if (!cancelled) setSources(next);
-      },
-      (error: unknown) => {
-        liveSuspended.current = true;
-        report("read the record sources", error);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // A page applies only while the filters it was read for are still the
-  // newest ones asked for.
-  useEffect(() => {
-    filtersRef.current = filters;
-    const generation = ++listGeneration.current;
-    fetchingMore.current = false;
-    newestPending.current = false;
-    setList({ status: "loading" });
-    window.zipkit.readRecordsPage({ ...filters, after: null }).then(
-      (page) => {
-        if (generation !== listGeneration.current) return;
-        liveSuspended.current = false;
-        setList({ status: "ready", records: page.records, more: page.more, loadingMore: false, moreFailed: false });
-      },
-      (error: unknown) => {
-        if (generation !== listGeneration.current) return;
-        liveSuspended.current = true;
-        report("read the records", error);
-        setList({ status: "failed" });
-      },
-    );
-  }, [filters]);
-
-  // The newest page read again for new records. It joins the rows already
-  // shown when the ranges overlap; a burst can reset the range to keep its
-  // continuation contiguous. Selection remains independent. It reads refs, so one
-  // copy serves the live subscription below.
-  const readNewest = useCallback((): void => {
-    const generation = listGeneration.current;
-    window.zipkit.readRecordsPage({ ...filtersRef.current, after: null }).then(
-      (page) => {
-        if (generation !== listGeneration.current) return;
-        liveSuspended.current = false;
-        setList((current) =>
-          current.status === "ready"
-            ? { ...current, ...mergeNewestPage(current.records, current.more, page) }
-            : { status: "ready", records: page.records, more: page.more, loadingMore: false, moreFailed: false },
-        );
-      },
-      (error: unknown) => {
-        if (generation !== listGeneration.current) return;
-        liveSuspended.current = true;
-        report("read the newest records", error);
-      },
-    );
-  }, []);
-
   // A stored record reaches the list at once while it is scrolled to the top;
   // otherwise it waits until the list is back there, so the list never moves
   // under the reader.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const unsubscribe = window.zipkit.onRecordsChanged(() => {
-      if (timer !== null || liveSuspended.current) return;
+      if (timer !== null || list.stale) return;
       timer = setTimeout(() => {
         timer = null;
         const scroll = scrollRef.current;
@@ -260,7 +194,7 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
       unsubscribe();
       if (timer !== null) clearTimeout(timer);
     };
-  }, [readNewest]);
+  }, [readNewest, list.stale]);
 
   const selectedKey = selected === null ? null : recordKey(selected);
 
@@ -287,70 +221,73 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
     // The selection is compared by its key, not by the object holding it.
   }, [selectedKey]);
 
-  // Loading more: composite-control-conventions, Integration Points. A failed
-  // page is read again when the end is reached again.
-  const loadMore = (): void => {
-    if (list.status !== "ready" || !list.more || fetchingMore.current) return;
-    fetchingMore.current = true;
-    const generation = listGeneration.current;
-    const after = cursorAfter(list.records);
-    const sameContinuation = (records: RecordSummary[]): boolean => {
-      const current = cursorAfter(records);
-      return current?.time === after?.time && current?.kind === after?.kind && current?.id === after?.id;
-    };
-    setList((current) => (current.status === "ready" ? { ...current, loadingMore: true, moreFailed: false } : current));
-    window.zipkit.readRecordsPage({ ...filters, after }).then(
-      (page) => {
-        if (generation !== listGeneration.current) return;
-        fetchingMore.current = false;
-        liveSuspended.current = false;
-        setList((current) =>
-          current.status === "ready"
-            ? sameContinuation(current.records)
-              ? { ...current, records: [...current.records, ...page.records], more: page.more, loadingMore: false }
-              : { ...current, loadingMore: false }
-            : current,
-        );
-      },
-      (error: unknown) => {
-        if (generation !== listGeneration.current) return;
-        fetchingMore.current = false;
-        liveSuspended.current = true;
-        report("read more records", error);
-        setList((current) => (current.status === "ready"
-          ? { ...current, loadingMore: false, moreFailed: sameContinuation(current.records) } : current));
-      },
-    );
-  };
+  const virtualizer = useVirtualizer({
+    count: cache.length,
+    // Move focus out of an evicted row before React commits the new range.
+    useFlushSync: false,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 72,
+    overscan: 8,
+    initialRect: { width: 0, height: window.innerHeight },
+    onChange: (instance) => {
+      const focused = document.activeElement;
+      if (!(focused instanceof HTMLElement) || !focused.dataset.recordKey || !listRef.current?.contains(focused)) return;
+      const index = Number(focused.dataset.index);
+      if (instance.getVirtualItems().some((row) => row.index === index)) return;
+      // The scroll notification precedes React removing the offscreen option.
+      // Keep its navigation origin while transferring focus to the composite.
+      transferringFocus.current = true;
+      listRef.current.focus();
+      transferringFocus.current = false;
+    },
+  });
+  const virtualRows = virtualizer.getVirtualItems();
+  const firstVisible = virtualRows[0]?.index ?? 0;
+  const lastVisible = virtualRows.at(-1)?.index ?? 0;
+  useEffect(() => {
+    list.showRange(firstVisible, lastVisible);
+  }, [firstVisible, lastVisible, list.revision, list.showRange]);
 
-  // A page that leaves the list short of the end reads the next one; a failed
-  // page waits for the reader instead.
+  useEffect(() => {
+    const index = pendingFocus.current;
+    if (index === null || !cache.row(index)) return;
+    const option = listRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    if (!option) return;
+    pendingFocus.current = null;
+    if (listRef.current?.contains(document.activeElement)) option.focus();
+  }, [list.revision, virtualRows, cache]);
+
   useEffect(() => {
     const scroll = scrollRef.current;
-    if (list.status !== "ready" || list.loadingMore || list.moreFailed || scroll === null) return;
-    if (nearEnd(scroll)) loadMore();
-    // Only a new list state can change what is loaded.
-  }, [list]);
+    if (list.status !== "ready" || list.loadingMore || list.stale || !scroll) return;
+    if (nearEnd(scroll)) void loadMore();
+  }, [list.revision, list.status, list.loadingMore, list.stale, loadMore]);
 
   const onListScroll = (): void => {
     const scroll = scrollRef.current;
     if (scroll === null) return;
     if (newestPending.current && atTop(scroll)) {
       newestPending.current = false;
-      readNewest();
+      void readNewest();
     }
-    if (nearEnd(scroll)) loadMore();
+    if (nearEnd(scroll)) void loadMore();
   };
 
-  const records = list.status === "ready" ? list.records : [];
-  const keys = records.map(recordKey);
-  const tabStopKey = selectedKey !== null && keys.includes(selectedKey) ? selectedKey : (keys[0] ?? null);
+  useEffect(() => {
+    if (selectedKey === null || pendingFocus.current !== null) return;
+    for (const [segment, rows] of cache.pages) {
+      const index = rows.findIndex((row) => recordKey(row) === selectedKey);
+      if (index >= 0) { setActiveIndex(cache.segments[segment]!.start + index); return; }
+    }
+  }, [cache, list.revision, selectedKey]);
 
-  const select = (record: RecordSummary): void => {
+  const activeRecord = cache.row(activeIndex);
+  const tabStopKey = activeRecord ? recordKey(activeRecord) : null;
+  const select = (record: RecordSummary, index: number): void => {
+    setActiveIndex(index);
     if (recordKey(record) !== selectedKey) setSelected({ kind: record.kind, id: record.id });
   };
 
-  // How many rows fit the list's viewport, for PageUp and PageDown.
   const pageSize = (): number => {
     const scroll = scrollRef.current;
     const row = listRef.current?.querySelector<HTMLElement>("[data-record-key]");
@@ -358,21 +295,21 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
     return Math.max(1, Math.floor(scroll.clientHeight / row.offsetHeight));
   };
 
-  // The selection follows focus; the arrow keys stop at the ends.
   const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (isComposing(event)) return;
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    const focused = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.recordKey : undefined;
-    const current = keys.indexOf(focused ?? selectedKey ?? "");
-    const target = navIndex(current, keys.length, event.key, pageSize());
+    if (isComposing(event) || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    const target = navIndex(activeIndex, cache.length, event.key, pageSize());
     if (target === null) return;
     event.preventDefault();
-    const option = listRef.current?.querySelector<HTMLElement>(`[data-record-key="${CSS.escape(keys[target]!)}"]`);
-    option?.focus();
-    option?.scrollIntoView({ block: "nearest" });
-    if (target === keys.length - 1 && (event.key === "ArrowDown" || event.key === "PageDown" || event.key === "End")) {
-      loadMore();
+    setActiveIndex(target);
+    const option = listRef.current?.querySelector<HTMLElement>(`[data-index="${target}"]`);
+    if (option && cache.row(target)) option.focus();
+    else {
+      // Keep real focus within the composite until the requested row arrives.
+      pendingFocus.current = target;
+      listRef.current?.focus();
+      virtualizer.scrollToIndex(target, { align: "auto" });
     }
+    if (target === cache.length - 1 && ["ArrowDown", "PageDown", "End"].includes(event.key)) void loadMore();
   };
 
   // Only the end of a drag saves (window-conventions, Persist the user's drag intent).
@@ -439,33 +376,54 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
             />
           </div>
         </div>
+        {list.stale ? (
+          <div className="records-note records-note--error">
+            <p role="alert">{list.status === "failed" ? `${t.t("records.loadFailed")} ` : ""}{t.t("records.stale")}</p>
+            <button onClick={() => void list.retry()}>{t.t("common.retry")}</button>
+          </div>
+        ) : null}
         <div ref={scrollRef} className="records-list-scroll" onScroll={onListScroll}>
           <div
             ref={listRef}
             role="listbox"
             aria-label={t.t("records.title")}
             aria-busy={list.status === "loading"}
-            tabIndex={records.length === 0 ? 0 : -1}
+            tabIndex={cache.length === 0 || !virtualRows.some((row) => row.index === activeIndex && cache.row(row.index)) ? 0 : -1}
             className="records-list"
+            style={{ position: "relative", height: cache.length ? virtualizer.getTotalSize() : undefined }}
             onKeyDown={onListKeyDown}
+            onFocus={(event) => {
+              if (event.target !== event.currentTarget || transferringFocus.current || cache.length === 0 || pendingFocus.current !== null) return;
+              const index = Math.min(activeIndex, cache.length - 1);
+              pendingFocus.current = index;
+              virtualizer.scrollToIndex(index, { align: "auto" });
+            }}
           >
             {list.status === "loading" ? (
               <p role="presentation" className="records-note">{t.t("records.loading")}</p>
-            ) : list.status === "ready" && records.length === 0 ? (
+            ) : list.status === "ready" && cache.length === 0 ? (
               <p role="presentation" className="records-note">{t.t("records.empty")}</p>
             ) : (
-              records.map((record) => {
-                const key = recordKey(record);
+              virtualRows.map((row) => {
+                const record = cache.row(row.index);
+                const key = record ? recordKey(record) : `pending:${row.index}`;
+                const style: CSSProperties = { position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)` };
+                if (!record) return <div key={key} data-index={row.index} ref={virtualizer.measureElement} style={style} className="records-row" aria-hidden="true">{t.t("records.loading")}</div>;
                 return (
                   <div
                     key={key}
+                    data-index={row.index}
+                    ref={virtualizer.measureElement}
+                    style={style}
                     role="option"
+                    aria-posinset={row.index + 1}
+                    aria-setsize={cache.length}
                     aria-selected={key === selectedKey}
                     tabIndex={key === tabStopKey ? 0 : -1}
                     data-record-key={key}
                     className={`records-row${key === selectedKey ? " records-row--selected" : ""}`}
-                    onClick={() => select(record)}
-                    onFocus={() => select(record)}
+                    onClick={() => select(record, row.index)}
+                    onFocus={() => select(record, row.index)}
                   >
                     <div className="records-row__meta">
                       <span>{t.logTime(new Date(record.time))}</span>
@@ -479,14 +437,8 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
               })
             )}
           </div>
-          {list.status === "failed" ? (
-            <p role="alert" className="records-note records-note--error">{t.t("records.loadFailed")}</p>
-          ) : null}
           {list.status === "ready" && list.loadingMore ? (
             <p className="records-note">{t.t("records.loading")}</p>
-          ) : null}
-          {list.status === "ready" && list.moreFailed ? (
-            <p role="alert" className="records-note records-note--error">{t.t("records.loadFailed")}</p>
           ) : null}
         </div>
       </section>

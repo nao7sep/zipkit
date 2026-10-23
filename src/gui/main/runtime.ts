@@ -15,9 +15,6 @@ import { createAppLog } from "./log.js";
 export const log = createAppLog();
 
 let win: BrowserWindow | null = null;
-export function setMainWindow(w: BrowserWindow | null): void {
-  win = w;
-}
 /** Return the live owner or create and install it exactly once. */
 export function ensureMainWindow(create: () => BrowserWindow): {
   window: BrowserWindow;

@@ -20,8 +20,8 @@ import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
 import { beginQueueQuit, cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
 import { settingsDraftOpen, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
-import { loadSettings, settingsFile } from "./settings.js";
-import { applyLanguagePreference, applyTimeZonePreference, mainTranslator, onLanguageChanged, readConfigText, readSavedPreference, settleLanguage } from "./i18n.js";
+import { loadSettings } from "./settings.js";
+import { applyTimeZonePreference, mainTranslator, onLanguageChanged, settleLanguage, settledTranslator } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
 import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log, sendQueueSaved } from "./runtime.js";
@@ -149,7 +149,10 @@ function activateMainWindow(): void {
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
   await finishStartupHalt({
-    present: () => notifyStartupFailure("startup.halted"),
+    present: async () => {
+      installAppMenu(await settledTranslator(), menuActions);
+      await notifyStartupFailure("startup.halted");
+    },
     closeBackups: () => closeBackupStore(),
     closeLog: () => log.close(),
     onFailed: (failure) => log.error("startup failure presentation or cleanup failed", { error: errorInfo(failure) }),
@@ -180,12 +183,6 @@ app.whenReady().then(async () => {
     log.info("session ending");
     quit.sessionEnding();
   });
-  // The language is settled before anything draws: the saved choice is read
-  // straight from config.json so the menu that replaces Electron's default in
-  // this same turn is already in it. The store's load below can still reset it.
-  await settleLanguage(readSavedPreference(await readConfigText(settingsFile())), logLanguageError);
-  installAppMenu(mainTranslator(), menuActions);
-  onLanguageChanged((translator) => installAppMenu(translator, menuActions));
   log.info("app started", {
     version: APP_VERSION,
     platform: process.platform,
@@ -211,12 +208,12 @@ app.whenReady().then(async () => {
   // The saved theme reaches the title bar, the renderer's prefers-color-scheme,
   // and the recovery dialogs before the window exists, so launch never shows the
   // OS appearance and then switches. A halt before this point follows the OS.
+  await settleLanguage(settingsLoad.value.language, logLanguageError);
   applyThemePreference(settingsLoad.value.theme);
   followOsThemeChanges();
-  // A quarantined or hand-edited file may settle on another language than the
-  // raw read above; the store's value wins before the window opens.
-  await applyLanguagePreference(settingsLoad.value.language, logLanguageError);
   applyTimeZonePreference(settingsLoad.value.timeZone);
+  installAppMenu(mainTranslator(), menuActions);
+  onLanguageChanged((translator) => installAppMenu(translator, menuActions));
   await loadLayout(log);
   const queueLoad = await loadQueue(log);
 

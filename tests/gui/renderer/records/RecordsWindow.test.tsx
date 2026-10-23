@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { waitFor } from "@testing-library/react";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +25,7 @@ const line: RecordSummary = {
 };
 const eventDetail: RecordDetail = {
   kind: "job-event", id: 4, session: SESSION, time: "2026-10-02T08:01:00.250Z", seq: 12, jobId: "job-1",
-  event: "fault", level: "error",
+  action: "write", run: "run-1", event: "fault", level: "error",
   body: JSON.stringify({ event: "fault", code: "read", detail: "/in/a.txt: gone", token: "sk-test" }),
 };
 const lineDetail: RecordDetail = {
@@ -44,6 +45,12 @@ const reportError = vi.fn<ZipKitGuiApi["reportError"]>();
 const saveRecordsListWidth = vi.fn<ZipKitGuiApi["saveRecordsListWidth"]>();
 const getRecordsListWidth = vi.fn<ZipKitGuiApi["getRecordsListWidth"]>();
 const getSettings = vi.fn<ZipKitGuiApi["getSettings"]>();
+let settingsChanged: ((settings: Awaited<ReturnType<ZipKitGuiApi["getSettings"]>>) => void) | null = null;
+const unsubscribeSettings = vi.fn();
+const onSettingsChanged = vi.fn<ZipKitGuiApi["onSettingsChanged"]>((listener) => {
+  settingsChanged = listener;
+  return unsubscribeSettings;
+});
 let recordsChanged: (() => void) | null = null;
 const onRecordsChanged = vi.fn<ZipKitGuiApi["onRecordsChanged"]>((listener) => {
   recordsChanged = listener;
@@ -57,15 +64,21 @@ const onRecordsChanged = vi.fn<ZipKitGuiApi["onRecordsChanged"]>((listener) => {
 const box = { scrollTop: 0, scrollHeight: 1000, clientHeight: 200, shellWidth: 2000 };
 const resizeCallbacks = new Set<() => void>();
 class TestResizeObserver {
-  private readonly callback: () => void;
-  constructor(callback: () => void) {
-    this.callback = callback;
+  private readonly callbacks = new Map<Element, () => void>();
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  observe(target: Element): void {
+    const notify = () => this.callback([{ target, borderBoxSize: [{ inlineSize: (target as HTMLElement).offsetWidth,
+      blockSize: (target as HTMLElement).offsetHeight }] } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+    this.callbacks.set(target, notify);
+    resizeCallbacks.add(notify);
   }
-  observe(): void {
-    resizeCallbacks.add(this.callback);
+  unobserve(target: Element): void {
+    const notify = this.callbacks.get(target);
+    if (notify) resizeCallbacks.delete(notify);
+    this.callbacks.delete(target);
   }
   disconnect(): void {
-    resizeCallbacks.delete(this.callback);
+    for (const target of this.callbacks.keys()) this.unobserve(target);
   }
 }
 const isScroll = (element: HTMLElement) => element.classList.contains("records-list-scroll");
@@ -84,12 +97,21 @@ beforeEach(() => {
   getRecordsListWidth.mockResolvedValue(450);
   getSettings.mockReset();
   getSettings.mockResolvedValue({ ...DEFAULT_SETTINGS, uiFontFamily: "Avenir" });
+  onSettingsChanged.mockClear();
+  unsubscribeSettings.mockClear();
+  settingsChanged = null;
   onRecordsChanged.mockClear();
   recordsChanged = null;
   Object.assign(box, { scrollTop: 0, scrollHeight: 1000, clientHeight: 200, shellWidth: 2000 });
   resizeCallbacks.clear();
   vi.stubGlobal("ResizeObserver", TestResizeObserver);
+  HTMLElement.prototype.scrollTo = function(options?: ScrollToOptions | number, _y?: number) {
+    if (typeof options === "object" && options.top !== undefined) this.scrollTop = options.top;
+    queueMicrotask(() => this.dispatchEvent(new Event("scroll")));
+  };
   Object.defineProperties(HTMLElement.prototype, {
+    offsetHeight: { configurable: true, get(this: HTMLElement) { return isScroll(this) ? box.clientHeight : this.classList.contains("records-row") ? 72 : 0; } },
+    offsetWidth: { configurable: true, get() { return 450; } },
     scrollTop: {
       configurable: true,
       get(this: HTMLElement) { return isScroll(this) ? box.scrollTop : 0; },
@@ -106,7 +128,7 @@ beforeEach(() => {
     configurable: true,
     value: {
       readRecordsPage, readRecordDetail, readRecordSources, reportError, saveRecordsListWidth, onRecordsChanged,
-      getRecordsListWidth, getSettings,
+      getRecordsListWidth, getSettings, onSettingsChanged,
     } satisfies Partial<ZipKitGuiApi>,
   });
 });
@@ -118,7 +140,7 @@ afterEach(async () => {
   document.documentElement.style.removeProperty("--font-ui");
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  for (const name of ["scrollTop", "scrollHeight", "clientHeight", "clientWidth"]) {
+  for (const name of ["scrollTop", "scrollHeight", "clientHeight", "clientWidth", "offsetHeight", "offsetWidth", "scrollTo"]) {
     delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
   }
 });
@@ -162,6 +184,70 @@ const cursorOf = (record: RecordSummary) => ({ time: record.time, kind: record.k
 const ALL = { session: null, kind: null, level: null, search: "", after: null };
 
 describe("RecordsWindow", () => {
+  it("keeps DOM rows bounded during long traversal and preserves the selected detail", async () => {
+    const history: RecordSummary[] = Array.from({ length: 1000 }, (_, index) => ({ ...line, id: 1000 - index, title: `row ${1000 - index}` }));
+    readRecordsPage.mockImplementation(async (query) => {
+      const start = query.after ? history.findIndex((row) => row.id === query.after!.id) + 1 : 0;
+      return { records: history.slice(start, start + 100), more: start + 100 < history.length };
+    });
+    box.scrollHeight = 7200;
+    await mount();
+    await act(async () => options()[0]!.focus());
+    for (let page = 1; page < 10; page++) {
+      box.scrollHeight = page * 100 * 72;
+      await scrollTo(box.scrollHeight - 300);
+      expect(options().length).toBeLessThanOrEqual(25);
+      expect(readRecordDetail).toHaveBeenCalledOnce();
+      expect(document.querySelector(".records-detail__body")!.textContent).toContain("/out/a.zip");
+    }
+    expect(document.activeElement).toBe(document.querySelector('[role="listbox"]'));
+    expect(new Set(readRecordsPage.mock.calls.map(([query]) => query.after?.id ?? null)).size).toBe(10);
+    expect(options()[0]!.getAttribute("aria-setsize")).toBe("1000");
+    const before = readRecordsPage.mock.calls.length;
+    await scrollTo(100 * 72);
+    expect(readRecordsPage.mock.calls.length).toBeGreaterThan(before);
+    expect(lastQuery().after).toEqual(cursorOf(history[99]!));
+    expect(options().some((row) => row.textContent?.includes("row 900"))).toBe(true);
+    expect(options().length).toBeLessThanOrEqual(25);
+  });
+
+  it("moves keyboard focus by global index into rows outside the mounted viewport", async () => {
+    const history = Array.from({ length: 300 }, (_, index) => ({ ...line, id: 300 - index, title: `row ${300 - index}` }));
+    readRecordsPage.mockImplementation(async (query) => {
+      const start = query.after ? history.findIndex((row) => row.id === query.after!.id) + 1 : 0;
+      return { records: history.slice(start, start + 100), more: start + 100 < history.length };
+    });
+    box.scrollHeight = 300 * 72;
+    await mount();
+    await act(async () => options()[0]!.focus());
+    await press("End");
+    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.index).toBe("99"));
+    expect(readRecordsPage.mock.calls.map(([query]) => query.after?.id ?? null)).toContain(201);
+    const lastIndex = Number(options()[0]!.getAttribute("aria-setsize")) - 1;
+    await press("End");
+    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.index).toBe(String(lastIndex)));
+    expect(readRecordDetail).toHaveBeenLastCalledWith("log", 300 - lastIndex);
+    await press("Home");
+    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.index).toBe("0"));
+    expect(readRecordDetail).toHaveBeenLastCalledWith("log", 300);
+  });
+
+  it("offers Retry for the first read and keeps stale status until the sources also recover", async () => {
+    readRecordsPage.mockRejectedValueOnce(new Error("offline"));
+    readRecordSources.mockRejectedValueOnce(new Error("offline sources"));
+    await mount();
+    expect(document.body.textContent).toContain("Records may be out of date.");
+    expect(scrollBox().querySelector('[role="alert"]')).toBeNull();
+    const retry = () => Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Retry")!;
+    readRecordSources.mockRejectedValueOnce(new Error("still offline sources"));
+    await act(async () => retry().click());
+    expect(options()).toHaveLength(2);
+    expect(document.body.textContent).toContain("Records may be out of date.");
+    await act(async () => retry().click());
+    expect(document.body.textContent).not.toContain("Records may be out of date.");
+    expect(readRecordSources).toHaveBeenCalledTimes(3);
+  });
+
   it("lists the records newest first, with every filter off and nothing selected yet", async () => {
     await mount();
 
@@ -192,7 +278,7 @@ describe("RecordsWindow", () => {
       block.querySelector("pre")?.textContent,
     ]);
     // The event name is the title already, so Details leaves it out.
-    expect(blocks).toEqual([["Details", JSON.stringify({ code: "read", detail: "/in/a.txt: gone", token: "sk-test" }, null, 2)]]);
+    expect(blocks).toEqual([["Details", JSON.stringify({ code: "read", detail: "/in/a.txt: gone", token: "sk-test", action: "write", run: "run-1" }, null, 2)]]);
     const body = document.querySelector(".records-detail__body")!.textContent!;
     expect(body).toContain("job-1");
     expect(body).toContain("Sequence number");
@@ -377,22 +463,25 @@ describe("RecordsWindow", () => {
     expect(titles()).toEqual(["fault", "verify failed"]);
   });
 
-  it("keeps a failed page's note at the end, and reads it again when the end is reached again", async () => {
+  it("keeps a failed page stale until Retry rereads the newest page and sources", async () => {
     readRecordsPage.mockResolvedValueOnce({ records: [event], more: true });
     readRecordsPage.mockRejectedValueOnce(new Error("busy"));
     readRecordsPage.mockResolvedValueOnce({ records: [line], more: false });
     await mount();
 
     await scrollTo(700);
-    expect(document.body.textContent).toContain("The records could not be read.");
+    expect(document.body.textContent).toContain("Records may be out of date.");
     expect(options()).toHaveLength(1);
     expect(readRecordsPage).toHaveBeenCalledTimes(2);
 
     await scrollTo(750);
+    expect(readRecordsPage).toHaveBeenCalledTimes(2);
+    await act(async () => document.querySelector<HTMLButtonElement>("button")!.click());
     expect(readRecordsPage).toHaveBeenCalledTimes(3);
-    expect(lastQuery().after).toEqual(cursorOf(event));
+    expect(lastQuery().after).toBeNull();
     expect(titles()).toEqual(["fault", "verify failed"]);
-    expect(document.body.textContent).not.toContain("The records could not be read.");
+    expect(readRecordSources).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).not.toContain("Records may be out of date.");
   });
 
   it("re-reads the newest page once for a burst of new records while at the top, keeping the rows shown", async () => {
@@ -585,6 +674,34 @@ describe("RecordsWindow", () => {
 });
 
 describe("RecordsApp", () => {
+  it("keeps live font updates ahead of the initial read and clears a removed override", async () => {
+    const initial = deferred<Awaited<ReturnType<ZipKitGuiApi["getSettings"]>>>();
+    getSettings.mockReturnValueOnce(initial.promise);
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root?.render(createElement(RecordsApp)));
+    await act(async () => settingsChanged!({ ...DEFAULT_SETTINGS, uiFontFamily: "Menlo" }));
+    expect(document.documentElement.style.getPropertyValue("--font-ui")).toBe("Menlo");
+    await act(async () => initial.resolve({ ...DEFAULT_SETTINGS, uiFontFamily: "Avenir" }));
+    expect(document.documentElement.style.getPropertyValue("--font-ui")).toBe("Menlo");
+    await act(async () => settingsChanged!({ ...DEFAULT_SETTINGS, uiFontFamily: "" }));
+    expect(document.documentElement.style.getPropertyValue("--font-ui")).toBe("");
+    await act(async () => root?.unmount());
+    root = null;
+    expect(unsubscribeSettings).toHaveBeenCalledOnce();
+  });
+
+  it("clears an existing font override when the initial setting uses the system font", async () => {
+    document.documentElement.style.setProperty("--font-ui", "Old font");
+    getSettings.mockResolvedValueOnce({ ...DEFAULT_SETTINGS, uiFontFamily: "" });
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root?.render(createElement(RecordsApp)));
+    expect(document.documentElement.style.getPropertyValue("--font-ui")).toBe("");
+  });
+
   it("opens the list at its saved width, in the main window's UI font", async () => {
     const container = document.createElement("div");
     document.body.append(container);

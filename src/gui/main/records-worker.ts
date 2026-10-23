@@ -84,7 +84,6 @@ CREATE TABLE IF NOT EXISTS logs (
   fields      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_logs_session ON logs (session_utc, id);
-CREATE INDEX IF NOT EXISTS idx_logs_job ON logs (job_id, id) WHERE job_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS job_events (
   id          INTEGER PRIMARY KEY,
   time_utc    TEXT NOT NULL,
@@ -204,7 +203,7 @@ export function readRecordDetail(db: DatabaseSync, kind: RecordKind, id: number)
           .get(id)
       : db
           .prepare(
-            "SELECT 'job-event' AS kind, id, session_utc AS session, time_utc AS time, seq, job_id AS jobId, event, level, body FROM job_events WHERE id = ?",
+            "SELECT 'job-event' AS kind, id, session_utc AS session, time_utc AS time, seq, job_id AS jobId, action, run, event, level, body FROM job_events WHERE id = ?",
           )
           .get(id);
   return (row as unknown as RecordDetail | undefined) ?? null;
@@ -328,6 +327,7 @@ if (parentPort) {
   const { database } = workerData as RecordsWorkerData;
   const store = new RecordsStore(database);
   const reply = (response: RecordsResponse): void => port.postMessage(response);
+  let writeFailure: Record<string, unknown> | null = null;
   port.on("message", (request: RecordsRequest) => {
     if (request.type === "close") {
       try {
@@ -338,10 +338,19 @@ if (parentPort) {
       }
       return;
     }
+    const writing = request.type === "log" || request.type === "jobEvent";
+    if (writing && writeFailure !== null) {
+      reply({ type: "failed", id: request.id, error: writeFailure });
+      return;
+    }
     try {
       reply(answer(store, request));
     } catch (err) {
-      reply({ type: "failed", id: request.id, error: errorData(err) });
+      const error = errorData(err);
+      // Mark failure before processing another message: queued writes must not
+      // each spend SQLite's busy timeout waiting on the same broken sink.
+      if (writing) writeFailure = error;
+      reply({ type: "failed", id: request.id, error });
     }
   });
 }

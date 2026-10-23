@@ -12,8 +12,9 @@
  *
  *  - It never breaks a save and never crashes the app. The save has already succeeded — the file is on
  *    disk before {@link record} is called — so any failure here (the DB is locked, the disk is full, an
- *    insert throws, the thread dies) is logged once at `warn` and swallowed. A lost record self-heals on
- *    the next save of that file, whose content will differ from the last recorded row.
+ *    insert throws, the thread dies) is logged at `warn` and swallowed. An individual record failure may
+ *    be retried on the next save of that file. A failed store open or worker failure disables backups
+ *    for the rest of this session and is logged once.
  *  - It logs only failures. A successful record logs NOTHING; a line per save would flood the log.
  */
 

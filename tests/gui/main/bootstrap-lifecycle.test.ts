@@ -31,6 +31,9 @@ const m = vi.hoisted(() => {
     logClose: fn(async () => {}),
     forceExitProcess: fn(),
     showAppMessageDialog: fn(async () => {}),
+    loadSettings: fn(async () => ({ value: { theme: "system", language: "en", timeZone: "system" }, quarantinedTo: undefined })),
+    settleLanguage: fn(async (_value: string, _onError: unknown) => {}),
+    settledTranslator: fn(async () => ({ t: (key: string) => key })),
     installAppMenu: fn((_translator: unknown, _actions?: { about?: () => void }) => {}),
   };
 });
@@ -72,13 +75,12 @@ vi.mock("../../../src/gui/main/settings-save.js", () => ({
   settleSettingsSave: m.settleSettingsSave, saveSettingsBeforeSessionEnd: m.saveSettingsBeforeSessionEnd,
 }));
 vi.mock("../../../src/gui/main/settings.js", () => ({
-  loadSettings: async () => ({ value: { theme: "system", language: "en" }, quarantinedTo: undefined }),
+  loadSettings: m.loadSettings,
   settingsFile: () => "/unused/config.json",
 }));
 vi.mock("../../../src/gui/main/i18n.js", () => ({
   applyLanguagePreference: async () => {}, applyTimeZonePreference: vi.fn(), mainTranslator: () => ({ t: (key: string) => key }),
-  onLanguageChanged: vi.fn(), readConfigText: async () => null, readSavedPreference: () => undefined,
-  settleLanguage: async () => {},
+  onLanguageChanged: vi.fn(), settleLanguage: m.settleLanguage, settledTranslator: m.settledTranslator,
 }));
 vi.mock("../../../src/gui/main/menu.js", () => ({ installAppMenu: m.installAppMenu }));
 vi.mock("../../../src/gui/main/runtime.js", () => {
@@ -237,5 +239,25 @@ describe("the app menu's About", () => {
     const actions = m.installAppMenu.mock.calls.at(-1)![1]!;
     actions.about!();
     expect((win.webContents as { send: ReturnType<typeof vi.fn> }).send).toHaveBeenCalledWith("zipkit:openAbout");
+  });
+});
+
+describe("settings admission before startup surfaces", () => {
+  it("loads settings once and settles the admitted language before installing the menu", async () => {
+    await start("darwin");
+    expect(m.loadSettings).toHaveBeenCalledOnce();
+    expect(m.settleLanguage).toHaveBeenCalledWith("en", expect.any(Function));
+    expect(m.loadSettings.mock.invocationCallOrder[0]).toBeLessThan(m.settleLanguage.mock.invocationCallOrder[0]!);
+    expect(m.settleLanguage.mock.invocationCallOrder[0]).toBeLessThan(m.installAppMenu.mock.invocationCallOrder[0]!);
+  });
+  it("settles the system translator and menu when settings admission fails", async () => {
+    Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+    m.loadSettings.mockRejectedValueOnce(new Error("unreadable settings"));
+    await import("../../../src/gui/main/bootstrap.js");
+    await vi.waitFor(() => expect(m.app.exit).toHaveBeenCalledWith(1));
+    expect(m.settledTranslator).toHaveBeenCalledOnce();
+    expect(m.installAppMenu).toHaveBeenCalledOnce();
+    expect(m.settleLanguage).not.toHaveBeenCalled();
+    expect(m.windows).toHaveLength(0);
   });
 });

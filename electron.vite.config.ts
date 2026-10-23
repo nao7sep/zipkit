@@ -23,12 +23,13 @@ export default defineConfig({
   main: {
     build: {
       rolldownOptions: {
-        // The records, backups and managed-write threads and the SDK host's
-        // utility process are their own entries: log.ts, backupStore.ts,
-        // managed-write.ts and sdk-process.ts start them from the file beside
+        // The storage, records, backups and managed-write threads and the SDK host's
+        // utility process are their own entries: storage-startup.ts, log.ts,
+        // backupStore.ts, managed-write.ts and sdk-process.ts start them beside
         // their chunk.
         input: {
           index: resolve(import.meta.dirname, "src/gui/main/index.ts"),
+          "storage-worker": resolve(import.meta.dirname, "src/gui/main/storage-worker.ts"),
           "records-worker": resolve(import.meta.dirname, "src/gui/main/records-worker.ts"),
           "backups-worker": resolve(import.meta.dirname, "src/gui/main/backups-worker.ts"),
           "managed-write-worker": resolve(import.meta.dirname, "src/gui/main/managed-write-worker.ts"),

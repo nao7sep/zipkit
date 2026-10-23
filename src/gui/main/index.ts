@@ -1,49 +1,36 @@
-/**
- * The Electron main process entry. It resolves zipkit's storage root *first* —
- * stopping with a clear error if `ZIPKIT_DATA_DIR` is set but unusable, the startup
- * error the storage convention requires rather than a silent fallback — and only
- * then loads the rest of the main process, which derives its log and queue paths
- * from that root. The bootstrap is split out (`./bootstrap`) and pulled in by a
- * dynamic import so the root is validated before any module that reads it runs.
- */
-
+/** Prepare and configure every Electron path before readiness and instance locking. */
 import { app } from "electron";
+import { electronStoragePaths, storageRoot } from "./storage.js";
+import { prepareStorage } from "./storage-startup.js";
 
-// Own every managed store and queue from one OS-enforced app instance. Acquire
-// this before importing storage/bootstrap modules so a second process never
-// reads, plans, or writes shared durable state.
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
-  const { storageRoot, secureStorageRoot, StorageRootError } = await import("./storage.js");
-  let storageReady = false;
-  try {
-    secureStorageRoot(storageRoot());
-    storageReady = true;
-  } catch (err) {
-    const message =
-      err instanceof StorageRootError
-        ? err.message
-        : `failed to resolve the storage root: ${err instanceof Error ? err.message : String(err)}`;
-    process.stderr.write(`zipkit: ${message}\n`);
-    void app.whenReady().then(async () => {
-      const { notifyStartupFailure } = await import("./startup-dialog.js");
-      const { settledTranslator } = await import("./i18n.js");
-      const { installAppMenu } = await import("./menu.js");
-      // The saved choice lives under the unusable root, so the computer's
-      // language speaks here, in the menu as in the dialog.
-      installAppMenu(await settledTranslator());
-      await notifyStartupFailure("startup.dataFolder");
-      app.exit(1);
-    }).catch((dialogError) => {
-      process.stderr.write(`zipkit: startup failure dialog could not open: ${String(dialogError)}\n`);
-      app.exit(1);
-    });
-  }
+let storageReady = false;
+try {
+  const root = storageRoot();
+  // Electron waits for this entry's top-level await before emitting ready.
+  await prepareStorage(root);
+  const paths = electronStoragePaths(root);
+  app.setPath("userData", paths.userData);
+  app.setPath("sessionData", paths.sessionData);
+  app.setPath("crashDumps", paths.crashDumps);
+  app.setAppLogsPath(paths.logs);
+  storageReady = true;
+} catch (err) {
+  process.stderr.write(`zipkit: storage preparation failed: ${err instanceof Error ? err.message : String(err)}\n`);
+  // The saved choice is unavailable, so the computer's language speaks here.
+  void app.whenReady().then(async () => {
+    const { notifyStartupFailure } = await import("./startup-dialog.js");
+    const { settledTranslator } = await import("./i18n.js");
+    const { installAppMenu } = await import("./menu.js");
+    installAppMenu(await settledTranslator());
+    await notifyStartupFailure("startup.dataFolder");
+    app.exit(1);
+  }).catch((dialogError) => {
+    process.stderr.write(`zipkit: startup failure dialog could not open: ${String(dialogError)}\n`);
+    app.exit(1);
+  });
+}
 
-  // Transitive imports that resolve the storage root run only after validation.
-  // Do not throw from the Electron entry module on the failure branch: Electron
-  // would project that exception into its own framework alert before the authored
-  // startup dialog can open, leaking the diagnostic and adding a severity icon.
-  if (storageReady) await import("./bootstrap.js");
+if (storageReady) {
+  if (!app.requestSingleInstanceLock()) app.quit();
+  else await import("./bootstrap.js");
 }

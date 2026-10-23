@@ -2,9 +2,9 @@
  * The single storage-root resolver — the one place that decides where the
  * ZipKit app keeps its own files, per the storage-path convention. It is the
  * app's, not the SDK's: the SDK writes only where it is told, and the app
- * tells its SDK host to leave this folder out of every scan. Every subpath (logs,
- * the GUI's queue) is derived from the root this module returns and from nowhere
- * else, so a single variable moves the whole tree and two derivations can never
+ * includes this private folder when its parent is selected, by policy. Every
+ * subpath (logs, the GUI's queue) is derived from the root this module returns,
+ * so a single variable moves the whole tree and two derivations can never
  * disagree.
  *
  * The root is `~/.zipkit` by default, resolved from `os.homedir()` and from
@@ -19,10 +19,9 @@
  * Resolution is lazy (a function call, not a module-level constant), so a
  * half-set environment is never frozen at import time. `ZIPKIT_LOG_DIR` remains
  * a narrower override layered on top of the resolved root's `logs/` (see
- * `defaultLogDir`).
+ * `fallbackLogDir`).
  */
 
-import { chmodSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -58,8 +57,8 @@ function expand(value: string, env: NodeJS.ProcessEnv, home: string): string {
 /**
  * Resolve zipkit's storage root: `ZIPKIT_DATA_DIR` when set and non-empty (expanded
  * and absolutized against the home directory), else `~/.zipkit`. The root is not
- * created here — the first writer under it does the `mkdir -p` — so this stays a
- * pure path computation that the SDK and the GUI both call.
+ * created here — startup prepares it before Electron uses it — so this stays a
+ * pure path computation owned by the app; the SDK receives explicit paths.
  *
  * @throws StorageRootError when `ZIPKIT_DATA_DIR` is set but expands to an empty or
  *   non-absolute path. The caller (a startup point) reports it and stops; it is
@@ -85,48 +84,26 @@ export function storageRoot(
   return path.join(home, ".zipkit");
 }
 
-/**
- * Creates the storage root if missing and, on POSIX, tightens it to owner-only
- * (0700) — created that way, and tightened at each launch when an existing
- * root is broader, per the storage-path convention: derived data and logs
- * must never be readable by accounts that cannot read their sources. Windows
- * uses its own permission model and is unaffected. `mkdirSync`'s own `mode`
- * is masked by umask and never changes an *existing* directory's mode, so
- * this always re-checks after creation rather than relying on the mkdir call
- * alone. Only the root itself is touched, never its contents.
- *
- * Called once at the defined startup point (see gui/main/index.ts) so every
- * launch goes through it; it does not replace each writer's own `mkdir -p`
- * for its subpath (logs/, backups.sqlite3, ...), which still runs on demand
- * regardless of whether this succeeded. A failure to create or tighten the
- * root is reported to stderr and never stops the app.
- */
-export function secureStorageRoot(root: string): void {
-  try {
-    mkdirSync(root, { recursive: true, mode: 0o700 });
-  } catch (err) {
-    process.stderr.write(
-      `zipkit: could not create storage root "${root}": ${err instanceof Error ? err.message : String(err)}\n`,
-    );
-    return;
-  }
-  if (process.platform === "win32") return;
-  try {
-    const mode = statSync(root).mode & 0o777;
-    if ((mode & 0o077) !== 0) {
-      chmodSync(root, 0o700);
-    }
-  } catch (err) {
-    process.stderr.write(
-      `zipkit: could not tighten storage root "${root}" to owner-only (0700): ${err instanceof Error ? err.message : String(err)}\n`,
-    );
-  }
+/** Electron's framework-owned files share the selected application root. */
+export function electronStoragePaths(root: string): {
+  userData: string; sessionData: string; crashDumps: string; logs: string;
+} {
+  return {
+    userData: path.join(root, "electron"),
+    sessionData: path.join(root, "electron/session"),
+    crashDumps: path.join(root, "electron/crashes"),
+    logs: path.join(root, "electron/logs"),
+  };
 }
 
-/** `<root>/logs`: where ZipKit keeps its app log. Created on the first write
- *  if missing. */
-export function defaultLogDir(): string {
-  return path.join(storageRoot(), "logs");
+/** Resolve a log override literally against home; empty selects stderr. */
+export function fallbackLogDir(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+): string {
+  const override = env.ZIPKIT_LOG_DIR;
+  if (override === undefined) return path.join(storageRoot(env, home), "logs");
+  return override === "" ? "" : path.resolve(home, override);
 }
 
 /** `yyyymmdd-hhmmss-utc`: a UTC filename stamp to the second, from the OS clock. */

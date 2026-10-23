@@ -9,8 +9,6 @@
  * that reading for the whole session.
  */
 
-import { readFile } from "node:fs/promises";
-import { MANAGED_IO_WAIT_MS, managedIO } from "./managed-io.js";
 import { app, BrowserWindow, systemPreferences } from "electron";
 import {
   effectiveLanguage,
@@ -37,30 +35,6 @@ let state: LanguageState | null = null;
 // Main formats no times itself, so it travels to the windows with the language.
 let displayZone: string | null = null;
 const listeners = new Set<(translator: Translator) => void>();
-
-/**
- * The saved choice in config.json's text, read without the settings store so
- * the menu can be drawn in it before the store loads: a missing, unreadable or
- * corrupt file is System, and recovering a corrupt one stays with the store.
- */
-export function readSavedPreference(configText: string | null): LanguagePreference {
-  if (configText === null) return "system";
-  try {
-    const parsed = JSON.parse(configText) as { language?: unknown } | null;
-    return normalizeLanguagePreference(parsed?.language);
-  } catch {
-    return "system";
-  }
-}
-
-/** config.json's text, or null when it cannot be read. */
-export async function readConfigText(file: string): Promise<string | null> {
-  try {
-    return await managedIO(file, (signal) => readFile(file, { encoding: "utf8", signal }), MANAGED_IO_WAIT_MS);
-  } catch {
-    return null;
-  }
-}
 
 // macOS draws some Edit menu items itself (Emoji & Symbols, Start Dictation,
 // AutoFill, Writing Tools, Services) in the language AppKit settles on before

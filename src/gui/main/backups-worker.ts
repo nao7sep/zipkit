@@ -43,10 +43,8 @@ export type BackupsResponse =
  * The one table. `content` is a BLOB of the exact bytes written — never decoded
  * text, so CR/LF, a BOM, and non-UTF-8 bytes are stored byte-identically.
  * `written_at_utc` is the serialized ISO-8601-ms form of the row's latest save, a
- * data value — never the filename stamp. `session_id` is NULL on rows recorded
- * before sessions existed; SQLite's unique index treats each NULL as distinct, so
- * those rows stay as earlier history. The `(path, id)` index serves the
- * latest-row-per-path lookup.
+ * data value — never the filename stamp. `session_id` groups each path's saves
+ * within one launch. The `(path, id)` index serves the latest-row-per-path lookup.
  */
 const TABLE = `
 CREATE TABLE IF NOT EXISTS backups (
@@ -106,9 +104,6 @@ class BackupsStore {
       db.exec("PRAGMA busy_timeout = 5000");
       db.exec("PRAGMA journal_mode = WAL");
       db.exec(TABLE);
-      // A store from before sessions gains the column; its rows remain as earlier history.
-      const columns = db.prepare("PRAGMA table_info(backups)").all() as Array<{ name: string }>;
-      if (!columns.some((column) => column.name === "session_id")) db.exec("ALTER TABLE backups ADD COLUMN session_id TEXT");
       db.exec(INDEXES);
       this.#db = db;
       this.#statements = {

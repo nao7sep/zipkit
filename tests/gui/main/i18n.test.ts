@@ -32,22 +32,6 @@ vi.mock("electron", () => ({
   BrowserWindow: { getAllWindows: () => electron.windows },
 }));
 
-const { readSavedPreference } = await import("../../../src/gui/main/i18n.js");
-
-describe("readSavedPreference", () => {
-  it("reads the saved choice from config.json's text", () => {
-    expect(readSavedPreference(JSON.stringify({ formatVersion: 1, language: "ko" }))).toBe("ko");
-  });
-
-  it("is System for a missing, unreadable, unknown or corrupt choice", () => {
-    expect(readSavedPreference(null)).toBe("system");
-    expect(readSavedPreference(JSON.stringify({ formatVersion: 1 }))).toBe("system");
-    expect(readSavedPreference(JSON.stringify({ formatVersion: 1, language: "tlh" }))).toBe("system");
-    expect(readSavedPreference("{ not json")).toBe("system");
-    expect(readSavedPreference("null")).toBe("system");
-  });
-});
-
 describe("AppKit language alignment", () => {
   const originalPlatform = process.platform;
   beforeEach(() => {

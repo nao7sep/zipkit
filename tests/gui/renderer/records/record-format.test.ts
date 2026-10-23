@@ -59,7 +59,7 @@ describe("record helpers", () => {
     kind: "log", id: 1, session: "s", time: "2026-10-02T08:00:01.000Z", level: "info", message: "m", jobId, fields,
   });
   const progress = (body: string): RecordDetail => ({
-    kind: "job-event", id: 1, session: "s", time: "2026-10-02T08:00:01.000Z", seq: 1, jobId: "job-1",
+    kind: "job-event", id: 1, session: "s", time: "2026-10-02T08:00:01.000Z", seq: 1, jobId: "job-1", action: "plan", run: "1",
     event: "plan.done", level: "info", body,
   });
 
@@ -84,12 +84,12 @@ describe("record helpers", () => {
       recordDetails(progress(JSON.stringify({
         time: "2026-10-02T08:00:01.000Z", message: "plan complete", stage: "plan", level: "info", event: "plan.done", total: 2,
       }))),
-    ).toBe(JSON.stringify({ message: "plan complete", stage: "plan", total: 2 }, null, 2));
+    ).toBe(JSON.stringify({ message: "plan complete", stage: "plan", total: 2, action: "plan", run: "1" }, null, 2));
     expect(
       recordDetails(progress(JSON.stringify({ time: "2026-10-02T08:00:01.000Z", level: "info", event: "plan.done" }))),
-    ).toBeNull();
+    ).toBe(JSON.stringify({ action: "plan", run: "1" }, null, 2));
     expect(recordDetails(progress(JSON.stringify({ level: "warn", event: "other" })))).toBe(
-      JSON.stringify({ level: "warn", event: "other" }, null, 2),
+      JSON.stringify({ level: "warn", event: "other", action: "plan", run: "1" }, null, 2),
     );
   });
 });

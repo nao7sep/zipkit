@@ -222,6 +222,30 @@ describe("job events", () => {
     expect(read[0]?.event).toEqual(sent.event);
   });
 
+  it("preserves a finding's precise reason with its job, action and run", async () => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const log = createAppLog(database, path.join(dir, "logs"), new Date("2026-10-23T00:00:00.000Z"));
+    const diagnostic: LogEvent = {
+      time: "2026-10-23T00:00:00.000Z", stage: "verify", level: "error", event: "entry.flagged",
+      rule: "verify.local-mismatch", path: "a.txt", severity: "error", message: "entry flagged",
+      reason: "local header name differs from central directory",
+    };
+    log.jobEvent("job", diagnostic, "verify", "run-2");
+    const recorded = await log.jobEvents("job");
+    expect(recorded[0]).toMatchObject({ action: "verify", run: "run-2", event: { reason: diagnostic.reason } });
+    const page = await log.records({ op: "page", query: { session: null, kind: null, level: null, search: "", after: null }, pageSize: 10 });
+    const detail = await log.records({ op: "detail", kind: "job-event", id: page.records[0]!.id });
+    expect(detail).toMatchObject({ action: "verify", run: "run-2" });
+    expect(JSON.parse((detail as { body: string }).body)).toEqual(diagnostic);
+    await log.close();
+    // Late writes use the same serialized event, preserving attribution.
+    log.jobEvent("job", diagnostic, "verify", "run-3");
+    await log.close();
+    const fallback = readFileSync(path.join(dir, "logs", "20261023-000000-utc.log"), "utf8");
+    expect(JSON.parse(fallback.trim())).toMatchObject({ jobId: "job", action: "verify", run: "run-3", event: { reason: diagnostic.reason } });
+  });
+
   it("writes an event the database cannot take to the fallback file and reads nothing", async () => {
     const dir = tempDir();
     const blocker = path.join(dir, "blocker");
@@ -235,7 +259,7 @@ describe("job events", () => {
 
     const lines = readFileSync(path.join(logs, "20260614-052548-utc.log"), "utf8").trim().split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(lines[1]).toMatchObject({ jobId: "a", seq: 1, event: { event: "scan.start", inputs: 1 } });
+    expect(lines[1]).toMatchObject({ jobId: "a", seq: 1, action: "plan", run: "1", event: { event: "scan.start", inputs: 1 } });
   });
 });
 
@@ -338,14 +362,14 @@ describe("records reads for the Records window", () => {
       fields: JSON.stringify({ jobId: "b", archive: "/out/b.zip" }),
     });
     const detail = await log.records({ op: "detail", kind: "job-event", id: fault!.id });
-    expect(detail).toMatchObject({ kind: "job-event", seq: 1, jobId: "b", event: "fault", level: "error" });
+    expect(detail).toMatchObject({ kind: "job-event", seq: 1, jobId: "b", action: "plan", run: "1", event: "fault", level: "error" });
     expect(JSON.parse((detail as { body: string }).body)).toMatchObject({ event: "fault", detail: "100% gone" });
     expect(await log.records({ op: "detail", kind: "log", id: 9999 })).toBeNull();
     expect(await log.records({ op: "sessions" })).toEqual(["2026-06-15T01:00:00.000Z", "2026-06-14T05:25:48.123Z"]);
     await log.close();
   });
 
-  it("signals after each entry the database stored, and not for one that went to the fallback file", async () => {
+  it("signals stored entries and the first database failure, including when no write succeeds", async () => {
     const dir = tempDir();
     const stored = createAppLog(path.join(dir, "records.sqlite3"), path.join(dir, "logs"));
     const listener = vi.fn();
@@ -358,11 +382,14 @@ describe("records reads for the Records window", () => {
     const blocker = path.join(dir, "blocker");
     writeFileSync(blocker, "a file, not a directory");
     const fallback = createAppLog(path.join(blocker, "records.sqlite3"), path.join(dir, "fallback-logs"));
-    const unheard = vi.fn();
-    fallback.onStored(unheard);
+    const unavailable = vi.fn();
+    fallback.onStored(unavailable);
     fallback.info("lost to the database");
     await fallback.close();
-    expect(unheard).not.toHaveBeenCalled();
+    expect(unavailable).toHaveBeenCalledTimes(1);
+    fallback.info("later fallback entry");
+    await fallback.close();
+    expect(unavailable).toHaveBeenCalledTimes(1);
   });
 
   it("fails a read the database cannot answer in time, or once it is unavailable or closed", async () => {

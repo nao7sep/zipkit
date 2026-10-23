@@ -75,6 +75,8 @@ export interface JobEventRecordDetail {
   time: string;
   seq: number;
   jobId: string;
+  action: string;
+  run: string;
   event: string;
   level: RecordLevel;
   body: string;
