@@ -126,6 +126,27 @@ describe("a plan whose visible fields disagree with its instructions", () => {
   });
 });
 
+describe("a missing output folder", () => {
+  it("is made, with its parents, when the archive is written, and not by planning", async () => {
+    const nested = path.join(dir, "new", "deeper");
+    const zip = new ZipKit();
+    const plan = await zip.plan({ inputs: [proj], outputDir: nested, outputName: "out" });
+    expect(plan.writable).toBe(true);
+    expect(existsSync(path.join(dir, "new"))).toBe(false);
+    expect(await zip.write(plan)).toMatchObject({ mode: "write", output: path.join(nested, "out.zip") });
+    expect((await zip.verify({ archive: path.join(nested, "out.zip"), manifest: true })).ok).toBe(true);
+  });
+
+  it("fails by cause when a file has taken the folder's place since the plan", async () => {
+    const folder = path.join(dir, "later", "inside");
+    const zip = new ZipKit();
+    const plan = await zip.plan({ inputs: [proj], outputDir: folder, outputName: "out" });
+    await writeFile(path.join(dir, "later"), "a file");
+    await expect(zip.write(plan)).rejects.toMatchObject({ kind: "unavailable" });
+    expect(readdirSync(dir).sort()).toEqual(["later", "proj"]);
+  });
+});
+
 describe("a source gone since the plan", () => {
   it("fails as path.missing naming the file, not the archive", async () => {
     const plan = await new ZipKit().plan({ inputs: [proj], output });

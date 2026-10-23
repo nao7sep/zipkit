@@ -71,6 +71,8 @@ export interface FileSystemPort {
   unlink(path: string): Promise<void>;
   rm(path: string): Promise<void>;
   chmod(path: string, mode: number): Promise<void>;
+  /** Create a folder and any missing parents; one that exists is left as it is. */
+  mkdir(path: string): Promise<void>;
   syncDirectory(path: string): Promise<void>;
 }
 
@@ -100,6 +102,7 @@ export const nodeFileSystem: FileSystemPort = {
   unlink: (path) => fsp.unlink(path),
   rm: (path) => fsp.rm(path, { force: true }),
   chmod: (path, mode) => fsp.chmod(path, mode),
+  mkdir: async (path) => { await fsp.mkdir(path, { recursive: true }); },
   syncDirectory,
 };
 
@@ -158,6 +161,11 @@ export class Volume {
 
   readdir(path: string): Promise<DirEntry[]> {
     return this.#run("work", "readdir", path, () => this.#port.readdir(path));
+  }
+
+  /** Create a folder with any missing parents, as ordinary work. */
+  mkdir(path: string): Promise<void> {
+    return this.#run("work", "mkdir", path, () => this.#port.mkdir(path));
   }
 
   chmod(path: string, mode: number): Promise<void> {

@@ -18,6 +18,7 @@
  */
 
 import { createHash, type Hash } from "node:crypto";
+import path from "node:path";
 import type { BigIntStats } from "node:fs";
 import { createPathClaims, pathResources } from "../claims.ts";
 import { classify, fsFailure, isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
@@ -267,6 +268,10 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
   let zip64 = false;
   let bytes = 0;
   try {
+    // A missing output folder, with its parents, is made before anything is
+    // written into it (sdk-conventions, Durable output).
+    try { await deps.volume.mkdir(path.dirname(output)); }
+    catch (error) { throw fsFailure(error, path.dirname(output)); }
     await writer.open();
 
     const streamed: StreamedEntry[] = [];
