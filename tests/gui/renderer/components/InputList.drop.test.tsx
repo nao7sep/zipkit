@@ -216,3 +216,33 @@ describe("InputList external-drop receiver", () => {
     }));
   });
 });
+
+
+describe("InputList removal focus", () => {
+  it.each([
+    { removed: "/b", remaining: ["/a", "/c"], target: "Remove /c" },
+    { removed: "/c", remaining: ["/a", "/b"], target: "Remove /b" },
+    { removed: "/b", remaining: ["/a"], target: "Add" },
+  ])("focuses $target after $removed is confirmed absent", ({ removed, remaining, target }) => {
+    const onRemove = vi.fn();
+    const inputs = ["/a", "/b", "/c"];
+    const props: Parameters<typeof InputList>[0] = {
+      job: { ...job, inputs, entries: inputs.map((path) => ({ path, kind: "file" })) },
+      editable: true, onAdd: async () => null, onRemove,
+      onDropFiles: async () => ({ operationKey: "noop", entryKey: "noop", result: null }),
+      result: null, onResult: vi.fn(),
+    };
+    const view = render(<InputList {...props} />);
+    const button = screen.getByRole("button", { name: `Remove ${removed}` });
+    button.focus();
+    fireEvent.click(button);
+    expect(onRemove).toHaveBeenCalledExactlyOnceWith(removed);
+    expect(document.activeElement).toBe(button);
+    // A refusal or an unrelated projection leaves focus on the requested row.
+    view.rerender(<InputList {...props} job={{ ...props.job }} />);
+    expect(document.activeElement).toBe(button);
+    view.rerender(<InputList {...props} job={{ ...props.job, inputs: remaining,
+      entries: remaining.map((path) => ({ path, kind: "file" })) }} />);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: target }));
+  });
+});

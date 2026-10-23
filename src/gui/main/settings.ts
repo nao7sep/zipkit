@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import { isSafePathComponent, exclusionIssue } from "zipkitsdk/types";
 import { storageRoot } from "./storage.js";
 import { changedSettings, DEFAULT_OPTIONS, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, PARAMETER_KEYS, SETTINGS_KEYS, THEME_PREFERENCES, type ArchiveParameters, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
@@ -31,10 +32,7 @@ function isExclusion(value: unknown): boolean {
   if (typeof p.pattern !== "string" || p.pattern === "" || (p.match !== "glob" && p.match !== "regex")) return false;
   if (p.target !== "file" && p.target !== "dir" && p.target !== "both") return false;
   if (typeof p.ignoreCase !== "boolean" || (p.note !== undefined && typeof p.note !== "string")) return false;
-  if (p.match === "regex") {
-    try { new RegExp(p.pattern); } catch { return false; }
-  }
-  return true;
+  return exclusionIssue({ pattern: p.pattern, match: p.match, target: p.target }) === null;
 }
 
 const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
@@ -45,7 +43,7 @@ const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
   ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
   ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
   ["emptyDirs", (v) => v === "keep" || v === "prune"], ["manifest", (v) => typeof v === "boolean"],
-  ["manifestName", (v) => typeof v === "string" && singleLine(v) === v && v.trim() !== ""],
+  ["manifestName", (v) => typeof v === "string" && isSafePathComponent(v)],
   ["hash", (v) => typeof v === "boolean"], ["comment", (v) => typeof v === "string"],
   ["outputDir", (v) => typeof v === "string"], ["fileName", (v) => typeof v === "string"],
   ["overwrite", (v) => typeof v === "boolean"],
@@ -141,6 +139,9 @@ export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJso
  * healing): the dialog's settings, checked by the reader's validator and compared
  * cleaned (text-cleanup conventions). Returns the effective settings. */
 export function checkedSettings(settings: GuiSettings, logger: AppLog = nullLog): GuiSettings {
+  for (const [key, valid] of PARAMETER_CHECKS) {
+    if (!valid(settings.defaults[key as keyof ArchiveParameters])) throw new Error(`Invalid archive parameter: ${key}`);
+  }
   const checked = effectiveSettings(settings, logger);
   const effective: GuiSettings = {
     ...checked,

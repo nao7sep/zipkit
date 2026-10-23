@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Job, JobEvent, JobIntent, PlanReport, ProgressCounts, SystemChoices, VerifyResult } from "../../shared/api";
+import type { Job, JobEvent, JobIntent, PlanReport, ProgressCounts, SettingsSubmission, SystemChoices, VerifyResult } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable, removesOriginals, verifies, type OriginalsAction } from "../../shared/queue";
@@ -140,6 +140,7 @@ export function App() {
   const [cardRowLimit, setCardRowLimit] = useState(DEFAULT_SETTINGS.cardRowLimit);
   const [systemChoices, setSystemChoices] = useState<SystemChoices | null>(null);
   const [dialog, setDialog] = useState<DialogName | null>(null);
+  const [settingsSubmission, setSettingsSubmission] = useState<SettingsSubmission>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
   // when Add creates a job (focus/selection policy: Add pulls focus to its result).
   // The listbox clears it via onFocusPulled once the focus lands. The clear is
@@ -319,6 +320,18 @@ export function App() {
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
   useEffect(() => window.zipkit.onSettingsChanged(applySavedSettings), []);
+  useEffect(() => {
+    let live = true;
+    let updated = false;
+    const unsubscribe = window.zipkit.onSettingsSubmissionChanged((submission) => {
+      updated = true;
+      if (live) setSettingsSubmission(submission);
+    });
+    void window.zipkit.getSettingsSubmission().then((submission) => {
+      if (live && !updated) setSettingsSubmission(submission);
+    }, (error) => window.zipkit.reportError("read settings submission", reportableError(error)));
+    return () => { live = false; unsubscribe(); };
+  }, []);
   useEffect(() => window.zipkit.onOpenAbout(() => setDialog("about")), []);
 
   // Settings opens once main has said what each System choice resolves to now.
@@ -340,7 +353,7 @@ export function App() {
   }
 
   async function saveSettings(draft: GuiSettings): Promise<void> {
-    applySavedSettings(await window.zipkit.setSettings(draft));
+    await window.zipkit.setSettings(draft);
   }
 
   async function createJob(inputs: string[]): Promise<ReceiverCommit> {
@@ -567,6 +580,12 @@ export function App() {
 
   return (
     <div style={S.shell}>
+      {settingsSubmission && dialog !== "settings" && (
+        <div role={settingsSubmission.status === "failed" ? "alert" : "status"} style={{ padding: "0.5rem 0.75rem", flexShrink: 0 }}>
+          <p style={{ margin: "0 0 0.35rem" }}>{t.t(settingsSubmission.status === "failed" ? "settings.pendingFailed" : "settings.pendingSave")}</p>
+          <button onClick={openSettings}>{t.t("settings.title")}</button>
+        </div>
+      )}
       <AppHeader
         onOpenSettings={openSettings}
         onOpenRecords={() => {
@@ -681,6 +700,8 @@ export function App() {
       {dialog === "settings" && systemChoices && (
         <SettingsDialog
           settings={{ defaults, uiFontFamily, theme, language, timeZone, confirmJobRemoval, cardRowLimit }}
+          initialDraft={settingsSubmission?.draft}
+          submission={settingsSubmission}
           system={systemChoices}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
@@ -717,6 +738,8 @@ function JobView({
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanReport | null>(null);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
+  const archiveRevision = useRef(job.archiveRevision);
+  archiveRevision.current = job.archiveRevision;
   const [planLoadFailed, setPlanLoadFailed] = useState(false);
   const [planAttempt, setPlanAttempt] = useState(0);
   // The job's progress: its recorded events, from this and earlier launches,
@@ -725,11 +748,10 @@ function JobView({
   // How far its current write or verification has got, live only.
   const [counts, setCounts] = useState<ProgressCounts | null>(null);
   const confirm = useConfirm();
-  // "Use the parameters from Settings" is DERIVED from whether the job's options still equal
-  // the defaults — not a free-floating flag that could claim "defaults" while the
-  // job is actually customized. Unchecking enables editing; re-checking restores
-  // the defaults (see toggleUseDefaults).
-  const [useDefaults, setUseDefaults] = useState(() => parametersEqual(job.options, defaults));
+  // Unticking keeps editing available even while values still match Settings.
+  // A later Settings change updates this indicator without changing the job.
+  const [useSettingsIntent, setUseSettingsIntent] = useState(() => parametersEqual(job.options, defaults));
+  const useDefaults = useSettingsIntent && parametersEqual(opts, defaults);
   // Folded while the job uses the Settings' parameters; unticking unfolds.
   const [paramsOpen, setParamsOpen] = useState(() => !parametersEqual(job.options, defaults));
   const operationAttempt = useRef(0);
@@ -742,7 +764,7 @@ function JobView({
   useEffect(() => {
     if (editable) return;
     setOpts(job.options);
-    setUseDefaults(parametersEqual(job.options, defaults));
+    setUseSettingsIntent(parametersEqual(job.options, defaults));
   }, [editable, job.options, defaults]);
 
   useEffect(() => {
@@ -758,7 +780,7 @@ function JobView({
     return () => {
       live = false;
     };
-  }, [job.id, job.state, job.summary, planAttempt]);
+  }, [job.id, job.planRevision, planAttempt]);
 
   useEffect(() => {
     let live = true;
@@ -812,18 +834,17 @@ function JobView({
         error,
         () => {
           setOpts(job.options);
-          setUseDefaults(parametersEqual(job.options, defaults));
+          setUseSettingsIntent(parametersEqual(job.options, defaults));
         },
       );
     }
   }
 
-  // Clear a stale verify result whenever the job leaves "done" (re-planned, or its
-  // archive removed) — a "Verified" line must never linger past the archive it
-  // described.
+  // Results belong to one observed archive revision and job state. Refresh and
+  // re-run must never leave cards describing an older file.
   useEffect(() => {
-    if (job.state !== "done") setVerify(null);
-  }, [job.state]);
+    setVerify(null);
+  }, [job.state, job.archiveRevision]);
 
   // Normal edits reach the save/quit owner immediately. Only expensive planning
   // is debounced in main, where a final queue save can already capture the edit.
@@ -835,7 +856,7 @@ function JobView({
   // actually restores the Settings' parameters, so the box can never claim "defaults"
   // falsely. The job's own destination, name and comment stay as they are.
   function toggleUseDefaults(checked: boolean) {
-    setUseDefaults(checked);
+    setUseSettingsIntent(checked);
     if (!checked) setParamsOpen(true);
     if (checked) commitOptions({ ...opts, ...parametersOf(defaults) });
   }
@@ -947,8 +968,9 @@ function JobView({
       case "verify": {
         const attempt = beginOperation();
         try {
+          const revision = archiveRevision.current;
           const result = await window.zipkit.verify(job.id);
-          if (operationAttempt.current === attempt) setVerify(result);
+          if (operationAttempt.current === attempt && revision === archiveRevision.current) setVerify(result);
           finishOperation(attempt);
         }
         catch (error) { failOperation(attempt, "verify archive", "result.verifyFailed", error); }

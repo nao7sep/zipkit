@@ -81,11 +81,6 @@ function sameValue(a: unknown, b: unknown): boolean {
   return a === b || (Array.isArray(a) && Array.isArray(b) && JSON.stringify(a) === JSON.stringify(b));
 }
 
-/** Whether two exclusion lists hold the same patterns in the same order. */
-export function sameExclusions(a: readonly ExclusionPattern[], b: readonly ExclusionPattern[]): boolean {
-  return sameValue(a, b);
-}
-
 /** Whether two option states agree on every parameter, so a job still uses
  *  the defaults whatever its own destination, name and comment. */
 export function parametersEqual(a: ArchiveParameters, b: ArchiveParameters): boolean {

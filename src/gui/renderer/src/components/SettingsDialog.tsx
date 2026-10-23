@@ -14,13 +14,14 @@
  * Exclusion patterns, the list new jobs leave out, edited whole. Each group
  * has its own reset; Save covers every tab.
  *
- * While a save runs, the fields and every close path are disabled until it
- * actually settles, which normally takes milliseconds: the dialog then closes on
- * success or stays open with the error. A later quit-time retry updates committed
- * preferences and clears that error without replacing this editor's newer draft.
+ * Submitted drafts belong to main. Fields stay disabled during publication;
+ * after ten seconds the editor can close while the app retains that work.
+ * Reopening follows main's pending or failed submission. A later quit-time retry
+ * updates committed preferences without replacing newer unsubmitted edits.
  */
 
-import { useEffect, useState } from "react";
+import { isSafePathComponent } from "zipkitsdk/types";
+import { useEffect, useRef, useState } from "react";
 import { BUILT_IN_EXCLUSIONS } from "../../../shared/exclusions";
 import { cleanExclusions, ExclusionList, patternInvalid } from "./ExclusionList";
 import { useTablist } from "../useTablist";
@@ -29,7 +30,7 @@ import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { useConfirm } from "./DialogHost";
 import { CARD_ROW_LIMIT_RANGE, changedSettings, DEFAULT_PARAMETERS, displayZones, isCardRowLimit, type ArchiveParameters, type GuiSettings, type ThemePreference } from "../../../shared/spec";
-import type { SystemChoices } from "../../../shared/api";
+import type { SettingsSubmission, SystemChoices } from "../../../shared/api";
 import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
 import { useI18n } from "../i18n/I18nContext";
@@ -61,7 +62,7 @@ function builtInFontStack(): string {
  *  manifest name and the exclusion patterns. */
 function isValid(o: ArchiveParameters): boolean {
   return Number.isInteger(o.level) && o.level >= 1 && o.level <= 9 &&
-    o.manifestName.trim() !== "" && !o.exclusions.some(patternInvalid);
+    isSafePathComponent(o.manifestName) && !o.exclusions.some(patternInvalid);
 }
 
 const TABS = ["general", "parameters", "exclusions"] as const;
@@ -77,20 +78,37 @@ const TAB_LABELS: Readonly<Record<SettingsTab, MessageKey>> = {
  *  asks main for `system` before showing the dialog. */
 export function SettingsDialog({
   settings,
+  initialDraft,
+  submission = null,
   system,
   onSave,
   onClose,
 }: {
   settings: GuiSettings;
+  initialDraft?: GuiSettings;
+  submission?: SettingsSubmission;
   system: SystemChoices;
   onSave: (settings: GuiSettings) => Promise<void>;
   onClose: () => void;
 }) {
   const { t, language } = useI18n();
   const confirm = useConfirm();
-  const [draft, setDraft] = useState<GuiSettings>(settings);
+  const [draft, setDraft] = useState<GuiSettings>(initialDraft ?? settings);
   const [fontStack] = useState(builtInFontStack);
-  const [saving, setSaving] = useState(false);
+  const [localSaving, setSaving] = useState(false);
+  const [localStartedAt, setLocalStartedAt] = useState(0);
+  const saving = localSaving || submission?.status === "saving";
+  const [canContinue, setCanContinue] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (!saving) { setCanContinue(false); return; }
+    const remaining = Math.max(0, (submission?.startedAt ?? localStartedAt) + 10_000 - Date.now());
+    if (remaining === 0) { setCanContinue(true); return; }
+    setCanContinue(false);
+    const timer = setTimeout(() => setCanContinue(true), remaining);
+    return () => clearTimeout(timer);
+  }, [saving, submission?.startedAt, localStartedAt]);
   const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState<SettingsTab>("general");
   const tablist = useTablist({ tabs: TABS, selected: tab, onSelect: setTab, idBase: "settings" });
@@ -105,21 +123,23 @@ export function SettingsDialog({
   const saved: GuiSettings = { ...draft, defaults: { ...draft.defaults, exclusions: cleanExclusions(draft.defaults.exclusions) } };
   const dirty = Object.keys(changedSettings(settings, saved)).length > 0;
   // Quit asks before discarding unsaved edits, so main follows whether there are any.
-  useEffect(() => { window.zipkit.reportSettingsDraft(dirty); }, [dirty]);
+  useEffect(() => { window.zipkit.reportSettingsDraft(dirty && !saving); }, [dirty, saving]);
   useEffect(() => () => window.zipkit.reportSettingsDraft(false), []);
   const canSave = dirty && isValid(draft.defaults) && isCardRowLimit(draft.cardRowLimit);
 
   async function save() {
+    if (saving) return;
+    setLocalStartedAt(Date.now());
     setSaving(true);
     setSaveError(false);
     try {
       await onSave(saved);
-      onClose();
+      if (mounted.current) onClose();
     } catch (err) {
       window.zipkit.reportError("save settings", reportableError(err));
-      setSaveError(true);
+      if (mounted.current) setSaveError(true);
     } finally {
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   }
 
@@ -137,7 +157,10 @@ export function SettingsDialog({
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):
   // ask before throwing away unsaved edits; close immediately when clean.
   async function requestClose() {
-    if (saving) return;
+    if (saving) {
+      if (canContinue) { mounted.current = false; onClose(); }
+      return;
+    }
     if (!dirty) {
       await discardAndClose();
       return;
@@ -170,7 +193,7 @@ export function SettingsDialog({
       footer={
         // Initial focus is named on Cancel (modal-dialog conventions), never Save.
         <>
-          <button data-modal-autofocus disabled={saving} onClick={() => void requestClose()}>{t("common.cancel")}</button>
+          <button data-modal-autofocus disabled={saving && !canContinue} onClick={() => void requestClose()}>{t(saving && canContinue ? "settings.continueWorking" : "common.cancel")}</button>
           <button className="accent" disabled={!canSave || saving} onClick={() => void save()}>
             {t(saving ? "settings.saving" : "common.save")}
           </button>
@@ -320,7 +343,8 @@ export function SettingsDialog({
           </button>
         </div>
       </div>
-      {saveError && <p role="alert" className="inline-issue" style={S.error}>{t("settings.saveFailed")}</p>}
+      {saving && <p role="status" style={S.error}>{t("settings.pendingSave")}</p>}
+      {(saveError || submission?.status === "failed") && <p role="alert" className="inline-issue" style={S.error}>{t("settings.saveFailed")}</p>}
     </ModalShell>
   );
 }

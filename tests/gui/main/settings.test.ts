@@ -62,6 +62,9 @@ describe("settings sets", () => {
     ["exclusions", [{ pattern: "(", match: "regex", target: "both", ignoreCase: false }]],
     ["exclusions", [{ pattern: "", match: "glob", target: "both", ignoreCase: false }]],
     ["manifestName", ""],
+    ["manifestName", "a/../b"],
+    ["manifestName", "a/b"],
+    ["exclusions", [{ pattern: "cache/", match: "glob", target: "file", ignoreCase: false }]],
   ] as const)("reverts only an invalid %s, keeping the authored parameters beside it", (member, bad) => {
     const authored = CUSTOM.defaults;
     const logger = warningLog();
@@ -77,6 +80,20 @@ describe("settings sets", () => {
       .toEqual({ ...DEFAULT_PARAMETERS, level: 1 });
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.warn).mock.calls[0]![1]?.members).toHaveLength(9);
+  });
+
+  it.each(["a/../b", "a/b", "CON", "bad:name.json"])("refuses an unsafe authored manifest name instead of reverting it: %s", (manifestName) => {
+    expect(() => settings.checkedSettings({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifestName } })).toThrow("Invalid archive parameter: manifestName");
+  });
+
+  it("refuses a folder glob targeting files instead of reverting the exclusion list", () => {
+    const exclusions = [{ pattern: "cache/", match: "glob" as const, target: "file" as const, ignoreCase: false }];
+    expect(() => settings.checkedSettings({ ...CUSTOM, defaults: { ...CUSTOM.defaults, exclusions } })).toThrow("Invalid archive parameter: exclusions");
+  });
+
+  it("keeps a corrected safe manifest name while the manifest is disabled", () => {
+    const authored = { ...CUSTOM, defaults: { ...CUSTOM.defaults, manifest: false, manifestName: "record.json" } };
+    expect(settings.checkedSettings(authored)).toEqual(authored);
   });
 
   it("does not read an output folder, overwrite choice or comment an earlier build saved as a default", () => {

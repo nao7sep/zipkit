@@ -154,5 +154,3 @@ export function createSdkClient(spawn: () => HostProcess) {
     },
   };
 }
-
-export type SdkClient = ReturnType<typeof createSdkClient>;

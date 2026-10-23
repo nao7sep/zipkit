@@ -271,7 +271,8 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
 
 describe("the SDK host wiring", () => {
   type Wired = {
-    plan(inputs: string[], options: unknown, signal: AbortSignal, onEvent: () => void): Promise<object>;
+    plan(inputs: string[], options: unknown, signal: AbortSignal, onEvent: () => void, owner: string, reviewed?: string): Promise<object>;
+    releasePlan(owner: string): void;
     write(plan: object, signal: AbortSignal, onEvent: () => void, onSettlement: () => void): Promise<number | null>;
     verify(output: string, signal: AbortSignal, onEvent: () => void): Promise<boolean>;
     pathKinds(paths: string[]): Promise<unknown>;
@@ -279,17 +280,20 @@ describe("the SDK host wiring", () => {
   const wired = () => mocks.deps as unknown as Wired;
   beforeEach(() => mocks.sdkCall.mockReset());
 
-  it("passes the host's plan to the engine and back to be written, as plain data", async () => {
-    const plan = { mode: "plan", output: "/out.zip", writable: true, instructions: { entries: [{ archivePath: "a" }] } };
+  it("passes only the host's prepared reference to the engine and back for writing", async () => {
+    const plan = { revision: "prepared-revision", output: "/out.zip", writable: true, summary: { included: 1 }, scanIncomplete: false, reviewChanged: false };
     mocks.sdkCall.mockResolvedValueOnce(plan).mockResolvedValueOnce(42);
     const signal = new AbortController().signal;
     const onEvent = vi.fn();
-    const planned = await wired().plan(["/in"], { level: 6 }, signal, onEvent);
-    expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }], { signal, onEvent });
+    const planned = await wired().plan(["/in"], { level: 6 }, signal, onEvent, "job-owner", "reviewed-revision");
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }, "job-owner", "reviewed-revision"], { signal, onEvent });
     expect(planned).toBe(plan);
     const onSettlement = vi.fn();
     await expect(wired().write(planned, signal, onEvent, onSettlement)).resolves.toBe(42);
-    expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [plan], { signal, onEvent, onPhysicalSettlement: onSettlement });
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [plan], { signal, onEvent, onPhysicalSettlement: onSettlement, onProgress: undefined });
+    mocks.sdkCall.mockResolvedValueOnce(undefined);
+    wired().releasePlan("job-owner");
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("forgetPlan", ["job-owner"]);
   });
 
   it("asks the SDK host to verify and pathKinds", async () => {
@@ -302,7 +306,7 @@ describe("the SDK host wiring", () => {
 });
 
 describe("the delete dependency", () => {
-  type Deleting = { deleteOriginals(paths: string[], signal: AbortSignal): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[] }> };
+  type Deleting = { deleteOriginals(paths: string[], signal: AbortSignal): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; unconfirmed: string[]; gone?: string[]; settlement: Promise<void> }> };
   const deleting = () => mocks.deps as unknown as Deleting;
   beforeEach(() => mocks.sdkCall.mockReset());
 
@@ -310,21 +314,79 @@ describe("the delete dependency", () => {
     mocks.sdkCall.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("EACCES"));
     const result = await deleting().deleteOriginals(["/a", "/b"], new AbortController().signal);
     expect(mocks.sdkCall.mock.calls).toEqual([["deletePath", ["/a"]], ["deletePath", ["/b"]]]);
-    expect(result).toEqual({ moved: ["/a"], failed: [{ path: "/b", message: "EACCES" }], unconfirmed: [], gone: [] });
+    expect(result).toMatchObject({ moved: ["/a"], failed: [{ path: "/b", message: "EACCES" }], unconfirmed: [], gone: [] });
   });
 
   it("reports a path already gone when its deletion came as gone, not kept", async () => {
     mocks.sdkCall.mockRejectedValueOnce(Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" }));
     const result = await deleting().deleteOriginals(["/a"], new AbortController().signal);
-    expect(result).toEqual({ moved: [], failed: [], unconfirmed: [], gone: ["/a"] });
+    expect(result).toMatchObject({ moved: [], failed: [], unconfirmed: [], gone: ["/a"] });
   });
 
-  it("reports a deletion still running at cancel as unconfirmed, and the rest as kept", async () => {
-    const controller = new AbortController();
-    mocks.sdkCall.mockImplementationOnce(() => new Promise(() => {}));
-    const pending = deleting().deleteOriginals(["/a", "/b"], controller.signal);
-    await vi.waitFor(() => expect(mocks.sdkCall).toHaveBeenCalledOnce());
-    controller.abort();
-    await expect(pending).resolves.toEqual({ moved: [], failed: [{ path: "/b", message: "cancelled before deletion" }], unconfirmed: ["/a"], gone: [] });
+  it.each(["resolve", "reject"] as const)("retains cancellation settlement until the physical deletion %ss", async (outcome) => {
+    vi.useFakeTimers();
+    try {
+      let resolvePhysical!: () => void;
+      let rejectPhysical!: (error: Error) => void;
+      const physical = new Promise<void>((resolve, reject) => { resolvePhysical = resolve; rejectPhysical = reject; });
+      mocks.sdkCall.mockReturnValueOnce(physical);
+      const controller = new AbortController();
+      const pending = deleting().deleteOriginals(["/a", "/b"], controller.signal);
+      expect(mocks.sdkCall.mock.calls).toEqual([["deletePath", ["/a"]]]);
+      expect(vi.getTimerCount()).toBe(1);
+
+      controller.abort();
+      const result = await pending;
+      expect(result).toMatchObject({ moved: [], failed: [{ path: "/b", message: "cancelled before deletion" }], unconfirmed: ["/a"], gone: [] });
+      expect(vi.getTimerCount()).toBe(0);
+      const settled = vi.fn();
+      void result.settlement.then(settled);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).not.toHaveBeenCalled();
+
+      if (outcome === "resolve") resolvePhysical();
+      else rejectPhysical(new Error("late physical failure"));
+      await result.settlement;
+      expect(settled).toHaveBeenCalledOnce();
+      expect(mocks.sdkCall.mock.calls).toEqual([["deletePath", ["/a"]]]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["resolve", "reject"] as const)("stops issuing deletions at timeout and retains settlement until the physical call %ss", async (outcome) => {
+    vi.useFakeTimers();
+    try {
+      let resolvePhysical!: () => void;
+      let rejectPhysical!: (error: Error) => void;
+      const physical = new Promise<void>((resolve, reject) => { resolvePhysical = resolve; rejectPhysical = reject; });
+      mocks.sdkCall.mockReturnValueOnce(physical);
+      const pending = deleting().deleteOriginals(["/a", "/b"], new AbortController().signal);
+      const returned = vi.fn();
+      void pending.then(returned);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(returned).not.toHaveBeenCalled();
+      expect(mocks.sdkCall.mock.calls).toEqual([["deletePath", ["/a"]]]);
+      expect(vi.getTimerCount()).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await pending;
+      expect(result).toMatchObject({ moved: [], failed: [{ path: "/b", message: "cancelled before deletion" }], unconfirmed: ["/a"], gone: [] });
+      expect(vi.getTimerCount()).toBe(0);
+      const settled = vi.fn();
+      void result.settlement.then(settled);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).not.toHaveBeenCalled();
+
+      if (outcome === "resolve") resolvePhysical();
+      else rejectPhysical(new Error("late physical failure"));
+      await result.settlement;
+      expect(settled).toHaveBeenCalledOnce();
+      expect(mocks.sdkCall.mock.calls).toEqual([["deletePath", ["/a"]]]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

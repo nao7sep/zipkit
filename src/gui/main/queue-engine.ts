@@ -36,10 +36,10 @@ import {
   present,
   type SavedJob,
 } from "../shared/queue.js";
-import type { JobAction, LogEvent, PlanData, VerifyReport } from "../shared/api.js";
+import type { JobAction, LogEvent, VerifyReport } from "../shared/api.js";
 import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
-import { reportChanged } from "./plan-review.js";
+import type { PreparedPlan } from "../shared/prepared-plan.js";
 import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type TrashResult } from "./trash-outcome.js";
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
@@ -56,10 +56,11 @@ export interface EngineDeps {
    *  its size and when it last changed), missing, or out of reach. */
   pathState(target: string, signal: AbortSignal): Promise<PathState>;
   /** Dry-run plan for the given inputs/options; progress events go to `onEvent`. */
-  plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<PlanData>;
+  plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void, owner: string, reviewed?: string): Promise<PreparedPlan>;
+  releasePlan(owner: string): void;
   /** Write a planned archive; resolves to the byte count, or null when the SDK
    *  refused because an output appeared at the path since the plan. */
-  write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
+  write(plan: PreparedPlan, signal: AbortSignal, onEvent: (e: LogEvent) => void,
     onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number | null>;
   /** Verify a written archive: every entry's CRC-32, and against the manifest
    *  named, when one is; resolves to the SDK's verdict. */
@@ -126,7 +127,7 @@ export interface QueueEngine {
   /** Look at a job's originals again, and a finished job's archive: note an
    *  original gone or out of reach, an archive changed, replaced or gone. */
   refresh(id: string): Promise<void>;
-  getPlan(id: string): PlanData | null;
+  getPlan(id: string): PreparedPlan | null;
   restore(saved: SavedJob[]): void;
   /** True while a job is actually writing/verifying/trashing (not merely queued),
    *  including a finished job whose originals are being moved on request. */
@@ -142,8 +143,8 @@ export interface QueueEngine {
 
 interface Rec {
   job: Job;
-  /** The held live plan (carries the writer's out-of-band instructions). */
-  plan: PlanData | null;
+  /** Reference to the complete plan held by the SDK host. */
+  plan: PreparedPlan | null;
   aborter: AbortController | null;
   planTimer?: ReturnType<typeof setTimeout>;
   /** The archive path from the most recent write that actually committed. */
@@ -151,6 +152,7 @@ interface Rec {
   publication: PathResource | null;
   /** The archive's state when ZipKit last wrote or verified it. */
   fingerprint: string | null;
+  observedArchive?: string;
   /** What the archive was known as before its drive went out of reach. */
   statusBeforeUnavailable?: ArchiveStatus;
   /** A Create accepted for the current plan; only its completion consumes it. */
@@ -265,11 +267,6 @@ function failureMessage(err: unknown, key: MessageKey, values?: MessageValues): 
   return sentences([message("error.stalled", { path }), message(key, values)]) ?? message(key, values);
 }
 
-/** Whether a plan found a folder it could not list. */
-function scanIncomplete(plan: PlanData): boolean {
-  return plan.findings.some((f) => f.rule === "entry.unlisted");
-}
-
 export function createQueueEngine(deps: EngineDeps): QueueEngine {
   const recs = new Map<string, Rec>();
   const order: string[] = [];
@@ -308,6 +305,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return undefined;
     }
   }
+  function noteArchive(rec: Rec, state: PathState): void {
+    const observed = state.kind === "present" ? state.fingerprint : state.kind;
+    if (rec.observedArchive === observed) return;
+    rec.observedArchive = observed;
+    set(rec, { archiveRevision: (rec.job.archiveRevision ?? 0) + 1 });
+    emit();
+  }
   /** Look at the archive this job wrote and record what is there: a change
    *  since ZipKit last wrote or verified it, another file in its place, nothing
    *  at all, or a drive that is not connected. Resolves to whether the archive
@@ -317,6 +321,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (!output) return false;
     const state = await lookAt(rec, output, signal);
     if (rec.publishedOutput !== output || state === undefined) return true;
+    noteArchive(rec, state);
     const id = rec.job.id;
     if (state.kind === "unavailable") {
       if (rec.job.archiveStatus !== "unavailable") {
@@ -428,6 +433,43 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (result.unconfirmed.length > 0) claim.release(result.settlement ?? null);
   }
 
+  /** Reconfirm the verified archive immediately before each destructive root.
+   * A previous root can take long enough for an external writer to change it. */
+  async function removeChecked(rec: Rec, output: string, inputs: string[], signal: AbortSignal, method: "trash" | "delete"): Promise<TrashResult> {
+    const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
+    const settlements: Promise<void>[] = [];
+    let stopped = false;
+    for (const input of inputs) {
+      if (stopped || signal.aborted) {
+        result.failed.push({ path: input, message: "removal stopped before this input" });
+        continue;
+      }
+      try {
+        const state = await deps.pathState(output, signal);
+        if (rec.fingerprint === null || state.kind !== "present" || state.fingerprint !== rec.fingerprint) {
+          throw new Error("Archive changed or could not be confirmed before originals removal");
+        }
+        signal.throwIfAborted();
+        const removed = await (method === "trash" ? deps.trash : deps.deleteOriginals)([input], signal);
+        result.moved.push(...removed.moved);
+        result.failed.push(...removed.failed);
+        result.unconfirmed.push(...removed.unconfirmed);
+        result.gone!.push(...(removed.gone ?? []));
+        if (removed.settlement) settlements.push(removed.settlement);
+        if (removed.unconfirmed.length) {
+          stopped = true;
+          // An adapter without a settlement signal must retain ownership forever.
+          if (!removed.settlement) settlements.push(new Promise(() => {}));
+        }
+      } catch (error) {
+        stopped = true;
+        result.failed.push({ path: input, message: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    result.settlement = Promise.all(settlements).then(() => {});
+    return result;
+  }
+
   /** Every check before the originals are removed, in order: the archive is
    *  still the one this job made, then the SDK's checks. Null when all pass. */
   async function checkBeforeTrash(
@@ -530,14 +572,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     set(rec, { state: "planning", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
     try {
-      const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id, "plan"));
+      const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id, "plan"), id);
       if (!current()) return; // a newer plan superseded this one — discard the result
       rec.plan = plan;
       set(rec, {
         output: plan.output,
         summary: plan.summary,
+        planRevision: plan.revision,
         writable: plan.writable,
-        scanIncomplete: scanIncomplete(plan),
+        scanIncomplete: plan.scanIncomplete,
         state: plan.writable ? "ready" : "needs-attention",
         message: plan.writable ? undefined : message("job.blocking", { count: plan.summary.errors }),
       });
@@ -551,6 +594,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     } catch (err) {
       if (!current()) return; // superseded (often via the abort above) — discard
       rec.plan = null;
+      set(rec, { planRevision: undefined });
       set(rec, {
         state: "needs-attention",
         writable: false,
@@ -581,15 +625,16 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     const id = rec.job.id;
     // Re-plan fresh: the world may have changed since this job was enqueued.
     const reviewed = rec.plan;
-    let plan: PlanData;
+    let plan: PreparedPlan;
     try {
-      plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onEvent);
+      plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onEvent, rec.job.id, reviewed?.revision);
       rec.plan = plan;
-      set(rec, { output: plan.output, summary: plan.summary, writable: plan.writable, scanIncomplete: scanIncomplete(plan) });
+      set(rec, { output: plan.output, summary: plan.summary, planRevision: plan.revision, writable: plan.writable, scanIncomplete: plan.scanIncomplete });
     } catch (err) {
       // The earlier plan no longer describes this job, so the report explains
       // the failure rather than that stale plan.
       rec.plan = null;
+      set(rec, { planRevision: undefined });
       set(rec, {
         state: "needs-attention",
         writable: false,
@@ -608,7 +653,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     // The fresh plan is held either way; when it would show another Report than
     // the one the user reviewed, it waits for review instead of being written.
     // A plan that landed just before an immediate Create counts as reviewed.
-    if (reviewed && reportChanged(reviewed, plan)) {
+    if (reviewed && plan.reviewChanged) {
       set(rec, { state: "needs-attention", message: message("job.planChanged") });
       deps.log.warn("job run stopped: the files changed since the plan was reviewed", { jobId: id });
       return null;
@@ -646,6 +691,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.publishedOutput = plan.output;
     const written = await lookAt(rec, plan.output, signal);
     rec.fingerprint = written?.kind === "present" ? written.fingerprint : null;
+    if (written) noteArchive(rec, written);
     set(rec, { archiveWritten: true, archiveStatus: "written", archiveBytes: bytes });
     try { rec.publication = (await deps.resources([plan.output], signal))[0] ?? null; }
     catch (error) { deps.log.warn("archive publication identity unavailable", { jobId: id, error: errorInfo(error) }); }
@@ -713,7 +759,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       }
       let removed: TrashResult;
       try {
-        removed = await (removal === "trash" ? deps.trash : deps.deleteOriginals)(inputs, signal);
+        removed = await removeChecked(rec, output, inputs, signal, removal);
         retainTrash(claim!, removed);
       } catch (err) {
         set(rec, { state: "failed", message: message(removal === "trash" ? "job.trashFailed" : "job.deleteFailed") });
@@ -932,6 +978,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         rec.aborter?.abort();
         rec.aborter = null;
         rec.plan = null;
+        set(rec, { planRevision: undefined });
         set(rec, { state: "planning", writable: false, message: undefined, actionResult: undefined, errorCode: undefined });
         rec.planTimer = setTimeout(() => { void planJob(id); }, 250);
         emit();
@@ -959,6 +1006,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       clearTimeout(rec.planTimer);
       rec.aborter?.abort();
       recs.delete(id);
+      deps.releasePlan(id);
       const i = order.indexOf(id);
       if (i >= 0) order.splice(i, 1);
       const p = pending.indexOf(id);
@@ -1146,7 +1194,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             } else if (refusal) {
               result = { severity: "error", message: refusalMessage(refusal, "action.archiveInsideOriginal") };
             } else {
-              const removed = await (trash ? deps.trash : deps.deleteOriginals)(inputs, aborter.signal);
+              const removed = await removeChecked(rec, output, inputs, aborter.signal, trash ? "trash" : "delete");
               retainTrash(claim, removed);
               if (trashConfirmed(removed)) {
                 result = { severity: "info", message: describeRemovalDone(removed, method, "action", gone.length) };
@@ -1183,7 +1231,9 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           if (!(await observeArchive(rec, signal))) return null;
           claim = await claimFiles([output], [], signal);
           const seen = await lookAt(rec, output, signal);
+          const revision = rec.job.archiveRevision;
           const report = await deps.inspect(output, signal, deps.progress(id, "verify"), manifestOf(rec.job.options));
+          if (!(await observeArchive(rec, signal)) || rec.job.archiveRevision !== revision) return null;
           if (report.ok) {
             markVerified(rec, seen?.kind === "present" ? seen.fingerprint : null);
             set(rec, { actionResult: { severity: "info", message: message("history.verified", { count: report.summary.total }) } });

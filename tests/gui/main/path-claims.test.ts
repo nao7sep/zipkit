@@ -12,6 +12,7 @@ import { ZipKit } from "zipkitsdk";
 import { createDirectoryLink, fileSymlinksSupported } from "../../helpers/symlink.js";
 import { SAVE, TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
+import { preparedPlans } from "../../helpers/prepared-plans.js";
 
 const use = (location: string, mode: PathUse["mode"], identity: string | null = location): PathUse => ({ location, mode, identity });
 it("claims the whole conflicting path set atomically, permits shared reads and independent work", () => {
@@ -106,9 +107,11 @@ async function fixture() {
   const deps: EngineDeps = {
     admission: new CommandAdmission(), effects: createPathClaims(),
     resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
-    plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
-    write: async (plan, signal, onEvent, onPhysicalSettlement) =>
-      ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent, onPhysicalSettlement })),
+    ...preparedPlans({
+      plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
+      write: async (plan, signal, onEvent, onPhysicalSettlement) =>
+        ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent, onPhysicalSettlement })),
+    }),
     verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),

@@ -23,7 +23,7 @@ import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { errorInfo } from "./log.js";
 import { getMainWindow, log } from "./runtime.js";
 import { currentSettings } from "./settings.js";
-import { submitSettings, discardSettingsSubmission, reportSettingsDraft } from "./settings-save.js";
+import { submitSettings, discardSettingsSubmission, reportSettingsDraft, settingsSubmission } from "./settings-save.js";
 import { languageEnvironment, mainTranslator, systemLanguageNow } from "./i18n.js";
 import { systemAppearance } from "./theme.js";
 import { paneLayout, recordsListWidth, saveLayout, saveRecordsListWidth } from "./layout.js";
@@ -39,6 +39,7 @@ export function registerIpc(): void {
   // Main's copy, from the startup load or the last save: a window opened or
   // reloaded mid-session never rereads the file.
   ipcMain.handle("zipkit:getSettings", (): GuiSettings => currentSettings());
+  ipcMain.handle("zipkit:getSettingsSubmission", () => settingsSubmission());
 
   ipcMain.handle("zipkit:setSettings", (_event, draft: GuiSettings) => submitSettings(draft));
   ipcMain.handle("zipkit:discardSettingsSubmission", () => discardSettingsSubmission());

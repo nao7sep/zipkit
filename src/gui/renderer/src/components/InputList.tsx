@@ -15,7 +15,7 @@
  * denial boundary only prevents navigation outside owned receivers.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent as ReactDragEvent } from "react";
 import type { Job, PathKind } from "../../../shared/api";
 import {
@@ -54,12 +54,14 @@ function InputRow({
   kind,
   canRemove,
   onRemove,
+  buttonRef,
   t,
 }: {
   path: string;
   kind?: PathKind;
   canRemove: boolean;
   onRemove: (path: string) => void;
+  buttonRef: (button: HTMLButtonElement | null) => void;
   t: Translator["t"];
 }) {
   return (
@@ -69,6 +71,7 @@ function InputRow({
         <PathText path={path} />
       </span>
       <button
+        ref={buttonRef}
         className="icon compact"
         onClick={() => onRemove(path)}
         disabled={!canRemove}
@@ -104,6 +107,26 @@ export function InputList({
     ? orderedEntries(job.entries)
     : job.inputs.map((path) => ({ path }));
   const canRemove = editable && job.inputs.length > 1;
+  const addButton = useRef<HTMLButtonElement>(null);
+  const removeButtons = useRef(new Map<string, HTMLButtonElement>());
+  const requestedRemoval = useRef<{ path: string; index: number; jobId: string } | null>(null);
+
+  useEffect(() => {
+    const requested = requestedRemoval.current;
+    if (!requested) return;
+    if (requested.jobId !== job.id) { requestedRemoval.current = null; return; }
+    if (rows.some((row) => row.path === requested.path)) return;
+    requestedRemoval.current = null;
+    const next = rows[requested.index] ?? rows[requested.index - 1];
+    const button = next && removeButtons.current.get(next.path);
+    if (button && !button.disabled) button.focus();
+    else addButton.current?.focus();
+  }, [job.id, rows]);
+
+  function remove(path: string, index: number) {
+    requestedRemoval.current = { path, index, jobId: job.id };
+    onRemove(path);
+  }
 
   const clearDrag = useCallback(() => {
     setDragActive(false);
@@ -213,13 +236,18 @@ export function InputList({
     >
       <div style={S.head}>
         <span style={S.title}>{t("inputs.title")}</span>
-        <button onClick={() => void onAddClick()} disabled={!editable}>
+        <button ref={addButton} onClick={() => void onAddClick()} disabled={!editable}>
           {t("common.add")}
         </button>
       </div>
       <ul style={S.list}>
-        {rows.map(({ path, kind }) => (
-          <InputRow key={path} path={path} kind={kind} canRemove={canRemove} onRemove={onRemove} t={t} />
+        {rows.map(({ path, kind }, index) => (
+          <InputRow key={path} path={path} kind={kind} canRemove={canRemove}
+            onRemove={() => remove(path, index)}
+            buttonRef={(button) => {
+              if (button) removeButtons.current.set(path, button);
+              else removeButtons.current.delete(path);
+            }} t={t} />
         ))}
       </ul>
       {result && (

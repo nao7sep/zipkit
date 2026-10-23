@@ -176,11 +176,6 @@ export function humanSentence(message: string): string {
   return message.replace(/^[a-z]/, (first) => first.toUpperCase());
 }
 
-/** Terminal states carry a final result, not an editable plan. */
-export function isTerminal(state: Job["state"]): boolean {
-  return state === "done" || state === "failed";
-}
-
 /** Jobs that can be cancelled: in-flight work (`planning`/`running`), waiting
  *  its turn (`queued`), or a job moving its archive or originals to Trash.
  *  Cancelling a run re-plans the job back to an editable state. Drives the
@@ -687,35 +682,6 @@ export function mergeJobEvents(held: readonly JobEvent[], arriving: readonly Job
     merged = [...byId.values()].sort(eventOrder);
   }
   return merged.length > JOB_EVENT_LIMIT ? merged.slice(-JOB_EVENT_LIMIT) : merged;
-}
-
-/** The colour the Progress log paints a level in. A log is mostly routine, so
- *  only the levels worth stopping at take a status colour; debug and info stay
- *  in the secondary text colour and let the messages read as one column. */
-export function logLevelColor(level: LogEvent["level"]): string {
-  switch (level) {
-    case "error":
-      return COLOR.bad;
-    case "warn":
-      return COLOR.warn;
-    case "info":
-    case "debug":
-      return "var(--text-2)";
-  }
-}
-
-/** Catalogue labels for the machine-readable logging levels. */
-export function logLevelLabel(level: LogEvent["level"]): MessageKey {
-  switch (level) {
-    case "debug":
-      return "log.debug";
-    case "info":
-      return "log.info";
-    case "warn":
-      return "log.warn";
-    case "error":
-      return "log.error";
-  }
 }
 
 /** The Progress line for a typed SDK event, rendered from the event's own

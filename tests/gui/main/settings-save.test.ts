@@ -10,7 +10,7 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({ getMainWindow: () => null, 
 vi.mock("../../../src/gui/main/theme.js", () => ({ applyThemePreference: effects.apply }));
 vi.mock("../../../src/gui/main/i18n.js", () => ({ applyLanguagePreference: effects.language, mainTranslator: () => ({ t: (key: string) => key }) }));
 vi.mock("../../../src/gui/main/startup-dialog.js", () => ({ showAppMessageDialog: vi.fn(async () => {}) }));
-import { discardSettingsSubmission, saveSettingsBeforeSessionEnd, settingsSavePending, settleSettingsSave, submitSettings } from "../../../src/gui/main/settings-save.js";
+import { discardSettingsSubmission, saveSettingsBeforeSessionEnd, settingsSubmission, settleSettingsSave, submitSettings } from "../../../src/gui/main/settings-save.js";
 import { currentSettings } from "../../../src/gui/main/settings.js";
 import { appAdmission } from "../../../src/gui/main/command-admission.js";
 
@@ -60,13 +60,11 @@ it("joins actual publication, retains it through a close attempt, and broadcasts
   effects.write.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
   const save = submitSettings({ ...DEFAULT_SETTINGS, theme: "dark" });
   const join = settleSettingsSave();
-  expect(settingsSavePending()).toBe(true);
   expect(() => discardSettingsSubmission()).toThrow("pending");
   expect(effects.write).toHaveBeenCalledOnce();
-  expect(effects.send).not.toHaveBeenCalled();
+  expect(effects.send).toHaveBeenCalledWith("zipkit:settingsSubmissionChanged", expect.objectContaining({ status: "saving" }));
   finish();
   await Promise.all([save, join]);
-  expect(settingsSavePending()).toBe(false);
   expect(currentSettings().theme).toBe("dark");
   expect(effects.apply).toHaveBeenCalledWith("dark");
   expect(effects.send).toHaveBeenCalledWith("zipkit:settingsChanged", expect.objectContaining({ theme: "dark" }));
@@ -125,5 +123,27 @@ it("Windows takeover saves a failed submission rather than subsequent edits to t
   expect(bound).toBe(250);
   expect(options).toEqual({ createAbsent: true, durable: true });
   expect(effects.apply).not.toHaveBeenCalled();
-  expect(effects.send).not.toHaveBeenCalled();
+  expect(effects.send).not.toHaveBeenCalledWith("zipkit:settingsChanged", expect.anything());
+});
+
+it("retains an immutable submission snapshot while saving, after failure and through retry", async () => {
+  let fail!: (error: Error) => void;
+  effects.write.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { fail = reject; }));
+  const draft = { ...DEFAULT_SETTINGS, uiFontFamily: "Georgia", defaults: { ...DEFAULT_SETTINGS.defaults, level: 3 } };
+  const pending = submitSettings(draft);
+  const rejected = expect(pending).rejects.toThrow("disk full");
+  draft.defaults.level = 9;
+  const snapshot = settingsSubmission()!;
+  expect(snapshot).toMatchObject({ status: "saving", draft: { defaults: { level: 3 } }, startedAt: expect.any(Number) });
+  snapshot.draft.defaults.level = 1;
+  expect(settingsSubmission()!.draft.defaults.level).toBe(3);
+  expect(effects.write).toHaveBeenCalledOnce();
+  fail(new Error("disk full"));
+  await rejected;
+  expect(settingsSubmission()).toMatchObject({ status: "failed", draft: { defaults: { level: 3 } } });
+  expect(effects.send).toHaveBeenCalledWith("zipkit:settingsSubmissionChanged", expect.objectContaining({ status: "failed" }));
+  await settleSettingsSave();
+  expect(settingsSubmission()).toBeNull();
+  expect(currentSettings().defaults.level).toBe(3);
+  expect(effects.send).toHaveBeenLastCalledWith("zipkit:settingsSubmissionChanged", null);
 });

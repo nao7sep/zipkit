@@ -12,7 +12,7 @@
  */
 
 import { useId, type CSSProperties } from "react";
-import type { ExclusionPattern } from "zipkitsdk/types";
+import { exclusionIssue, type ExclusionPattern } from "zipkitsdk/types";
 import { useI18n } from "../i18n/I18nContext";
 import { CloseIcon, MoveIcon } from "./Icon";
 import { noteShown, noteStored } from "../../../shared/exclusions";
@@ -24,12 +24,11 @@ function trimmed(text: string): string {
   return text.replace(/^[ \t]+|[ \t]+$/g, "");
 }
 
-/** Whether a row fails its check: a regular expression that does not
- *  compile. A blank row is no pattern at all, not a failing one. */
+/** Whether a row cannot run under the SDK's exclusion rules.
+ *  A blank row is no pattern at all, not a failing one. */
 export function patternInvalid(p: ExclusionPattern): boolean {
   const pattern = trimmed(p.pattern);
-  if (p.match !== "regex" || pattern === "") return false;
-  try { new RegExp(pattern); return false; } catch { return true; }
+  return pattern !== "" && exclusionIssue({ ...p, pattern }) !== null;
 }
 
 /** The list as it is saved: each pattern and note trimmed, blank rows and
@@ -161,7 +160,7 @@ export function ExclusionList({
               />
               {/* Tied to its field, not announced on every keystroke
                   (operation-result conventions, field association). */}
-              {issue && <p id={issueId} className="inline-issue" style={S.issue}>{t("exclusions.issueRegex")}</p>}
+              {issue && <p id={issueId} className="inline-issue" style={S.issue}>{t(exclusionIssue({ ...p, pattern: trimmed(p.pattern) }) === "target" ? "exclusions.issueTarget" : "exclusions.issueRegex")}</p>}
             </li>
           );
         })}

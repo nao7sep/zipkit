@@ -131,6 +131,8 @@ export interface Job {
   /** Resolved output path (once planned). */
   output?: string;
   summary?: PlanSummary;
+  /** Changes only when the host prepares a new report. */
+  planRevision?: string;
   writable?: boolean;
   /** A short status line for needs-attention / failed / done, as a catalogue
    *  message so it renders in the interface language current when shown. */
@@ -149,6 +151,8 @@ export interface Job {
   /** Whether this job's latest run wrote its archive (the file may still need
    *  checking, but it is there to reveal or move to Trash). */
   archiveWritten?: boolean;
+  /** Changes whenever the observed archive identity or availability changes. */
+  archiveRevision?: number;
   /** The archive's state as last checked, while the job has one, or "missing"
    *  once it is gone and the job cannot simply create it again. */
   archiveStatus?: ArchiveStatus;

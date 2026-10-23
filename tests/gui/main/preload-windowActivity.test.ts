@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ZipKitGuiApi } from "../../../src/gui/shared/api.js";
 import { WINDOW_ACTIVITY_CHANNEL } from "../../../src/gui/shared/api.js";
+import { DEFAULT_SETTINGS } from "../../../src/gui/shared/spec.js";
 
 const electron = vi.hoisted(() => {
   let exposed: ZipKitGuiApi | undefined;
@@ -50,4 +51,18 @@ describe("preload window activity bridge", () => {
     cleanup?.();
     expect(electron.ipcRenderer.removeListener).toHaveBeenCalledWith(WINDOW_ACTIVITY_CHANNEL, handler);
   });
+});
+
+it("reads Settings ownership and forwards submission updates with exact listener cleanup", async () => {
+  electron.ipcRenderer.invoke.mockResolvedValueOnce(null);
+  await expect(electron.api()!.getSettingsSubmission()).resolves.toBeNull();
+  expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith("zipkit:getSettingsSubmission");
+  const callback = vi.fn();
+  const unsubscribe = electron.api()!.onSettingsSubmissionChanged(callback);
+  const listener = electron.listeners.get("zipkit:settingsSubmissionChanged")!;
+  const submission = { draft: DEFAULT_SETTINGS, status: "saving", startedAt: 123 };
+  listener({}, submission);
+  expect(callback).toHaveBeenCalledWith(submission);
+  unsubscribe();
+  expect(electron.ipcRenderer.removeListener).toHaveBeenCalledWith("zipkit:settingsSubmissionChanged", listener);
 });

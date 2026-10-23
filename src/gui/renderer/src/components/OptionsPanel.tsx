@@ -9,6 +9,7 @@
  * into responsive columns so the whole set stays visible without a tall scroll.
  */
 
+import { isSafePathComponent } from "zipkitsdk/types";
 import { useId, type CSSProperties, type ReactNode } from "react";
 import type { ArchiveParameters } from "../../../shared/spec";
 import { useI18n } from "../i18n/I18nContext";
@@ -25,7 +26,7 @@ export function OptionsPanel({
   disabled: boolean;
 }) {
   const { t, rich } = useI18n();
-  const manifestNameMissing = options.manifest && options.manifestName.trim() === "";
+  const manifestNameMissing = !isSafePathComponent(options.manifestName);
   const manifestIssueId = useId();
   const set = <K extends keyof ArchiveParameters>(key: K, value: ArchiveParameters[K]) =>
     onChange({ ...options, [key]: value });
@@ -68,7 +69,6 @@ export function OptionsPanel({
         <Field label={t("options.manifestName")}>
           <input
             value={options.manifestName}
-            disabled={!options.manifest}
             spellCheck={false}
             aria-invalid={manifestNameMissing ? true : undefined}
             aria-describedby={manifestNameMissing ? manifestIssueId : undefined}

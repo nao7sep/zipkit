@@ -327,19 +327,49 @@ describe("SettingsDialog tabs", () => {
 });
 
 describe("SettingsDialog manifest name", () => {
-  it("marks an empty manifest name on its field and holds Save", () => {
+  it.each(["", "a/../b", "a/b", "CON"])("marks an unsafe manifest name on its field and holds Save: %j", (name) => {
     renderDialog();
     fireEvent.click(screen.getByRole("tab", { name: "New job parameters" }));
-    const field = screen.getByLabelText("Manifest name") as HTMLInputElement;
+    const field = screen.getByLabelText("Manifest name (when enabled)") as HTMLInputElement;
     expect(field.value).toBe("zipkit.json");
-    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.change(field, { target: { value: name } });
     expect(field.getAttribute("aria-invalid")).toBe("true");
-    expect(document.getElementById(field.getAttribute("aria-describedby")!)?.textContent).toBe("Enter a name for the manifest.");
+    expect(document.getElementById(field.getAttribute("aria-describedby")!)?.textContent).toBe("Enter one safe filename, without folders or reserved characters.");
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("allows correcting an invalid manifest name while the manifest is disabled", () => {
+    const onSave = renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifest: false, manifestName: "a/b" } });
+    fireEvent.click(screen.getByRole("tab", { name: "New job parameters" }));
+    const field = screen.getByLabelText("Manifest name (when enabled)") as HTMLInputElement;
+    expect(field.disabled).toBe(false);
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(field, { target: { value: "record.json" } });
+    expect(field.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifest: false, manifestName: "record.json" } });
   });
 });
 
 describe("SettingsDialog exclusion patterns", () => {
+  it("holds Save for a folder glob targeting files and names the correction on its field", () => {
+    const exclusions = [{ pattern: "initial", match: "glob" as const, target: "file" as const, ignoreCase: false }];
+    const onSave = renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, exclusions } });
+    fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
+    const field = screen.getByLabelText("Pattern 1");
+    fireEvent.change(field, { target: { value: " cache/ " } });
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(field.getAttribute("aria-describedby")!)?.textContent).toBe("A glob ending in / matches folders. Choose Folders or Files and folders.");
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("What pattern 1 applies to"), { target: { value: "dir" } });
+    expect(field.getAttribute("aria-invalid")).toBeNull();
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave.mock.calls[0]![0].defaults.exclusions).toEqual([{ pattern: "cache/", match: "glob", target: "dir", ignoreCase: false }]);
+  });
+
   it("edits the whole list, drops a blank row, and holds Save for a regex that does not compile", () => {
     const onSave = renderDialog();
     fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));

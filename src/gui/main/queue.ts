@@ -11,7 +11,6 @@ import { nanoid } from "nanoid";
 import type { GuiOptions } from "../shared/spec.js";
 import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { JobAction, LogEvent, PlanReport, ProgressCounts, VerifyResult } from "../shared/api.js";
-import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk-process.js";
 import { createPathClaims } from "zipkitsdk";
@@ -57,15 +56,21 @@ function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved
 
 // Every look at the user's files runs in the SDK host's utility process
 // (./sdk-host); the engine supplies a job-tagging `onEvent`, so progress
-// reaches the right job's Progress stream. A plan is plain data, so it crosses
-// each way as it is and can still be written on the other side.
-/** The call's own outcome, or "aborted" once `signal` aborts first. The call
- *  itself goes on; only the wait ends. */
-function untilAborted<T>(call: Promise<T>, signal: AbortSignal): Promise<T | "aborted"> {
+// reaches the right job's Progress stream. Complete plans stay in the host;
+// only their references and requested report projections cross to main.
+/** Ending the caller's wait never ends an already-issued deletion. */
+function waitForDeletion(call: Promise<unknown>, signal: AbortSignal): Promise<"done" | "unconfirmed"> {
   return new Promise((resolve, reject) => {
-    const onAbort = (): void => resolve("aborted");
+    const finish = (fn: () => void): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      fn();
+    };
+    const onAbort = (): void => finish(() => resolve("unconfirmed"));
+    const timer = setTimeout(onAbort, TRASH_TIMEOUT_MS);
     signal.addEventListener("abort", onAbort, { once: true });
-    call.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+    call.then(() => finish(() => resolve("done")), (error) => finish(() => reject(error)));
+    if (signal.aborted) onAbort();
   });
 }
 
@@ -92,7 +97,8 @@ const engine = createQueueEngine({
   pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
   inspect: (output, signal, onEvent, manifestName) =>
     sdk.call("inspect", [output, manifestName], { signal, onEvent, onProgress: countsFor(onEvent) }),
-  plan: (inputs, options, signal, onEvent) => sdk.call("plan", [inputs, options], { signal, onEvent }),
+  plan: (inputs, options, signal, onEvent, owner, reviewed) => sdk.call("plan", [inputs, options, owner, reviewed], { signal, onEvent }),
+  releasePlan: (owner) => { void sdk.call("forgetPlan", [owner]).catch((error) => log.warn("could not release prepared plan", { error: errorInfo(error) })); },
   write: (plan, signal, onEvent, onPhysicalSettlement) =>
     sdk.call("write", [plan], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
   verify: (output, signal, onEvent, manifestName) =>
@@ -129,20 +135,24 @@ const engine = createQueueEngine({
   // unconfirmed, never as kept.
   deleteOriginals: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
+    const settlements: Promise<void>[] = [];
     for (const p of paths) {
-      if (signal.aborted) {
+      if (signal.aborted || result.unconfirmed.length > 0) {
         result.failed.push({ path: p, message: "cancelled before deletion" });
         continue;
       }
       try {
-        const outcome = await untilAborted(sdk.call("deletePath", [p]), signal);
-        if (outcome === "aborted") result.unconfirmed.push(p);
+        const physical = sdk.call("deletePath", [p]);
+        settlements.push(physical.then(() => {}, () => {}));
+        const outcome = await waitForDeletion(physical, signal);
+        if (outcome === "unconfirmed") result.unconfirmed.push(p);
         else result.moved.push(p);
       } catch (err) {
         if ((err as { code?: unknown }).code === "ENOENT") result.gone!.push(p);
         else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }
+    result.settlement = Promise.all(settlements).then(() => {});
     return result;
   },
   emit: (jobs) => {
@@ -285,6 +295,6 @@ export function registerQueueIpc(): void {
 
   ipcMain.handle("zipkit:getPlan", async (_e, id: string): Promise<PlanReport | null> => {
     const plan = engine.getPlan(id);
-    return plan ? toPlanReport(plan) : null;
+    return plan ? sdk.call("report", [plan.revision]) : null;
   });
 }

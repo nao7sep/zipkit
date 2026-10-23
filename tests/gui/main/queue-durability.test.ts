@@ -9,6 +9,7 @@ import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator } from "../../../src/gui/shared/i18n/translate.js";
 import { ZipKit } from "zipkitsdk";
+import type { PlanData } from "zipkitsdk/types";
 import { nodeFileSystem, Volume } from "zipkitsdk/testing";
 import { TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
@@ -23,14 +24,25 @@ it("presents a real publication flush failure safely and keeps originals out of 
     }
   }
   const zip = new FailingZipKit();
+  let held: { owner: string; revision: string; data: PlanData } | undefined;
+  let revision = 0;
   const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }));
   const logged = vi.fn();
   const engine = createQueueEngine({
     admission: new CommandAdmission(), effects: createPathClaims(),
     resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
-    plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
-    write: async (plan, signal, onEvent, onPhysicalSettlement) =>
-      ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent, onPhysicalSettlement })),
+    plan: async (inputs, options, signal, onEvent, owner) => {
+      const data = await zip.plan({ ...buildSpec(inputs, options), output }, { signal, onEvent });
+      held = { owner, revision: `prepared-${++revision}`, data };
+      return { revision: held.revision, output: data.output, writable: data.writable, summary: data.summary,
+        scanIncomplete: data.findings.some((finding) => finding.rule === "entry.unlisted"), reviewChanged: false };
+    },
+    releasePlan: (owner) => { if (held?.owner === owner) held = undefined; },
+    write: async (plan, signal, onEvent, onPhysicalSettlement) => {
+      if (held?.revision !== plan.revision) throw new Error("Prepared plan is unavailable");
+      const written = await zip.write(held.data, { signal, onEvent, onPhysicalSettlement });
+      return written.mode === "write" ? written.bytes : null;
+    },
     verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),

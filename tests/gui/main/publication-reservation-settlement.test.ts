@@ -12,6 +12,7 @@ import { ZipKit } from "zipkitsdk";
 import { nodeFileSystem, Volume, type FileSystemPort } from "zipkitsdk/testing";
 import { SAVE } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
+import { preparedPlans } from "../../helpers/prepared-plans.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -67,31 +68,33 @@ it.each(cases)("reserves publication through full cleanup after $name", async ({
   const deps: EngineDeps = {
     admission: new CommandAdmission(), effects: createPathClaims(),
     resources: (files, signal) => zip.pathResources(files, { signal: signal }),
-    plan: (inputs, options, signal, onEvent) =>
-      zip.plan({ ...buildSpec(inputs, options), output }, { signal, onEvent }),
-    write: async (plan, signal, onEvent, onPhysicalSettlement) => {
-      const first = ++writesStarted === 1;
-      if (first) {
-        firstVolume = new Volume(port, 1_000, signal);
-        volume.mockReturnValueOnce(firstVolume);
-      }
-      try {
-        const written = await zip.write(plan, {
-          signal, onEvent,
-          onPhysicalSettlement: (settlement) => {
-            if (first) {
-              physical = settlement;
-              void settlement.then(() => { physicallySettled = true; });
-            }
-            onPhysicalSettlement(settlement);
-          },
-        });
-        return written.mode === "write" ? written.bytes : null;
-      } catch (error) {
-        writeErrors.push(error);
-        throw error;
-      }
-    },
+    ...preparedPlans({
+      plan: (inputs, options, signal, onEvent) =>
+        zip.plan({ ...buildSpec(inputs, options), output }, { signal, onEvent }),
+      write: async (plan, signal, onEvent, onPhysicalSettlement) => {
+        const first = ++writesStarted === 1;
+        if (first) {
+          firstVolume = new Volume(port, 1_000, signal);
+          volume.mockReturnValueOnce(firstVolume);
+        }
+        try {
+          const written = await zip.write(plan, {
+            signal, onEvent,
+            onPhysicalSettlement: (settlement) => {
+              if (first) {
+                physical = settlement;
+                void settlement.then(() => { physicallySettled = true; });
+              }
+              onPhysicalSettlement(settlement);
+            },
+          });
+          return written.mode === "write" ? written.bytes : null;
+        } catch (error) {
+          writeErrors.push(error);
+          throw error;
+        }
+      },
+    }),
     verify: async (archive, signal, onEvent) =>
       (await zip.verify({ archive, manifest: true }, { signal, onEvent })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>

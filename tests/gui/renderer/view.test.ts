@@ -1,8 +1,8 @@
 /**
  * Tests for the renderer's pure view derivations (no React, no DOM). These pin
  * the behaviors the UI gates on: the per-job label, the exhaustive status/severity
- * color maps, the edit/terminal state predicates (a bug here would let a running
- * job be edited), the archive-and-trash manifest guard, and the formatters.
+ * color maps, the job command and cancellation predicates, the archive-and-trash
+ * manifest guard, and the formatters.
  */
 
 import { describe, expect, it } from "vitest";
@@ -13,15 +13,12 @@ import {
   humanSentence,
   intentLabel,
   isCancelable,
-  isTerminal,
   detailsCards,
   namesOf,
   rowsByPath,
   jobCommands,
   jobCounts,
   label,
-  logLevelColor,
-  logLevelLabel,
   jobAdvisories,
   manifestRequiredButMissing,
   mergeJobEvents,
@@ -249,10 +246,7 @@ describe("severityColor", () => {
   });
 });
 
-describe("isTerminal / isCancelable", () => {
-  it("is terminal only when done or failed", () => {
-    expect(ALL_STATES.filter(isTerminal)).toEqual(["done", "failed"]);
-  });
+describe("isCancelable", () => {
   it("is cancelable while planning, queued, or running, or while moving originals to Trash", () => {
     expect(ALL_STATES.filter((state) => isCancelable(job({ state })))).toEqual(["planning", "queued", "running"]);
     expect(isCancelable(job({ state: "done", trashing: true }))).toBe(true);
@@ -781,22 +775,6 @@ describe("mergeJobEvents", () => {
 });
 
 describe("progress presentation", () => {
-  it("paints only the levels worth stopping at, and keeps the rest quiet", () => {
-    expect(logLevelColor("error")).toBe("var(--status-error)");
-    expect(logLevelColor("warn")).toBe("var(--status-warning)");
-    expect(logLevelColor("info")).toBe("var(--text-2)");
-    expect(logLevelColor("debug")).toBe("var(--text-2)");
-  });
-
-  it("labels every machine log level without leaking raw values", () => {
-    expect((["debug", "info", "warn", "error"] as LogEvent["level"][]).map((level) => en.t(logLevelLabel(level)))).toEqual([
-      "Debug",
-      "Info",
-      "Warning",
-      "Error",
-    ]);
-  });
-
   it("renders from the typed fields, proper-casing ZipKit and ZIP64, without mutating the event message", () => {
     const start = {
       time: "2026-06-14T05:00:00.000Z",

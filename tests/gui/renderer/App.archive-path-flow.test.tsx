@@ -19,7 +19,6 @@ import { closeBackupStore } from "../../../src/gui/main/backupStore";
 import { nullLog } from "../../../src/gui/main/log";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
-import { toPlanReport } from "../../../src/gui/shared/plan-report";
 import type { Job } from "../../../src/gui/shared/queue";
 
 function inProcessHost(): HostProcess {
@@ -57,15 +56,17 @@ it("plans the picked folder with the edited name after parameter reset and job r
   const sdk = createSdkClient(inProcessHost);
   let pushQueue = (_jobs: Job[]): void => {};
   let nextId = 0;
-  const unexpected = async (): Promise<never> => { throw new Error("This flow only plans archives"); };
+  const unexpected = async (): Promise<never> => { throw new Error("Unexpected operation in archive path flow"); };
   const makeEngine = (): QueueEngine => {
     const engine = createQueueEngine({
       admission: new CommandAdmission(), effects: createPathClaims(),
       resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
       pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
       pathKinds: (paths) => sdk.call("pathKinds", [paths]),
-      plan: (paths, options, signal, onEvent) => sdk.call("plan", [paths, options], { signal, onEvent }),
-      write: unexpected, verify: unexpected, inspect: unexpected,
+      plan: (paths, options, signal, onEvent, owner, reviewed) => sdk.call("plan", [paths, options, owner, reviewed], { signal, onEvent }),
+      releasePlan: (owner) => { void sdk.call("forgetPlan", [owner]); },
+      write: (plan, signal, onEvent, onPhysicalSettlement) => sdk.call("write", [plan], { signal, onEvent, onPhysicalSettlement }),
+      verify: unexpected, inspect: unexpected,
       checkRemoval: unexpected, trash: unexpected, deleteOriginals: unexpected,
       emit: (jobs) => pushQueue(structuredClone(jobs)), progress: () => () => {},
       newId: () => `job-${++nextId}`, log: nullLog,
@@ -83,10 +84,11 @@ it("plans the picked folder with the edited name after parameter reset and job r
     onQueue: (listener: typeof pushQueue) => { pushQueue = listener; return () => { pushQueue = () => {}; }; },
     getQueue: async () => structuredClone(engine.snapshot()),
     updateJob: async (jobId: string, patch: Parameters<QueueEngine["update"]>[1]) => engine.update(jobId, patch),
-    getPlan: async (jobId: string) => { const plan = engine.getPlan(jobId); return plan ? toPlanReport(plan) : null; },
+    getPlan: async (jobId: string) => { const plan = engine.getPlan(jobId); return plan ? sdk.call("report", [plan.revision]) : null; },
     refreshJob: (jobId: string) => engine.refresh(jobId),
     getSettings: async () => DEFAULT_SETTINGS, getLayout: async () => DEFAULT_LAYOUT,
     onQueueSaved: () => () => {}, onSettingsChanged: () => () => {},
+    getSettingsSubmission: async () => null, onSettingsSubmissionChanged: () => () => {},
     onOpenAbout: () => () => {}, getJobEvents: async () => [],
     onEvents: () => () => {}, onProgress: () => () => {},
     chooseOutputDir, reportError,
@@ -125,7 +127,11 @@ it("plans the picked folder with the edited name after parameter reset and job r
   const plan = engine.getPlan(id)!;
   expect(plan.writable).toBe(true);
   expect(plan.output).toBe(path.join(selected, "Client delivery.zip"));
-  expect(plan.instructions.output).toBe(plan.output);
+  const report = await sdk.call("report", [plan.revision]);
+  expect(report.writable).toBe(true);
+  expect(report.summary).toEqual(plan.summary);
+  expect(await sdk.call("write", [plan])).toBeGreaterThan(0);
+  expect((await sdk.call("inspect", [plan.output, "zipkit.json"])).ok).toBe(true);
   expect(engine.snapshot().find((job) => job.id === id)?.output).toBe(plan.output);
   expect(reportError).not.toHaveBeenCalled();
 });
