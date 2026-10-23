@@ -24,6 +24,7 @@ const EOCD_MIN = 22;
 const ZIP64_LOCATOR_SIG = 0x07064b50;
 const ZIP64_EOCD_SIG = 0x06064b50;
 const CENTRAL_SIG = 0x02014b50;
+const CENTRAL_DIGITAL_SIG = 0x05054b50;
 const LOCAL_SIG = 0x04034b50;
 const U16 = 0xffff;
 const U32 = 0xffffffff;
@@ -133,20 +134,24 @@ async function locateCentralDir(
   count: number;
   cdOffset: number;
   cdEnd: number;
+  cdSize: number;
   zip64: boolean;
 }> {
   let count = tail.readUInt16LE(eocdInTail + 10);
   const cdSize = tail.readUInt32LE(eocdInTail + 12);
   let cdOffset = tail.readUInt32LE(eocdInTail + 16);
   const eocdOffset = tailStart + eocdInTail;
-  if (count !== U16 && cdSize !== U32 && cdOffset !== U32) {
-    return { count, cdOffset, cdEnd: eocdOffset, zip64: false };
+  // Zip64 records can be present even when classic fields still fit. The
+  // locator, when present, identifies where the directory actually ends.
+  const locInTail = eocdInTail - 20;
+  const hasZip64Locator = locInTail >= 0 && tail.readUInt32LE(locInTail) === ZIP64_LOCATOR_SIG;
+  if (count !== U16 && cdSize !== U32 && cdOffset !== U32 && !hasZip64Locator) {
+    return { count, cdOffset, cdSize, cdEnd: eocdOffset, zip64: false };
   }
 
   // A sentinel means the real values live in the Zip64 records. The locator sits
   // immediately before the EOCD and points at the Zip64 EOCD.
-  const locInTail = eocdInTail - 20;
-  if (locInTail >= 0 && tail.readUInt32LE(locInTail) === ZIP64_LOCATOR_SIG) {
+  if (hasZip64Locator) {
     const z64 = safeNumber(tail.readBigUInt64LE(locInTail + 8), "Zip64 directory offset");
     const locatorOffset = tailStart + locInTail;
     const minimumRecordEnd = safeAdd(z64, 56, "Zip64 end-record range");
@@ -162,37 +167,55 @@ async function locateCentralDir(
       }
       count = safeNumber(record.readBigUInt64LE(32), "Zip64 entry count");
       cdOffset = safeNumber(record.readBigUInt64LE(48), "Zip64 central-directory offset");
-      return { count, cdOffset, cdEnd: z64, zip64: true };
+      return { count, cdOffset, cdSize: safeNumber(record.readBigUInt64LE(40), "Zip64 central-directory size"), cdEnd: z64, zip64: true };
     }
   }
   throw new ZipKitError("archive.malformed", "Zip64 end-of-central-directory not found");
 }
 
-function parseCentral(cd: Buffer, count: number): ReadEntry[] {
+async function parseCentral(file: VolumeFile, cdOffset: number, cdSize: number, count: number): Promise<ReadEntry[]> {
   const entries: ReadEntry[] = [];
+  // Read ahead for the usual tiny records, without retaining the blocks in
+  // returned entries. A maximum-size name plus extra can exceed one block.
+  let block: Buffer = Buffer.alloc(0);
+  let blockStart = 0;
+  const bytes = async (position: number, length: number): Promise<Buffer> => {
+    if (position < blockStart || position + length > blockStart + block.length) {
+      blockStart = position;
+      block = await readExact(file, cdOffset + position, Math.min(Math.max(65536, length), cdSize - position));
+    }
+    return block.subarray(position - blockStart, position - blockStart + length);
+  };
   let p = 0;
   for (let n = 0; n < count; n++) {
-    if (p + 46 > cd.length || cd.readUInt32LE(p) !== CENTRAL_SIG) {
+    if (p + 46 > cdSize) {
+      throw new ZipKitError("archive.malformed", `truncated central-directory header at offset ${p}`);
+    }
+    const cd = await bytes(p, 46);
+    if (cd.readUInt32LE(0) !== CENTRAL_SIG) {
       throw new ZipKitError("archive.malformed", `malformed central directory at offset ${p}`);
     }
-    const gpFlag = cd.readUInt16LE(p + 8);
-    const method = cd.readUInt16LE(p + 10);
-    const dosTime = cd.readUInt16LE(p + 12);
-    const dosDate = cd.readUInt16LE(p + 14);
-    const crc32 = cd.readUInt32LE(p + 16);
-    let compSize = cd.readUInt32LE(p + 20);
-    let uncompSize = cd.readUInt32LE(p + 24);
-    const nameLen = cd.readUInt16LE(p + 28);
-    const extraLen = cd.readUInt16LE(p + 30);
-    const commentLen = cd.readUInt16LE(p + 32);
-    const externalAttr = cd.readUInt32LE(p + 38);
-    let localOffset = cd.readUInt32LE(p + 42);
+    const gpFlag = cd.readUInt16LE(8);
+    const method = cd.readUInt16LE(10);
+    const dosTime = cd.readUInt16LE(12);
+    const dosDate = cd.readUInt16LE(14);
+    const crc32 = cd.readUInt32LE(16);
+    let compSize = cd.readUInt32LE(20);
+    let uncompSize = cd.readUInt32LE(24);
+    const nameLen = cd.readUInt16LE(28);
+    const extraLen = cd.readUInt16LE(30);
+    const commentLen = cd.readUInt16LE(32);
+    const externalAttr = cd.readUInt32LE(38);
+    let localOffset = cd.readUInt32LE(42);
     const recordEnd = p + 46 + nameLen + extraLen + commentLen;
-    if (!Number.isSafeInteger(recordEnd) || recordEnd > cd.length) {
+    if (!Number.isSafeInteger(recordEnd) || recordEnd > cdSize) {
       throw new ZipKitError("archive.malformed", `truncated central-directory record at offset ${p}`);
     }
-    const rawName = cd.toString("utf8", p + 46, p + 46 + nameLen);
-    const extra = cd.subarray(p + 46 + nameLen, p + 46 + nameLen + extraLen);
+    // Names and extras are at most two u16 lengths. Skip the unused comment,
+    // and retain only this record's metadata rather than the whole directory.
+    const metadata = Buffer.from(await bytes(p + 46, nameLen + extraLen));
+    const rawName = metadata.toString("utf8", 0, nameLen);
+    const extra = metadata.subarray(nameLen);
 
     if (compSize === U32 || uncompSize === U32 || localOffset === U32) {
       const z = findExtra(extra, 0x0001);
@@ -235,17 +258,28 @@ function parseCentral(cd: Buffer, count: number): ReadEntry[] {
       dosDate,
       dosTime,
       extra,
-      nameBytes: cd.subarray(p + 46, p + 46 + nameLen),
+      nameBytes: metadata.subarray(0, nameLen),
     });
     p = recordEnd;
+  }
+  if (p !== cdSize) {
+    // A ZIP may sign its central directory. Only this optional, length-framed
+    // record can follow the counted entries; arbitrary trailing bytes cannot.
+    if (cdSize - p < 6) {
+      throw new ZipKitError("archive.malformed", "truncated central-directory signature");
+    }
+    const signature = await bytes(p, 6);
+    if (signature.readUInt32LE(0) !== CENTRAL_DIGITAL_SIG || p + 6 + signature.readUInt16LE(4) !== cdSize) {
+      throw new ZipKitError("archive.malformed", "central-directory count does not account for its declared size");
+    }
   }
   return entries;
 }
 
 /**
  * Parse a ZIP's directory from an open file: positioned-read the archive tail to
- * find the EOCD (and any Zip64 records), then read the central-directory region
- * and decode each record. Nothing but the directory ever enters memory.
+ * find the EOCD (and any Zip64 records), then decode one central record at a
+ * time. Only the names and extras needed for verification are retained.
  */
 export async function parseZip(file: VolumeFile, fileSize: number): Promise<ParsedZip> {
   if (fileSize < EOCD_MIN) throw new ZipKitError("archive.not-zip", "file is too small to be a ZIP");
@@ -253,29 +287,29 @@ export async function parseZip(file: VolumeFile, fileSize: number): Promise<Pars
   const tailStart = fileSize - tailLen;
   const tail = await readExact(file, tailStart, tailLen);
   const eocdInTail = findEocdInTail(tail);
-  const { count, cdOffset, cdEnd, zip64 } = await locateCentralDir(
+  const { count, cdOffset, cdSize, cdEnd, zip64 } = await locateCentralDir(
     file,
     tail,
     tailStart,
     eocdInTail,
   );
 
-  // The central directory ends where its classic or Zip64 EOCD begins; read just
-  // that region rather than the whole file.
-  const cdLen = cdEnd - cdOffset;
+  // Check the declared geometry before reading any directory records. In
+  // particular, an empty directory cannot claim an arbitrary payload region.
   if (
     !Number.isSafeInteger(count) ||
     count < 0 ||
     !Number.isSafeInteger(cdOffset) ||
     cdOffset < 0 ||
-    !Number.isSafeInteger(cdLen) ||
-    cdLen < 0 ||
+    !Number.isSafeInteger(cdSize) ||
+    cdSize < 0 ||
+    safeAdd(cdOffset, cdSize, "central-directory range") !== cdEnd ||
+    count > Math.floor(cdSize / 46) ||
     cdEnd > fileSize
   ) {
     throw new ZipKitError("archive.malformed", "central directory location is out of range");
   }
-  const cd = await readExact(file, cdOffset, cdLen);
-  return { entries: parseCentral(cd, count), zip64 };
+  return { entries: await parseCentral(file, cdOffset, cdSize, count), zip64 };
 }
 
 /** The byte offset of an entry's data, after its local header, name, and extra. */
@@ -340,7 +374,8 @@ export interface EntryReadResult {
  * goes (the caller compares it to the stored value before trusting any output).
  * The compressed data is read from the handle in `chunkSize` pieces and inflated (or
  * passed through for stored entries) so memory stays bounded for any size. A
- * directory yields nothing.
+ * directory with no payload yields nothing; declared directory payloads are
+ * checked just like file payloads.
  */
 export async function readEntryData(
   file: VolumeFile,
@@ -348,7 +383,6 @@ export async function readEntryData(
   sink: DataSink,
   chunkSize: number,
 ): Promise<EntryReadResult> {
-  if (entry.type === "dir") return { crc32: 0, uncompressedSize: 0 };
   if (entry.method !== 0 && entry.method !== 8) {
     throw new ZipKitError(
       "archive.unsupported-method",

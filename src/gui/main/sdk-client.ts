@@ -27,8 +27,15 @@ export class SdkHostError extends Error {
   readonly effect: RemoteFailure["effect"];
   readonly subject: string | undefined;
   readonly details: unknown;
+  readonly errno: RemoteFailure["errno"];
+  readonly syscall: RemoteFailure["syscall"];
+  readonly path: RemoteFailure["path"];
   constructor(failure: RemoteFailure) {
-    super(failure.message);
+    super(failure.message, failure.cause !== undefined ? { cause: failure.cause } : undefined);
+    if (failure.stack !== undefined) this.stack = failure.stack;
+    this.errno = failure.errno;
+    this.syscall = failure.syscall;
+    this.path = failure.path;
     this.name = failure.name;
     this.code = failure.code;
     this.kind = failure.kind;

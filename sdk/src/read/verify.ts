@@ -24,7 +24,7 @@ import { finding } from "../registry.ts";
 import type { Finding, ProgressCounts, VerifiedEntry, VerifyData } from "../types.ts";
 import { MANIFEST_FORMAT, MANIFEST_FORMAT_VERSION } from "../write/manifest.ts";
 import { createManifestReader, type ManifestReading } from "./manifestReader.ts";
-import { localHeaderMismatch, parseZip, readEntryData, type ParsedZip, type ReadEntry } from "./zipReader.ts";
+import { localHeaderMismatch, parseZip, readEntryData, type ParsedZip, type ReadEntry, type EntryReadResult } from "./zipReader.ts";
 
 export interface VerifyDeps {
   limit: <T>(fn: () => Promise<T>) => Promise<T>;
@@ -102,7 +102,9 @@ async function loadManifest(
   entries: ReadEntry[],
   name: string,
   chunkSize: number,
-): Promise<{ entry: ReadEntry; records: ManifestRecord[] }> {
+  signal: AbortSignal | undefined,
+  meter: Meter,
+): Promise<{ entry: ReadEntry; records: ManifestRecord[]; integrity: EntryReadResult }> {
   const inside = entries.find((e) => e.archivePath === name);
   if (!inside) throw new ZipKitError("manifest.missing", `no manifest '${name}' is embedded in the archive`, { subject: name });
   const paths = new Set<string>();
@@ -113,8 +115,13 @@ async function loadManifest(
     return { keep: compactRecord(record) };
   });
   let reading: ManifestReading;
+  let integrity: EntryReadResult;
   try {
-    await readEntryData(archive, inside, (chunk) => reader.push(chunk), chunkSize);
+    integrity = await readEntryData(archive, inside, async (chunk) => {
+      throwIfAborted(signal);
+      await reader.push(chunk);
+      meter.bytes(chunk.length);
+    }, chunkSize);
     reading = await reader.finish();
   } catch (err) {
     // A stall, a cancel or a damaged archive keeps its own code; only the
@@ -140,7 +147,7 @@ async function loadManifest(
   }
   if (!reading.hasEntries) throw new ZipKitError("manifest.invalid", `manifest ${name} has no entries list`, { subject: name });
   if (reading.problem !== null) throw new ZipKitError("manifest.invalid", reading.problem, { subject: name });
-  return { entry: inside, records: reading.records as ManifestRecord[] };
+  return { entry: inside, records: reading.records as ManifestRecord[], integrity };
 }
 
 /** Open `archivePath`, parse its central directory and hand both to `use`,
@@ -191,8 +198,7 @@ async function readEntry(
   meter: Meter,
 ): Promise<{ crc32: VerifiedEntry["crc32"]; sha256?: VerifiedEntry["sha256"]; unreadable?: string }> {
   const checkSha = storedSha !== undefined;
-  if (entry.type === "dir") return checkSha ? { crc32: "ok", sha256: storedSha ? "ok" : "absent" } : { crc32: "ok" };
-  const hasher = checkSha && storedSha !== null ? createHash("sha256") : null;
+  const hasher = checkSha && storedSha !== null && entry.type !== "dir" ? createHash("sha256") : null;
   let crc32: number;
   try {
     ({ crc32 } = await readEntryData(archive, entry, async (chunk) => {
@@ -208,7 +214,9 @@ async function readEntry(
   if (!checkSha) return { crc32: crcOk ? "ok" : "fail" };
   return {
     crc32: crcOk ? "ok" : "fail",
-    sha256: storedSha === null ? "absent" : hasher!.digest("hex") === storedSha ? "ok" : "mismatch",
+    // Directory hashes describe no file content in format 1. Their payload
+    // integrity is still checked above, independently of that manifest rule.
+    sha256: storedSha === null ? "absent" : entry.type === "dir" || hasher!.digest("hex") === storedSha ? "ok" : "mismatch",
   };
 }
 
@@ -225,9 +233,11 @@ export async function verifyArchive(request: VerifyCheck, deps: VerifyDeps): Pro
 
     let manifest: VerifyData["manifest"] = null;
     let manifestEntryPath: string | undefined;
+    let loadedManifest: Awaited<ReturnType<typeof loadManifest>> | undefined;
     const manifestMap = new Map<string, ManifestRecord>();
     if (request.manifest) {
-      const loaded = await loadManifest(archive, parsed.entries, request.manifestName, deps.chunkSize);
+      const loaded = await loadManifest(archive, parsed.entries, request.manifestName, deps.chunkSize, signal, meter);
+      loadedManifest = loaded;
       manifestEntryPath = loaded.entry.archivePath;
       manifest = { name: request.manifestName };
       for (const m of loaded.records) manifestMap.set(m.archivePath, m);
@@ -255,7 +265,11 @@ export async function verifyArchive(request: VerifyCheck, deps: VerifyDeps): Pro
           const local = await localHeaderMismatch(archive, entry);
           if (local !== null) localMismatches.set(entry.archivePath, local);
           const storedSha = request.manifest && !isManifestEntry ? (record?.sha256 ?? null) : undefined;
-          const read = await readEntry(archive, entry, deps.chunkSize, storedSha, signal, meter);
+          // Parsing already streamed the manifest's bytes and measured them.
+          // Reuse that integrity result; its local header is still checked here.
+          const read = entry === loadedManifest?.entry
+            ? { crc32: loadedManifest.integrity.crc32 === (entry.crc32 >>> 0) ? "ok" as const : "fail" as const }
+            : await readEntry(archive, entry, deps.chunkSize, storedSha, signal, meter);
           if (read.unreadable !== undefined) unreadable.set(entry.archivePath, read.unreadable);
           meter.entry();
           deps.logger.emit({ stage: "verify", level: "debug", event: "entry.verified", path: entry.archivePath });

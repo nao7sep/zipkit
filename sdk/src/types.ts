@@ -447,7 +447,7 @@ export interface WriteData {
  * comment, and every included entry with the absolute path it is read from and
  * its times as decimal nanosecond strings. `write` acts on these alone; they
  * are not for the caller to change. It refuses instructions of the wrong shape,
- * and a plan whose `output`, `writable` or `summary.zip64` disagree with them,
+ * and a plan whose visible entries, findings or summary disagree with them,
  * as `plan.invalid`. They hold absolute source paths, so a plan is for crossing
  * between an app's own processes, never for sending off the machine.
  */
@@ -482,7 +482,7 @@ export interface InstructionEntry {
 }
 
 
-export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
+export type { ErrorDiagnostic, ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
 
 // ---------------------------------------------------------------------------
 // Manifest
@@ -778,9 +778,9 @@ export type LogEventBody =
   | { event: "verify.start"; entries: number }
   | { event: "entry.verified"; path: string }
   | ({ event: "verify.done"; ok: boolean } & VerifyData["summary"])
-  /** A call failed: its error as thrown, serialized, and the message of what
-   *  caused it, when anything did. A cancellation is recorded at `info`. */
-  | { event: "fault"; error: ZipKitErrorData; cause?: string };
+  /** A call failed: its error and originating diagnostic chain, serialized.
+   *  A cancellation is recorded at `info`. */
+  | { event: "fault"; error: ZipKitErrorData };
 
 /**
  * The common classification every event carries. `stage` is an additional field

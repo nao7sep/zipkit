@@ -778,9 +778,7 @@ export function progressMessage(event: LogEvent, t: Translator): string {
         ]),
       });
     case "fault":
-      return event.cause !== undefined
-        ? `${event.error.code}: ${event.error.message}: ${event.cause}`
-        : `${event.error.code}: ${event.error.message}`;
+      return `${event.error.code}: ${event.error.message}`;
   }
 }
 

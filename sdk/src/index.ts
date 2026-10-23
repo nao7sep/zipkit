@@ -63,7 +63,7 @@ export type {
   ZipKitOptions,
 } from "./types.ts";
 
-export { ERROR_CODES, isZipKitError, ZipKitError } from "./errors.ts";
-export type { ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
+export { ERROR_CODES, errorDiagnostic, isZipKitError, ZipKitError } from "./errors.ts";
+export type { ErrorDiagnostic, ErrorCode, ErrorDetails, ErrorEffect, ErrorKind, ZipKitErrorData } from "./errors.ts";
 
 export type { Volume, VolumeFile } from "./internal/volume.ts";

@@ -12,6 +12,8 @@ import path from "node:path";
 import { crc32 } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../src/index.ts";
+import { Volume } from "../../src/internal/volume.ts";
+import { fileSystemWith } from "../helpers/volume.ts";
 import { MANIFEST_FORMAT_VERSION } from "../../src/write/manifest.ts";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.ts";
 
@@ -484,5 +486,68 @@ describe("per-failure logging", () => {
       severity: "error",
       path: "b.txt",
     });
+  });
+});
+
+
+describe("directory data integrity", () => {
+  it("checks directory payload CRC while accepting valid directory data", async () => {
+    const archive = await writeArchive([fileEntry("d/", "payload")]);
+    expect((await new ZipKit().verify({ archive })).ok).toBe(true);
+    await corrupt(archive, "payload");
+    const report = await new ZipKit().verify({ archive });
+    expect(report.ok).toBe(false);
+    expect(report.entries[0]).toMatchObject({ type: "dir", crc32: "fail" });
+  });
+
+  it.each(["method", "size"])("checks directory %s", async (field) => {
+    const archive = await writeArchive([fileEntry("d/", "payload")]);
+    if (field === "method") await patchCentral(archive, 10, 99, 2);
+    else await patchCentral(archive, 24, 99);
+    const report = await new ZipKit().verify({ archive });
+    expect(report.entries[0]?.crc32).toBe("unreadable");
+    expect(report.summary.unreadable).toBe(1);
+  });
+});
+
+describe("single manifest data pass", () => {
+  it("reuses CRC and progress from parsing a deflated manifest, retaining local-header checks", async () => {
+    const document = JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [], note: "x".repeat(100000) });
+    const archive = await writeArchive([{ ...fileEntry("zipkit.json", document), method: "deflate" }]);
+    const bytes = await readFile(archive);
+    const dataStart = 30 + bytes.readUInt16LE(26) + bytes.readUInt16LE(28);
+    let payloadStarts = 0;
+    const port = fileSystemWith(archive, (handle) => ({
+      ...handle,
+      read: (buffer, offset, length, position) => {
+        if (position === dataStart) payloadStarts++;
+        return handle.read(buffer, offset, length, position);
+      },
+    }));
+    class Instrumented extends ZipKit {
+      override volume(signal?: AbortSignal) { return new Volume(port, 30000, signal); }
+    }
+    const progress: Array<{ bytesDone: number; entriesDone: number }> = [];
+    const report = await new Instrumented().verify({ archive, manifest: true }, { onProgress: (counts) => progress.push(counts) });
+    expect(report.ok).toBe(true);
+    expect(report.entries[0]?.crc32).toBe("ok");
+    expect(payloadStarts).toBe(1);
+    expect(progress.at(-1)).toMatchObject({ bytesDone: Buffer.byteLength(document), entriesDone: 1 });
+    // Corrupt only the local method: the reused data check must not hide it.
+    bytes.writeUInt16LE(0, 8);
+    await writeFile(archive, bytes);
+    const mismatch = await new Instrumented().verify({ archive, manifest: true });
+    expect(mismatch.summary.localMismatched).toBe(1);
+  });
+
+  it("reports the manifest's CRC failure even when its JSON still parses", async () => {
+    const document = JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [], note: "alpha" });
+    const archive = await writeArchive([fileEntry("zipkit.json", document)]);
+    const bytes = await readFile(archive);
+    bytes[bytes.indexOf(Buffer.from("alpha"))] = "A".charCodeAt(0);
+    await writeFile(archive, bytes);
+    const report = await new ZipKit().verify({ archive, manifest: true });
+    expect(report.ok).toBe(false);
+    expect(report.entries[0]?.crc32).toBe("fail");
   });
 });

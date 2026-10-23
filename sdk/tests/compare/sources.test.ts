@@ -130,3 +130,27 @@ describe("compareWithManifest", () => {
     expect(compareWithManifest([], [], [record("d", 0, "dir")]).matches).toBe(true);
   });
 });
+
+describe.skipIf(process.platform === "win32")("literal backslashes in source input names", () => {
+  it("maps a missing source under its host basename", async () => {
+    const input = path.join(dir, "a\\b");
+    await mkdir(input);
+    const source = path.join(input, "file.txt");
+    await writeFile(source, "content");
+    const archive = path.join(dir, "backslash.zip");
+    await new ZipKit().create({ inputs: [input], output: archive });
+    await rm(source);
+    expect((await compare(archive, { inputs: [input] })).missing).toEqual([source]);
+  });
+
+  it("allows removing the remaining input after a backslash-named input was removed", async () => {
+    const removed = path.join(dir, "a\\b");
+    await mkdir(removed);
+    await writeFile(path.join(removed, "file.txt"), "content");
+    const archive = path.join(dir, "partial.zip");
+    await new ZipKit().create({ inputs: [proj, removed], output: archive });
+    await rm(removed, { recursive: true });
+    const result = await new ZipKit().checkRemoval({ spec: { inputs: [proj] }, archive, removed: [removed] });
+    expect(result.refusal).toBeNull();
+  });
+});

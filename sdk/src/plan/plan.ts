@@ -24,7 +24,7 @@ import { applyEmptyDirs } from "./emptyDirs.ts";
 import { applyEmptyFiles } from "./emptyFiles.ts";
 import { applyFilter } from "./filterPass.ts";
 import { applyNameFix, nameMessage } from "./nameFix.ts";
-import { applyPathFix, windowsPathBudget } from "./pathFix.ts";
+import { applyPathFix, applyPathLength, windowsPathBudget } from "./pathFix.ts";
 import { buildSummary } from "./summary.ts";
 import { applySymlinks } from "./symlinks.ts";
 import { applyTimestamps } from "./timestamps.ts";
@@ -44,6 +44,7 @@ export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   applySymlinks(items, policy);
   applyEmptyFiles(items, policy);
   applyNameFix(items, policy);
+  applyPathLength(items, windowsPathBudget(scan.output));
   applyEmptyDirs(items, policy);
   applyDedup(items);
   // The writer injects the embedded manifest file at the archive root after

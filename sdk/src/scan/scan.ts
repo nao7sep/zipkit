@@ -80,6 +80,8 @@ interface ScanContext {
   unlistedDirs: string[];
   followedDirs: Set<string>;
   inputRoots: string[];
+  /** First failure closes admission while issued logical work is joined. */
+  failure?: { error: unknown };
 }
 
 /** A path's filesystem identity: same file ⇔ same `dev:ino`, regardless of how
@@ -139,6 +141,10 @@ function skip(ctx: ScanContext, paths: EntryPaths, kind: SkipKind): void {
   ctx.skipped.push({ archivePath: paths.archive, sourcePath: paths.source, diskPath: paths.disk, kind });
 }
 
+function checkFailure(ctx: ScanContext): void {
+  if (ctx.failure) throw ctx.failure.error;
+}
+
 /** Rethrow a stall or a cancel from a call whose ordinary failure is tolerated. */
 function rethrowClassified(err: unknown): void {
   if (err instanceof ZipKitError) throw err;
@@ -157,13 +163,14 @@ async function handleSymlink(
   inputIndex: number,
   link: BigIntStats,
 ): Promise<FollowedDirectory | void> {
-  let target = "";
+  let target: string | undefined;
   try {
     target = await ctx.volume.readlink(abs);
   } catch (err) {
     rethrowClassified(err);
-    // Unreadable link target; record the entry with an empty target. Trace it at
-    // debug — a recovered-from anomaly during the walk, not a fault worth a sink.
+    if (ctx.symlinks === "preserve") throw fsFailure(err, abs);
+    // Ignored/followed links do not consume the link text. Never substitute
+    // invented bytes for a preserved target.
     ctx.logger.emit({ stage: "scan", level: "debug", event: "scan.symlink-unreadable", path: abs });
   }
 
@@ -264,23 +271,28 @@ async function walkTree(
   while (level.length > 0) {
     const next: string[] = [];
     for (let i = 0; i < level.length; i += WALK_BATCH) {
+      checkFailure(ctx);
       throwIfAborted(ctx.signal);
       const batch = level.slice(i, i + WALK_BATCH);
-      const listings = await Promise.all(
+      const settled = await Promise.allSettled(
         batch.map(async (dir) => {
           try {
             return { dir, entries: await ctx.volume.readdir(dir) };
           } catch (err) {
-            rethrowClassified(err);
-            if (dir === absDir) {
-              throw fsFailure(err, absDir);
+            if (err instanceof ZipKitError || dir === absDir) {
+              const error = fsFailure(err, dir);
+              ctx.failure ??= { error };
+              throw error;
             }
             ctx.unlistedDirs.push(joinArchivePath(anchors.archive, toArchiveSeparators(path.relative(absDir, dir))));
             return { dir, entries: [] };
           }
         }),
       );
-      for (const { dir, entries } of listings) {
+      checkFailure(ctx);
+      for (const listing of settled) {
+        if (listing.status === "rejected") throw listing.reason;
+        const { dir, entries } = listing.value;
         for (const entry of entries) {
           const abs = path.join(dir, entry.name);
           if (entry.isDirectory()) {
@@ -313,6 +325,7 @@ async function crawlDirectory(
   anchors: EntryPaths,
   inputIndex: number,
 ): Promise<void> {
+  if (ctx.failure) return;
   const results = await walkTree(ctx, absDir, anchors);
 
   const tasks: Promise<void>[] = [];
@@ -325,12 +338,17 @@ async function crawlDirectory(
     const disk = path.join(anchors.disk, path.relative(absDir, abs));
     // Descendants acquire this same pool. Release the entry's slot before
     // awaiting them, including when every slot discovers a followed directory.
-    tasks.push(ctx.limit(() => processPath(ctx, abs, { archive, source, disk }, inputIndex))
+    tasks.push(ctx.limit(async () => {
+      if (ctx.failure) return;
+      try { return await processPath(ctx, abs, { archive, source, disk }, inputIndex); }
+      catch (error) { ctx.failure ??= { error }; throw error; }
+    })
       .then(async (followed) => {
-        if (followed) await crawlDirectory(ctx, followed.real, followed.paths, followed.inputIndex);
-      }));
+        if (followed && !ctx.failure) await crawlDirectory(ctx, followed.real, followed.paths, followed.inputIndex);
+      }).catch((error: unknown) => { ctx.failure ??= { error }; }));
   }
-  await Promise.all(tasks);
+  await Promise.allSettled(tasks);
+  checkFailure(ctx);
 }
 
 export async function scan(

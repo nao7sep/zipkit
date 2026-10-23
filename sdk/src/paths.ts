@@ -65,8 +65,11 @@ export function sameFile(a: string, b: string): boolean {
 
 /** What each path is on disk now, in order: a folder, a file, something else,
  *  missing, or out of reach. A vanished path is reported, never dropped. */
-export async function pathKinds(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform): Promise<PathEntry[]> {
-  return Promise.all(paths.map(async (target): Promise<PathEntry> => {
+export async function pathKinds(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform, concurrency = 1): Promise<PathEntry[]> {
+  const result = new Array<PathEntry>(paths.length);
+  let next = 0;
+  let failure: { error: unknown } | undefined;
+  async function classify(target: string): Promise<PathEntry> {
     const state = await pathState(target, volume, platform);
     if (state.kind === "missing") return { path: target, kind: "missing" };
     if (state.kind === "unavailable") return { path: target, kind: "unavailable" };
@@ -80,5 +83,15 @@ export async function pathKinds(paths: readonly string[], volume: Volume, platfo
       kind = "other";
     }
     return { path: target, kind };
+  }
+  await Promise.allSettled(Array.from({ length: Math.min(concurrency, paths.length) }, async () => {
+    while (!failure) {
+      const index = next++;
+      if (index >= paths.length) return;
+      try { result[index] = await classify(paths[index]!); }
+      catch (error) { failure ??= { error }; }
+    }
   }));
+  if (failure) throw failure.error;
+  return result;
 }

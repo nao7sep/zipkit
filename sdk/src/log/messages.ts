@@ -53,8 +53,6 @@ export function messageFor(body: LogEventBody): string {
       return `verify complete: ${entries(body.total)}, ${problems === 0 ? "no problems" : `${problems} problem${s(problems)}`}${body.ok ? "" : " (not ok)"}`;
     }
     case "fault":
-      return body.cause !== undefined
-        ? `${body.error.code}: ${body.error.message}: ${body.cause}`
-        : `${body.error.code}: ${body.error.message}`;
+      return `${body.error.code}: ${body.error.message}`;
   }
 }

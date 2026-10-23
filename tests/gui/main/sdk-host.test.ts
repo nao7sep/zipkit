@@ -124,3 +124,18 @@ describe("the SDK host", () => {
     expect(replies.find((r) => r.id === 7 && r.type !== "event")).toMatchObject({ type: "failed", error: { code: "operation.cancelled", kind: "cancelled" } });
   });
 });
+
+it("retains origin diagnostics across the host error boundary without custom payloads", async () => {
+  const { ZipKitError } = await import("zipkitsdk");
+  const { failure } = await import("../../../src/gui/main/sdk-host.js");
+  const { SdkHostError } = await import("../../../src/gui/main/sdk-client.js");
+  const origin = Object.assign(new Error("read failed"), { code: "EIO", errno: -5, syscall: "read", path: "/input/a", privatePayload: "PRIVATE_PAYLOAD_SENTINEL" });
+  origin.stack = "Error: read failed\n    at originatingRead (/input.ts:9:2)";
+  const data = structuredClone(failure(new ZipKitError("io.failed", "unable to read", { cause: origin })));
+  const received = new SdkHostError(data);
+  expect(received.stack).toBe(data.stack);
+  expect(received.cause).toEqual({ name: "Error", message: "read failed", stack: origin.stack, code: "EIO", errno: -5, syscall: "read", path: "/input/a" });
+  expect(JSON.stringify(data)).not.toContain("PRIVATE_PAYLOAD_SENTINEL");
+  const raw = new SdkHostError(structuredClone(failure(origin)));
+  expect(raw).toMatchObject({ stack: origin.stack, code: "EIO", errno: -5, syscall: "read", path: "/input/a" });
+});

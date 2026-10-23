@@ -40,9 +40,9 @@ describe("messageFor", () => {
   });
 
   // The wording is a diagnostic, free to change; what a line must carry is pinned.
-  it("carries a fault's code, message and cause", () => {
-    const m = messageFor({ event: "fault", error, cause: "ENOENT" });
-    for (const part of ["archive.not-zip", "not a zip", "ENOENT"]) expect(m).toContain(part);
+  it("carries a fault's code and message while diagnostic causes stay structured", () => {
+    const m = messageFor({ event: "fault", error: { ...error, cause: { name: "Error", message: "ENOENT" } } });
+    for (const part of ["archive.not-zip", "not a zip"]) expect(m).toContain(part);
   });
 
   it("notes zip64 only when present", () => {

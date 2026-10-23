@@ -12,6 +12,14 @@
  */
 
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { z } from "zod";
+import { validatePolicy } from "../validate.ts";
+import { resolvePolicy } from "../policy.ts";
+import { isValidTimeZone } from "./timeZone.ts";
+import { caseFold } from "./name-equivalence.ts";
+import { RULE_REGISTRY } from "../registry.ts";
+import type { PlanData } from "../types.ts";
 import type { ArchivePolicy, InstructionEntry, PlanInstructions } from "../types.ts";
 import type { WriteEntry } from "./types.ts";
 
@@ -66,51 +74,105 @@ export function toInstructions(internals: PlanInternals): PlanInstructions {
   return instructions;
 }
 
-const NS = /^-?\d+$/;
+const relative = z.string().min(1).refine(p => !p.includes("\u0000") && !p.startsWith("/") && !/^[A-Za-z]:\//.test(p) && p.split("/").every(s => s !== "" && s !== "." && s !== ".."));
+// Source paths are original provenance: a literal colon remains valid here.
+const sourceRelative = z.string().min(1).refine(p => !p.includes("\u0000") && !p.startsWith("/") && p.split("/").every(s => s !== "" && s !== "." && s !== ".."));
+const absolute = z.string().refine(p => path.isAbsolute(p) && !p.includes("\u0000"));
+const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+// Manifest ISO timestamps use this same nanoseconds-to-milliseconds conversion.
+const ns = z.string().refine(t => /^-?\d+$/.test(t) && Number.isFinite(new Date(Number(BigInt(t) / 1_000_000n)).getTime()));
+const rule = z.string().refine(r => Object.hasOwn(RULE_REGISTRY, r));
+const fixes = z.array(z.strictObject({ rule: rule.refine(r => !r.startsWith("verify.")), before: z.string(), after: z.string() }));
+const finding = z.strictObject({
+  id: z.string(), rule, severity: z.enum(["info", "warning", "error"]), path: z.string(), message: z.string(),
+  fix: z.strictObject({ kind: z.enum(["rename", "exclude", "normalize-attrs"]), to: z.string().optional() }).optional(),
+});
+const entrySchema = z.strictObject({
+  archivePath: relative, originalPath: z.string().min(1), sourcePath: sourceRelative,
+  absolutePath: z.string(), type: z.enum(["file", "dir", "symlink"]), method: z.enum(["store", "deflate"]),
+  size: count, mode: z.number().int().min(0).max(0xffff),
+  mtimeNs: ns, atimeNs: ns, ctimeNs: ns, birthtimeNs: ns,
+  linkTarget: z.string().optional(), nameFixes: fixes,
+}).refine(e => e.type === "dir" ? (e.absolutePath === "" || absolute.safeParse(e.absolutePath).success) && e.method === "store" && e.linkTarget === undefined
+  : absolute.safeParse(e.absolutePath).success && (e.type === "symlink" ? e.method === "store" && typeof e.linkTarget === "string" && Buffer.byteLength(e.linkTarget, "utf8") === e.size : e.linkTarget === undefined));
+const instructionsSchema = z.strictObject({
+  output: absolute, writable: z.boolean(), zip64: z.boolean(), policy: z.unknown(), overwrite: z.boolean(),
+  timeZone: z.string().refine(isValidTimeZone), comment: z.string().refine(c => Buffer.byteLength(c, "utf8") <= 0xffff).optional(),
+  entries: z.array(entrySchema),
+});
 
-function isEntry(value: unknown): value is InstructionEntry {
-  if (typeof value !== "object" || value === null) return false;
-  const e = value as Record<string, unknown>;
-  return typeof e.archivePath === "string" && typeof e.originalPath === "string" &&
-    typeof e.sourcePath === "string" && typeof e.absolutePath === "string" &&
-    (e.type === "file" || e.type === "dir" || e.type === "symlink") &&
-    (e.method === "store" || e.method === "deflate") &&
-    Number.isSafeInteger(e.size) && (e.size as number) >= 0 && Number.isInteger(e.mode) &&
-    [e.mtimeNs, e.atimeNs, e.ctimeNs, e.birthtimeNs].every((t) => typeof t === "string" && NS.test(t)) &&
-    (e.linkTarget === undefined || typeof e.linkTarget === "string") &&
-    Array.isArray(e.nameFixes);
+/** Decode only the complete resolved instructions produced by the planner. */
+export function fromInstructions(value: unknown): PlanInternals | undefined {
+  const parsed = instructionsSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const i = parsed.data;
+  let policy: ArchivePolicy;
+  try {
+    policy = resolvePolicy(undefined, validatePolicy(i.policy as ArchivePolicy));
+  } catch { return undefined; }
+  if (!isDeepStrictEqual(policy, i.policy)) return undefined;
+  const paths = new Set<string>();
+  const reserved = policy.manifest === false ? undefined : caseFold(policy.manifest.name);
+  for (const e of i.entries) {
+    const folded = caseFold(e.archivePath);
+    if (i.writable && (paths.has(folded) || folded === reserved)) return undefined;
+    paths.add(folded);
+  }
+  const { entries, ...rest } = i;
+  return {
+    ...rest, policy,
+    writeEntries: entries.map(e => ({ ...e, nameFixes: e.nameFixes as InstructionEntry["nameFixes"],
+      mtimeNs: BigInt(e.mtimeNs), atimeNs: BigInt(e.atimeNs), ctimeNs: BigInt(e.ctimeNs), birthtimeNs: BigInt(e.birthtimeNs) })),
+  };
 }
 
-/** The writer's instructions from a plan's `instructions`, or `undefined` when
- *  they are not the shape `plan()` writes. */
-export function fromInstructions(value: unknown): PlanInternals | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const i = value as Record<string, unknown>;
-  if (typeof i.output !== "string" || !path.isAbsolute(i.output) || typeof i.writable !== "boolean" ||
-    typeof i.zip64 !== "boolean" ||
-    typeof i.policy !== "object" || i.policy === null || typeof i.overwrite !== "boolean" ||
-    typeof i.timeZone !== "string" || (i.comment !== undefined && typeof i.comment !== "string") ||
-    !Array.isArray(i.entries) || !i.entries.every(isEntry)) {
-    return undefined;
+const visibleSchema = z.strictObject({
+  mode: z.literal("plan"), output: absolute, writable: z.boolean(), findings: z.array(finding),
+  instructions: z.unknown(),
+  summary: z.strictObject({ total: count, included: count, excluded: count, renamed: count, warnings: count, errors: count, zip64: z.boolean(), sourceBytes: count }),
+  entries: z.array(z.strictObject({ archivePath: z.string(), originalPath: z.string(), diskPath: absolute,
+    type: z.enum(["file", "dir"]), method: z.enum(["store", "deflate"]), excluded: z.boolean(), nameFixes: fixes, findings: z.array(finding),
+    excludeCode: z.enum(["pattern", "empty-file", "empty-dir", "symlink", "duplicate", "path-traversal", "unsupported"]).optional(),
+    excludeReason: z.string().optional(),
+    unsupportedKind: z.enum(["socket", "fifo", "device", "broken-link", "external-link", "unreadable-link"]).optional(),
+    excludedBy: z.strictObject({ id: z.string().optional(), pattern: z.string() }).optional(),
+  }).refine(e => e.excluded === (e.excludeCode !== undefined) && e.excluded === (e.excludeReason !== undefined) &&
+    (e.unsupportedKind !== undefined) === (e.excludeCode === "unsupported") && (e.excludedBy !== undefined) === (e.excludeCode === "pattern"))),
+});
+
+/** Validate the reviewed report against the instructions without scanning or
+ *  deciding again. Every included entry has its own write instruction.
+ *  diskPath is lexical and absolutePath may be a followed link's target. The
+ *  mutable plain-data handoff proves their shapes, not source authenticity;
+ *  filesystem identity/content checks belong to the write edge. */
+export function fromPlan(value: unknown): PlanInternals | undefined {
+  const parsed = visibleSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const p = parsed.data;
+  const i = fromInstructions((value as PlanData).instructions);
+  if (!i || p.output !== i.output || p.writable !== i.writable || p.summary.zip64 !== i.zip64) return undefined;
+  const included = p.entries.filter(e => !e.excluded);
+  if (included.length !== i.writeEntries.length) return undefined;
+  for (let n = 0; n < included.length; n++) {
+    const v = included[n]!, e = i.writeEntries[n]!;
+    if (v.archivePath !== e.archivePath || v.originalPath !== e.originalPath || v.type !== (e.type === "dir" ? "dir" : "file") || v.method !== e.method || !isDeepStrictEqual(v.nameFixes, e.nameFixes)) return undefined;
   }
-  const internals: PlanInternals = {
-    output: i.output,
-    writable: i.writable,
-    zip64: i.zip64,
-    policy: i.policy as ArchivePolicy,
-    overwrite: i.overwrite,
-    timeZone: i.timeZone,
-    writeEntries: (i.entries as InstructionEntry[]).map((e): WriteEntry => {
-      const entry: WriteEntry = {
-        ...e,
-        mtimeNs: BigInt(e.mtimeNs),
-        atimeNs: BigInt(e.atimeNs),
-        ctimeNs: BigInt(e.ctimeNs),
-        birthtimeNs: BigInt(e.birthtimeNs),
-      };
-      return entry;
-    }),
-  };
-  if (typeof i.comment === "string") internals.comment = i.comment;
-  return internals;
+  const findingsById = new Map<string, typeof p.findings>();
+  for (const f of p.findings) {
+    const group = findingsById.get(f.id);
+    if (group) group.push(f);
+    else findingsById.set(f.id, [f]);
+  }
+  for (const e of p.entries) for (const f of e.findings) {
+    const group = findingsById.get(f.id);
+    const match = group?.findIndex(g => isDeepStrictEqual(g, f)) ?? -1;
+    if (match < 0) return undefined;
+    group!.splice(match, 1);
+  }
+  const s = p.summary;
+  if (s.total !== p.entries.length || s.included !== included.length || s.excluded !== p.entries.length - included.length ||
+      s.renamed !== included.filter(e => e.archivePath !== e.originalPath).length ||
+      s.warnings !== p.findings.filter(f => f.severity === "warning").length || s.errors !== p.findings.filter(f => f.severity === "error").length ||
+      p.writable !== (s.errors === 0) || s.sourceBytes !== i.writeEntries.reduce((n, e) => n + (e.type === "dir" ? 0 : e.size), 0)) return undefined;
+  return i;
 }

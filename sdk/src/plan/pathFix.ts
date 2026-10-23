@@ -2,8 +2,9 @@
  * Path-level rooting, the part of name fixing that operates on the
  * whole path rather than a single segment: strip absolute and drive-letter
  * prefixes (`path.absolute`), resolve `.`/`..` and reject paths that escape the
- * archive root (`path.traversal`), and flag over-length paths and components
- * (`path.too-long`). Runs before selection so the matcher sees a rooted path.
+ * archive root (`path.traversal`). Rooting runs before selection so the matcher
+ * sees a rooted path. Length diagnostics (`path.too-long`) run after name
+ * transformations, against the paths recipients will receive.
  *
  * Windows limits a full path to 260 characters, and an archive's entries land
  * below where the recipient extracts it: Windows' "Extract All" makes a folder
@@ -100,7 +101,14 @@ export function applyPathFix(items: WorkItem[], maxPath = MAX_PATH): void {
     }
 
     item.archivePath = result.path;
+  }
+}
 
+/** Portability depends on the final name, after substitutions and normalization. */
+export function applyPathLength(items: WorkItem[], maxPath = MAX_PATH): void {
+  for (const item of items) {
+    if (item.excluded) continue;
+    const result = fixPath(item.archivePath, maxPath);
     if (result.tooLongComponent || result.tooLongPath) {
       item.findings.push(
         finding(

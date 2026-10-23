@@ -185,11 +185,12 @@ describe("abort propagation", () => {
       },
     };
 
+    const volume = new Volume(port, 30_000, controller.signal);
     const run = writeArchive(plan, {
       logger: createLogger(),
       chunkSize: 64 * 1024,
       signal: controller.signal,
-      volume: new Volume(port, 30_000, controller.signal),
+      volume,
     });
     const outcome = run.then(() => "written", (error: unknown) => error);
     await holding;
@@ -197,7 +198,7 @@ describe("abort propagation", () => {
 
     expect(await outcome).toMatchObject({ code: "operation.cancelled" });
     release();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await volume.whenSettled();
     expect(readdirSync(dir).sort()).toEqual(["big"]);
   });
 });

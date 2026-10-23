@@ -191,3 +191,136 @@ describe("readEntryData rejects unreadable entries", () => {
     }
   });
 });
+
+describe("central-directory geometry and bounded reads", () => {
+  it.each([
+    { count: 0, declared: 47, actual: 47 },
+    { count: 1, declared: 46, actual: 47 },
+    { count: 1, declared: 48, actual: 47 },
+  ])("rejects a count or size that does not describe the records: %j", async ({ count, declared, actual }) => {
+    const cd = central({ name: "x" });
+    expect(cd.length).toBe(actual);
+    await expect(parse(Buffer.concat([cd, eocd({ count, cdSize: declared, cdOffset: 0 })])))
+      .rejects.toMatchObject({ code: "archive.malformed" });
+  });
+
+  it("reads records independently and does not retain their unused comments", async () => {
+    const records = Array.from({ length: 12 }, (_, i) => {
+      const record = central({ name: `entry-${i}`, extra: Buffer.from([2, 0, 0, 0]) });
+      record.writeUInt16LE(65535, 32);
+      return Buffer.concat([record, Buffer.alloc(65535)]);
+    });
+    const cd = Buffer.concat(records);
+    const bytes = Buffer.concat([cd, eocd({ count: records.length, cdSize: cd.length, cdOffset: 0 })]);
+    const file = path.join(dir, "comments.zip");
+    await writeFile(file, bytes);
+    const fh = await openRead(file);
+    const lengths: number[] = [];
+    const read = fh.read.bind(fh);
+    fh.read = async (buffer, offset, length, position) => {
+      lengths.push(length);
+      return read(buffer, offset, length, position);
+    };
+    try {
+      const parsed = await parseZip(fh, bytes.length);
+      expect(parsed.entries.map((e) => e.archivePath)).toEqual(records.map((_, i) => `entry-${i}`));
+      expect(Math.max(...lengths)).toBeLessThanOrEqual(2 * 65535);
+      expect(parsed.entries.every((e) => e.extra.buffer.byteLength <= 2 * 65535 && e.nameBytes.buffer.byteLength <= 2 * 65535)).toBe(true);
+    } finally {
+      await fh.close();
+    }
+  });
+});
+
+describe("directory location records", () => {
+  it.each([false, true])("supports Zip64=%s with a maximum archive comment", async (zip64) => {
+    const cd = central({ name: "x" });
+    const comment = Buffer.alloc(65535, 97);
+    comment.writeUInt32LE(0x06054b50, 100); // an embedded signature is not the EOCD
+    if (!zip64) {
+      expect((await parse(Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0, comment })]))).entries[0]?.archivePath).toBe("x");
+      return;
+    }
+    const record = Buffer.alloc(56);
+    record.writeUInt32LE(0x06064b50, 0);
+    record.writeBigUInt64LE(44n, 4);
+    record.writeBigUInt64LE(1n, 24);
+    record.writeBigUInt64LE(1n, 32);
+    record.writeBigUInt64LE(BigInt(cd.length), 40);
+    const locator = Buffer.alloc(20);
+    locator.writeUInt32LE(0x07064b50, 0);
+    locator.writeBigUInt64LE(BigInt(cd.length), 8);
+    const end = eocd({ count: 0xffff, cdSize: 0xffffffff, cdOffset: 0xffffffff, comment });
+    const bytes = Buffer.concat([cd, record, locator, end]);
+    expect(await parse(bytes)).toMatchObject({ zip64: true, entries: [{ archivePath: "x" }] });
+    record.writeBigUInt64LE(BigInt(cd.length + 1), 40);
+    await expect(parse(Buffer.concat([cd, record, locator, end]))).rejects.toMatchObject({ code: "archive.malformed" });
+    record.writeBigUInt64LE(BigInt(cd.length), 40);
+    record.writeBigUInt64LE(2n, 32);
+    await expect(parse(Buffer.concat([cd, record, locator, end]))).rejects.toMatchObject({ code: "archive.malformed" });
+  });
+
+  it.each([0, 8 * 1024 * 1024])("does not read irrelevant payload for an empty directory at %i", async (cdOffset) => {
+    const payloadSize = 8 * 1024 * 1024;
+    const end = eocd({ count: 0, cdSize: 0, cdOffset });
+    const lengths: number[] = [];
+    const file = {
+      read: async (buffer: Buffer, offset: number, length: number, position: number) => {
+        lengths.push(length);
+        buffer.fill(0, offset, offset + length);
+        const from = Math.max(position, payloadSize);
+        const to = Math.min(position + length, payloadSize + end.length);
+        if (from < to) end.copy(buffer, offset + from - position, from - payloadSize, to - payloadSize);
+        return length;
+      },
+    } as VolumeFile;
+    if (cdOffset === 0) {
+      await expect(parseZip(file, payloadSize + end.length)).rejects.toMatchObject({ code: "archive.malformed" });
+    } else {
+      expect(await parseZip(file, payloadSize + end.length)).toEqual({ zip64: false, entries: [] });
+    }
+    expect(Math.max(...lengths)).toBeLessThanOrEqual(22 + 65535 + 20);
+  });
+});
+
+
+it("batches small central records into bounded positioned reads", async () => {
+  const records = Array.from({ length: 4000 }, (_, i) => central({ name: `file-${i}` }));
+  const cd = Buffer.concat(records);
+  const bytes = Buffer.concat([cd, eocd({ count: records.length, cdSize: cd.length, cdOffset: 0 })]);
+  const file = path.join(dir, "many-small-records.zip");
+  await writeFile(file, bytes);
+  const fh = await openRead(file);
+  let reads = 0;
+  const read = fh.read.bind(fh);
+  fh.read = async (...args) => { reads++; return read(...args); };
+  try {
+    expect((await parseZip(fh, bytes.length)).entries).toHaveLength(records.length);
+    expect(reads).toBeLessThanOrEqual(2 * Math.ceil(cd.length / 65536) + 2);
+  } finally {
+    await fh.close();
+  }
+});
+
+it("accepts an optional central digital signature and refuses unrelated trailing bytes", async () => {
+  const cd = central({ name: "signed.txt" });
+  const signature = Buffer.alloc(6 + 65535, 97);
+  signature.writeUInt32LE(0x05054b50, 0);
+  signature.writeUInt16LE(65535, 4);
+  const signed = () => Buffer.concat([cd, signature, eocd({ count: 1, cdSize: cd.length + signature.length, cdOffset: 0 })]);
+  expect((await parse(signed())).entries[0]?.archivePath).toBe("signed.txt");
+  signature.writeUInt16LE(65534, 4);
+  await expect(parse(signed())).rejects.toMatchObject({ code: "archive.malformed" });
+  signature.writeUInt16LE(65535, 4);
+  signature.writeUInt32LE(0x01020304, 0);
+  await expect(parse(signed())).rejects.toMatchObject({ code: "archive.malformed" });
+});
+
+it("supports maximum format-sized name and extra fields across read-ahead blocks", async () => {
+  const name = "n".repeat(65535);
+  const extra = Buffer.alloc(65535);
+  const cd = central({ name, extra });
+  const parsed = await parse(Buffer.concat([cd, eocd({ count: 1, cdSize: cd.length, cdOffset: 0 })]));
+  expect(parsed.entries[0]?.archivePath).toBe(name);
+  expect(parsed.entries[0]?.extra.equals(extra)).toBe(true);
+});

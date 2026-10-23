@@ -71,7 +71,7 @@ export function compareWithManifest(
 
 /** An input's own name: the first segment of every source path it contributed. */
 function inputName(input: string): string {
-  return input.split(/[\\/]/).filter((s) => s !== "").pop() ?? "";
+  return path.basename(input);
 }
 
 /**

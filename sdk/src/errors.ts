@@ -65,8 +65,32 @@ export interface ErrorDetails {
   "io.stalled": { operation: string; timeoutMs: number };
 }
 
-/** A failure as plain data: what an error serializes to and what crosses a
- *  process boundary. */
+/** Diagnostic fields carried as plain data; arbitrary custom payloads are excluded. */
+export interface ErrorDiagnostic {
+  name: string;
+  message: string;
+  stack?: string;
+  code?: string;
+  errno?: number | string;
+  syscall?: string;
+  path?: string;
+  cause?: ErrorDiagnostic;
+}
+
+/** Preserve the originating error chain without retaining objects or cycles. */
+export function errorDiagnostic(value: unknown, seen = new Set<object>()): ErrorDiagnostic {
+  if (typeof value !== "object" || value === null) return { name: "Error", message: String(value) };
+  if (seen.has(value)) return { name: "Error", message: "[circular cause]" };
+  seen.add(value);
+  const e = value as Record<string, unknown>;
+  const data: ErrorDiagnostic = { name: typeof e.name === "string" ? e.name : "Error", message: typeof e.message === "string" ? e.message : String(value) };
+  for (const key of ["stack", "code", "syscall", "path"] as const) if (typeof e[key] === "string") data[key] = e[key];
+  if (typeof e.errno === "string" || typeof e.errno === "number") data.errno = e.errno;
+  if (e.cause !== undefined) data.cause = errorDiagnostic(e.cause, seen);
+  return data;
+}
+
+/** A failure as plain data, including its originating diagnostic chain. */
 export interface ZipKitErrorData {
   name: "ZipKitError";
   code: ErrorCode;
@@ -75,6 +99,8 @@ export interface ZipKitErrorData {
   message: string;
   /** The path or entry the failure concerns, when there is one. */
   subject?: string;
+  stack?: string;
+  cause?: ErrorDiagnostic;
   details?: ErrorDetails[keyof ErrorDetails];
 }
 
@@ -85,7 +111,7 @@ export interface ZipKitErrorOptions<C extends ErrorCode> {
   cause?: unknown;
 }
 
-export class ZipKitError<C extends ErrorCode = ErrorCode> extends Error implements ZipKitErrorData {
+export class ZipKitError<C extends ErrorCode = ErrorCode> extends Error {
   override readonly name = "ZipKitError";
   readonly code: C;
   readonly kind: ErrorKind;
@@ -104,6 +130,8 @@ export class ZipKitError<C extends ErrorCode = ErrorCode> extends Error implemen
 
   toJSON(): ZipKitErrorData {
     const data: ZipKitErrorData = { name: "ZipKitError", code: this.code, kind: this.kind, effect: this.effect, message: this.message };
+    if (this.stack !== undefined) data.stack = this.stack;
+    if (this.cause !== undefined) data.cause = errorDiagnostic(this.cause);
     if (this.subject !== undefined) data.subject = this.subject;
     if (this.details !== undefined) data.details = this.details;
     return data;
@@ -144,7 +172,9 @@ export function withUnknownEffect(err: unknown): unknown {
   const options: ZipKitErrorOptions<ErrorCode> = { effect: "unknown", cause: err.cause };
   if (err.subject !== undefined) options.subject = err.subject;
   if (err.details !== undefined) options.details = err.details as never;
-  return new ZipKitError(err.code, err.message, options);
+  const updated = new ZipKitError(err.code, err.message, options);
+  updated.stack = err.stack;
+  return updated;
 }
 
 /** `err` naming `subject` when it names nothing yet, such as an archive fault
@@ -154,7 +184,9 @@ export function withSubject(err: unknown, subject: string): unknown {
   if (!(err instanceof ZipKitError) || err.subject !== undefined) return err;
   const options: ZipKitErrorOptions<ErrorCode> = { effect: err.effect, cause: err.cause, subject };
   if (err.details !== undefined) options.details = err.details as never;
-  return new ZipKitError(err.code, err.message, options);
+  const updated = new ZipKitError(err.code, err.message, options);
+  updated.stack = err.stack;
+  return updated;
 }
 
 /** A file-system failure at `subject` as a ZipKit error, by what the system

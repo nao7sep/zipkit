@@ -248,7 +248,7 @@ export class ZipKit {
 
   /** What each path is on disk now, in order (see `PathKind`). */
   async pathKinds(paths: readonly string[], options: ZipKitCallOptions = {}): Promise<PathEntry[]> {
-    return this.#run("scan", options, (run) => pathKinds(requireAbsoluteList(paths, "paths"), run.volume));
+    return this.#run("scan", options, (run) => pathKinds(requireAbsoluteList(paths, "paths"), run.volume, process.platform, this.#concurrency));
   }
 
   /**
@@ -396,13 +396,11 @@ interface Run {
  *  recorded under scan), else the call's own. A cancellation is no failure,
  *  so it is recorded at `info`. */
 function reportFault(logger: Logger, error: ZipKitError, stage: LogStage): void {
-  const cause = error.cause instanceof Error && error.cause.message !== error.message ? error.cause.message : undefined;
   logger.emit({
     stage: STAGE_FOR_CODE_DOMAIN[error.code.split(".")[0]!] ?? stage,
     level: error.kind === "cancelled" ? "info" : "error",
     event: "fault",
     error: error.toJSON(),
-    ...(cause !== undefined ? { cause } : {}),
   });
 }
 

@@ -404,3 +404,19 @@ describe("exclusion codes", () => {
     for (const entry of p.entries) expect(entry.excluded).toBe(entry.excludeCode !== undefined);
   });
 });
+
+it("warns on final names expanded past the portable component limit", () => {
+  const p = plan([scanEntry({ archivePath: `${"a".repeat(250)}?.txt` })], {
+    names: { invalidCharReplacement: "replacement", invalidCharStyle: "replace" },
+  });
+  expect(p.entries[0]!.archivePath).toContain("replacement");
+  expect(p.entries[0]!.findings).toContainEqual(expect.objectContaining({ rule: "path.too-long", path: p.entries[0]!.archivePath }));
+});
+
+it.each([85, 86])("checks final fullwidth bytes at the 255-byte boundary (%i characters)", count => {
+  const p = plan([scanEntry({ archivePath: "?".repeat(count) })], { names: { invalidCharStyle: "fullwidth" } });
+  const warnings = p.entries[0]!.findings.filter(f => f.rule === "path.too-long");
+  expect(Buffer.byteLength(p.entries[0]!.archivePath, "utf8")).toBe(count * 3);
+  expect(warnings).toHaveLength(count === 85 ? 0 : 1);
+  if (warnings.length) expect(warnings[0]!.path).toBe(p.entries[0]!.archivePath);
+});

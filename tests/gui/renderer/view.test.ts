@@ -843,10 +843,10 @@ describe("progress presentation", () => {
       level: "error",
       event: "fault",
       error: { name: "ZipKitError", code: "path.denied", kind: "unavailable", effect: "none", message: "cannot stat: /x" },
-      cause: "EACCES",
-      message: "path.denied: cannot stat: /x: EACCES",
+
+      message: "path.denied: cannot stat: /x",
     } as LogEvent;
-    expect(progressMessage(event, createTranslator("ja"))).toBe("path.denied: cannot stat: /x: EACCES");
+    expect(progressMessage(event, createTranslator("ja"))).toBe("path.denied: cannot stat: /x");
   });
 
   it("lists a stage's counts the way the language lists things", () => {

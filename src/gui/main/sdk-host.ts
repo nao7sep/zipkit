@@ -11,7 +11,7 @@
  */
 
 import { rm } from "node:fs/promises";
-import { ZipKit, ZipKitError, type ErrorEffect, type ErrorKind, type PathResource, type PathState, type PlanData, type RemovalCheck, type VerifyRequest } from "zipkitsdk";
+import { errorDiagnostic, ZipKit, ZipKitError, type ErrorDiagnostic, type ErrorEffect, type ErrorKind, type PathResource, type PathState, type PlanData, type RemovalCheck, type VerifyRequest } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
@@ -39,7 +39,7 @@ export type HostRequest =
 /** A failure as it crosses: an SDK error's own data (see the SDK's
  *  `ZipKitErrorData`), or the name, message and errno code of anything else,
  *  or the host's own `host.exited` when its process ends. */
-export interface RemoteFailure {
+export interface RemoteFailure extends ErrorDiagnostic {
   name: string;
   message: string;
   code?: string;
@@ -59,11 +59,7 @@ export type HostReply =
 
 export function failure(err: unknown): RemoteFailure {
   if (err instanceof ZipKitError) return err.toJSON();
-  if (!(err instanceof Error)) return { name: "Error", message: String(err) };
-  // A system error's errno code crosses too, so main can tell a path that is
-  // already gone (ENOENT) from a deletion that failed.
-  const code = (err as NodeJS.ErrnoException).code;
-  return typeof code === "string" ? { name: err.name, message: err.message, code } : { name: err.name, message: err.message };
+  return errorDiagnostic(err);
 }
 
 /** What a verification checks: the archive held to the manifest named, or,

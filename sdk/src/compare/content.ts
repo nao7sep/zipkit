@@ -30,12 +30,14 @@ export interface RecheckDeps {
 
 /** What one source holds now, both ways a record can name it. */
 interface Digest {
-  sha256: string;
-  crc32: number;
+  sha256?: string | undefined;
+  crc32?: number | undefined;
 }
 
-async function digestFile(entry: WriteEntry, deps: RecheckDeps, meter: Meter): Promise<Digest> {
-  const hash = createHash("sha256");
+interface DigestNeeds { sha256: boolean; crc32: boolean }
+
+async function digestFile(entry: WriteEntry, needs: DigestNeeds, deps: RecheckDeps, meter: Meter): Promise<Digest> {
+  const hash = needs.sha256 ? createHash("sha256") : null;
   let crc = 0;
   let file;
   try {
@@ -50,8 +52,8 @@ async function digestFile(entry: WriteEntry, deps: RecheckDeps, meter: Meter): P
       const bytesRead = await file.read(buf, 0, buf.length, position);
       if (bytesRead === 0) break;
       const chunk = buf.subarray(0, bytesRead);
-      hash.update(chunk);
-      crc = crc32(chunk, crc);
+      hash?.update(chunk);
+      if (needs.crc32) crc = crc32(chunk, crc);
       position += bytesRead;
       meter.bytes(bytesRead);
     }
@@ -60,11 +62,14 @@ async function digestFile(entry: WriteEntry, deps: RecheckDeps, meter: Meter): P
   } finally {
     await file.release();
   }
-  return { sha256: hash.digest("hex"), crc32: crc >>> 0 };
+  return { sha256: hash?.digest("hex"), crc32: needs.crc32 ? crc >>> 0 : undefined };
 }
 
-function digestBytes(bytes: Buffer): Digest {
-  return { sha256: createHash("sha256").update(bytes).digest("hex"), crc32: crc32(bytes) >>> 0 };
+function digestBytes(bytes: Buffer, needs: DigestNeeds): Digest {
+  return {
+    sha256: needs.sha256 ? createHash("sha256").update(bytes).digest("hex") : undefined,
+    crc32: needs.crc32 ? crc32(bytes) >>> 0 : undefined,
+  };
 }
 
 /** Whether the source matches its record: by SHA-256 when one was recorded, else by CRC-32. */
@@ -109,9 +114,15 @@ export async function recheckContent(
         if (candidates.length === 0) {
           changed.push(entry.sourcePath);
         } else {
+          // Shared source names can have mixed records. Read once, calculating
+          // only the checksums that these candidates can actually compare.
+          const needs = {
+            sha256: candidates.some(record => record.sha256 !== undefined),
+            crc32: candidates.some(record => record.sha256 === undefined),
+          };
           const digest = entry.type === "symlink"
-            ? digestBytes(Buffer.from(entry.linkTarget ?? "", "utf8"))
-            : await digestFile(entry, deps, meter);
+            ? digestBytes(Buffer.from(entry.linkTarget ?? "", "utf8"), needs)
+            : await digestFile(entry, needs, deps, meter);
           // Claimed after the read, from what is still unclaimed: a source
           // sharing this path may have taken a record while this one was read.
           const pool = bySource.get(entry.sourcePath)!;

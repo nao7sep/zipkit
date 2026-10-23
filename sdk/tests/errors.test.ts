@@ -29,7 +29,7 @@ describe("ZipKitError", () => {
     const err = stallError("publish", "/out/a.zip", 30_000, true);
     const data = structuredClone(JSON.parse(JSON.stringify(err)));
     expect(data).toEqual({
-      name: "ZipKitError", code: "io.stalled", kind: "unavailable", effect: "unknown",
+      stack: expect.any(String), name: "ZipKitError", code: "io.stalled", kind: "unavailable", effect: "unknown",
       message: "publish did not finish within 30000 ms and may still complete: /out/a.zip",
       subject: "/out/a.zip", details: { operation: "publish", timeoutMs: 30_000 },
     });
@@ -75,4 +75,20 @@ describe("verification of the two headers", () => {
     expect(result.summary.localMismatched).toBe(1);
     expect(result.findings).toEqual([expect.objectContaining({ rule: "verify.local-mismatch", path: "a.txt", severity: "error" })]);
   });
+});
+
+it("preserves originating diagnostics in JSON and fault events", async () => {
+  const origin = Object.assign(new Error("origin"), { code: "EIO", syscall: "read", path: "/source" });
+  origin.stack = "Error: origin\n    at originatingRead (/source.ts:12:3)";
+  const error = new ZipKitError("io.failed", "read failed", { cause: origin });
+  const marked = withUnknownEffect(error) as ZipKitError;
+  expect(marked.stack).toBe(error.stack);
+  const data = JSON.parse(JSON.stringify(marked));
+  expect(data).toMatchObject({ stack: error.stack, cause: { name: "Error", message: "origin", stack: origin.stack, code: "EIO", syscall: "read", path: "/source" } });
+  const events: unknown[] = [];
+  const zip = new ZipKit();
+  const controller = new AbortController();
+  controller.abort(error);
+  await expect(zip.plan({ inputs: [root] }, { signal: controller.signal, onEvent: e => events.push(e) })).rejects.toBeDefined();
+  expect(events).toContainEqual(expect.objectContaining({ event: "fault", error: expect.objectContaining({ cause: expect.objectContaining({ cause: expect.objectContaining({ stack: origin.stack }) }) }) }));
 });

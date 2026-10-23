@@ -54,6 +54,7 @@ describe("manifests of any size", () => {
     const plan = planArchive(scanResult(directories(1), { output }), policy);
     // One long finding message carries the manifest past the old limit cheaply.
     plan.findings.push({ id: "name.suspicious:folder-0", rule: "name.suspicious", severity: "warning", path: "folder-0", message: "é".repeat(33 * 1024 * 1024) });
+    plan.summary.warnings++;
     await write(plan);
     const verified = await new ZipKit().verify({ archive: output, manifest: true });
     expect(verified.ok).toBe(true);

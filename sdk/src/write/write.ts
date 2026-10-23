@@ -8,8 +8,8 @@
  * instructions are part of the plan (see `instructions.ts`), so `write(plan)`
  * needs no second argument.
  *
- * The instructions are the gate: a plan whose visible output, `writable` or
- * Zip64 verdict disagree with them is `plan.invalid`, and one they do not let
+ * The instructions are the gate: a plan whose reviewed entries, findings or
+ * summary disagree with them is `plan.invalid`, and one they do not let
  * write is `write.not-writable`, with no override for the error tier. The
  * output is written to a temp file in its own directory and published by the
  * writer; an output that appeared since the plan, when replacing it was not
@@ -19,9 +19,10 @@
 
 import { createHash, type Hash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
+import { createPathClaims, pathResources } from "../claims.ts";
 import { classify, fsFailure, isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
 import type { PlanInternals } from "../internal/instructions.ts";
-import { fromInstructions } from "../internal/instructions.ts";
+import { fromPlan } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { WriteEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
@@ -35,6 +36,10 @@ import type { ManifestEntryInput } from "./manifest.ts";
 import { EntryCompressor } from "./deflate.ts";
 import { ZipWriter } from "./zipWriter.ts";
 import type { StreamResult, WriteEntryInput } from "./zipWriter.ts";
+
+// Checked-rename publication cannot exclude another SDK writer at the OS
+// boundary. Share output admission across instances until native work settles.
+const outputClaims = createPathClaims();
 
 export interface WriteDeps {
   logger: Logger;
@@ -194,12 +199,9 @@ async function streamPieces(
  *  are malformed or the plan's visible fields say otherwise. */
 function checkedInstructions(plan: PlanData): PlanInternals {
   const given = plan !== null && typeof plan === "object" ? plan : undefined;
-  const internals = given?.mode === "plan" ? fromInstructions(given.instructions) : undefined;
+  const internals = fromPlan(given);
   const subject = typeof given?.output === "string" ? { subject: given.output } : {};
   if (!internals) throw new ZipKitError("plan.invalid", "not a plan returned by plan(): its instructions are missing or malformed", subject);
-  if (given!.output !== internals.output || given!.writable !== internals.writable || given!.summary?.zip64 !== internals.zip64) {
-    throw new ZipKitError("plan.invalid", "the plan's output, writable or summary.zip64 differ from its instructions", subject);
-  }
   return internals;
 }
 
@@ -256,6 +258,9 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     deps.volume,
   );
 
+  const claim = outputClaims.claim((await pathResources([output], deps.volume)).map((resource) => ({ ...resource, mode: "change" })));
+  if (!claim) return outputTaken(plan);
+
   let zip64 = false;
   let bytes = 0;
   try {
@@ -273,7 +278,14 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       }
 
       if (source.type === "symlink") {
-        const raw = Buffer.from(source.linkTarget ?? "", "utf8");
+        let target: string;
+        try {
+          const stats = await deps.volume.lstat(source.absolutePath);
+          if (!stats.isSymbolicLink() || changedSinceScan(source, stats)) throw sourceChanged(source);
+          target = await deps.volume.readlink(source.absolutePath);
+          if (target !== source.linkTarget) throw sourceChanged(source);
+        } catch (error) { throw fsFailure(error, source.absolutePath); }
+        const raw = Buffer.from(target, "utf8");
         const result = await streamBuffer(
           writer,
           toWriteEntryInput(source),
@@ -388,5 +400,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     // The sources and the writer classify their own file failures; anything
     // else is the SDK's own fault.
     throw left(classify(err, output));
+  } finally {
+    claim.release(deps.volume.whenSettled());
   }
 }
