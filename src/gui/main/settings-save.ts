@@ -11,20 +11,10 @@ import { getMainWindow, log } from "./runtime.js";
 import { errorInfo } from "./log.js";
 import { showAppMessageDialog } from "./startup-dialog.js";
 import { appAdmission } from "./command-admission.js";
-import type { SettingsSubmission } from "../shared/api.js";
 
 let submitted: GuiSettings | undefined;
 let running: Promise<GuiSettings> | undefined;
 let runningPacket: GuiSettings | undefined;
-let submission: SettingsSubmission = null;
-export function settingsSubmission(): SettingsSubmission { return structuredClone(submission); }
-function announceSubmission(next: SettingsSubmission): void {
-  submission = next;
-  for (const win of BrowserWindow.getAllWindows()) {
-    try { win.webContents.send("zipkit:settingsSubmissionChanged", settingsSubmission()); }
-    catch (error) { log.warn("could not send settings submission", { error: errorInfo(error) }); }
-  }
-}
 
 // Whether the Settings dialog holds edits not yet submitted. They live only in
 // the renderer; it reports each change so quit can ask before they go.
@@ -37,12 +27,11 @@ export function settingsDraftOpen(): boolean { return draftOpen; }
 export function discardSettingsSubmission(): void {
   if (running) throw new Error("Settings publication is still pending");
   submitted = undefined;
-  announceSubmission(null);
 }
 
 export function submitSettings(draft: GuiSettings): Promise<GuiSettings> {
   if (!appAdmission.accepting()) return Promise.reject(new Error("The app is shutting down"));
-  const packet = structuredClone(checkedSettings(draft, log));
+  const packet = checkedSettings(draft, log);
   if (running) return Object.keys(changedSettings(runningPacket!, packet)).length === 0
     ? running : Promise.reject(new Error("Another Settings save is still pending"));
   submitted = packet;
@@ -57,13 +46,11 @@ export async function settleSettingsSave(): Promise<void> {
 function publish(): Promise<GuiSettings> {
   const packet = submitted!;
   runningPacket = packet;
-  announceSubmission({ draft: packet, status: "saving", startedAt: Date.now() });
   const work = (async () => {
     let saved: GuiSettings;
     try { saved = await saveSettings(packet, log); }
     catch (error) {
       log.error("failed to persist settings", { error: errorInfo(error) });
-      announceSubmission({ draft: packet, status: "failed", startedAt: submission!.startedAt });
       throw error;
     }
     submitted = undefined;
@@ -85,7 +72,6 @@ function publish(): Promise<GuiSettings> {
         title: t("settings.title"), message: t("settings.savedApplyFailed"), button: "ok",
       }).catch((error) => log.error("saved settings warning could not be shown", { error: errorInfo(error) }));
     }
-    announceSubmission(null);
     return saved;
   })();
   running = work.finally(() => { running = undefined; runningPacket = undefined; });

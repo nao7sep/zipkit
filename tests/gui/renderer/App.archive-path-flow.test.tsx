@@ -88,7 +88,6 @@ it("plans the picked folder with the edited name after parameter reset and job r
     refreshJob: (jobId: string) => engine.refresh(jobId),
     getSettings: async () => DEFAULT_SETTINGS, getLayout: async () => DEFAULT_LAYOUT,
     onQueueSaved: () => () => {}, onSettingsChanged: () => () => {},
-    getSettingsSubmission: async () => null, onSettingsSubmissionChanged: () => () => {},
     onOpenAbout: () => () => {}, getJobEvents: async () => [],
     onEvents: () => () => {}, onProgress: () => () => {},
     chooseOutputDir, reportError,

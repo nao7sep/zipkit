@@ -95,9 +95,6 @@ export interface GuiReportedError {
 export type VerifyReport = Pick<VerifyData, "ok" | "summary" | "missing" | "extra">;
 export type VerifyResult = { ok: true; data: VerifyReport } | { ok: false; error: GuiError };
 
-/** Main owns the submitted draft until physical publication settles. */
-export type SettingsSubmission = { draft: GuiSettings; status: "saving" | "failed"; startedAt: number } | null;
-
 /** What each System choice in Settings resolves to now (app-chrome and
  *  timestamp conventions): the OS appearance, the computer's language and its zone. */
 export interface SystemChoices {
@@ -151,8 +148,6 @@ export interface ZipKitGuiApi {
   getSettings(): Promise<GuiSettings>;
   /** Committed preferences, including a save retried by the quit owner. */
   onSettingsChanged(callback: (settings: GuiSettings) => void): () => void;
-  getSettingsSubmission(): Promise<SettingsSubmission>;
-  onSettingsSubmissionChanged(callback: (submission: SettingsSubmission) => void): () => void;
   /** Retire a failed submission after explicit discard; rejects while saving. */
   discardSettingsSubmission(): Promise<void>;
   /** Tells main whether the Settings dialog holds edits not yet submitted, so

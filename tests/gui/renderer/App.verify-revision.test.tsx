@@ -53,8 +53,6 @@ async function selectedJob() {
       onQueueSaved: () => () => {},
       getQueue: async () => [finished],
       onSettingsChanged: () => () => {},
-      getSettingsSubmission: async () => null,
-      onSettingsSubmissionChanged: () => () => {},
       onOpenAbout: () => () => {},
       getSettings: async () => DEFAULT_SETTINGS,
       getLayout: async () => DEFAULT_LAYOUT,

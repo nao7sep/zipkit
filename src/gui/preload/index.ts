@@ -67,12 +67,6 @@ const api = {
     return () => { ipcRenderer.removeListener("zipkit:settingsChanged", listener); };
   },
   discardSettingsSubmission: (): Promise<void> => ipcRenderer.invoke("zipkit:discardSettingsSubmission"),
-  getSettingsSubmission: () => ipcRenderer.invoke("zipkit:getSettingsSubmission"),
-  onSettingsSubmissionChanged: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, submission: import("../shared/api.js").SettingsSubmission) => callback(submission);
-    ipcRenderer.on("zipkit:settingsSubmissionChanged", listener);
-    return () => { ipcRenderer.removeListener("zipkit:settingsSubmissionChanged", listener); };
-  },
   reportSettingsDraft: (dirty: boolean): void => ipcRenderer.send("zipkit:settingsDraft", dirty),
   getSettings: (): Promise<GuiSettings> => ipcRenderer.invoke("zipkit:getSettings"),
   setSettings: (settings: GuiSettings): Promise<GuiSettings> =>

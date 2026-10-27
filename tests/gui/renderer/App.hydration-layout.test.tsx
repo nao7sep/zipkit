@@ -9,7 +9,7 @@ import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-
 import { createPathClaims } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
-import type { Job, JobIntent, SettingsSubmission, ZipKitGuiApi } from "../../../src/gui/shared/api";
+import type { Job, JobIntent, ZipKitGuiApi } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { SAVE, TRASH } from "../../helpers/intents.js";
@@ -37,8 +37,6 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     platform: "darwin",
     onWindowActivityChanged: vi.fn(() => () => {}),
     onSettingsChanged: vi.fn(() => () => {}),
-    getSettingsSubmission: vi.fn(async () => null),
-    onSettingsSubmissionChanged: vi.fn(() => () => {}),
     onOpenAbout: vi.fn(() => () => {}),
     getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const, timeZone: "system", confirmJobRemoval: false, cardRowLimit: 5 })),
     getLanguageEnvironment: vi.fn(async () => ({ language: "en" as const, locale: "en", timeZone: null })),
@@ -550,110 +548,6 @@ describe("mounted run consent across queue projection changes", () => {
       mounted?.unmount();
       await engine.shutdown();
     }
-  });
-});
-
-describe("Settings publication across modal lifetimes", () => {
-  it.each(["success", "failure"] as const)("keeps pending changes through close/reopen and another job until late %s", async (outcome) => {
-    let submissionChanged!: (submission: SettingsSubmission) => void;
-    let settingsChanged!: Parameters<ZipKitGuiApi["onSettingsChanged"]>[0];
-    let resolveSave!: (settings: typeof DEFAULT_SETTINGS) => void;
-    let rejectSave!: (error: Error) => void;
-    const physical = new Promise<typeof DEFAULT_SETTINGS>((resolve, reject) => { resolveSave = resolve; rejectSave = reject; });
-    let retained: SettingsSubmission = null;
-    const bridge = api({
-      getQueue: vi.fn(async () => [job("another-job")]),
-      getSettings: vi.fn(async () => DEFAULT_SETTINGS),
-      onSettingsSubmissionChanged: (listener) => { submissionChanged = listener; return () => {}; },
-      onSettingsChanged: (listener) => { settingsChanged = listener; return () => {}; },
-      setSettings: vi.fn((draft) => {
-        retained = { draft: structuredClone(draft), status: "saving", startedAt: Date.now() };
-        submissionChanged(retained);
-        return physical;
-      }),
-    });
-    renderApp(bridge);
-    fireEvent.click(await screen.findByRole("option"));
-    fireEvent.keyDown(window, { key: ",", metaKey: true });
-    let dialog = await screen.findByRole("dialog", { name: "Settings" });
-    fireEvent.change(within(dialog).getByLabelText(/^UI font/), { target: { value: "Georgia" } });
-    let now = Date.now();
-    vi.spyOn(Date, "now").mockImplementation(() => now);
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      fireEvent.click(within(dialog).getByText("Save"));
-      expect((within(dialog).getByLabelText(/^UI font/) as HTMLInputElement).disabled).toBe(true);
-      now += 9_999;
-      await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
-      expect(within(dialog).queryByText("Continue working")).toBeNull();
-      now++;
-      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      fireEvent.click(within(dialog).getByText("Continue working"));
-    } finally { vi.useRealTimers(); }
-    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
-    expect(bridge.discardSettingsSubmission).not.toHaveBeenCalled();
-    expect(screen.getByRole("status").textContent).toContain("Settings are still saving");
-    fireEvent.click(screen.getByRole("button", { name: "Create archive" }));
-    await waitFor(() => expect(bridge.runJob).toHaveBeenCalledWith("another-job", expect.anything()));
-    fireEvent.click(within(screen.getByRole("status")).getByRole("button", { name: "Settings" }));
-    dialog = await screen.findByRole("dialog", { name: "Settings" });
-    const field = within(dialog).getByLabelText(/^UI font/) as HTMLInputElement;
-    expect(field.value).toBe("Georgia");
-    expect(field.disabled).toBe(true);
-    expect(bridge.setSettings).toHaveBeenCalledOnce();
-    if (outcome === "failure") fireEvent.keyDown(document, { key: "Escape" });
-    if (outcome === "success") {
-      await act(async () => {
-        settingsChanged(retained!.draft);
-        submissionChanged(null);
-        resolveSave(retained!.draft);
-        await physical;
-      });
-      expect(screen.queryByText(/Settings are still saving/)).toBeNull();
-      dialog = screen.getByRole("dialog", { name: "Settings" });
-      expect((within(dialog).getByLabelText(/^UI font/) as HTMLInputElement).value).toBe("Georgia");
-      expect((within(dialog).getByText("Save") as HTMLButtonElement).disabled).toBe(true);
-    } else {
-      await act(async () => {
-        submissionChanged({ ...retained!, status: "failed" });
-        rejectSave(new Error("disk full"));
-        await physical.catch(() => {});
-      });
-      expect(screen.getByRole("alert").textContent).toContain("Your submitted changes are kept");
-      fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Settings" }));
-      dialog = await screen.findByRole("dialog", { name: "Settings" });
-      const retryField = within(dialog).getByLabelText(/^UI font/) as HTMLInputElement;
-      expect(retryField.value).toBe("Georgia");
-      expect(retryField.disabled).toBe(false);
-      expect((within(dialog).getByText("Save") as HTMLButtonElement).disabled).toBe(false);
-      vi.mocked(bridge.setSettings).mockImplementationOnce(async (draft) => {
-        settingsChanged(draft);
-        submissionChanged(null);
-        return draft;
-      });
-      fireEvent.click(within(dialog).getByText("Save"));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
-      expect(bridge.setSettings).toHaveBeenCalledTimes(2);
-      expect(screen.queryByText(/Your submitted changes are kept/)).toBeNull();
-    }
-    if (outcome === "success") expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
-  });
-
-  it("keeps a newer submission event when the initial snapshot arrives late", async () => {
-    let publish!: (submission: SettingsSubmission) => void;
-    let resolveInitial!: (submission: SettingsSubmission) => void;
-    const initial = new Promise<SettingsSubmission>((resolve) => { resolveInitial = resolve; });
-    renderApp(api({
-      getSettingsSubmission: () => initial,
-      onSettingsSubmissionChanged: (listener) => { publish = listener; return () => {}; },
-    }));
-    await screen.findByRole("heading", { name: "Jobs" });
-    await act(async () => {
-      publish({ draft: DEFAULT_SETTINGS, status: "failed", startedAt: Date.now() });
-      resolveInitial(null);
-      await initial;
-    });
-    expect(screen.getByRole("alert").textContent).toContain("Your submitted changes are kept");
   });
 });
 

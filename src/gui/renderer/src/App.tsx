@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Job, JobEvent, JobIntent, PlanReport, ProgressCounts, SettingsSubmission, SystemChoices, VerifyResult } from "../../shared/api";
+import type { Job, JobEvent, JobIntent, PlanReport, ProgressCounts, SystemChoices, VerifyResult } from "../../shared/api";
 import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable, removesOriginals, verifies, type OriginalsAction } from "../../shared/queue";
@@ -140,7 +140,6 @@ export function App() {
   const [cardRowLimit, setCardRowLimit] = useState(DEFAULT_SETTINGS.cardRowLimit);
   const [systemChoices, setSystemChoices] = useState<SystemChoices | null>(null);
   const [dialog, setDialog] = useState<DialogName | null>(null);
-  const [settingsSubmission, setSettingsSubmission] = useState<SettingsSubmission>(null);
   // A one-shot request to move keyboard focus to a job's row once it renders, set
   // when Add creates a job (focus/selection policy: Add pulls focus to its result).
   // The listbox clears it via onFocusPulled once the focus lands. The clear is
@@ -320,18 +319,6 @@ export function App() {
   // Defaults are committed only when the user saves the Settings dialog (a draft
   // form), then persisted so they survive across launches.
   useEffect(() => window.zipkit.onSettingsChanged(applySavedSettings), []);
-  useEffect(() => {
-    let live = true;
-    let updated = false;
-    const unsubscribe = window.zipkit.onSettingsSubmissionChanged((submission) => {
-      updated = true;
-      if (live) setSettingsSubmission(submission);
-    });
-    void window.zipkit.getSettingsSubmission().then((submission) => {
-      if (live && !updated) setSettingsSubmission(submission);
-    }, (error) => window.zipkit.reportError("read settings submission", reportableError(error)));
-    return () => { live = false; unsubscribe(); };
-  }, []);
   useEffect(() => window.zipkit.onOpenAbout(() => setDialog("about")), []);
 
   // Settings opens once main has said what each System choice resolves to now.
@@ -353,7 +340,7 @@ export function App() {
   }
 
   async function saveSettings(draft: GuiSettings): Promise<void> {
-    await window.zipkit.setSettings(draft);
+    applySavedSettings(await window.zipkit.setSettings(draft));
   }
 
   async function createJob(inputs: string[]): Promise<ReceiverCommit> {
@@ -580,12 +567,6 @@ export function App() {
 
   return (
     <div style={S.shell}>
-      {settingsSubmission && dialog !== "settings" && (
-        <div role={settingsSubmission.status === "failed" ? "alert" : "status"} style={{ padding: "0.5rem 0.75rem", flexShrink: 0 }}>
-          <p style={{ margin: "0 0 0.35rem" }}>{t.t(settingsSubmission.status === "failed" ? "settings.pendingFailed" : "settings.pendingSave")}</p>
-          <button onClick={openSettings}>{t.t("settings.title")}</button>
-        </div>
-      )}
       <AppHeader
         onOpenSettings={openSettings}
         onOpenRecords={() => {
@@ -700,8 +681,6 @@ export function App() {
       {dialog === "settings" && systemChoices && (
         <SettingsDialog
           settings={{ defaults, uiFontFamily, theme, language, timeZone, confirmJobRemoval, cardRowLimit }}
-          initialDraft={settingsSubmission?.draft}
-          submission={settingsSubmission}
           system={systemChoices}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
