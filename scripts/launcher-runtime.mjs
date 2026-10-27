@@ -21,7 +21,7 @@ import { once } from "node:events";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -53,11 +53,12 @@ function sameExecutable(left, right) {
 /** The executable a process runs, or "" when no such process exists. */
 async function executableOf(pid) {
   if (windows) return powershell(`(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).Path`);
+  // ps shows the path a process was started with, which cargo gives relative; lsof names the file it runs.
   try {
-    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "comm="], { encoding: "utf8" });
-    return stdout.trim();
+    const { stdout } = await execFileAsync("lsof", ["-a", "-p", String(pid), "-d", "txt", "-Fn"], { encoding: "utf8" });
+    return stdout.split("\n").find((line) => line.startsWith("n"))?.slice(1) ?? "";
   } catch (error) {
-    if (error?.code === 1) return ""; // ps lists nothing for an ended process
+    if (error?.code === 1) return ""; // lsof lists nothing for an ended process
     throw error;
   }
 }
@@ -169,7 +170,12 @@ async function recordWrapped(wrapperPid, executable) {
         }
       }
     }
-    const matches = processes.filter((item) => item.pid !== wrapperPid && descendants.has(item.pid) && sameExecutable(item.executable, expected));
+    const candidates = processes.filter((item) => item.pid !== wrapperPid && descendants.has(item.pid) && sameExecutable(basename(item.executable), basename(expected)));
+    const matches = [];
+    for (const item of candidates) {
+      const executable = windows ? item.executable : await executableOf(item.pid);
+      if (sameExecutable(executable, expected)) matches.push({ ...item, executable });
+    }
     const app = matches.find((item) => !matches.some((other) => other.pid === item.parentPid));
     if (app) {
       await record(app.pid, app.executable);
