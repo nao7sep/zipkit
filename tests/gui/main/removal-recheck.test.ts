@@ -17,7 +17,6 @@ import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
-import { preparedPlans } from "../../helpers/prepared-plans.js";
 
 it("keeps the originals when one was edited to the same size with its time put back", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-recheck-"));
@@ -36,16 +35,14 @@ it("keeps the originals when one was edited to the same size with its time put b
     admission: new CommandAdmission(),
     effects: createPathClaims(),
     resources: (paths, signal) => zip.pathResources(paths, { signal }),
-    ...preparedPlans({
-      plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
-      write: async (plan, signal, onEvent, onPhysicalSettlement) => {
-        const result = await zip.write(plan, { signal, onEvent, onPhysicalSettlement });
-        // After the archive is made: same size, first byte changed, time put back.
-        await writeFile(edited, "Alpha");
-        await utimes(edited, when, when);
-        return result.mode === "write" ? result.bytes : null;
-      },
-    }),
+    plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
+    write: async (plan, signal, onEvent, onPhysicalSettlement) => {
+      const result = await zip.write(plan, { signal, onEvent, onPhysicalSettlement });
+      // After the archive is made: same size, first byte changed, time put back.
+      await writeFile(edited, "Alpha");
+      await utimes(edited, when, when);
+      return result.mode === "write" ? result.bytes : null;
+    },
     verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent, onProgress: (counts) => { if (stages.at(-1) !== counts.stage) stages.push(counts.stage); } }),

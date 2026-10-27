@@ -9,11 +9,10 @@ import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-
 import { createPathClaims } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
-import type { Job, JobIntent, ZipKitGuiApi } from "../../../src/gui/shared/api";
+import type { Job, JobIntent, PlanData, ZipKitGuiApi } from "../../../src/gui/shared/api";
 import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { SAVE, TRASH } from "../../helpers/intents.js";
-import type { PreparedPlan } from "../../../src/gui/shared/prepared-plan.js";
 import { SAFEST_INTENT } from "../../../src/gui/shared/queue.js";
 
 class ResizeObserverStub {
@@ -96,7 +95,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -359,15 +357,15 @@ describe("mounted run consent across queue projection changes", () => {
       admission: new CommandAdmission(),
       effects: createPathClaims(),
       resources: vi.fn(async (paths: string[]) => paths.map((location) => ({ location, identity: location }))),
-      plan: vi.fn(async (): Promise<PreparedPlan> => ({
-        revision: "consent-plan",
-        scanIncomplete: false,
-        reviewChanged: false,
+      plan: vi.fn(async (): Promise<PlanData> => ({
+        mode: "plan",
         output: "/out/consent.zip",
         writable: true,
         summary: { total: 1, included: 1, excluded: 0, renamed: 0, warnings: 0, errors: 0, zip64: false, sourceBytes: 0 },
+        findings: [],
+        instructions: { output: "/out.zip", writable: true, zip64: false, policy: {} as never, overwrite: false, timeZone: "UTC", entries: [] },
+        entries: [],
       })),
-      releasePlan: vi.fn(),
       write: vi.fn(async () => 123),
       verify: vi.fn(async () => true),
       checkRemoval: vi.fn(async () => ({ refusal: null, verified: { fingerprint: null } })),
@@ -384,10 +382,7 @@ describe("mounted run consent across queue projection changes", () => {
     const engine = createQueueEngine(deps);
     const bridge = api({
       getQueue: vi.fn(async () => engine.snapshot()),
-      getPlan: vi.fn(async (id) => {
-        const plan = engine.getPlan(id);
-        return plan ? { writable: plan.writable, summary: plan.summary, findings: [], entries: [] } : null;
-      }),
+      getPlan: vi.fn(async (id) => engine.getPlan(id)),
       onQueue: vi.fn((callback) => {
         publish = callback;
         return () => { if (publish === callback) publish = undefined; };

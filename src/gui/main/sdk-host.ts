@@ -10,11 +10,6 @@
  * parent port and, in tests, over an in-process channel.
  */
 
-import { randomUUID } from "node:crypto";
-import { reportChanged } from "./plan-review.js";
-import { toPlanReport } from "../shared/plan-report.js";
-import type { PreparedPlan } from "../shared/prepared-plan.js";
-import type { PlanReport } from "../shared/api.js";
 import { rm } from "node:fs/promises";
 import { errorDiagnostic, ZipKit, ZipKitError, type ErrorDiagnostic, type ErrorEffect, type ErrorKind, type PathResource, type PathState, type PlanData, type RemovalCheck, type VerifyRequest } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
@@ -27,10 +22,8 @@ import { outputRequest } from "./output.js";
 export interface SdkOps {
   resources(paths: string[]): PathResource[];
   pathState(path: string): PathState;
-  plan(inputs: string[], options: GuiOptions, owner: string, reviewed?: string): PreparedPlan;
-  report(revision: string): PlanReport;
-  forgetPlan(owner: string): void;
-  write(plan: PreparedPlan): number | null;
+  plan(inputs: string[], options: GuiOptions): PlanData;
+  write(plan: PlanData): number | null;
   verify(output: string, manifestName: string | null): boolean;
   deletePath(path: string): void;
   inspect(archive: string, manifestName: string | null): VerifyReport;
@@ -84,12 +77,6 @@ export function appZipKit(): ZipKit {
 
 export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = appZipKit()) {
   const running = new Map<number, AbortController>();
-  const plans = new Map<string, { revision: string; data: PlanData }>();
-  const generations = new Map<string, string>();
-  function held(revision: string): PlanData {
-    for (const plan of plans.values()) if (plan.revision === revision) return plan.data;
-    throw new Error("Prepared plan is no longer available; plan the job again");
-  }
 
   type Run = (
     signal: AbortSignal,
@@ -102,23 +89,13 @@ export function createSdkHost(post: (reply: HostReply) => void, zip: ZipKit = ap
     // What is at a path now: there with a comparable fingerprint, missing, or
     // out of reach on a drive that is not connected.
     pathState: (target: string) => (signal) => zip.pathState(target, { signal }),
-    plan: (inputs: string[], options: GuiOptions, owner: string, reviewed?: string) => async (signal, onEvent) => {
-      const revision = randomUUID();
-      generations.set(owner, revision);
-      const previous = plans.get(owner);
+    plan: (inputs: string[], options: GuiOptions) => async (signal, onEvent) => {
       const spec = buildSpec(inputs, options);
       Object.assign(spec, outputRequest(options.outputDir, options.fileName));
-      const data = await zip.plan(spec, { signal, onEvent });
-      if (signal.aborted || generations.get(owner) !== revision) throw new ZipKitError("operation.cancelled", "Superseded plan");
-      const changed = reviewed !== undefined && (previous?.revision !== reviewed || reportChanged(previous.data, data));
-      plans.set(owner, { revision, data });
-      return { revision, output: data.output, writable: data.writable, summary: data.summary,
-        scanIncomplete: data.findings.some((finding) => finding.rule === "entry.unlisted"), reviewChanged: changed } satisfies PreparedPlan;
+      // A plan is plain data, so it crosses to main and back as it is.
+      return zip.plan(spec, { signal, onEvent });
     },
-    report: (revision: string) => async () => toPlanReport(held(revision)),
-    forgetPlan: (owner: string) => async () => { plans.delete(owner); generations.delete(owner); },
-    write: (reference: PreparedPlan) => async (signal, onEvent, id, onProgress) => {
-      const plan = held(reference.revision);
+    write: (plan: PlanData) => async (signal, onEvent, id, onProgress) => {
       const written = await zip.write(plan, {
         signal,
         onEvent,

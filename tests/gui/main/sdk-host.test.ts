@@ -4,15 +4,15 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSdkClient, type HostProcess } from "../../../src/gui/main/sdk-client.js";
 import { createSdkHost, type HostReply, type HostRequest } from "../../../src/gui/main/sdk-host.js";
-import { isZipKitError, ZipKit, type PlanData } from "zipkitsdk";
+import { isZipKitError } from "zipkitsdk";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { LogEvent, ProgressCounts } from "../../../src/gui/shared/api.js";
 
 /** The host served over a channel that copies every message as a process
  *  boundary does, so what survives the copy is what the app relies on. */
-function inProcessHost(zip?: ZipKit): HostProcess {
+function inProcessHost(): HostProcess {
   let deliver: (reply: HostReply) => void = () => {};
-  const host = createSdkHost((reply) => queueMicrotask(() => deliver(structuredClone(reply))), zip);
+  const host = createSdkHost((reply) => queueMicrotask(() => deliver(structuredClone(reply))));
   return {
     postMessage: (request: HostRequest) => queueMicrotask(() => host.handle(structuredClone(request))),
     onMessage: (listener) => { deliver = listener; },
@@ -32,11 +32,9 @@ describe("the SDK host", () => {
     await writeFile(path.join(input, "a.txt"), "hello");
     const sdk = createSdkClient(inProcessHost);
     const events: LogEvent[] = [];
-    const plan = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }, "job"], { onEvent: (e) => events.push(e) });
+    // The plan crosses as plain data and is writable on the other side.
+    const plan = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }], { onEvent: (e) => events.push(e) });
     expect(plan.writable).toBe(true);
-    expect(plan).not.toHaveProperty("entries");
-    expect(plan).not.toHaveProperty("instructions");
-    expect(await sdk.call("report", [plan.revision])).toMatchObject({ writable: true, entries: [] });
     const settlements: Promise<void>[] = [];
     const counts: ProgressCounts[] = [];
     const bytes = await sdk.call("write", [plan], {
@@ -60,7 +58,7 @@ describe("the SDK host", () => {
     await mkdir(input);
     await writeFile(path.join(input, "note.txt"), "hello");
     const sdk = createSdkClient(inProcessHost);
-    const plan = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }, "job"]);
+    const plan = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }]);
     await sdk.call("write", [plan]);
     const check = await sdk.call("checkRemoval", [plan.output, [input], [], { ...DEFAULT_OPTIONS }]);
     expect(check).toEqual({ refusal: null, verified: { fingerprint: expect.any(String) } });
@@ -109,7 +107,7 @@ describe("the SDK host", () => {
 
   it("carries an SDK failure back to main as the SDK's own data, which its guard still recognizes", async () => {
     const sdk = createSdkClient(inProcessHost);
-    const failed = await sdk.call("plan", [[path.join(root, "missing")], { ...DEFAULT_OPTIONS }, "job"]).catch((err: unknown) => err);
+    const failed = await sdk.call("plan", [[path.join(root, "missing")], { ...DEFAULT_OPTIONS }]).catch((err: unknown) => err);
     expect(failed).toMatchObject({ code: "path.missing", kind: "unavailable", effect: "none" });
     expect(isZipKitError(failed)).toBe(true);
   });
@@ -120,89 +118,10 @@ describe("the SDK host", () => {
     const input = path.join(root, "many");
     await mkdir(input);
     await Promise.all(Array.from({ length: 200 }, (_, i) => writeFile(path.join(input, `f${i}`), "x")));
-    host.handle({ type: "call", id: 7, op: "plan", args: [[input], { ...DEFAULT_OPTIONS }, "job"] });
+    host.handle({ type: "call", id: 7, op: "plan", args: [[input], { ...DEFAULT_OPTIONS }] });
     host.handle({ type: "cancel", id: 7 });
     await vi.waitFor(() => expect(replies.some((r) => r.type === "failed" || r.type === "done")).toBe(true));
     expect(replies.find((r) => r.id === 7 && r.type !== "event")).toMatchObject({ type: "failed", error: { code: "operation.cancelled", kind: "cancelled" } });
-  });
-
-  it("keeps the public SDK's transferable PlanData contract independent of GUI references", async () => {
-    const input = path.join(root, "public.txt");
-    await writeFile(input, "public SDK data");
-    const zip = new ZipKit();
-    const plan: PlanData = JSON.parse(JSON.stringify(await zip.plan({ inputs: [input], output: path.join(root, "public.zip") })));
-    expect(plan.entries).toHaveLength(1);
-    expect(plan.instructions.entries).toHaveLength(1);
-    const original = structuredClone(plan);
-    const sdk = createSdkClient(inProcessHost);
-    const reference = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }, "gui"]);
-    await sdk.call("forgetPlan", ["gui"]);
-    expect(reference).not.toHaveProperty("instructions");
-    expect(plan).toEqual(original);
-    expect(await zip.write(plan)).toMatchObject({ mode: "write" });
-    expect((await zip.verify({ archive: plan.output, manifest: true })).ok).toBe(true);
-  });
-
-  it("projects report entries on demand and detects changed paths with the same summary", async () => {
-    const input = path.join(root, "review");
-    await mkdir(input);
-    await writeFile(path.join(input, "a.txt"), "same size");
-    await writeFile(path.join(input, ".DS_Store"), "excluded");
-    const sdk = createSdkClient(inProcessHost);
-    const first = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }, "review-job"]);
-    const report = await sdk.call("report", [first.revision]);
-    expect(report.entries.map((entry) => entry.archivePath)).toEqual([".DS_Store"]);
-    expect(report).not.toHaveProperty("instructions");
-    const unchanged = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }, "review-job", first.revision]);
-    expect(unchanged.reviewChanged).toBe(false);
-    await rm(path.join(input, "a.txt"));
-    await writeFile(path.join(input, "b.txt"), "same size");
-    const changed = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }, "review-job", unchanged.revision]);
-    expect(changed.summary).toEqual(unchanged.summary);
-    expect(changed.reviewChanged).toBe(true);
-    expect(changed).not.toHaveProperty("entries");
-    expect(changed).not.toHaveProperty("instructions");
-  });
-
-  it.each(["forgetPlan", "new host"] as const)("refuses report and write for a reference invalidated by %s", async (invalidate) => {
-    const input = path.join(root, "stale.txt");
-    await writeFile(input, "original");
-    let sdk = createSdkClient(inProcessHost);
-    const reference = await sdk.call("plan", [[input], { ...DEFAULT_OPTIONS }, "stale-job"]);
-    if (invalidate === "forgetPlan") await sdk.call("forgetPlan", ["stale-job"]);
-    else sdk = createSdkClient(inProcessHost);
-    await expect(sdk.call("report", [reference.revision])).rejects.toMatchObject({ message: expect.stringContaining("no longer available") });
-    await expect(sdk.call("write", [reference])).rejects.toMatchObject({ message: expect.stringContaining("no longer available") });
-    expect(await readdir(root)).toEqual(["stale.txt"]);
-  });
-
-  it.each(["superseded", "cancelled"] as const)("prevents a %s plan completing late from replacing the host cache", async (ending) => {
-    const inputs = [path.join(root, "first.txt"), path.join(root, "late.txt"), path.join(root, "newest.txt")];
-    await Promise.all(inputs.map((input) => writeFile(input, "payload")));
-    const zip = new ZipKit();
-    const lateData = await zip.plan({ inputs: [inputs[1]!], output: path.join(root, "late.zip") });
-    const sdk = createSdkClient(() => inProcessHost(zip));
-    const first = await sdk.call("plan", [[inputs[0]!], { ...DEFAULT_OPTIONS }, "same-owner"]);
-    let release!: (plan: PlanData) => void;
-    const held = new Promise<PlanData>((resolve) => { release = resolve; });
-    const planSpy = vi.spyOn(zip, "plan").mockImplementationOnce(() => held);
-    try {
-      const controller = new AbortController();
-      const pending = sdk.call("plan", [[inputs[1]!], { ...DEFAULT_OPTIONS }, "same-owner", first.revision], { signal: controller.signal });
-      const rejected = expect(pending).rejects.toMatchObject({ code: "operation.cancelled" });
-      await vi.waitFor(() => expect(planSpy).toHaveBeenCalledOnce());
-      let current = first;
-      if (ending === "superseded") current = await sdk.call("plan", [[inputs[2]!], { ...DEFAULT_OPTIONS }, "same-owner", first.revision]);
-      else controller.abort();
-      release(lateData);
-      await rejected;
-      expect(await sdk.call("report", [current.revision])).toMatchObject({ writable: true });
-      expect(await sdk.call("write", [current])).toBeGreaterThan(0);
-      expect(await sdk.call("verify", [current.output, "zipkit.json"])).toBe(true);
-      expect(await readdir(root)).not.toContain("late.zip");
-    } finally {
-      planSpy.mockRestore();
-    }
   });
 });
 

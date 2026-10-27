@@ -44,7 +44,7 @@ describe("createSdkClient", () => {
     const host = fakeHost();
     const sdk = createSdkClient(() => host.process);
     const controller = new AbortController();
-    const call = sdk.call("plan", [["/a"], {} as never, "job"], { signal: controller.signal });
+    const call = sdk.call("plan", [["/a"], {} as never], { signal: controller.signal });
     controller.abort();
     expect(host.sent.at(-1)).toEqual({ type: "cancel", id: 1 });
     host.reply({ type: "failed", id: 1, error: { name: "ZipKitError", message: "aborted", code: "operation.cancelled", kind: "cancelled", effect: "none" } });
@@ -75,7 +75,7 @@ describe("createSdkClient", () => {
     let settlement: Promise<void> | undefined;
     const write = sdk.call("write", [{} as never], { onPhysicalSettlement: (p) => { settlement = p; } });
     hosts[0]!.reply({ type: "physical", id: 1 });
-    const plan = sdk.call("plan", [["/a"], {} as never, "job"]);
+    const plan = sdk.call("plan", [["/a"], {} as never]);
     hosts[0]!.exit(134);
     await expect(write).rejects.toMatchObject({ code: "host.exited", kind: "unavailable", effect: "unknown" });
     await expect(plan).rejects.toMatchObject({ code: "host.exited" });

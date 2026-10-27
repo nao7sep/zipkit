@@ -36,10 +36,10 @@ import {
   present,
   type SavedJob,
 } from "../shared/queue.js";
-import type { JobAction, LogEvent, VerifyReport } from "../shared/api.js";
+import type { JobAction, LogEvent, PlanData, VerifyReport } from "../shared/api.js";
 import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
-import type { PreparedPlan } from "../shared/prepared-plan.js";
+import { reportChanged } from "./plan-review.js";
 import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type TrashResult } from "./trash-outcome.js";
 import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
@@ -56,11 +56,10 @@ export interface EngineDeps {
    *  its size and when it last changed), missing, or out of reach. */
   pathState(target: string, signal: AbortSignal): Promise<PathState>;
   /** Dry-run plan for the given inputs/options; progress events go to `onEvent`. */
-  plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void, owner: string, reviewed?: string): Promise<PreparedPlan>;
-  releasePlan(owner: string): void;
+  plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count, or null when the SDK
    *  refused because an output appeared at the path since the plan. */
-  write(plan: PreparedPlan, signal: AbortSignal, onEvent: (e: LogEvent) => void,
+  write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
     onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number | null>;
   /** Verify a written archive: every entry's CRC-32, and against the manifest
    *  named, when one is; resolves to the SDK's verdict. */
@@ -127,7 +126,7 @@ export interface QueueEngine {
   /** Look at a job's originals again, and a finished job's archive: note an
    *  original gone or out of reach, an archive changed, replaced or gone. */
   refresh(id: string): Promise<void>;
-  getPlan(id: string): PreparedPlan | null;
+  getPlan(id: string): PlanData | null;
   restore(saved: SavedJob[]): void;
   /** True while a job is actually writing/verifying/trashing (not merely queued),
    *  including a finished job whose originals are being moved on request. */
@@ -143,8 +142,8 @@ export interface QueueEngine {
 
 interface Rec {
   job: Job;
-  /** Reference to the complete plan held by the SDK host. */
-  plan: PreparedPlan | null;
+  /** The held live plan (carries the writer's out-of-band instructions). */
+  plan: PlanData | null;
   aborter: AbortController | null;
   planTimer?: ReturnType<typeof setTimeout>;
   /** The archive path from the most recent write that actually committed. */
@@ -264,6 +263,11 @@ function failureMessage(err: unknown, key: MessageKey, values?: MessageValues): 
   const path = stalledPath(err);
   if (path === undefined) return message(key, values);
   return sentences([message("error.stalled", { path }), message(key, values)]) ?? message(key, values);
+}
+
+/** Whether a plan found a folder it could not list. */
+function scanIncomplete(plan: PlanData): boolean {
+  return plan.findings.some((f) => f.rule === "entry.unlisted");
 }
 
 export function createQueueEngine(deps: EngineDeps): QueueEngine {
@@ -545,15 +549,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     set(rec, { state: "planning", message: undefined, actionResult: undefined, errorCode: undefined });
     emit();
     try {
-      const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id, "plan"), id);
+      const plan = await deps.plan(rec.job.inputs, rec.job.options, aborter.signal, progressFor(id, "plan"));
       if (!current()) return; // a newer plan superseded this one — discard the result
       rec.plan = plan;
       set(rec, {
         output: plan.output,
         summary: plan.summary,
-        planRevision: plan.revision,
+        planRevision: (rec.job.planRevision ?? 0) + 1,
         writable: plan.writable,
-        scanIncomplete: plan.scanIncomplete,
+        scanIncomplete: scanIncomplete(plan),
         state: plan.writable ? "ready" : "needs-attention",
         message: plan.writable ? undefined : message("job.blocking", { count: plan.summary.errors }),
       });
@@ -598,11 +602,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     const id = rec.job.id;
     // Re-plan fresh: the world may have changed since this job was enqueued.
     const reviewed = rec.plan;
-    let plan: PreparedPlan;
+    let plan: PlanData;
     try {
-      plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onEvent, rec.job.id, reviewed?.revision);
+      plan = await deps.plan(rec.job.inputs, rec.job.options, signal, onEvent);
       rec.plan = plan;
-      set(rec, { output: plan.output, summary: plan.summary, planRevision: plan.revision, writable: plan.writable, scanIncomplete: plan.scanIncomplete });
+      set(rec, { output: plan.output, summary: plan.summary, planRevision: (rec.job.planRevision ?? 0) + 1, writable: plan.writable, scanIncomplete: scanIncomplete(plan) });
     } catch (err) {
       // The earlier plan no longer describes this job, so the report explains
       // the failure rather than that stale plan.
@@ -626,7 +630,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     // The fresh plan is held either way; when it would show another Report than
     // the one the user reviewed, it waits for review instead of being written.
     // A plan that landed just before an immediate Create counts as reviewed.
-    if (reviewed && plan.reviewChanged) {
+    if (reviewed && reportChanged(reviewed, plan)) {
       set(rec, { state: "needs-attention", message: message("job.planChanged") });
       deps.log.warn("job run stopped: the files changed since the plan was reviewed", { jobId: id });
       return null;
@@ -979,7 +983,6 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       clearTimeout(rec.planTimer);
       rec.aborter?.abort();
       recs.delete(id);
-      deps.releasePlan(id);
       const i = order.indexOf(id);
       if (i >= 0) order.splice(i, 1);
       const p = pending.indexOf(id);

@@ -131,8 +131,9 @@ export interface Job {
   /** Resolved output path (once planned). */
   output?: string;
   summary?: PlanSummary;
-  /** Changes only when the host prepares a new report. */
-  planRevision?: string;
+  /** Counts this job's plans: it changes only when a new plan replaces the
+   *  last, so the selected Report is read again only then. */
+  planRevision?: number;
   writable?: boolean;
   /** A short status line for needs-attention / failed / done, as a catalogue
    *  message so it renders in the interface language current when shown. */

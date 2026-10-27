@@ -271,8 +271,7 @@ describe("the trash dependency (ZK-1: bounded and cancellable)", () => {
 
 describe("the SDK host wiring", () => {
   type Wired = {
-    plan(inputs: string[], options: unknown, signal: AbortSignal, onEvent: () => void, owner: string, reviewed?: string): Promise<object>;
-    releasePlan(owner: string): void;
+    plan(inputs: string[], options: unknown, signal: AbortSignal, onEvent: () => void): Promise<object>;
     write(plan: object, signal: AbortSignal, onEvent: () => void, onSettlement: () => void): Promise<number | null>;
     verify(output: string, signal: AbortSignal, onEvent: () => void): Promise<boolean>;
     pathKinds(paths: string[]): Promise<unknown>;
@@ -280,20 +279,17 @@ describe("the SDK host wiring", () => {
   const wired = () => mocks.deps as unknown as Wired;
   beforeEach(() => mocks.sdkCall.mockReset());
 
-  it("passes only the host's prepared reference to the engine and back for writing", async () => {
-    const plan = { revision: "prepared-revision", output: "/out.zip", writable: true, summary: { included: 1 }, scanIncomplete: false, reviewChanged: false };
+  it("passes the host's plan to the engine and back to be written, as plain data", async () => {
+    const plan = { mode: "plan", output: "/out.zip", writable: true, instructions: { entries: [{ archivePath: "a" }] } };
     mocks.sdkCall.mockResolvedValueOnce(plan).mockResolvedValueOnce(42);
     const signal = new AbortController().signal;
     const onEvent = vi.fn();
-    const planned = await wired().plan(["/in"], { level: 6 }, signal, onEvent, "job-owner", "reviewed-revision");
-    expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }, "job-owner", "reviewed-revision"], { signal, onEvent });
+    const planned = await wired().plan(["/in"], { level: 6 }, signal, onEvent);
+    expect(mocks.sdkCall).toHaveBeenLastCalledWith("plan", [["/in"], { level: 6 }], { signal, onEvent });
     expect(planned).toBe(plan);
     const onSettlement = vi.fn();
     await expect(wired().write(planned, signal, onEvent, onSettlement)).resolves.toBe(42);
     expect(mocks.sdkCall).toHaveBeenLastCalledWith("write", [plan], { signal, onEvent, onPhysicalSettlement: onSettlement, onProgress: undefined });
-    mocks.sdkCall.mockResolvedValueOnce(undefined);
-    wired().releasePlan("job-owner");
-    expect(mocks.sdkCall).toHaveBeenLastCalledWith("forgetPlan", ["job-owner"]);
   });
 
   it("asks the SDK host to verify and pathKinds", async () => {
