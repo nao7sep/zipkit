@@ -65,10 +65,6 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   try {
     const verification = await steps.verify();
     if (!verification.ok) return refuse({ reason: "verify-failed", report: verification.report });
-    const after = await steps.state();
-    if (after.kind !== "present" || after.fingerprint !== seen.fingerprint) {
-      throw new ZipKitError("archive.changed", "Archive changed during verification", { subject: archive });
-    }
   } catch (error) {
     return refuse({ reason: "error", step: "verify", error: stepFailure(error, archive).toJSON() });
   }
@@ -76,9 +72,11 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   try {
     const comparison = await steps.compare();
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
+    // The archive is read once more right before removal is authorized, so
+    // one replaced or removed during the checks does not authorize it.
     const after = await steps.state();
     if (after.kind !== "present" || after.fingerprint !== verified.fingerprint) {
-      throw new ZipKitError("archive.changed", "Archive changed during source comparison", { subject: archive });
+      throw new ZipKitError("archive.changed", "Archive changed during the removal checks", { subject: archive });
     }
   } catch (error) {
     return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive).toJSON() }, verified);

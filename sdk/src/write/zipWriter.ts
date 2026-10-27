@@ -591,9 +591,9 @@ export class ZipWriter {
     // SDK keeps.
     let publication: Publication = "published";
     if (this.#options.overwrite === true) {
-      await this.#io(this.#volume.publishRename(this.#tempPath, this.#output, true));
+      await this.#io(this.#volume.publishRename(this.#tempPath, this.#output));
     } else {
-      publication = await this.#io(publishNoOverwrite(this.#tempPath, this.#output, signal, volumePublishOperations(this.#volume, true)));
+      publication = await this.#io(publishNoOverwrite(this.#tempPath, this.#output, signal, volumePublishOperations(this.#volume)));
     }
     return { zip64: needZip64, bytes, publication };
   }

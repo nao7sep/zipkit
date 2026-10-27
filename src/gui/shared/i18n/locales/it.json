@@ -84,7 +84,6 @@
   "job.planChanged": "I file sono cambiati dopo il controllo di questa operazione, quindi l’archivio non è stato creato. Rivedi il resoconto, poi crea di nuovo l’archivio.",
   "job.writeFailed": "Impossibile scrivere l’archivio. Controlla la destinazione e lo spazio disponibile, poi riprova.",
   "job.writeUnconfirmed": "ZipKit ha smesso di attendere mentre l’archivio veniva salvato, quindi l’archivio potrebbe essere già presente in {path} o comparirvi in seguito. Controlla quella posizione prima di creare di nuovo l’archivio.",
-  "job.writeDurabilityFailed": "L’archivio si trova in {path}, ma ZipKit non ha potuto confermare che il salvataggio sia stato sincronizzato sul disco. Gli originali sono stati conservati. Controlla quella posizione prima di creare di nuovo l’archivio.",
   "job.sourceChanged": "{path} è cambiato durante l’archiviazione, quindi non è stato scritto alcun archivio. Crea di nuovo l’archivio.",
   "job.saved": "Salvato ({size}).",
   "job.insideSource": "L’archivio si trova all’interno dell’origine, quindi gli originali non sono stati toccati.",

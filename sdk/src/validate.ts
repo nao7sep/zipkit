@@ -141,15 +141,15 @@ export function validateSpec(spec: ArchiveSpec): ArchiveSpec {
 }
 
 /**
- * Validate the streamed-I/O chunk size: a positive integer number of bytes.
- * Anything else (zero, negative, fractional, non-finite) is a caller mistake
- * rejected at the boundary rather than passed to a stream's `highWaterMark`.
+ * Validate the streamed-I/O chunk size: an integer number of bytes of at least
+ * 64, zlib's minimum. Anything else (smaller, fractional, non-finite) is a
+ * caller mistake rejected at the boundary rather than passed to the streams.
  */
 export function validateChunkSize(chunkSize: number): number {
-  if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+  if (!Number.isInteger(chunkSize) || chunkSize < 64) {
     throw new ZipKitError(
       "options.invalid",
-      `chunkSize must be a positive integer number of bytes (got ${chunkSize})`,
+      `chunkSize must be an integer number of bytes, at least 64 (got ${chunkSize})`,
     );
   }
   return chunkSize;

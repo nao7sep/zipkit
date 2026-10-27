@@ -111,9 +111,9 @@ describe("scan over a real tree", () => {
     await mkdir(excluded); await mkdir(kept);
     await writeFile(path.join(excluded, "hidden.txt"), "hidden");
     const listed: string[] = [];
-    const volume = new Volume({ ...nodeFileSystem, openDirectory: async (name) => {
+    const volume = new Volume({ ...nodeFileSystem, readdir: async (name) => {
       listed.push(name);
-      return nodeFileSystem.openDirectory(name);
+      return nodeFileSystem.readdir(name);
     } }, 30_000);
 
     const result = await runScan({ inputs: [excluded, kept] }, {}, volume);
@@ -128,28 +128,7 @@ describe("scan over a real tree", () => {
     await mkdir(proj);
     const fileNames = Array.from({ length: 257 }, (_, i) => `file-${String(i).padStart(3, "0")}.txt`);
     await Promise.all(fileNames.map((name) => writeFile(path.join(proj, name), "x")));
-    let delivered = 0, completed = 0, peakAhead = 0;
-    const volume = new Volume({ ...nodeFileSystem,
-      openDirectory: async (name) => {
-        const handle = await nodeFileSystem.openDirectory(name);
-        return {
-          read: async () => {
-            const entry = await handle.read();
-            if (entry !== null) {
-              delivered++;
-              peakAhead = Math.max(peakAhead, delivered - completed);
-            }
-            return entry;
-          },
-          close: () => handle.close(),
-        };
-      },
-      lstat: async (name) => {
-        const result = await nodeFileSystem.lstat(name);
-        if (path.dirname(name) === proj) completed++;
-        return result;
-      },
-    }, 30_000);
+    const volume = new Volume(nodeFileSystem, 30_000);
     const pool = pLimit(2);
     let unresolved = 0, maximum = 0, submitted = 0;
     const limit = Object.assign(<T>(run: () => Promise<T>): Promise<T> => {
@@ -166,52 +145,22 @@ describe("scan over a real tree", () => {
     expect(submitted).toBe(fileNames.length);
     expect(maximum).toBe(2);
     expect(unresolved).toBe(0);
-    expect(delivered).toBe(fileNames.length);
-    expect(completed).toBe(fileNames.length);
-    expect(peakAhead).toBe(2);
   });
 
-  it.each(["open", "read"])("retains required-root versus unlisted-descendant policy for an incremental %s failure", async (stage) => {
+  it("fails on an unlistable root but records an unlistable descendant as unlisted", async () => {
     const proj = path.join(dir, "proj"), locked = path.join(proj, "locked");
     await mkdir(locked, { recursive: true });
     const denied = Object.assign(new Error("denied"), { code: "EACCES" });
     const inaccessible = (blocked: string) => new Volume({ ...nodeFileSystem,
-      openDirectory: async (name) => {
-        if (name === blocked && stage === "open") throw denied;
-        const handle = await nodeFileSystem.openDirectory(name);
-        return {
-          read: async () => {
-            if (name === blocked) throw denied;
-            return handle.read();
-          },
-          close: () => handle.close(),
-        };
+      readdir: async (name) => {
+        if (name === blocked) throw denied;
+        return nodeFileSystem.readdir(name);
       },
     }, 30_000);
     await expect(runScan({ inputs: [proj] }, {}, inaccessible(proj))).rejects.toMatchObject({ code: "path.denied", subject: proj });
     const result = await runScan({ inputs: [proj] }, {}, inaccessible(locked));
     expect(names(result)).toEqual(["locked"]);
     expect(result.unlistedDirs).toEqual(["locked"]);
-  });
-
-  it("bounds open directory handles by traversal depth while retaining all metadata", async () => {
-    const proj = path.join(dir, "proj");
-    for (let i = 0; i < 12; i++) {
-      const child = path.join(proj, `branch-${i}`, "child");
-      await mkdir(child, { recursive: true });
-      await writeFile(path.join(child, "file.txt"), "x");
-    }
-    let active = 0, peak = 0;
-    const volume = new Volume({ ...nodeFileSystem, openDirectory: async (name) => {
-      const handle = await nodeFileSystem.openDirectory(name);
-      peak = Math.max(peak, ++active);
-      return { read: () => handle.read(), close: async () => { try { await handle.close(); } finally { active--; } } };
-    } }, 30_000);
-    const result = await runScan({ inputs: [proj] }, {}, volume);
-    expect(result.entries).toHaveLength(36);
-    expect(peak).toBe(3);
-    expect(active).toBe(0);
-    await volume.whenSettled();
   });
 
   it("surfaces files and directories with forward-slash archive paths", async () => {

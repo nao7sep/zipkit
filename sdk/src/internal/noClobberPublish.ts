@@ -27,9 +27,9 @@ export interface PublishOperations {
 /** The publication operations over the run's bounded {@link Volume}: the link
  *  and the rename are commit calls, the name check is ordinary work, and the
  *  temp's removal after a link is cleanup. */
-export function volumePublishOperations(volume: Volume, durable = false): PublishOperations {
+export function volumePublishOperations(volume: Volume): PublishOperations {
   return {
-    link: (tempPath, output) => volume.publishLink(tempPath, output, durable),
+    link: (tempPath, output) => volume.publishLink(tempPath, output),
     exists: async (output) => {
       try {
         await volume.lstat(output);
@@ -39,7 +39,7 @@ export function volumePublishOperations(volume: Volume, durable = false): Publis
         throw err;
       }
     },
-    rename: (tempPath, output) => volume.publishRename(tempPath, output, durable),
+    rename: (tempPath, output) => volume.publishRename(tempPath, output),
     unlink: (path) => volume.unlink(path),
   };
 }

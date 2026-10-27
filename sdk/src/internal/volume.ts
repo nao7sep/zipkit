@@ -37,20 +37,12 @@
 
 import type { BigIntStats } from "node:fs";
 import * as fsp from "node:fs/promises";
-import path from "node:path";
 import { stallError, toAbortError, ZipKitError } from "../errors.ts";
-import { syncDirectory } from "./sync-directory.ts";
 
 /** A directory entry as the walker needs it. */
 export interface DirEntry {
   name: string;
   isDirectory(): boolean;
-}
-
-/** An incremental directory reader; each read returns one entry or EOF. */
-export interface DirectoryHandlePort {
-  read(): Promise<DirEntry | null>;
-  close(): Promise<void>;
 }
 
 /** An open file on the raw port. Positions are absolute; `null` appends at the
@@ -72,15 +64,13 @@ export interface FileSystemPort {
   realpath(path: string): Promise<string>;
   readlink(path: string): Promise<string>;
   readdir(path: string): Promise<DirEntry[]>;
-  openDirectory(path: string): Promise<DirectoryHandlePort>;
   rename(from: string, to: string): Promise<void>;
   link(existing: string, created: string): Promise<void>;
   unlink(path: string): Promise<void>;
   rm(path: string): Promise<void>;
   chmod(path: string, mode: number): Promise<void>;
   /** Create a folder and any missing parents; one that exists is left as it is. */
-  mkdir(path: string): Promise<string | undefined | void>;
-  syncDirectory(path: string): Promise<void>;
+  mkdir(path: string): Promise<void>;
 }
 
 /** Only explicit filesystem capability failures permit omitting ordinary modes. */
@@ -104,14 +94,12 @@ export const nodeFileSystem: FileSystemPort = {
   realpath: (path) => fsp.realpath(path),
   readlink: (path) => fsp.readlink(path),
   readdir: (path) => fsp.readdir(path, { withFileTypes: true }),
-  openDirectory: (path) => fsp.opendir(path),
   rename: (from, to) => fsp.rename(from, to),
   link: (existing, created) => fsp.link(existing, created),
   unlink: (path) => fsp.unlink(path),
   rm: (path) => fsp.rm(path, { force: true }),
   chmod: (path, mode) => fsp.chmod(path, mode),
-  mkdir: (path) => fsp.mkdir(path, { recursive: true }),
-  syncDirectory,
+  mkdir: async (path) => { await fsp.mkdir(path, { recursive: true }); },
 };
 
 type Mode = "work" | "commit" | "cleanup";
@@ -129,7 +117,6 @@ interface RunOptions<T> {
  */
 export class Volume {
   readonly #physical = new Set<Promise<unknown>>();
-  readonly #createdParents = new Map<string, string>();
   readonly #port: FileSystemPort;
   readonly #timeoutMs: number;
   readonly #signal: AbortSignal | undefined;
@@ -172,47 +159,9 @@ export class Volume {
     return this.#run("work", "readdir", path, () => this.#port.readdir(path));
   }
 
-  /** Stream directory metadata without retaining a whole directory listing. */
-  async *directoryEntries(path: string): AsyncGenerator<DirEntry> {
-    const handle = await this.#run("work", "readdir", path, () => this.#port.openDirectory(path), {
-      onLateValue: (late) => late.close(),
-    });
-    let pendingRead: Promise<DirEntry | null> | undefined;
-    let failed = false;
-    try {
-      for (;;) {
-        const entry = await this.#run("work", "readdir", path, () => {
-          pendingRead = handle.read();
-          return pendingRead;
-        });
-        if (entry === null) return;
-        yield entry;
-      }
-    } catch (error) {
-      failed = true;
-      throw error;
-    } finally {
-      try {
-        await this.#run("cleanup", "close", path, async () => {
-          // Node's Dir.close refuses concurrent reads. Retain the actual read,
-          // including after its caller timed out, until closing is safe.
-          await pendingRead?.catch(() => {});
-          await handle.close();
-        });
-      } catch (error) {
-        // Preserve a read failure or cancellation; the physical close pipeline
-        // stays owned by #run even when its cleanup wait expires.
-        if (!failed) throw error;
-      }
-    }
-  }
-
   /** Create a folder with any missing parents, as ordinary work. */
-  async mkdir(directory: string): Promise<void> {
-    await this.#run("work", "mkdir", directory, async () => {
-      const first = await this.#port.mkdir(directory);
-      if (first !== undefined) this.#createdParents.set(directory, path.dirname(first));
-    });
+  mkdir(path: string): Promise<void> {
+    return this.#run("work", "mkdir", path, () => this.#port.mkdir(path));
   }
 
   chmod(path: string, mode: number): Promise<void> {
@@ -251,37 +200,13 @@ export class Volume {
   }
 
   /** Publish a finished temp file by renaming it over `to`. */
-  publishRename(from: string, to: string, durable = false): Promise<void> {
-    return this.#run("commit", "publish", to, async () => {
-      await this.#port.rename(from, to);
-      if (durable) await this.#syncPublication(to);
-    });
+  publishRename(from: string, to: string): Promise<void> {
+    return this.#run("commit", "publish", to, () => this.#port.rename(from, to));
   }
 
   /** Publish a finished temp file by hard-linking it at `to`. */
-  publishLink(existing: string, to: string, durable = false): Promise<void> {
-    return this.#run("commit", "publish", to, async () => {
-      await this.#port.link(existing, to);
-      if (durable) await this.#syncPublication(to);
-    });
-  }
-
-  async #syncPublication(output: string): Promise<void> {
-    try {
-      let directory = path.dirname(output);
-      const ancestor = this.#createdParents.get(directory);
-      await this.#port.syncDirectory(directory);
-      // Persist each newly created directory's link, up to its existing parent.
-      while (ancestor !== undefined && directory !== ancestor) {
-        const parent = path.dirname(directory);
-        if (parent === directory) break;
-        directory = parent;
-        await this.#port.syncDirectory(directory);
-      }
-    }
-    catch (cause) {
-      throw new ZipKitError("write.durability", `Archive published but its save could not be confirmed: ${output}`, { cause, subject: output, effect: "unknown" });
-    }
+  publishLink(existing: string, to: string): Promise<void> {
+    return this.#run("commit", "publish", to, () => this.#port.link(existing, to));
   }
 
   /** Unlink a path this run created, as cleanup. Errors propagate. */

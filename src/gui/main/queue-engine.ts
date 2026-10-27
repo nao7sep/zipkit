@@ -196,7 +196,6 @@ function stalledWhileCommitting(err: unknown): boolean {
 function writeFailureMessage(err: unknown, output: string): Message {
   const changed = changedSourcePath(err);
   if (changed !== undefined) return message("job.sourceChanged", { path: changed });
-  if (errCode(err) === "write.durability") return message("job.writeDurabilityFailed", { path: output });
   if (stalledWhileCommitting(err)) {
     return failureMessage(err, "job.writeUnconfirmed", { path: output });
   }
@@ -433,41 +432,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     if (result.unconfirmed.length > 0) claim.release(result.settlement ?? null);
   }
 
-  /** Reconfirm the verified archive immediately before each destructive root.
-   * A previous root can take long enough for an external writer to change it. */
+  /** Reconfirm the verified archive once, right before the originals are
+   *  removed together; one changed or gone since the checks refuses removal. */
   async function removeChecked(rec: Rec, output: string, inputs: string[], signal: AbortSignal, method: "trash" | "delete"): Promise<TrashResult> {
-    const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
-    const settlements: Promise<void>[] = [];
-    let stopped = false;
-    for (const input of inputs) {
-      if (stopped || signal.aborted) {
-        result.failed.push({ path: input, message: "removal stopped before this input" });
-        continue;
-      }
-      try {
-        const state = await deps.pathState(output, signal);
-        if (rec.fingerprint === null || state.kind !== "present" || state.fingerprint !== rec.fingerprint) {
-          throw new Error("Archive changed or could not be confirmed before originals removal");
-        }
-        signal.throwIfAborted();
-        const removed = await (method === "trash" ? deps.trash : deps.deleteOriginals)([input], signal);
-        result.moved.push(...removed.moved);
-        result.failed.push(...removed.failed);
-        result.unconfirmed.push(...removed.unconfirmed);
-        result.gone!.push(...(removed.gone ?? []));
-        if (removed.settlement) settlements.push(removed.settlement);
-        if (removed.unconfirmed.length) {
-          stopped = true;
-          // An adapter without a settlement signal must retain ownership forever.
-          if (!removed.settlement) settlements.push(new Promise(() => {}));
-        }
-      } catch (error) {
-        stopped = true;
-        result.failed.push({ path: input, message: error instanceof Error ? error.message : String(error) });
-      }
+    const state = await deps.pathState(output, signal);
+    if (rec.fingerprint === null || state.kind !== "present" || state.fingerprint !== rec.fingerprint) {
+      throw new Error("Archive changed or could not be confirmed before originals removal");
     }
-    result.settlement = Promise.all(settlements).then(() => {});
-    return result;
+    signal.throwIfAborted();
+    return (method === "trash" ? deps.trash : deps.deleteOriginals)(inputs, signal);
   }
 
   /** Every check before the originals are removed, in order: the archive is

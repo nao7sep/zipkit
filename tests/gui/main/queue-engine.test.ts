@@ -1117,7 +1117,7 @@ describe("queue engine", () => {
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeOriginals(id, "trash");
     await until(() =>
-      expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("1 original was kept"),
+      expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("could not be moved to Trash"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
@@ -1214,8 +1214,8 @@ describe("queue engine", () => {
       trash: async (paths) => {
         calls.trash.push(paths);
         trashCall++;
-        return trashCall === 2
-          ? { moved: [], failed: paths.filter((path) => path === "/x/b").map((path) => ({ path, message: "busy" })), unconfirmed: [] }
+        return trashCall === 1
+          ? { moved: ["/x/a"], failed: [{ path: "/x/b", message: "busy" }], unconfirmed: [] }
           : { moved: paths, failed: [], unconfirmed: [] };
       },
       pathKinds: async (paths) => paths.map((path) => ({ path, kind: trashCall > 0 && path === "/x/a" ? "missing" as const : "file" as const })),
@@ -1233,7 +1233,7 @@ describe("queue engine", () => {
     run(engine, id);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(checked).toEqual({ inputs: ["/x/b"], removed: ["/x/a"] });
-    expect(calls.trash).toEqual([["/x/a"], ["/x/b"], ["/x/b"]]);
+    expect(calls.trash).toEqual([["/x/a", "/x/b"], ["/x/b"]]);
     expect(calls.write).toBe(1);
   });
 
@@ -1365,7 +1365,7 @@ describe("queue engine", () => {
     run(engine, id);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeOriginals(id, "trash");
-    await until(() => expect(calls.trash).toEqual([["/a"], ["/b"]]));
+    await until(() => expect(calls.trash).toEqual([["/a", "/b"]]));
     expect(engine.snapshot()[0]?.state).toBe("done"); // archive kept; job stays done
   });
 
@@ -1668,28 +1668,6 @@ describe("the archive's recorded state and the job's history", () => {
     run(engine, id);
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
   }
-
-  it.each(["trash", "delete"] as const)("keeps the second root when the first %s changes the archive", async (method) => {
-    const { deps, calls, archive } = withArchive();
-    const removal = async (paths: string[]) => {
-      (method === "trash" ? calls.trash : calls.deleted).push(paths);
-      archive.state = "changed";
-      return { moved: paths, failed: [], unconfirmed: [] };
-    };
-    if (method === "trash") deps.trash = removal;
-    else deps.deleteOriginals = removal;
-    const engine = createQueueEngine(deps);
-    const id = engine.add(["/a", "/b"], DEFAULT_OPTIONS, method === "trash" ? TRASH : DELETE);
-    try {
-      await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
-      run(engine, id);
-      await until(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
-      expect(method === "trash" ? calls.trash : calls.deleted).toEqual([["/a"]]);
-      expect(say(engine.snapshot()[0]?.message)).toContain(method === "trash"
-        ? "1 original was moved to recoverable Trash. 1 original was kept."
-        : "1 original was deleted permanently. 1 original was kept.");
-    } finally { await engine.shutdown(); }
-  });
 
   it("records a run that verified as verified, and says so once in the history", async () => {
     const { deps } = withArchive();

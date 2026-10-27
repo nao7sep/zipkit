@@ -65,13 +65,6 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
         close: () => track(() => handle.close()),
       };
     },
-    openDirectory: async (path) => {
-      const handle = await gate("readdir", path, () => real.openDirectory(path));
-      return {
-        read: () => gate("readdir", path, () => handle.read()),
-        close: () => track(() => handle.close()),
-      };
-    },
     stat: (path) => gate("stat", path, () => real.stat(path)),
     lstat: (path) => gate("lstat", path, () => real.lstat(path)),
     realpath: (path) => gate("realpath", path, () => real.realpath(path)),
@@ -83,7 +76,6 @@ export function stallingFileSystem(shouldStall: (operation: string, path: string
     rm: (path) => gate("rm", path, () => real.rm(path)),
     chmod: (path, mode) => gate("chmod", path, () => real.chmod(path, mode)),
     mkdir: (path) => gate("mkdir", path, () => real.mkdir(path)),
-    syncDirectory: (path) => gate("sync directory", path, () => real.syncDirectory(path)),
   };
   return {
     port,

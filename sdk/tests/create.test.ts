@@ -37,14 +37,14 @@ async function makeTree(): Promise<string> {
 }
 
 describe("output resolution and round-trip", () => {
-  it.each([1, 63, 64])("creates and verifies deflated and stored content with chunkSize %i", async (chunkSize) => {
+  it("creates and verifies deflated and stored content with the smallest chunkSize", async () => {
     const input = path.join(dir, "small-buffers");
     await mkdir(input);
     const compressed = Buffer.from("small source buffers preserve all content ".repeat(16));
     const stored = Buffer.from(Array.from({ length: 129 }, (_, index) => index));
     await writeFile(path.join(input, "text.txt"), compressed);
     await writeFile(path.join(input, "image.png"), stored);
-    const kit = new ZipKit({ chunkSize });
+    const kit = new ZipKit({ chunkSize: 64 });
     const output = path.join(dir, "small-buffers.zip");
 
     await kit.create({ inputs: [input], output });
@@ -296,8 +296,9 @@ describe("options validation", () => {
     expect(() => new ZipKit({ concurrency: 1.5 })).toThrow(invalidError);
   });
 
-  it("rejects a non-positive chunkSize at construction", () => {
+  it("rejects a chunkSize below zlib's minimum of 64 at construction", () => {
     expect(() => new ZipKit({ chunkSize: 0 })).toThrow(invalidError);
+    expect(() => new ZipKit({ chunkSize: 63 })).toThrow(invalidError);
   });
 
   it("accepts a valid concurrency", () => {

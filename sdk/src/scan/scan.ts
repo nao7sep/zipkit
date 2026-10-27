@@ -246,62 +246,49 @@ async function processPath(
   }
 }
 
-/** Stream one directory and admit only one batch of stat work. Descendants run
- * after the batch releases its slots, so nested links cannot deadlock the shared
- * pool. Open directory handles follow traversal depth rather than tree width. */
+/** List one directory, then stat its entries one batch at a time under the
+ * shared pool. Excluded folders are pruned before descent, and descendants run
+ * after the batch releases its slots, so nested links cannot deadlock the pool.
+ * A subdirectory that cannot be listed is recorded as unlisted; the input root
+ * failing to list, a stall or a cancel ends the scan. */
 async function crawlDirectory(ctx: ScanContext, absDir: string, anchors: EntryPaths, inputIndex: number, required = true): Promise<void> {
   checkFailure(ctx);
   throwIfAborted(ctx.signal);
-  const iterator = ctx.volume.directoryEntries(absDir);
-  const count = workerCount(ctx.limit);
-  let done = false;
-  let failed = false;
+  let listing: DirEntry[];
   try {
-    while (!done) {
-      checkFailure(ctx);
-      throwIfAborted(ctx.signal);
-      const batch: DirEntry[] = [];
-      while (batch.length < count && !done) {
-        try {
-          const next = await iterator.next();
-          if (next.done) done = true;
-          else batch.push(next.value);
-        } catch (error) {
-          throwIfAborted(ctx.signal);
-          if (required || error instanceof ZipKitError) throw fsFailure(error, absDir);
-          ctx.unlistedDirs.push(anchors.archive);
-          done = true;
-        }
+    listing = await ctx.volume.readdir(absDir);
+  } catch (error) {
+    throwIfAborted(ctx.signal);
+    if (required || error instanceof ZipKitError) throw fsFailure(error, absDir);
+    ctx.unlistedDirs.push(anchors.archive);
+    return;
+  }
+  const count = workerCount(ctx.limit);
+  for (let start = 0; start < listing.length; start += count) {
+    checkFailure(ctx);
+    throwIfAborted(ctx.signal);
+    const batch = listing.slice(start, start + count);
+    const results = await Promise.allSettled(batch.map((entry) => ctx.limit(async () => {
+      const paths = {
+        archive: joinArchivePath(anchors.archive, entry.name),
+        source: joinArchivePath(anchors.source, entry.name),
+        disk: path.join(anchors.disk, entry.name),
+      };
+      const rule = entry.isDirectory() ? ctx.matcher.match(paths.archive, true) : null;
+      if (rule) {
+        ctx.prunedDirs.push({ archivePath: paths.archive, diskPath: paths.disk, reason: rule.describe, excludedBy: rule.excludedBy });
+        return;
       }
-      if (batch.length === 0) break;
-      const results = await Promise.allSettled(batch.map((entry) => ctx.limit(async () => {
-        const paths = {
-          archive: joinArchivePath(anchors.archive, entry.name),
-          source: joinArchivePath(anchors.source, entry.name),
-          disk: path.join(anchors.disk, entry.name),
-        };
-        const rule = entry.isDirectory() ? ctx.matcher.match(paths.archive, true) : null;
-        if (rule) {
-          ctx.prunedDirs.push({ archivePath: paths.archive, diskPath: paths.disk, reason: rule.describe, excludedBy: rule.excludedBy });
-          return;
-        }
-        return processPath(ctx, path.join(absDir, entry.name), paths, inputIndex);
-      })));
-      const failure = results.find((result) => result.status === "rejected");
-      if (failure?.status === "rejected") { ctx.failure = { error: failure.reason }; throw failure.reason; }
-      for (const result of results) {
-        if (result.status === "fulfilled" && result.value) {
-          const next = result.value;
-          await crawlDirectory(ctx, next.real, next.paths, next.inputIndex, false);
-        }
+      return processPath(ctx, path.join(absDir, entry.name), paths, inputIndex);
+    })));
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") { ctx.failure = { error: failure.reason }; throw failure.reason; }
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        const next = result.value;
+        await crawlDirectory(ctx, next.real, next.paths, next.inputIndex, false);
       }
     }
-  } catch (error) {
-    failed = true;
-    throw error;
-  } finally {
-    try { await iterator.return(undefined); }
-    catch (error) { if (!failed) throw error; }
   }
 }
 

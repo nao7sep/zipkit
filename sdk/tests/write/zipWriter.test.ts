@@ -290,7 +290,7 @@ describe("zip64", () => {
         sync: async () => {}, close: async () => {},
       }),
       stat: async () => { throw Object.assign(new Error("no previous output"), { code: "ENOENT" }); },
-      chmod: async () => {}, rename: async () => {}, syncDirectory: async () => {},
+      chmod: async () => {}, rename: async () => {},
     };
     const writer = new ZipWriter(path.join(tmpdir(), "zipkit-synthetic.zip"), { ...baseOptions, overwrite: true }, new Volume(port, 30_000));
     // Decode the captured on-wire bytes independently, overlaying positioned

@@ -53,7 +53,7 @@ export class EntryCompressor {
       // on (a flush per chunk adds bytes and could push a near-4 GiB entry past
       // the bound). Do not introduce intermediate flushes here.
       // zlib requires at least 64 output bytes, independently of the source read buffer.
-      this.#deflate = zlib.createDeflateRaw({ chunkSize: Math.max(64, chunkSize), level });
+      this.#deflate = zlib.createDeflateRaw({ chunkSize, level });
       this.#pump = this.#forward(this.#deflate);
     } else {
       this.#deflate = null;

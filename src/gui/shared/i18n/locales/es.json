@@ -84,7 +84,6 @@
   "job.planChanged": "Los archivos cambiaron desde que se revisó este trabajo, así que no se creó el archivo comprimido. Revisa el informe y vuelve a crear el archivo comprimido.",
   "job.writeFailed": "No se pudo escribir el archivo comprimido. Comprueba la ubicación de salida y el espacio disponible, y vuelve a intentarlo.",
   "job.writeUnconfirmed": "ZipKit dejó de esperar mientras se guardaba el archivo comprimido, así que es posible que el archivo comprimido ya esté en {path} o que aparezca allí más tarde. Comprueba esa ubicación antes de volver a crear el archivo comprimido.",
-  "job.writeDurabilityFailed": "El archivo está en {path}, pero ZipKit no pudo confirmar que se haya guardado de forma sincronizada en el disco. Se conservaron los originales. Revisa esa ubicación antes de crear el archivo de nuevo.",
   "job.sourceChanged": "{path} cambió mientras se comprimía, así que no se escribió ningún archivo comprimido. Vuelve a crear el archivo comprimido.",
   "job.saved": "Guardado ({size}).",
   "job.insideSource": "El archivo comprimido está dentro del origen, así que no se tocaron los originales.",

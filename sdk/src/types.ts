@@ -215,7 +215,8 @@ export interface ZipKitOptions {
    * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
    * read/inflate/deflate/write streams. A runtime/performance concern, not a
    * policy: it changes only how the work is buffered, never the archive's bytes.
-   * Peak memory is roughly this times `concurrency`. Defaults to 65536 (64 KB).
+   * Peak memory is roughly this times `concurrency`. At least 64 (zlib's
+   * minimum); defaults to 65536 (64 KB).
    */
   chunkSize?: number;
   /**

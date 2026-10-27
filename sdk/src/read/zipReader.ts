@@ -466,7 +466,7 @@ export async function readEntryData(
     try {
       await pipeline(
         Readable.from(input()),
-        zlib.createInflateRaw({ chunkSize: Math.max(64, chunkSize) }), // zlib's minimum is independent of the read buffer.
+        zlib.createInflateRaw({ chunkSize }),
         async (inflated: AsyncIterable<Buffer>) => {
           for await (const chunk of inflated) {
             try { await consume(chunk); }

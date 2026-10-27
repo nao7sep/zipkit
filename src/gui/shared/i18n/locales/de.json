@@ -84,7 +84,6 @@
   "job.planChanged": "Die Dateien haben sich seit der Prüfung dieses Auftrags geändert, daher wurde das Archiv nicht erstellt. Sehen Sie sich den Bericht an und erstellen Sie das Archiv dann erneut.",
   "job.writeFailed": "Das Archiv konnte nicht geschrieben werden. Prüfen Sie den Ausgabeort und den freien Speicherplatz, und versuchen Sie es dann erneut.",
   "job.writeUnconfirmed": "ZipKit hat aufgehört zu warten, während das Archiv gespeichert wurde. Das Archiv befindet sich daher möglicherweise bereits unter {path} oder erscheint dort noch. Prüfen Sie diesen Ort, bevor Sie das Archiv erneut erstellen.",
-  "job.writeDurabilityFailed": "Das Archiv befindet sich unter {path}, aber ZipKit konnte nicht bestätigen, dass es auf den Datenträger geschrieben wurde. Ihre Originale wurden beibehalten. Prüfen Sie diesen Speicherort, bevor Sie das Archiv erneut erstellen.",
   "job.sourceChanged": "{path} wurde während der Archivierung geändert, daher wurde kein Archiv geschrieben. Erstellen Sie das Archiv erneut.",
   "job.saved": "Gespeichert ({size}).",
   "job.insideSource": "Das Archiv liegt innerhalb der Quelle, daher wurden die Originale nicht angetastet.",

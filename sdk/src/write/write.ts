@@ -401,9 +401,9 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     // failure's effect is not nothing.
     const cleaned = await writer.abort();
     const left = (e: unknown): unknown => (cleaned ? e : withUnknownEffect(e));
-    // A publication stall or flush failure keeps its truthful output status,
-    // even when cancellation arrived during that publication.
-    if (isStall(err) || (err instanceof ZipKitError && err.code === "write.durability")) throw left(err);
+    // A publication stall keeps its truthful output status, even when
+    // cancellation arrived during that publication.
+    if (isStall(err)) throw left(err);
     if (signal?.aborted) throw left(toAbortError(signal.reason));
     // The sources and the writer classify their own file failures; anything
     // else is the SDK's own fault.

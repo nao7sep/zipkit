@@ -84,7 +84,6 @@
   "job.planChanged": "Les fichiers ont changé depuis la vérification de cette tâche\u00a0: l’archive n’a donc pas été créée. Consultez le rapport, puis créez de nouveau l’archive.",
   "job.writeFailed": "L’archive n’a pas pu être écrite. Vérifiez l’emplacement de sortie et l’espace disponible, puis réessayez.",
   "job.writeUnconfirmed": "ZipKit a cessé d’attendre pendant l’enregistrement de l’archive, qui se trouve donc peut-être déjà à l’emplacement {path} ou peut encore y apparaître. Vérifiez cet emplacement avant de recréer l’archive.",
-  "job.writeDurabilityFailed": "L’archive se trouve à {path}, mais ZipKit n’a pas pu confirmer que l’enregistrement a été synchronisé sur le disque. Vos originaux ont été conservés. Vérifiez cet emplacement avant de créer à nouveau l’archive.",
   "job.sourceChanged": "{path} a été modifié pendant son archivage, aucune archive n’a donc été écrite. Créez de nouveau l’archive.",
   "job.saved": "Enregistrée ({size}).",
   "job.insideSource": "L’archive se trouve dans la source, les originaux n’ont donc pas été touchés.",

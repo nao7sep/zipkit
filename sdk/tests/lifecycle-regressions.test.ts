@@ -113,15 +113,15 @@ it("stops queued scan admission on failure and joins issued logical reads", asyn
   expect(starts).toHaveLength(2);
 });
 
-it("does not open sibling directories after a directory read fails", async () => {
+it("does not list sibling directories after a directory listing fails", async () => {
   const input = path.join(root, "input"), a = path.join(input, "a"), b = path.join(input, "b");
   await mkdir(a, { recursive: true }); await mkdir(b);
   const original = new ZipKitError("io.failed", "listing failed", { subject: a });
   const opened: string[] = [];
-  const zip = withPort({ ...nodeFileSystem, openDirectory: async (file) => {
+  const zip = withPort({ ...nodeFileSystem, readdir: async (file) => {
     opened.push(file);
     if (file !== input) throw original;
-    return nodeFileSystem.openDirectory(file);
+    return nodeFileSystem.readdir(file);
   } });
   await expect(zip.plan({ inputs: [input], output: path.join(root, "out.zip") })).rejects.toBe(original);
   expect(opened).toHaveLength(2);
