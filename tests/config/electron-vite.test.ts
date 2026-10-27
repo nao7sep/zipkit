@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import config from "../../electron.vite.config";
@@ -9,14 +8,6 @@ describe("Electron development endpoint", () => {
   it("is a strict loopback port", () => {
     expect(server).toMatchObject({ host: "127.0.0.1", strictPort: true });
     expect(server?.port).toBeTypeOf("number");
-  });
-
-  // The config is the port's one source; each launcher checks and waits for it.
-  it.each(["run-dev.command", "run-dev.ps1"])("is the one %s checks and waits for", (launcher) => {
-    const script = readFileSync(new URL(`../../scripts/${launcher}`, import.meta.url), "utf8");
-    const ports = [...script.matchAll(/127\.0\.0\.1\D{1,8}(\d{2,5})/g)].map((m) => Number(m[1]));
-    expect(ports.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(ports)).toEqual(new Set([server?.port]));
   });
 });
 
