@@ -12,10 +12,9 @@ import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from "
 import { nanoid } from "nanoid";
 import { parseJsonObject } from "./managed-json-envelope.ts";
 import { StepTimeout } from "./step-timeout.ts";
-import { syncDirectory } from "./sync-directory.ts";
 
 export interface ManagedWriteOptions {
-  /** Authored Settings request file and supported directory synchronization.
+  /** Flush the temp file before the rename, for authored Settings.
    * Reconstructible queue/layout keep their ordinary atomic-save policy. */
   durable?: boolean;
   /** False when the write should not create an absent file: settings that are all built-in leave
@@ -33,9 +32,9 @@ export interface ManagedWriteOptions {
  * disk is not written again (content-lifecycle conventions). A live file that does not parse as a
  * JSON object is never overwritten (store-recovery conventions) unless `replaceUnreadable` says its
  * bytes are disposable. Resolves `true` when the file was written, `false` when it already held
- * these bytes, or `null` when absent and `createAbsent` is false; throws on failure.
+ * these bytes or was absent and `createAbsent` is false; throws on failure.
  */
-export async function writeManagedText(file: string, bytes: Buffer, signal?: AbortSignal, options: ManagedWriteOptions = {}): Promise<boolean | null> {
+export async function writeManagedText(file: string, bytes: Buffer, signal?: AbortSignal, options: ManagedWriteOptions = {}): Promise<boolean> {
   const dir = path.dirname(file);
   signal?.throwIfAborted();
   await mkdir(dir, { recursive: true });
@@ -51,19 +50,7 @@ export async function writeManagedText(file: string, bytes: Buffer, signal?: Abo
     return current;
   };
   const current = await admittedCurrent();
-  if (current === null && options.createAbsent === false) return null;
-  if (current?.equals(bytes)) {
-    // Retry after a rename succeeded but its directory flush failed must finish
-    // the save guarantee even though the visible bytes already match.
-    if (options.durable) {
-      const handle = await open(file, process.platform === "win32" ? "r+" : "r");
-      try { await handle.sync(); }
-      catch (error) { await handle.close().catch(() => {}); throw error; }
-      await handle.close();
-      await syncDirectory(dir);
-    }
-    return false;
-  }
+  if (current === null ? options.createAbsent === false : current.equals(bytes)) return false;
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   let owned = false;
   try {
@@ -89,8 +76,6 @@ export async function writeManagedText(file: string, bytes: Buffer, signal?: Abo
     signal?.throwIfAborted();
     await rename(tmp, file);
     owned = false;
-    // Publication and its flush finish together, even if quit stops waiting.
-    if (options.durable) await syncDirectory(dir);
   } catch (err) {
     // A failed write removes its own unpublished temp; the write's error is the one reported.
     if (owned) await rm(tmp, { force: true }).catch(() => {});

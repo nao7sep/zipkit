@@ -188,7 +188,7 @@ describe("settings file location and persistence", () => {
     vi.mocked(record).mockClear();
     await settings.saveSettings(CUSTOM);
     await settings.saveSettings(CUSTOM);
-    expect(record).toHaveBeenCalledTimes(2); // Durable confirmation records exact bytes; history deduplicates them.
+    expect(record).toHaveBeenCalledTimes(1);
   });
 
   it("compares and stores the font cleaned", async () => {
