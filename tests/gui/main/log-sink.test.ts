@@ -1,4 +1,4 @@
-/** Held outbound sinks prove admission, timeout ownership and late responses. */
+/** Held outbound sinks prove write-failure diversion, read timeouts and late responses. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventEmitter } from "node:events";
 import type { RecordsRequest } from "../../../src/gui/main/records-worker.js";
@@ -12,7 +12,6 @@ const fixture = vi.hoisted(() => ({
   append: vi.fn<(...args: unknown[]) => Promise<void>>(),
   mkdir: vi.fn<(...args: unknown[]) => Promise<void>>(),
 }));
-vi.mock("node:os", () => ({ totalmem: () => 512 * 1024 * 1024 }));
 vi.mock("node:fs/promises", () => ({
   mkdir: fixture.mkdir,
   writeFile: vi.fn(async () => undefined),
@@ -33,7 +32,7 @@ vi.mock("node:worker_threads", async () => {
     },
   };
 });
-import { createAppLog, diagnosticBudgetBytes, LOG_FALLBACK_WAIT_MS } from "../../../src/gui/main/log.js";
+import { createAppLog } from "../../../src/gui/main/log.js";
 
 beforeEach(() => {
   fixture.workers.length = 0;
@@ -42,89 +41,13 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
-const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
 function worker(): TestWorker { return fixture.workers[0]!; }
 function writeRequests(): Exclude<RecordsRequest, { type: "close" }>[] {
   return worker().messages.filter((request) => request.type === "log" || request.type === "jobEvent") as Exclude<RecordsRequest, { type: "close" }>[];
 }
 
-describe("bounded diagnostic sinks", () => {
-  it("derives its shared allowance from machine memory and clamps the diagnostic footprint", () => {
-    expect(diagnosticBudgetBytes(1024)).toBe(128 * 1024);
-    expect(diagnosticBudgetBytes(8 * 1024 ** 3)).toBe(2 * 1024 ** 2);
-    expect(diagnosticBudgetBytes(128 * 1024 ** 3)).toBe(8 * 1024 ** 2);
-  });
-
-  it("drops newly arriving writes when acknowledgements stall and reuses admitted capacity after settlement", async () => {
-    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    const log = createAppLog("/test/records.sqlite3", "/test/logs");
-    for (let i = 0; i < 20; i++) log.info("held", { data: "x".repeat(40_000) });
-    expect(writeRequests()).toHaveLength(3);
-    await tick();
-    expect(stderr.mock.calls.map(([line]) => String(line)).join("")).toContain("17 diagnostic records lost");
-    const first = writeRequests()[0]!;
-    worker().emit("message", { type: "written", id: first.id });
-    log.info("next", { data: "y".repeat(40_000) });
-    expect(writeRequests()).toHaveLength(4);
-    await log.close();
-  });
-
-  it("owns one stalled append through timeout, drains waiting rows, and never issues another append", async () => {
-    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    let release!: () => void;
-    fixture.append.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
-    const log = createAppLog("/test/records.sqlite3", "/test/logs");
-    await log.close();
-    for (let i = 0; i < 20; i++) log.info(`held-${i}`, { data: "x".repeat(40_000) });
-    await tick();
-    expect(fixture.append).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(LOG_FALLBACK_WAIT_MS);
-    const output = stderr.mock.calls.map(([line]) => String(line)).join("");
-    expect(output).toContain("outcome is unknown");
-    expect(output).toContain('"held-1"');
-    expect(output).toContain('"held-2"');
-    expect(output).not.toContain('"held-0"');
-    log.info("later");
-    expect(stderr.mock.calls.some(([line]) => String(line).includes('"later"'))).toBe(true);
-    // The caller's bounded close does not settle or forget the physical write.
-    const closing = log.close(50);
-    await vi.advanceTimersByTimeAsync(50);
-    await closing;
-    release();
-    await tick();
-    await log.close();
-    expect(fixture.append).toHaveBeenCalledTimes(1);
-  });
-
-  it("sends an unattempted row to stderr when setup stalls and stops file work after timeout", async () => {
-    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    let release!: () => void;
-    fixture.mkdir.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
-    const log = createAppLog("/test/records.sqlite3", "/test/logs");
-    await log.close();
-    log.info("unattempted row");
-    await vi.advanceTimersByTimeAsync(LOG_FALLBACK_WAIT_MS);
-    expect(stderr.mock.calls.some(([line]) => String(line).includes('"unattempted row"'))).toBe(true);
-    release();
-    await tick();
-    await log.close();
-    expect(fixture.append).not.toHaveBeenCalled();
-  });
-
-  it("does not feed stderr while the stream is backpressured", async () => {
-    let blocked = true;
-    vi.spyOn(process.stderr, "writableNeedDrain", "get").mockImplementation(() => blocked);
-    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    const log = createAppLog("/test/records.sqlite3", "/test/logs");
-    for (let i = 0; i < 100; i++) log.info("held", { data: "x".repeat(40_000) });
-    await tick();
-    expect(stderr).not.toHaveBeenCalled();
-    blocked = false;
-    await log.close();
-    expect(stderr.mock.calls.map(([line]) => String(line)).join("")).toContain("97 diagnostic records lost");
-  });
-
+describe("records sinks", () => {
   it("notifies once when the first write fails, rejects pending reads, and ignores late acknowledgements", async () => {
     const log = createAppLog("/test/records.sqlite3", "/test/logs");
     const stored = vi.fn();
@@ -163,13 +86,11 @@ describe("bounded diagnostic sinks", () => {
       .toEqual(["diverted", "after close"]);
   });
 
-  it("removes timed-out reads, caps concurrent reads, and keeps read failures separate from write failure", async () => {
+  it("removes timed-out reads and keeps read failures separate from write failure", async () => {
     const log = createAppLog("/test/records.sqlite3", "/test/logs");
-    const pending = Array.from({ length: 32 }, () => log.records({ op: "sessions" }, 50));
-    const settled = Promise.allSettled(pending);
-    await expect(log.records({ op: "sessions" }, 50)).rejects.toThrow(/too many/);
+    const timedOut = expect(log.records({ op: "sessions" }, 50)).rejects.toThrow(/did not answer/);
     await vi.advanceTimersByTimeAsync(50);
-    expect((await settled).every((value) => value.status === "rejected")).toBe(true);
+    await timedOut;
     const next = log.records({ op: "sessions" });
     const nextRequest = worker().messages.at(-1)!;
     if (nextRequest.type === "close") throw new Error("unexpected close");

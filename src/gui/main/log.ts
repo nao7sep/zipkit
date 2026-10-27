@@ -13,7 +13,6 @@
 
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { totalmem } from "node:os";
 import { Worker } from "node:worker_threads";
 import { fallbackLogDir, fileTimestamp, storageRoot } from "./storage.js";
 import { JOB_EVENT_LIMIT, type JobAction, type JobEvent, type LogEvent } from "../shared/api.js";
@@ -125,16 +124,6 @@ function workerUrl(): URL {
 }
 
 type Write = { type: "log"; row: LogRow } | { type: "jobEvent"; row: JobEventRow };
-type AdmittedWrite = { write: Write; line: string; bytes: number };
-
-/** Diagnostics share a small machine-derived budget across the database and
- * fallback, so a stalled sink cannot accumulate the archive's event stream. */
-export function diagnosticBudgetBytes(memory: number = totalmem()): number {
-  return Math.max(128 * 1024, Math.min(8 * 1024 * 1024, Math.floor(memory / 4096)));
-}
-
-export const LOG_FALLBACK_WAIT_MS = 10_000;
-const MAX_RECORDS_READS = 32;
 
 /**
  * Open the app's records for this launch. Never throws: the records thread
@@ -151,40 +140,40 @@ export function createAppLog(
   // created exclusively, and SDK session logs in the same folder carry an id after their stamp.
   const fallbackFile = path.join(fallbackDir, `${fileTimestamp(now)}.log`);
 
-  const budget = diagnosticBudgetBytes();
-  let outstandingBytes = 0;
-  let lost = 0;
-  let lossReportScheduled = false;
-  const reportLost = (): void => {
-    if (lost === 0 || process.stderr.writableNeedDrain) return;
-    const count = lost;
-    lost = 0;
-    try {
-      process.stderr.write(`zipkit: ${count} diagnostic records lost because a logging sink was unavailable or full\n`);
-    } catch {
-      lost += count;
-    }
-  };
-  const lose = (): void => {
-    lost++;
-    if (lossReportScheduled) return;
-    lossReportScheduled = true;
-    queueMicrotask(() => {
-      lossReportScheduled = false;
-      reportLost();
-    });
-  };
+  let fallbackState: "closed" | "open" | "stderr" = "closed";
+  let fallbackTail: Promise<void> = Promise.resolve();
+
   const toStderr = (line: string): void => {
-    reportLost();
-    if (process.stderr.writableNeedDrain) {
-      lose();
-      return;
-    }
     try {
       process.stderr.write(line);
     } catch {
-      lose();
+      /* the last resort is itself best-effort */
     }
+  };
+
+  const appendFallback = async (line: string): Promise<void> => {
+    if (fallbackState === "closed") {
+      try {
+        await mkdir(fallbackDir, { recursive: true });
+        // Exclusive create: a same-second file another session already
+        // holds is never appended into (logging conventions, toolkit filename).
+        await writeFile(fallbackFile, "", { flag: "wx" });
+        fallbackState = "open";
+      } catch (err) {
+        fallbackState = "stderr";
+        toStderr(`zipkit: log fallback file unavailable (${fallbackFile}: ${reason(err)}); logging to stderr\n`);
+      }
+    }
+    if (fallbackState === "open") {
+      try {
+        await appendFile(fallbackFile, line);
+        return;
+      } catch (err) {
+        fallbackState = "stderr";
+        toStderr(`zipkit: log fallback file write failed (${reason(err)}); logging to stderr\n`);
+      }
+    }
+    toStderr(line);
   };
 
   const fallbackLine = (write: Write): string =>
@@ -206,102 +195,17 @@ export function createAppLog(
           event: JSON.parse(write.row.body) as unknown,
         });
 
-  const admit = (write: Write): AdmittedWrite | null => {
+  // One append at a time, in the order the entries were made.
+  const toFallback = (write: Write): void => {
     const line = `${fallbackLine(write)}\n`;
-    const bytes = Buffer.byteLength(line);
-    if (bytes > budget - outstandingBytes) {
-      lose();
-      return null;
-    }
-    outstandingBytes += bytes;
-    return { write, line, bytes };
-  };
-  const release = (entry: AdmittedWrite): void => {
-    outstandingBytes -= entry.bytes;
-  };
-
-  let fallbackState: "closed" | "open" | "stderr" = "closed";
-  const fallbackQueue = new Set<AdmittedWrite>();
-  // This is the actual physical operation, kept until settlement even after a
-  // timeout. Once timed out, no further file operation starts this session.
-  let fallbackFlight: Promise<void> | null = null;
-  let fallbackDrained: Promise<void> = Promise.resolve();
-  let resolveFallbackDrained: (() => void) | null = null;
-
-  const drainToStderr = (): void => {
-    for (const entry of fallbackQueue) {
-      fallbackQueue.delete(entry);
-      toStderr(entry.line);
-      release(entry);
-    }
-  };
-  const pumpFallback = (): void => {
-    if (fallbackFlight !== null) return;
-    if (fallbackState === "stderr") drainToStderr();
-    const entry = fallbackQueue.values().next().value;
-    if (!entry) {
-      resolveFallbackDrained?.();
-      resolveFallbackDrained = null;
-      return;
-    }
-    fallbackQueue.delete(entry);
-    let timedOut = false;
-    let appendStarted = false;
-    const operation = async (): Promise<void> => {
-      try {
-        if (fallbackState === "closed") {
-          await mkdir(fallbackDir, { recursive: true });
-          if (timedOut) return;
-          // Never append into another launch's same-second file.
-          await writeFile(fallbackFile, "", { flag: "wx" });
-          if (timedOut) return;
-          fallbackState = "open";
-        }
-        appendStarted = true;
-        await appendFile(fallbackFile, entry.line);
-      } catch (err) {
-        if (timedOut) {
-          toStderr(`zipkit: log fallback operation later failed (${reason(err)})\n`);
-          return;
-        }
-        fallbackState = "stderr";
-        toStderr(`zipkit: log fallback file unavailable (${fallbackFile}: ${reason(err)}); logging to stderr\n`);
-        toStderr(entry.line);
-      }
-    };
-    const timer = setTimeout(() => {
-      timedOut = true;
-      fallbackState = "stderr";
-      toStderr(`zipkit: log fallback did not finish within ${LOG_FALLBACK_WAIT_MS} ms; its outcome is unknown; later records go to stderr\n`);
-      if (!appendStarted) toStderr(entry.line);
-      drainToStderr();
-    }, LOG_FALLBACK_WAIT_MS);
-    timer.unref();
-    fallbackFlight = operation().finally(() => {
-      clearTimeout(timer);
-      release(entry);
-      fallbackFlight = null;
-      pumpFallback();
-    });
-  };
-  const toFallback = (entry: AdmittedWrite): void => {
-    if (fallbackState === "stderr") {
-      toStderr(entry.line);
-      release(entry);
-      return;
-    }
-    if (resolveFallbackDrained === null) {
-      fallbackDrained = new Promise<void>((resolve) => { resolveFallbackDrained = resolve; });
-    }
-    fallbackQueue.add(entry);
-    pumpFallback();
+    fallbackTail = fallbackTail.then(() => appendFallback(line));
   };
 
   let databaseFailureReported = false;
   const reportDatabaseFailure = (error: unknown): void => {
     if (databaseFailureReported) return;
     databaseFailureReported = true;
-    const entry = admit({
+    toFallback({
       type: "log",
       row: {
         time: new Date().toISOString(),
@@ -312,19 +216,19 @@ export function createAppLog(
         fields: serializeFields({ database: databaseFile, error }),
       },
     });
-    if (entry) toFallback(entry);
   };
 
   let worker: Worker | null = null;
   let workerFailed = false;
   let closing: Promise<void> | null = null;
   let nextId = 1;
-  const pending = new Map<number, AdmittedWrite>();
+  const pending = new Map<number, Write>();
   const reads = new Map<number, (response: RecordsResponse | Error) => void>();
   let storedListener: (() => void) | null = null;
 
-  // Divert admitted writes once and promptly reject reads when the records
-  // thread fails or does not close in time. Diagnostics remain best effort.
+  // Whatever the records thread has not confirmed goes to the fallback file, so
+  // a thread that fails or does not close in time loses none of it; a read it
+  // has not answered fails.
   const settleInFlight = (): void => {
     const writes = [...pending.values()];
     pending.clear();
@@ -359,14 +263,14 @@ export function createAppLog(
         read(response);
         return;
       }
-      const entry = pending.get(response.id);
-      // A response may arrive after a timeout, diversion or close.
-      if (!entry) return;
+      // A response may arrive after a diversion or close.
+      if (!pending.has(response.id)) return;
       if (response.type === "failed") {
+        // The records thread refuses every later write once one fails; the
+        // rest go to the fallback file at once.
         failWorker(response.error);
       } else if (response.type === "written") {
         pending.delete(response.id);
-        release(entry);
         storedListener?.();
       }
     });
@@ -387,14 +291,12 @@ export function createAppLog(
   };
 
   const persist = (write: Write): void => {
-    const entry = admit(write);
-    if (!entry) return;
     if (workerFailed || closing !== null) {
-      toFallback(entry);
+      toFallback(write);
       return;
     }
     const id = nextId++;
-    pending.set(id, entry);
+    pending.set(id, write);
     post({ ...write, id } as RecordsRequest);
   };
 
@@ -441,7 +343,6 @@ export function createAppLog(
     waitMs: number,
   ): Promise<RecordsResponse> => {
     if (workerFailed || closing !== null) return Promise.reject(new Error("the records database is closed"));
-    if (reads.size >= MAX_RECORDS_READS) return Promise.reject(new Error("too many records reads are pending"));
     const id = nextId++;
     return new Promise<RecordsResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -518,10 +419,9 @@ export function createAppLog(
     // every close waits for it.
     return closing.then(() => {
       settleInFlight();
-      reportLost();
       let timer: ReturnType<typeof setTimeout> | undefined;
       return Promise.race([
-        fallbackDrained,
+        fallbackTail,
         new Promise<void>((resolve) => {
           timer = setTimeout(() => {
             toStderr(`zipkit: log fallback did not finish within ${waitMs} ms; its outcome is unknown\n`);
