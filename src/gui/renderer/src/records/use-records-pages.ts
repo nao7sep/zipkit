@@ -1,25 +1,23 @@
-/** Own page requests and their lifetime; failed reads wait for explicit recovery. */
+/** Own page requests and their lifetime; failed reads wait for explicit recovery.
+ * Loaded rows stay in memory, and the window renders them virtually. */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RecordsQuery, RecordSources } from "../../../shared/records";
+import type { RecordsQuery, RecordSources, RecordSummary } from "../../../shared/records";
 import { reportableError } from "../externalDropBoundary";
-import { RecordsCache } from "./records-cache";
+import { cursorAfter, mergeNewestPage } from "./record-format";
 
 type Filters = Omit<RecordsQuery, "after">;
 
 export function useRecordsPages(filters: Filters) {
-  const cache = useRef(new RecordsCache());
+  const loaded = useRef<{ records: RecordSummary[]; more: boolean }>({ records: [], more: false });
   const generation = useRef(0);
-  const geometry = useRef(0);
+  // A newest page can reset the loaded range; a continuation read before that cannot apply.
+  const range = useRef(0);
   const filtersRef = useRef(filters);
   const live = useRef(true);
   const sourcesRequest = useRef(0);
   const failures = useRef(new Set<string>());
-  const fetching = useRef(new Set<number>());
-  // Invalidating geometry discards replies, not requests already issued.
-  const refetchesInFlight = useRef(0);
   const newestBusy = useRef(false);
   const moreBusy = useRef(false);
-  const visible = useRef({ start: 0, end: 0 });
   const [revision, redraw] = useState(0);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [sources, setSources] = useState<RecordSources | null>(null);
@@ -50,17 +48,15 @@ export function useRecordsPages(filters: Filters) {
     try {
       const page = await window.zipkit.readRecordsPage({ ...filtersRef.current, after: null });
       if (current !== generation.current) return;
-      // Continuations and refetches from the previous geometry cannot apply.
-      geometry.current++;
-      fetching.current.clear();
+      range.current++;
       moreBusy.current = false;
-      cache.current.newest(page);
+      loaded.current = mergeNewestPage(loaded.current.records, loaded.current.more, page);
       failures.current.delete("list");
       setStatus("ready");
     } catch (error) {
       if (current === generation.current) {
         failed("list", "read the newest records", error);
-        if (cache.current.length === 0) setStatus("failed");
+        if (loaded.current.records.length === 0) setStatus("failed");
       }
     } finally {
       if (current === generation.current) { newestBusy.current = false; changed(); }
@@ -68,79 +64,46 @@ export function useRecordsPages(filters: Filters) {
   }, []);
 
   const loadMore = useCallback(async () => {
-    if (!cache.current.more || moreBusy.current || failures.current.size > 0) return;
+    if (!loaded.current.more || moreBusy.current || failures.current.size > 0) return;
     moreBusy.current = true;
     changed();
     const current = generation.current;
-    const layout = geometry.current;
-    const after = cache.current.segments.at(-1)?.tailCursor ?? null;
+    const layout = range.current;
+    const after = cursorAfter(loaded.current.records);
     try {
       const page = await window.zipkit.readRecordsPage({ ...filtersRef.current, after });
-      if (current !== generation.current || layout !== geometry.current) return;
-      cache.current.append(page);
-      cache.current.retain(cache.current.segmentAt(visible.current.start));
+      if (current !== generation.current || layout !== range.current) return;
+      loaded.current = { records: [...loaded.current.records, ...page.records], more: page.more };
       failures.current.delete("list");
     } catch (error) {
-      if (current === generation.current && layout === geometry.current) failed("list", "read more records", error);
+      if (current === generation.current && layout === range.current) failed("list", "read more records", error);
     } finally {
-      if (current === generation.current && layout === geometry.current) { moreBusy.current = false; changed(); }
+      if (current === generation.current && layout === range.current) { moreBusy.current = false; changed(); }
     }
   }, []);
 
-  const readSegment = useCallback(async (index: number, retry = false) => {
-    const descriptor = cache.current.segments[index];
-    if (!descriptor || cache.current.pages.has(index) || fetching.current.has(index) || refetchesInFlight.current >= 2 || (!retry && failures.current.size > 0)) return;
-    const current = generation.current;
-    const layout = geometry.current;
-    fetching.current.add(index);
-    refetchesInFlight.current++;
-    try {
-      const page = await window.zipkit.readRecordsPage({ ...filtersRef.current, after: descriptor.after });
-      if (current !== generation.current || layout !== geometry.current) return;
-      cache.current.pages.set(index, page.records.slice(0, descriptor.length));
-      cache.current.retain(cache.current.segmentAt(visible.current.start));
-      failures.current.delete("list");
-    } catch (error) {
-      if (current === generation.current && layout === geometry.current) failed("list", "read the visible records", error);
-    } finally {
-      refetchesInFlight.current--;
-      if (current === generation.current && layout === geometry.current) fetching.current.delete(index);
-      if (live.current) changed();
-    }
-  }, []);
-
-  const showRange = useCallback((start: number, end: number) => {
-    visible.current = { start, end };
-    const first = cache.current.segmentAt(start), last = cache.current.segmentAt(end);
-    cache.current.retain(first);
-    for (let index = Math.max(0, first); index <= last; index++) void readSegment(index);
-  }, [readSegment]);
-
+  // Sources and the newest records recover independently; reading more
+  // resumes once the list is current again.
   const retry = useCallback(async () => {
-    // Sources and the failed viewport/newest read recover independently.
-    const first = cache.current.segmentAt(visible.current.start), last = cache.current.segmentAt(visible.current.end);
-    const missing = first < 0 ? undefined : Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => first + index)
-      .find((index) => !cache.current.pages.has(index));
-    await Promise.all([readSources(), missing === undefined ? readNewest() : readSegment(missing, true)]);
-  }, [readSources, readNewest, readSegment]);
+    await Promise.all([readSources(), readNewest()]);
+  }, [readSources, readNewest]);
 
   useEffect(() => {
     const current = ++generation.current;
     filtersRef.current = filters;
-    cache.current = new RecordsCache();
-    const layout = ++geometry.current;
+    loaded.current = { records: [], more: false };
+    const layout = ++range.current;
     newestBusy.current = false;
-    fetching.current.clear();
     moreBusy.current = false;
     failures.current.delete("list");
     setStatus("loading");
     void window.zipkit.readRecordsPage({ ...filters, after: null }).then((page) => {
-      if (current !== generation.current || layout !== geometry.current) return;
-      cache.current.append(page);
+      if (current !== generation.current || layout !== range.current) return;
+      loaded.current = { records: page.records, more: page.more };
       setStatus("ready");
       changed();
     }, (error) => {
-      if (current !== generation.current || layout !== geometry.current) return;
+      if (current !== generation.current || layout !== range.current) return;
       failed("list", "read the records", error);
       setStatus("failed");
     });
@@ -153,6 +116,6 @@ export function useRecordsPages(filters: Filters) {
     return () => { live.current = false; sourcesRequest.current++; };
   }, [readSources]);
 
-  return { cache: cache.current, revision, status, sources, stale: failures.current.size > 0,
-    loadingMore: moreBusy.current, loadMore, readNewest, showRange, retry };
+  return { records: loaded.current.records, revision, status, sources, stale: failures.current.size > 0,
+    loadingMore: moreBusy.current, loadMore, readNewest, retry };
 }

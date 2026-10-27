@@ -120,7 +120,7 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [searchText, setSearchText] = useState("");
   const list = useRecordsPages(filters);
-  const { cache, sources, loadMore, readNewest } = list;
+  const { records, sources, loadMore, readNewest } = list;
   const [selected, setSelected] = useState<Selection | null>(null);
   const [detail, setDetail] = useState<DetailState>({ status: "none" });
   // The list width the user dragged to (the persisted intent), the width while
@@ -222,8 +222,8 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
   }, [selectedKey]);
 
   const virtualizer = useVirtualizer({
-    count: cache.length,
-    // Move focus out of an evicted row before React commits the new range.
+    count: records.length,
+    // Move focus out of a row leaving the rendered range before React commits it.
     useFlushSync: false,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 72,
@@ -242,20 +242,15 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
     },
   });
   const virtualRows = virtualizer.getVirtualItems();
-  const firstVisible = virtualRows[0]?.index ?? 0;
-  const lastVisible = virtualRows.at(-1)?.index ?? 0;
-  useEffect(() => {
-    list.showRange(firstVisible, lastVisible);
-  }, [firstVisible, lastVisible, list.revision, list.showRange]);
 
   useEffect(() => {
     const index = pendingFocus.current;
-    if (index === null || !cache.row(index)) return;
+    if (index === null || !records[index]) return;
     const option = listRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`);
     if (!option) return;
     pendingFocus.current = null;
     if (listRef.current?.contains(document.activeElement)) option.focus();
-  }, [list.revision, virtualRows, cache]);
+  }, [list.revision, virtualRows, records]);
 
   useEffect(() => {
     const scroll = scrollRef.current;
@@ -275,13 +270,11 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
 
   useEffect(() => {
     if (selectedKey === null || pendingFocus.current !== null) return;
-    for (const [segment, rows] of cache.pages) {
-      const index = rows.findIndex((row) => recordKey(row) === selectedKey);
-      if (index >= 0) { setActiveIndex(cache.segments[segment]!.start + index); return; }
-    }
-  }, [cache, list.revision, selectedKey]);
+    const index = records.findIndex((row) => recordKey(row) === selectedKey);
+    if (index >= 0) setActiveIndex(index);
+  }, [records, list.revision, selectedKey]);
 
-  const activeRecord = cache.row(activeIndex);
+  const activeRecord = records[activeIndex];
   const tabStopKey = activeRecord ? recordKey(activeRecord) : null;
   const select = (record: RecordSummary, index: number): void => {
     setActiveIndex(index);
@@ -297,19 +290,19 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
 
   const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (isComposing(event) || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    const target = navIndex(activeIndex, cache.length, event.key, pageSize());
+    const target = navIndex(activeIndex, records.length, event.key, pageSize());
     if (target === null) return;
     event.preventDefault();
     setActiveIndex(target);
     const option = listRef.current?.querySelector<HTMLElement>(`[data-index="${target}"]`);
-    if (option && cache.row(target)) option.focus();
+    if (option) option.focus();
     else {
-      // Keep real focus within the composite until the requested row arrives.
+      // Keep real focus within the composite until the requested row renders.
       pendingFocus.current = target;
       listRef.current?.focus();
       virtualizer.scrollToIndex(target, { align: "auto" });
     }
-    if (target === cache.length - 1 && ["ArrowDown", "PageDown", "End"].includes(event.key)) void loadMore();
+    if (target === records.length - 1 && ["ArrowDown", "PageDown", "End"].includes(event.key)) void loadMore();
   };
 
   // Only the end of a drag saves (window-conventions, Persist the user's drag intent).
@@ -388,27 +381,26 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
             role="listbox"
             aria-label={t.t("records.title")}
             aria-busy={list.status === "loading"}
-            tabIndex={cache.length === 0 || !virtualRows.some((row) => row.index === activeIndex && cache.row(row.index)) ? 0 : -1}
+            tabIndex={records.length === 0 || !virtualRows.some((row) => row.index === activeIndex) ? 0 : -1}
             className="records-list"
-            style={{ position: "relative", height: cache.length ? virtualizer.getTotalSize() : undefined }}
+            style={{ position: "relative", height: records.length ? virtualizer.getTotalSize() : undefined }}
             onKeyDown={onListKeyDown}
             onFocus={(event) => {
-              if (event.target !== event.currentTarget || transferringFocus.current || cache.length === 0 || pendingFocus.current !== null) return;
-              const index = Math.min(activeIndex, cache.length - 1);
+              if (event.target !== event.currentTarget || transferringFocus.current || records.length === 0 || pendingFocus.current !== null) return;
+              const index = Math.min(activeIndex, records.length - 1);
               pendingFocus.current = index;
               virtualizer.scrollToIndex(index, { align: "auto" });
             }}
           >
             {list.status === "loading" ? (
               <p role="presentation" className="records-note">{t.t("records.loading")}</p>
-            ) : list.status === "ready" && cache.length === 0 ? (
+            ) : list.status === "ready" && records.length === 0 ? (
               <p role="presentation" className="records-note">{t.t("records.empty")}</p>
             ) : (
               virtualRows.map((row) => {
-                const record = cache.row(row.index);
-                const key = record ? recordKey(record) : `pending:${row.index}`;
+                const record = records[row.index]!;
+                const key = recordKey(record);
                 const style: CSSProperties = { position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)` };
-                if (!record) return <div key={key} data-index={row.index} ref={virtualizer.measureElement} style={style} className="records-row" aria-hidden="true">{t.t("records.loading")}</div>;
                 return (
                   <div
                     key={key}
@@ -417,7 +409,7 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
                     style={style}
                     role="option"
                     aria-posinset={row.index + 1}
-                    aria-setsize={cache.length}
+                    aria-setsize={records.length}
                     aria-selected={key === selectedKey}
                     tabIndex={key === tabStopKey ? 0 : -1}
                     data-record-key={key}

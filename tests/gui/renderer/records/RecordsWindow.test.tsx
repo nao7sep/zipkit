@@ -203,10 +203,10 @@ describe("RecordsWindow", () => {
     expect(document.activeElement).toBe(document.querySelector('[role="listbox"]'));
     expect(new Set(readRecordsPage.mock.calls.map(([query]) => query.after?.id ?? null)).size).toBe(10);
     expect(options()[0]!.getAttribute("aria-setsize")).toBe("1000");
+    // Loaded rows stay in memory: scrolling back reads nothing again.
     const before = readRecordsPage.mock.calls.length;
     await scrollTo(100 * 72);
-    expect(readRecordsPage.mock.calls.length).toBeGreaterThan(before);
-    expect(lastQuery().after).toEqual(cursorOf(history[99]!));
+    expect(readRecordsPage.mock.calls.length).toBe(before);
     expect(options().some((row) => row.textContent?.includes("row 900"))).toBe(true);
     expect(options().length).toBeLessThanOrEqual(25);
   });
