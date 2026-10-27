@@ -1,13 +1,11 @@
 /** Prepare and configure every Electron path before readiness and instance locking. */
 import { app } from "electron";
-import { electronStoragePaths, storageRoot } from "./storage.js";
-import { prepareStorage } from "./storage-startup.js";
+import { electronStoragePaths, prepareStorage, storageRoot } from "./storage.js";
 
 let storageReady = false;
 try {
   const root = storageRoot();
-  // Electron waits for this entry's top-level await before emitting ready.
-  await prepareStorage(root);
+  prepareStorage(root);
   const paths = electronStoragePaths(root);
   app.setPath("userData", paths.userData);
   app.setPath("sessionData", paths.sessionData);

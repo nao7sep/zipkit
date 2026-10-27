@@ -10,10 +10,9 @@
 
 import { describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { prepareStorage } from "../../../src/gui/main/storage-startup.js";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fallbackLogDir, storageRoot, StorageRootError } from "../../../src/gui/main/storage.js";
+import { fallbackLogDir, prepareStorage, storageRoot, StorageRootError } from "../../../src/gui/main/storage.js";
 
 const ROOT = path.parse(path.resolve(".")).root;
 const HOME = path.join(ROOT, "home", "tester");
@@ -68,25 +67,25 @@ describe("storageRoot", () => {
 // that way, and tightened to 0700 at each launch when an existing root is
 // broader. Windows uses its own permission model, so this is skipped there.
 (process.platform === "win32" ? describe.skip : describe)("prepareStorage", () => {
-  it("creates a fresh storage root as owner-only (0700)", async () => {
+  it("creates a fresh storage root as owner-only (0700)", () => {
     const base = mkdtempSync(path.join(tmpdir(), "zipkit-root-"));
     const root = path.join(base, "profile", ".zipkit");
     try {
-      await prepareStorage(root);
+      prepareStorage(root);
       expect(statSync(root).mode & 0o777).toBe(0o700);
     } finally {
       rmSync(base, { force: true, recursive: true });
     }
   });
 
-  it("tightens an existing broader storage root to 0700 on launch", async () => {
+  it("tightens an existing broader storage root to 0700 on launch", () => {
     const base = mkdtempSync(path.join(tmpdir(), "zipkit-root-"));
     const root = path.join(base, ".zipkit");
     mkdirSync(root, { recursive: true });
     chmodSync(root, 0o755);
     expect(statSync(root).mode & 0o777).toBe(0o755);
     try {
-      await prepareStorage(root);
+      prepareStorage(root);
       expect(statSync(root).mode & 0o777).toBe(0o700);
     } finally {
       rmSync(base, { force: true, recursive: true });
@@ -106,21 +105,21 @@ describe("fallbackLogDir", () => {
 });
 
 describe("storage preparation filesystem boundary", () => {
-  it("creates every Electron directory before returning", async () => {
+  it("creates every Electron directory before returning", () => {
     const base = mkdtempSync(path.join(tmpdir(), "zipkit-root-"));
     try {
-      await prepareStorage(base);
+      prepareStorage(base);
       for (const directory of ["electron", "electron/session", "electron/crashes", "electron/logs"]) {
         expect(statSync(path.join(base, directory)).isDirectory()).toBe(true);
       }
     } finally { rmSync(base, { recursive: true, force: true }); }
   });
-  it.each(["root", "electron"])("rejects when the %s path is a file", async (collision) => {
+  it.each(["root", "electron"])("throws when the %s path is a file", (collision) => {
     const base = mkdtempSync(path.join(tmpdir(), "zipkit-root-"));
     const root = path.join(base, "profile");
     if (collision === "electron") mkdirSync(root);
     writeFileSync(collision === "root" ? root : path.join(root, "electron"), "keep");
-    try { await expect(prepareStorage(root)).rejects.toThrow(); }
+    try { expect(() => prepareStorage(root)).toThrow(); }
     finally { rmSync(base, { recursive: true, force: true }); }
   });
 });

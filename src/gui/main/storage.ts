@@ -22,6 +22,7 @@
  * `fallbackLogDir`).
  */
 
+import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -94,6 +95,20 @@ export function electronStoragePaths(root: string): {
     crashDumps: path.join(root, "electron/crashes"),
     logs: path.join(root, "electron/logs"),
   };
+}
+
+/**
+ * Create the storage root and Electron's folders under it before Electron is
+ * ready. On POSIX the root is owner-only (0700), tightened at each launch, since
+ * mkdir's mode applies only on creation and derived data must not be readable by
+ * accounts that cannot read its sources. A failure throws; startup reports it.
+ */
+export function prepareStorage(root: string): void {
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") chmodSync(root, 0o700);
+  for (const directory of Object.values(electronStoragePaths(root))) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
 }
 
 /** Resolve a log override literally against home; empty selects stderr. */

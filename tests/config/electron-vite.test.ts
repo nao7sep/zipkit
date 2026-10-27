@@ -28,8 +28,3 @@ describe("Build-time defines", () => {
     expect(config[part]?.define).toHaveProperty("__APP_VERSION__");
   });
 });
-
-it("bundles the startup filesystem worker beside the main entry", () => {
-  const input = config.main?.build?.rolldownOptions?.input;
-  expect(input).toMatchObject({ "storage-worker": expect.stringMatching(/src[/\\]gui[/\\]main[/\\]storage-worker\.ts$/) });
-});
