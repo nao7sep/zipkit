@@ -84,5 +84,5 @@ export function saveSettingsBeforeSessionEnd(boundMs: number): void {
   if (!submitted) return;
   const stored = changedSettings(DEFAULT_SETTINGS, submitted);
   writeManagedTextWithin(settingsFile(), serializeSettings(stored), boundMs, undefined,
-    { createAbsent: Object.keys(stored).length > 0, durable: true });
+    { createAbsent: Object.keys(stored).length > 0 });
 }

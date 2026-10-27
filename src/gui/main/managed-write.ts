@@ -14,9 +14,6 @@ import { parseJsonObject } from "./managed-json-envelope.ts";
 import { StepTimeout } from "./step-timeout.ts";
 
 export interface ManagedWriteOptions {
-  /** Flush the temp file before the rename, for authored Settings.
-   * Reconstructible queue/layout keep their ordinary atomic-save policy. */
-  durable?: boolean;
   /** False when the write should not create an absent file: settings that are all built-in leave
    *  no config.json behind (config-sets conventions). */
   createAbsent?: boolean;
@@ -26,7 +23,7 @@ export interface ManagedWriteOptions {
 }
 
 /**
- * Writes `bytes` to a same-directory temp named `<stem>-<nanoid>.tmp`, then atomically renames it
+ * Writes `bytes` to a same-directory temp named `<stem>-<nanoid>.tmp`, flushes it, then atomically renames it
  * over `file` (storage-path conventions), carrying an existing file's permission mode to the temp
  * first so the replace keeps it (content-lifecycle conventions). Content identical to what is on
  * disk is not written again (content-lifecycle conventions). A live file that does not parse as a
@@ -65,7 +62,7 @@ export async function writeManagedText(file: string, bytes: Buffer, signal?: Abo
       });
       signal?.throwIfAborted();
       await chmod(tmp, existing ? existing.mode & 0o7777 : 0o666 & ~process.umask());
-      if (options.durable) await handle.sync();
+      await handle.sync();
     } catch (error) {
       await handle.close().catch(() => {});
       throw error;

@@ -36,7 +36,7 @@ beforeEach(async () => {
   faults.record.mockReset().mockResolvedValue(undefined);
 });
 afterEach(async () => { faults.hold = null; await rm(root, { recursive: true, force: true }); });
-const save = () => writeManagedText(path.join(root, "config.json"), Buffer.from('{"theme":"dark"}'), undefined, { durable: true });
+const save = () => writeManagedText(path.join(root, "config.json"), Buffer.from('{"theme":"dark"}'));
 
 it("flushes the file before publication and nothing after the rename", async () => {
   expect(await save()).toBe(true);
@@ -69,13 +69,8 @@ it("a pending flush retains the primary write until its actual settlement", asyn
   } finally { finish(); await pending; }
 });
 
-it("reconstructible state does not request primary-save synchronization", async () => {
-  await writeManagedText(path.join(root, "queue.json"), Buffer.from('{"jobs":[]}'));
-  expect(faults.events).toEqual(["file close", "rename"]);
-});
-
 it("absent all-default settings record no nonexistent primary file", async () => {
-  await writeManagedJson(path.join(root, "config.json"), "{}", { createAbsent: false, durable: true, record: true });
+  await writeManagedJson(path.join(root, "config.json"), "{}", { createAbsent: false, record: true });
   expect(faults.record).not.toHaveBeenCalled();
   expect(await readdir(root)).toEqual([]);
 });
