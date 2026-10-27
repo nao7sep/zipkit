@@ -6,7 +6,7 @@ import { stat, rename, rm } from "node:fs/promises";
 import { resolve, join, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export async function publishPackage(candidate, destination, executable, move = rename) {
+export async function publishPackage(candidate, destination, executable) {
   candidate = resolve(candidate);
   destination = resolve(destination);
   const inside = relative(candidate, resolve(candidate, executable));
@@ -15,15 +15,15 @@ export async function publishPackage(candidate, destination, executable, move = 
   const previous = `${candidate}.previous`;
   let movedPrevious = false;
   try {
-    await move(destination, previous);
+    await rename(destination, previous);
     movedPrevious = true;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  try { await move(candidate, destination); }
+  try { await rename(candidate, destination); }
   catch (error) {
     if (movedPrevious) {
-      try { await move(previous, destination); }
+      try { await rename(previous, destination); }
       catch (restoreError) {
         throw new AggregateError([error, restoreError], `Package replacement failed; previous package remains at ${previous}`);
       }

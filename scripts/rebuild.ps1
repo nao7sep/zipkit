@@ -49,10 +49,9 @@ function Invoke-Native {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoDir = Split-Path -Parent $scriptDir
 $runtimeHelper = Join-Path $scriptDir "launcher-runtime.mjs"
-$runtimeToken = [guid]::NewGuid().ToString("N")
 $appName = "ZipKit"
 $outDir = "release"
-$candidate = ".rebuild-$runtimeToken"
+$candidate = ".rebuild-$([guid]::NewGuid().ToString("N"))"
 $exePath = Join-Path $repoDir "$outDir/win-unpacked/$appName.exe"
 
 try {
@@ -99,14 +98,11 @@ try {
 
     # Only a complete candidate may replace the runnable package.
     Write-Step "Publishing the verified package"
-    Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "claim", $runtimeToken)
     Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "stop")
     Invoke-Native -FilePath "node" -ArgumentList @((Join-Path $scriptDir "publish-package.mjs"), $candidate, $outDir, "win-unpacked/$appName.exe")
 
-    # GUI app: launch non-blocking via Start-Process.
     Write-Step "Launching the packaged app"
-    Start-Process -FilePath $exePath | Out-Null
-    Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "wait-process", $exePath, "30000")
+    Invoke-Native -FilePath "node" -ArgumentList @($runtimeHelper, "launch-exe", $exePath)
 }
 catch {
     Write-Host ""

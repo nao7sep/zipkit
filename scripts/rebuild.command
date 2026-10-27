@@ -12,9 +12,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="ZipKit"
 RUNTIME_HELPER="$SCRIPT_DIR/launcher-runtime.mjs"
-RUNTIME_TOKEN="rebuild-$$-$(date +%s)-$RANDOM"
 OUT_DIR="release"
-CANDIDATE=".rebuild-$RUNTIME_TOKEN"
+CANDIDATE=".rebuild-$$-$(date +%s)"
 
 log_step() {
   printf '\n==> %s\n' "$1"
@@ -88,10 +87,8 @@ if [[ ! -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" || ! -x "$APP_BUNDLE/Contents/
   exit 1
 fi
 log_step "Publishing the verified package"
-node "$RUNTIME_HELPER" claim "$RUNTIME_TOKEN"
 node "$RUNTIME_HELPER" stop
 node "$SCRIPT_DIR/publish-package.mjs" "$CANDIDATE" "$OUT_DIR" "$APP_RELATIVE/Contents/MacOS/$APP_NAME"
 APP_BUNDLE="$OUT_DIR/$APP_RELATIVE"
 log_step "Launching the packaged app"
-open -n "$APP_BUNDLE"
-node "$RUNTIME_HELPER" wait-process "$APP_BUNDLE/Contents/MacOS/$APP_NAME" 30000
+node "$RUNTIME_HELPER" launch-bundle "$APP_BUNDLE"

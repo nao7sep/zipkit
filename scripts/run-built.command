@@ -11,7 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="ZipKit"
 RUNTIME_HELPER="$SCRIPT_DIR/launcher-runtime.mjs"
-RUNTIME_TOKEN="run-built-$$-$(date +%s)-$RANDOM"
 OUT_DIR="release"
 
 log_step() {
@@ -47,10 +46,8 @@ fi
 # Age tracks the actual build: packaging resets Contents/MacOS, but the .app dir's
 # own mtime can lag — stat the executable dir, not the bundle root.
 built_at="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S %Z' "$APP_BUNDLE/Contents/MacOS" 2>/dev/null || echo 'unknown')"
-node "$RUNTIME_HELPER" claim "$RUNTIME_TOKEN"
 node "$RUNTIME_HELPER" stop
 log_step "Launching the existing packaged app (built: $built_at)"
 echo "If you changed source since then, run rebuild instead."
 
-open -n "$APP_BUNDLE"
-node "$RUNTIME_HELPER" wait-process "$APP_BUNDLE/Contents/MacOS/$APP_NAME" 30000
+node "$RUNTIME_HELPER" launch-bundle "$APP_BUNDLE"
