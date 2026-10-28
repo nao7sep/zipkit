@@ -9,7 +9,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createQueueEngine, type AppRemovalCheck, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
-import { createPathClaims, ZipKitError, type SourceComparison, type VerifyReport } from "zipkitsdk";
+import { ZipKitError, type SourceComparison, type VerifyReport } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
@@ -64,8 +64,6 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
   let idN = 0;
   const deps: EngineDeps = {
     admission: new CommandAdmission(),
-    effects: createPathClaims(),
-    resources: async (paths) => paths.map((location) => ({ location, identity: location })),
     pathState: async (target) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` }),
     inspect: async () => ({ ok: true, summary: { total: 1, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] }),
     plan: async (inputs) => {
@@ -146,32 +144,39 @@ describe("queue engine", () => {
     } finally { await engine.shutdown(); }
   });
   it("captures option edits before the planning delay, survives cancelled quit, and ignores a stale plan", async () => {
-    let finish!: () => void;
-    let first = true;
+    const held: Array<() => void> = [];
+    const releaseAll = (): void => held.splice(0).forEach((release) => release());
     const { deps, calls } = makeDeps({ plan: async (_inputs, options) => {
-      if (first) { first = false; await new Promise<void>((resolve) => { finish = resolve; }); }
+      await new Promise<void>((resolve) => { held.push(resolve); });
       return planData(true, `/${options.fileName || "stale"}.zip`);
     } });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
     try {
-      await until(() => expect(finish).toBeTypeOf("function"));
+      await until(() => expect(held).toHaveLength(1));
       engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "latest", comment: "last keystroke" } });
       run(engine, id);
-      finish();
+      // The Create starts the delayed plan at once and waits for it.
+      await until(() => expect(held).toHaveLength(2));
+      held.shift()!(); // the stale plan lands, and is ignored
       await tick();
       expect(engine.snapshot()[0]?.state).toBe("planning");
       expect(engine.snapshot()[0]?.output).toBeUndefined();
       expect(calls.write).toBe(0);
       await engine.shutdown();
+      releaseAll();
       expect(engine.snapshot()[0]?.options).toMatchObject({ fileName: "latest", comment: "last keystroke" });
       engine.resume();
+      await until(() => expect(held).toHaveLength(1));
+      releaseAll();
       await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       expect(engine.snapshot()[0]?.output).toBe("/latest.zip");
       expect(calls.write).toBe(0); // Cancel-quit does not restore old Create consent.
       run(engine, id);
+      await until(() => expect(held).toHaveLength(1));
+      releaseAll();
       await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
-    } finally { finish?.(); await engine.shutdown(); }
+    } finally { releaseAll(); await engine.shutdown(); }
   });
 
   it("retires a deferred plan on Cancel or removal", async () => {
@@ -318,6 +323,33 @@ describe("queue engine", () => {
     releasePlan();
     await until(() => expect(engine.snapshot()[1]?.state).toBe("done"));
     expect(writes).toEqual(["/a.zip", "/b.zip"]);
+  });
+
+  it("runs a finished job's Verify in its turn, after another job's Create, showing it queued meanwhile", async () => {
+    let releaseWrite!: () => void;
+    const writing = new Promise<void>((r) => { releaseWrite = r; });
+    let inspected = 0;
+    const { deps } = makeDeps({
+      plan: async (inputs) => planData(true, `${inputs[0]}.zip`),
+      write: async (plan) => { if (plan.output === "/b.zip") await writing; return 1; },
+      inspect: async () => { inspected++; return { ok: true, summary: { total: 1 } as never, missing: [], extra: [] }; },
+    });
+    const engine = createQueueEngine(deps);
+    const a = engine.add(["/a"], DEFAULT_OPTIONS, SAVE);
+    const b = engine.add(["/b"], DEFAULT_OPTIONS, SAVE);
+    await until(() => expect(engine.snapshot().every((j) => j.state === "ready")).toBe(true));
+    run(engine, a);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+    run(engine, b);
+    await until(() => expect(engine.snapshot()[1]?.state).toBe("running"));
+    const verified = engine.verify(a);
+    expect(engine.snapshot()[0]?.state).toBe("queued");
+    await tick();
+    expect(inspected).toBe(0);
+    releaseWrite();
+    expect(await verified).toMatchObject({ ok: true });
+    expect(inspected).toBe(1);
+    expect(engine.snapshot()[0]?.state).toBe("done");
   });
 
   it("says the archive could not be written when a write fails", async () => {
@@ -584,7 +616,6 @@ describe("queue engine", () => {
     expect(say(job?.message)).toContain("The files changed since this job was checked");
     expect(calls.write).toBe(0);
     expect(engine.getPlan(id)?.entries.map((e) => e.archivePath)).toEqual(["a.txt", "b.txt"]);
-    expect(job?.planRevision).toBe(2); // the add-time plan, then the fresh one
     run(engine, id); // the fresh plan is the reviewed one now
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(calls.write).toBe(1);
@@ -1409,10 +1440,10 @@ describe("queue engine", () => {
     await tick();
     expect(calls.verify).toBe(0);
     expect(calls.trash).toEqual([]);
-    expect(engine.snapshot()[0]?.trashing).toBeUndefined();
+    expect(engine.snapshot()[0]?.state).toBe("done");
   });
 
-  it("trashOriginals is busy while it runs, takes one claim, and cancels for real", async () => {
+  it("trashOriginals runs while the job reads as running, once, and cancels for real", async () => {
     let release: (() => void) | null = null;
     const { deps, calls } = makeDeps({
       verify: (_output, signal) =>
@@ -1424,11 +1455,11 @@ describe("queue engine", () => {
     const { engine, id } = await doneSave(deps);
     engine.removeOriginals(id, "trash");
     engine.removeOriginals(id, "trash"); // a second click while the first is in flight
-    expect(engine.snapshot()[0]?.trashing).toBe(true);
+    expect(engine.snapshot()[0]?.state).toBe("running");
     expect(engine.hasRunningJob()).toBe(true);
     await until(() => expect(release).not.toBeNull());
     engine.cancel(id);
-    await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe(
       "Moving the originals to Trash was cancelled. The originals were kept.",
     );
@@ -1442,7 +1473,7 @@ describe("queue engine", () => {
     const { deps } = makeDeps({
       verify: (_output, signal) =>
         new Promise<boolean>((_resolve, reject) => {
-          const stop = () => setTimeout(() => ((settled = true), reject(new Error("aborted"))), 20);
+          const stop = () => void Promise.resolve().then(() => ((settled = true), reject(new Error("aborted"))));
           if (signal.aborted) stop();
           else signal.addEventListener("abort", stop);
         }),
@@ -1452,7 +1483,7 @@ describe("queue engine", () => {
     await tick();
     await engine.shutdown();
     expect(settled).toBe(true);
-    expect(engine.snapshot()[0]?.trashing).toBe(false);
+    expect(engine.snapshot()[0]?.state).toBe("done");
   });
 
   it("trashOriginals is a no-op unless the job is a done save job", async () => {
@@ -1505,7 +1536,7 @@ describe("removing a job's archive", () => {
     return { ...made, engine, id };
   }
 
-  it("claims the job: a second click, Move originals and removing the job wait until it ends", async () => {
+  it("runs one effect at a time: a second click, Move originals and removing the job are refused until it ends", async () => {
     const held = heldTrash();
     const { engine, id, deps, calls } = await doneSaveJob();
     deps.trash = async (paths, signal) => {
@@ -1514,7 +1545,7 @@ describe("removing a job's archive", () => {
     };
 
     engine.removeArchive(id);
-    expect(engine.snapshot()[0]?.trashing).toBe(true);
+    expect(engine.snapshot()[0]?.state).toBe("running");
     expect(engine.hasRunningJob()).toBe(true);
     engine.removeArchive(id);
     engine.removeOriginals(id, "trash");
@@ -1525,7 +1556,6 @@ describe("removing a job's archive", () => {
 
     held.release();
     await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
-    expect(engine.snapshot()[0]?.trashing).toBe(false);
     expect(engine.hasRunningJob()).toBe(false);
   });
 
@@ -1544,7 +1574,7 @@ describe("removing a job's archive", () => {
     run(engine, id);
     await tick();
 
-    expect(engine.snapshot()[0]?.state).toBe("failed");
+    expect(engine.snapshot()[0]?.state).toBe("running");
     expect(calls.verify).toBe(verifies);
     held.release();
     await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
@@ -1575,7 +1605,7 @@ describe("removing a job's archive", () => {
     held.release();
     await stopped;
 
-    expect(engine.snapshot()[0]?.trashing).toBe(false);
+    expect(engine.hasRunningJob()).toBe(false);
   });
 });
 
@@ -1654,29 +1684,6 @@ describe("the archive's recorded state and the job's history", () => {
       expect(engine.snapshot()[0]!.archiveRevision).toBe(first + 2);
       expect(engine.snapshot()[0]!.archiveStatus).toBe("changed");
     } finally { await engine.shutdown(); }
-  });
-
-  it("discards a verification result when its archive changes in flight", async () => {
-    let fingerprint = "1:2:1:1";
-    let entered!: () => void;
-    let release!: () => void;
-    const started = new Promise<void>((resolve) => { entered = resolve; });
-    const held = new Promise<void>((resolve) => { release = resolve; });
-    const { deps } = withArchive({
-      pathState: async () => ({ kind: "present", fingerprint }),
-      inspect: async () => { entered(); await held; return { ...FAILED_REPORT, ok: false }; },
-    });
-    const engine = createQueueEngine(deps);
-    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
-    try {
-      await finished(engine, id);
-      const verifying = engine.verify(id);
-      await started;
-      fingerprint = "1:2:2:2";
-      release();
-      expect(await verifying).toBeNull();
-      expect(engine.snapshot()[0]!.archiveStatus).toBe("changed");
-    } finally { release(); await engine.shutdown(); }
   });
 
   it("records a failed verification on request as a problem count", async () => {
@@ -1822,7 +1829,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
       expect(engine.snapshot()[0]?.entries?.[0]?.kind).toBe("file");
       engine.removeOriginals(id, "trash");
       await until(() => expect(calls.trash).toHaveLength(2));
-      await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
       expect(keys(engine).at(-1)).toBe("action.originalsTrashed");
     } finally { await engine.shutdown(); }
   });
@@ -1837,7 +1844,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
       await finished(engine, id);
       engine.removeOriginals(id, "trash");
       await until(() => expect(calls.trash).toEqual([["/a"]]));
-      await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
       expect(say(engine.snapshot()[0]?.actionResult?.message)).toBe("1 original was moved to Trash. 1 original was already gone.");
     } finally { await engine.shutdown(); }
   });
@@ -1851,7 +1858,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
     try {
       await finished(engine, id);
       engine.removeOriginals(id, "delete");
-      await until(() => expect(engine.snapshot()[0]?.trashing).toBe(false));
+      await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
       expect(calls.deleted).toEqual([]);
       expect(keys(engine).at(-1)).toBe("originals.unavailable");
     } finally { await engine.shutdown(); }

@@ -7,7 +7,6 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { createPathClaims } from "zipkitsdk";
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
 import { createQueueEngine, type QueueEngine } from "../../../src/gui/main/queue-engine";
@@ -49,8 +48,7 @@ it("plans the picked folder with the edited name after parameter reset and job r
   const unexpected = async (): Promise<never> => { throw new Error("This flow only plans archives"); };
   const makeEngine = (): QueueEngine => {
     const engine = createQueueEngine({
-      admission: new CommandAdmission(), effects: createPathClaims(),
-      resources: (paths, signal) => sdk.resources(paths, { signal }),
+      admission: new CommandAdmission(),
       pathState: (target, signal) => sdk.pathState(target, { signal }),
       pathKinds: (paths) => sdk.pathKinds(paths),
       plan: (paths, options, signal, onEvent) => sdk.plan(paths, options, { signal, onEvent }),

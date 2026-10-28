@@ -27,7 +27,6 @@ import { verifyArchive, type ManifestRecord } from "./read/verify.ts";
 import { fromInstructions } from "./internal/instructions.ts";
 import { pathKinds, pathState } from "./paths.ts";
 import { checkRemoval, outputInsideInputs } from "./removal.ts";
-import { pathResources, type PathResource } from "./claims.ts";
 import { nodeFileSystem, Volume } from "./internal/volume.ts";
 import { planArchive } from "./plan/plan.ts";
 import { MANIFEST_DEFAULTS, resolvePolicy } from "./policy.ts";
@@ -201,13 +200,6 @@ export class ZipKit {
    */
   async pathState(target: string, options: ZipKitCallOptions = {}): Promise<PathState> {
     return this.#run("scan", options, (run) => pathState(requireAbsolute(target, "path"), run.volume));
-  }
-
-  /** Each path as a path claim compares it (see `createPathClaims`), resolved
-   *  through links and folder aliases; a path that is a link to a file also
-   *  yields the file it points to. Bounded like every look at a user volume. */
-  async pathResources(paths: readonly string[], options: ZipKitCallOptions = {}): Promise<PathResource[]> {
-    return this.#run("scan", options, (run) => pathResources(requireAbsoluteList(paths, "paths"), run.volume));
   }
 
   /** What each path is on disk now, in order (see `PathKind`). */

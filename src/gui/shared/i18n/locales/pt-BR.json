@@ -97,7 +97,6 @@
   "trash.kept": { "one": "{count} original foi mantido.", "many": "{count} de originais foram mantidos.", "other": "{count} originais foram mantidos." },
   "action.archiveTrashFailed": "Não foi possível mover o arquivo compactado para a Lixeira. Ele continua disponível.",
   "job.savedVerifiedShort": "Salvo e verificado.",
-  "job.archiveReplaced": "Há outro arquivo no caminho do arquivo compactado. Ele não é o que o ZipKit criou, então não foi alterado e os originais foram mantidos.",
   "action.archiveReplaced": "Agora há outro arquivo no caminho do arquivo compactado. Ele não é o que o ZipKit criou, então não foi alterado. Os originais estão intactos, então o arquivo compactado pode ser criado de novo.",
   "action.archiveReplacedOriginalsGone": "Depois que os originais foram removidos, agora há outro arquivo no caminho do arquivo compactado. Ele não é o que o ZipKit criou, então não foi alterado.",
   "action.archiveUnavailable": "O arquivo compactado está fora de alcance. A unidade dele não está conectada ou ele não pode ser lido. Nada foi alterado.",
@@ -426,7 +425,6 @@
   "finding.pre1980": "A data de modificação é anterior a 1980 e é ajustada para o mínimo do DOS",
   "finding.post2107": "A data de modificação é posterior a 2107 e é ajustada para o máximo do DOS",
   "finding.outputExists": "O arquivo compactado de saída já existe. Ative “Substituir um arquivo existente” para substituí-lo.",
-  "finding.outputBusy": "Outra gravação do arquivo compactado de saída ainda não terminou. Tente novamente quando ela terminar.",
 
   "findingKind.pathAbsolute": "Prefixos de caminho absoluto removidos",
   "findingKind.pathTraversal": "Caminhos fora da raiz do arquivo compactado excluídos",
@@ -452,7 +450,6 @@
   "findingKind.pre1980": "Datas anteriores a 1980 ajustadas",
   "findingKind.post2107": "Datas posteriores a 2107 ajustadas",
   "findingKind.outputExists": "Arquivo compactado de saída existente",
-  "findingKind.outputBusy": "Arquivo compactado de saída em uso",
   "findingKind.crcFail": "Divergências de CRC-32",
   "findingKind.shaMismatch": "Divergências de SHA-256",
   "findingKind.manifestMismatch": "Divergências com o manifesto",

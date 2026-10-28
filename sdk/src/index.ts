@@ -6,8 +6,6 @@
 export { ZipKit } from "./zipkit.ts";
 export type { PlanData, WriteData } from "./zipkit.ts";
 export { sameFile } from "./paths.ts";
-export { createPathClaims } from "./claims.ts";
-export type { PathClaim, PathClaims, PathResource, PathUse } from "./claims.ts";
 
 export { RULE_REGISTRY } from "./registry.ts";
 export { DEFAULT_EXCLUSIONS } from "./filter/defaults.ts";

@@ -8,7 +8,7 @@
  */
 
 import { rm } from "node:fs/promises";
-import { ZipKit, type PathResource, type PathState, type PlanData, type RemovalCheck, type VerifyRequest } from "zipkitsdk";
+import { ZipKit, type PathState, type PlanData, type RemovalCheck, type VerifyRequest } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
@@ -39,7 +39,6 @@ export function appZipKit(): ZipKit {
 /** The verbs the queue engine uses, in the app's terms. */
 export function createSdk(zip: ZipKit = appZipKit()) {
   return {
-    resources: (paths: string[], call: SdkCall = {}): Promise<PathResource[]> => zip.pathResources(paths, call),
     // What is at a path now: there with a comparable fingerprint, missing, or
     // out of reach on a drive that is not connected.
     pathState: (target: string, call: SdkCall = {}): Promise<PathState> => zip.pathState(target, call),

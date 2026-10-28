@@ -178,8 +178,8 @@ export function JobListbox({
     const active = jobs[activeIndex];
 
     if (e.key === "Delete" || e.key === "Backspace") {
-      // Not while the job is running or moving files to Trash; the engine refuses both.
-      if (active && active.state !== "running" && active.trashing !== true) {
+      // Not while the job is running; the engine refuses it.
+      if (active && active.state !== "running") {
         e.preventDefault();
         void remove(active);
       }
@@ -272,7 +272,7 @@ export function JobListbox({
                   {t.t("common.cancel")}
                 </button>
               )}
-              {job.state !== "running" && job.trashing !== true && (
+              {job.state !== "running" && (
                 <button
                   className="icon"
                   tabIndex={-1}

@@ -97,7 +97,6 @@
   "trash.kept": { "one": "{count} originale è stato conservato.", "many": "{count} di originali sono stati conservati.", "other": "{count} originali sono stati conservati." },
   "action.archiveTrashFailed": "Impossibile spostare l’archivio nel Cestino. Rimane disponibile.",
   "job.savedVerifiedShort": "Salvato e verificato.",
-  "job.archiveReplaced": "Nel percorso dell’archivio c’è un altro file. Non è l’archivio creato da ZipKit, quindi non è stato toccato e gli originali sono stati conservati.",
   "action.archiveReplaced": "Ora nel percorso dell’archivio c’è un altro file. Non è l’archivio creato da ZipKit, quindi non è stato toccato. Gli originali sono intatti, quindi l’archivio può essere creato di nuovo.",
   "action.archiveReplacedOriginalsGone": "Dopo la rimozione degli originali, ora nel percorso dell’archivio c’è un altro file. Non è l’archivio creato da ZipKit, quindi non è stato toccato.",
   "action.archiveUnavailable": "L’archivio non è raggiungibile. La sua unità non è collegata o non può essere letto. Non è stato modificato nulla.",
@@ -426,7 +425,6 @@
   "finding.pre1980": "La data di modifica è anteriore al 1980 e viene portata al minimo DOS",
   "finding.post2107": "La data di modifica è successiva al 2107 e viene portata al massimo DOS",
   "finding.outputExists": "L’archivio di destinazione esiste già. Attiva «Sovrascrivi un file esistente» per sostituirlo.",
-  "finding.outputBusy": "Un’altra scrittura dell’archivio di destinazione non è ancora terminata. Riprova quando sarà finita.",
 
   "findingKind.pathAbsolute": "Prefissi di percorso assoluto rimossi",
   "findingKind.pathTraversal": "Percorsi fuori dalla radice dell’archivio esclusi",
@@ -452,7 +450,6 @@
   "findingKind.pre1980": "Date anteriori al 1980 adattate",
   "findingKind.post2107": "Date successive al 2107 adattate",
   "findingKind.outputExists": "Archivio di output esistente",
-  "findingKind.outputBusy": "Archivio di output in uso",
   "findingKind.crcFail": "Discrepanze CRC-32",
   "findingKind.shaMismatch": "Discrepanze SHA-256",
   "findingKind.manifestMismatch": "Discrepanze con il manifesto",

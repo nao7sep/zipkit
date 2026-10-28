@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { createPathClaims, ZipKit, type ProgressCounts } from "zipkitsdk";
+import { ZipKit, type ProgressCounts } from "zipkitsdk";
 import { createQueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
@@ -33,8 +33,6 @@ it("keeps the originals when one was edited to the same size with its time put b
   const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [] }));
   const engine = createQueueEngine({
     admission: new CommandAdmission(),
-    effects: createPathClaims(),
-    resources: (paths, signal) => zip.pathResources(paths, { signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
     write: async (plan, signal, onEvent) => {
       const result = await zip.write(plan, { signal, onEvent });

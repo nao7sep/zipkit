@@ -97,7 +97,6 @@
   "trash.kept": { "one": "{count} original was kept.", "other": "{count} originals were kept." },
   "action.archiveTrashFailed": "The archive could not be moved to Trash. It remains available.",
   "job.savedVerifiedShort": "Saved and verified.",
-  "job.archiveReplaced": "Another file is at the archive’s path. It is not the archive ZipKit made, so it was left alone and the originals were kept.",
   "action.archiveReplaced": "Another file is now at the archive’s path. It is not the archive ZipKit made, so it was left alone. The originals are untouched, so the archive can be created again.",
   "action.archiveReplacedOriginalsGone": "Another file is now at the archive’s path, after the originals were removed. It is not the archive ZipKit made, so it was left alone.",
   "action.archiveUnavailable": "The archive is out of reach. Its drive is not connected, or it cannot be read. Nothing was changed.",
@@ -426,7 +425,6 @@
   "finding.pre1980": "Modification time predates 1980 and is clamped to the DOS minimum",
   "finding.post2107": "Modification time is after 2107 and is clamped to the DOS maximum",
   "finding.outputExists": "The output archive already exists. Turn on “Overwrite an existing file” to replace it.",
-  "finding.outputBusy": "Another write to the output archive has not finished yet. Try again once it has.",
 
   "findingKind.pathAbsolute": "Absolute path prefixes stripped",
   "findingKind.pathTraversal": "Paths outside the archive root excluded",
@@ -452,7 +450,6 @@
   "findingKind.pre1980": "Times before 1980 clamped",
   "findingKind.post2107": "Times after 2107 clamped",
   "findingKind.outputExists": "Existing output archive",
-  "findingKind.outputBusy": "Output archive in use",
   "findingKind.crcFail": "CRC-32 mismatches",
   "findingKind.shaMismatch": "SHA-256 mismatches",
   "findingKind.manifestMismatch": "Mismatches with the manifest",

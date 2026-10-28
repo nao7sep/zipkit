@@ -15,7 +15,6 @@ import type { JobAction, LogEvent, PlanReport, ProgressCounts, VerifyResult } fr
 import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
 import { sdk } from "./sdk.js";
-import { createPathClaims } from "zipkitsdk";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
@@ -32,9 +31,6 @@ async function goneNow(target: string): Promise<boolean> {
   catch { return false; }
 }
 
-/** The app's one set of path claims, shared by every job and command. */
-const appPathClaims = createPathClaims();
-
 // Each Progress sink belongs to one job; a call made with it sends that job's
 // counts to the window, so the engine handles a run's sink and nothing more.
 const sinkJobs = new WeakMap<(event: LogEvent) => void, string>();
@@ -50,8 +46,6 @@ function countsFor(onEvent: (event: LogEvent) => void): ((counts: ProgressCounts
 
 const engine = createQueueEngine({
   admission: appAdmission,
-  effects: appPathClaims,
-  resources: (paths, signal) => sdk.resources(paths, { signal }),
   pathState: (target, signal) => sdk.pathState(target, { signal }),
   inspect: (output, signal, onEvent, manifestName) =>
     sdk.inspect(output, manifestName, { signal, onEvent, onProgress: countsFor(onEvent) }),
@@ -61,7 +55,7 @@ const engine = createQueueEngine({
     sdk.verify(output, manifestName, { signal, onEvent, onProgress: countsFor(onEvent) }),
   checkRemoval: (output, inputs, removed, options, signal, onEvent) =>
     sdk.checkRemoval(output, inputs, removed, options, { signal, onEvent, onProgress: countsFor(onEvent) }),
-  pathKinds: (paths) => sdk.pathKinds(paths),
+  pathKinds: (paths, signal) => sdk.pathKinds(paths, { signal }),
   // Each path goes to the OS Trash in turn, each call awaited to its end; a
   // cancel stops before the next path, never during a call.
   trash: async (paths, signal) => {

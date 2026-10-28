@@ -247,9 +247,8 @@ describe("severityColor", () => {
 });
 
 describe("isCancelable", () => {
-  it("is cancelable while planning, queued, or running, or while moving originals to Trash", () => {
+  it("is cancelable while planning, queued, or running", () => {
     expect(ALL_STATES.filter((state) => isCancelable(job({ state })))).toEqual(["planning", "queued", "running"]);
-    expect(isCancelable(job({ state: "done", trashing: true }))).toBe(true);
   });
 });
 
@@ -886,9 +885,8 @@ describe("jobCommands", () => {
     expect(jobCommands(job({ state: "needs-attention", writable: true }))).toEqual(["create"]);
     expect(jobCommands(job({ state: "needs-attention", writable: false }))).toEqual([]);
   });
-  it("offers only cancel while a job moves its archive or originals to Trash", () => {
-    expect(jobCommands(job({ state: "done", intent: SAVE, trashing: true }))).toEqual(["cancel"]);
-    expect(jobCommands(job({ state: "failed", intent: TRASH, archiveWritten: true, trashing: true }))).toEqual(["cancel"]);
+  it("offers only cancel while a finished job moves its archive or originals", () => {
+    expect(jobCommands(job({ state: "running", intent: SAVE, archiveWritten: true }))).toEqual(["cancel"]);
   });
   it("offers trash-originals only when the archive carries the manifest", () => {
     const done = { state: "done" as const, intent: SAVE, entries: [{ path: "/a", kind: "file" as const }] };

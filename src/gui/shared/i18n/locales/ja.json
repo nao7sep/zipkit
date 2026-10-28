@@ -97,7 +97,6 @@
   "trash.kept": { "other": "元の項目 {count} 個は残してあります。" },
   "action.archiveTrashFailed": "アーカイブをゴミ箱に移動できませんでした。アーカイブはそのまま残っています。",
   "job.savedVerifiedShort": "保存して検証しました。",
-  "job.archiveReplaced": "アーカイブの場所に別のファイルがあります。ZipKit が作成したアーカイブではないため手を加えず、元の項目も残してあります。",
   "action.archiveReplaced": "アーカイブの場所に別のファイルが置かれています。ZipKit が作成したアーカイブではないため手を加えていません。元の項目はそのままなので、もう一度作成できます。",
   "action.archiveReplacedOriginalsGone": "元の項目を削除したあとに、アーカイブの場所に別のファイルが置かれました。ZipKit が作成したアーカイブではないため手を加えていません。",
   "action.archiveUnavailable": "アーカイブにアクセスできません。ドライブが接続されていないか、読み取れません。何も変更していません。",
@@ -426,7 +425,6 @@
   "finding.pre1980": "変更日時が 1980 年より前のため、DOS の最小値に切り上げます",
   "finding.post2107": "変更日時が 2107 年より後のため、DOS の最大値に切り下げます",
   "finding.outputExists": "出力先のアーカイブがすでに存在します。置き換えるには「既存のファイルを上書き」をオンにしてください。",
-  "finding.outputBusy": "出力先のアーカイブへの別の書き込みがまだ終わっていません。終わってからもう一度お試しください。",
 
   "findingKind.pathAbsolute": "取り除いた絶対パスの先頭部分",
   "findingKind.pathTraversal": "除外したアーカイブのルート外を指すパス",
@@ -452,7 +450,6 @@
   "findingKind.pre1980": "1980 年より前で補正した日時",
   "findingKind.post2107": "2107 年より後で補正した日時",
   "findingKind.outputExists": "既存の出力先アーカイブ",
-  "findingKind.outputBusy": "使用中の出力先アーカイブ",
   "findingKind.crcFail": "CRC-32 の不一致",
   "findingKind.shaMismatch": "SHA-256 の不一致",
   "findingKind.manifestMismatch": "マニフェストとの不一致",

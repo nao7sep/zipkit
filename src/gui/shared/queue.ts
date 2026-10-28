@@ -49,10 +49,13 @@ export type InputEntry = PathEntry;
  * - `planning` — being (re)planned.
  * - `needs-attention` — planned but not writable (a blocking finding); can't run.
  * - `ready` — writable, not yet asked to run.
- * - `queued` — asked to run while another job is running; waiting its turn. (A job
- *   asked to run while the engine is idle goes straight to `running`, never through
+ * - `queued` — asked to run, or a finished job asked to verify or to move its
+ *   archive or originals, while another job's work runs; waiting its turn. (A
+ *   job asked while the engine is idle goes straight to `running`, never through
  *   `queued` — the state appears only when there is a real wait.)
- * - `running` — being written, then verified, and its originals removed when chosen.
+ * - `running` — being written, then verified, and its originals removed when
+ *   chosen; or a finished job verifying, or moving its archive or originals,
+ *   after which it returns to `done` or `failed`.
  * - `done` / `failed` — terminal.
  */
 export type JobState =
@@ -131,9 +134,6 @@ export interface Job {
   /** Resolved output path (once planned). */
   output?: string;
   summary?: PlanSummary;
-  /** Counts this job's plans: it changes only when a new plan replaces the
-   *  last, so the selected Report is read again only then. */
-  planRevision?: number;
   writable?: boolean;
   /** A short status line for needs-attention / failed / done, as a catalogue
    *  message so it renders in the interface language current when shown. */
@@ -164,10 +164,6 @@ export interface Job {
   /** How the originals differed from the archive when a removal was refused
    *  because they changed: the paths, as the archive names them. */
   originalsChanges?: { missing: string[]; added: string[]; changed: string[]; unlisted: string[] };
-  /** Set while a finished job's originals are being checked and moved to
-   *  Trash or deleted on request, or its archive moved to Trash: the job is
-   *  busy, and only Cancel is offered. */
-  trashing?: boolean;
 }
 
 /** The resumable part of a job that survives a restart: no transient run

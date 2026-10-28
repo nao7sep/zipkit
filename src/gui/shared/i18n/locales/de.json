@@ -97,7 +97,6 @@
   "trash.kept": { "one": "{count} Original wurde behalten.", "other": "{count} Originale wurden behalten." },
   "action.archiveTrashFailed": "Das Archiv konnte nicht in den Papierkorb gelegt werden. Es ist weiterhin vorhanden.",
   "job.savedVerifiedShort": "Gespeichert und geprüft.",
-  "job.archiveReplaced": "Am Pfad des Archivs liegt eine andere Datei. Sie ist nicht das Archiv, das ZipKit erstellt hat, daher blieb sie unberührt und die Originale wurden behalten.",
   "action.archiveReplaced": "Am Pfad des Archivs liegt jetzt eine andere Datei. Sie ist nicht das Archiv, das ZipKit erstellt hat, daher blieb sie unberührt. Die Originale sind unverändert, daher kann das Archiv erneut erstellt werden.",
   "action.archiveReplacedOriginalsGone": "Nachdem die Originale entfernt wurden, liegt am Pfad des Archivs jetzt eine andere Datei. Sie ist nicht das Archiv, das ZipKit erstellt hat, daher blieb sie unberührt.",
   "action.archiveUnavailable": "Das Archiv ist nicht erreichbar. Sein Laufwerk ist nicht verbunden oder es kann nicht gelesen werden. Es wurde nichts geändert.",
@@ -426,7 +425,6 @@
   "finding.pre1980": "Der Änderungszeitpunkt liegt vor 1980 und wird auf das DOS-Minimum gesetzt",
   "finding.post2107": "Der Änderungszeitpunkt liegt nach 2107 und wird auf das DOS-Maximum gesetzt",
   "finding.outputExists": "Das Ausgabearchiv ist bereits vorhanden. Aktivieren Sie „Vorhandene Datei überschreiben“, um es zu ersetzen.",
-  "finding.outputBusy": "Ein anderer Schreibvorgang für das Ausgabearchiv ist noch nicht abgeschlossen. Versuchen Sie es erneut, sobald er beendet ist.",
 
   "findingKind.pathAbsolute": "Absolute Pfadpräfixe entfernt",
   "findingKind.pathTraversal": "Pfade außerhalb des Archivstamms ausgeschlossen",
@@ -452,7 +450,6 @@
   "findingKind.pre1980": "Auf 1980 begrenzte Zeitpunkte",
   "findingKind.post2107": "Auf 2107 begrenzte Zeitpunkte",
   "findingKind.outputExists": "Vorhandenes Ausgabearchiv",
-  "findingKind.outputBusy": "Ausgabearchiv in Verwendung",
   "findingKind.crcFail": "CRC-32-Abweichungen",
   "findingKind.shaMismatch": "SHA-256-Abweichungen",
   "findingKind.manifestMismatch": "Abweichungen vom Manifest",

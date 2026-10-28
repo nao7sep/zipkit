@@ -61,7 +61,6 @@ export const RULE_REGISTRY: Record<FindingRule, RuleSpec> = {
   "output.exists": { severity: "error", disposition: "overwrite" },
   // Another write to the same output, by any ZipKit in this process, has not
   // settled yet; writing too would overwrite it or be overwritten.
-  "output.busy": { severity: "error", disposition: "wait" },
   // Verification's findings: every one fails the verification.
   "verify.crc32-mismatch": { severity: "error", disposition: "fail" },
   "verify.unreadable": { severity: "error", disposition: "fail" },

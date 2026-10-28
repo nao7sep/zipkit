@@ -20,14 +20,12 @@
 import { createHash, type Hash } from "node:crypto";
 import path from "node:path";
 import type { BigIntStats } from "node:fs";
-import { createPathClaims, pathResources } from "../claims.ts";
 import { classify, fsFailure, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
 import type { PlanInternals } from "../internal/instructions.ts";
 import { fromPlan } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
 import type { WriteEntry } from "../internal/types.ts";
 import type { Logger } from "../log/logger.ts";
-import { finding } from "../registry.ts";
 import type { Finding, PlanData, Program, ProgressCounts, WriteData } from "../types.ts";
 import { outputExists } from "../plan/plan.ts";
 import { contentBytes } from "../plan/summary.ts";
@@ -38,10 +36,6 @@ import type { ManifestEntryInput } from "./manifest.ts";
 import { EntryCompressor } from "./deflate.ts";
 import { ZipWriter } from "./zipWriter.ts";
 import type { StreamResult, WriteEntryInput } from "./zipWriter.ts";
-
-// Checked-rename publication cannot exclude another SDK writer at the OS
-// boundary. Share output admission across instances until native work settles.
-const outputClaims = createPathClaims();
 
 export interface WriteDeps {
   logger: Logger;
@@ -260,11 +254,6 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     deps.volume,
   );
 
-  const claim = outputClaims.claim((await pathResources([output], deps.volume)).map((resource) => ({ ...resource, mode: "change" })));
-  // Refused like a plan that blocks, whether or not overwriting was allowed:
-  // neither write may silently replace the other.
-  if (!claim) return blocked(plan, finding("output.busy", output, "another write to this output has not finished"));
-
   let zip64 = false;
   let bytes = 0;
   try {
@@ -405,7 +394,5 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     // The sources and the writer classify their own file failures; anything
     // else is the SDK's own fault.
     throw left(classify(err, output));
-  } finally {
-    claim.release();
   }
 }

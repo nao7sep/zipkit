@@ -48,7 +48,7 @@ export const JobDetails = memo(function JobDetails({
   const verifyData = verify?.ok ? verify.data : null;
   const cards = useMemo(() => detailsCards(job, plan, verifyData, t, rowLimit), [job, plan, verifyData, t, rowLimit]);
   const [open, setOpen] = useState<DetailsCard | null>(null);
-  const busy = job.state === "planning" || job.state === "running" || job.trashing === true;
+  const busy = job.state === "planning" || job.state === "running";
   const run = busy ? progressRuns(events).at(-1) : undefined;
   const measured = busy && counts ? countsView(counts, t) : null;
 

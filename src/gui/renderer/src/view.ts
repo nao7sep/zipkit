@@ -176,12 +176,12 @@ export function humanSentence(message: string): string {
   return message.replace(/^[a-z]/, (first) => first.toUpperCase());
 }
 
-/** Jobs that can be cancelled: in-flight work (`planning`/`running`), waiting
- *  its turn (`queued`), or a job moving its archive or originals to Trash.
- *  Cancelling a run re-plans the job back to an editable state. Drives the
- *  listbox Cancel affordance (button + Escape). */
+/** Jobs that can be cancelled: in-flight work (`planning`/`running`, a
+ *  finished job's own verification or removal included) or waiting its turn
+ *  (`queued`). Cancelling a run re-plans the job back to an editable state.
+ *  Drives the listbox Cancel affordance (button + Escape). */
 export function isCancelable(job: Job): boolean {
-  return job.state === "planning" || job.state === "queued" || job.state === "running" || job.trashing === true;
+  return job.state === "planning" || job.state === "queued" || job.state === "running";
 }
 
 /** A per-job lifecycle command for the right-pane command bar. */
@@ -203,8 +203,6 @@ export { manifestRequiredButMissing, scanBlocksRemoval };
  *  and neither does a job that removes its originals without its manifest or
  *  with a folder its scan could not list, whose note says why. */
 export function jobCommands(job: Job): JobCommand[] {
-  // Moving the archive or the originals to Trash on request: busy until it ends or is cancelled.
-  if (job.trashing) return ["cancel"];
   const runnable = !manifestRequiredButMissing(job.intent, job.options.manifest) && !scanBlocksRemoval(job);
   switch (job.state) {
     case "planning":
@@ -378,7 +376,6 @@ const RULE_FINDINGS: Record<string, MessageKey> = {
   "time.pre-1980": "finding.pre1980",
   "time.post-2107": "finding.post2107",
   "output.exists": "finding.outputExists",
-  "output.busy": "finding.outputBusy",
 };
 
 /** The catalogue entry for a plan finding, keyed on its stable rule, or null
@@ -536,7 +533,6 @@ const RULE_KINDS: Record<string, MessageKey> = {
   "time.pre-1980": "findingKind.pre1980",
   "time.post-2107": "findingKind.post2107",
   "output.exists": "findingKind.outputExists",
-  "output.busy": "findingKind.outputBusy",
   "verify.crc32-mismatch": "findingKind.crcFail",
   "verify.unreadable": "findingKind.unreadable",
   "verify.local-mismatch": "findingKind.localMismatch",

@@ -32,7 +32,7 @@ describe("the app's SDK verbs", () => {
     expect((await readdir(root)).sort()).toEqual(["photos", "photos.zip"]);
   });
 
-  it("checks the originals against the written archive before removal, and classifies and resolves paths", async () => {
+  it("checks the originals against the written archive before removal, and classifies paths", async () => {
     const input = path.join(root, "docs");
     await mkdir(input);
     await writeFile(path.join(input, "note.txt"), "hello");
@@ -50,8 +50,6 @@ describe("the app's SDK verbs", () => {
       { path: input, kind: "directory" },
       { path: path.join(root, "gone"), kind: "missing" },
     ]);
-    const [resource] = await sdk.resources([plan.output]);
-    expect(resource).toMatchObject({ location: expect.stringContaining("docs.zip"), identity: expect.any(String) });
   });
 
   it("tells what is at a path: there with a fingerprint that changes with its content, or gone", async () => {

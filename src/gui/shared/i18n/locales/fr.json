@@ -97,7 +97,6 @@
   "trash.kept": { "one": "{count} original a été conservé.", "many": "{count} d’originaux ont été conservés.", "other": "{count} originaux ont été conservés." },
   "action.archiveTrashFailed": "L’archive n’a pas pu être placée dans la corbeille. Elle reste disponible.",
   "job.savedVerifiedShort": "Enregistrée et vérifiée.",
-  "job.archiveReplaced": "Un autre fichier se trouve à l’emplacement de l’archive. Ce n’est pas l’archive créée par ZipKit, il a donc été laissé tel quel et les originaux ont été conservés.",
   "action.archiveReplaced": "Un autre fichier se trouve désormais à l’emplacement de l’archive. Ce n’est pas l’archive créée par ZipKit, il a donc été laissé tel quel. Les originaux sont intacts, l’archive peut donc être recréée.",
   "action.archiveReplacedOriginalsGone": "Après la suppression des originaux, un autre fichier se trouve désormais à l’emplacement de l’archive. Ce n’est pas l’archive créée par ZipKit, il a donc été laissé tel quel.",
   "action.archiveUnavailable": "L’archive est inaccessible. Son disque n’est pas connecté ou elle ne peut pas être lue. Rien n’a été modifié.",
@@ -426,7 +425,6 @@
   "finding.pre1980": "La date de modification est antérieure à 1980 et est ramenée au minimum DOS",
   "finding.post2107": "La date de modification est postérieure à 2107 et est ramenée au maximum DOS",
   "finding.outputExists": "L’archive de sortie existe déjà. Activez «\u00a0Remplacer un fichier existant\u00a0» pour la remplacer.",
-  "finding.outputBusy": "Une autre écriture de l’archive de sortie n’est pas encore terminée. Réessayez une fois qu’elle l’est.",
 
   "findingKind.pathAbsolute": "Préfixes de chemin absolu supprimés",
   "findingKind.pathTraversal": "Chemins hors de la racine de l’archive exclus",
@@ -452,7 +450,6 @@
   "findingKind.pre1980": "Dates antérieures à 1980 ajustées",
   "findingKind.post2107": "Dates postérieures à 2107 ajustées",
   "findingKind.outputExists": "Archive de sortie existante",
-  "findingKind.outputBusy": "Archive de sortie en cours d’utilisation",
   "findingKind.crcFail": "Écarts de CRC-32",
   "findingKind.shaMismatch": "Écarts de SHA-256",
   "findingKind.manifestMismatch": "Écarts avec le manifeste",

@@ -759,7 +759,7 @@ function JobView({
     return () => {
       live = false;
     };
-  }, [job.id, job.planRevision, planAttempt]);
+  }, [job.id, job.state, planAttempt]);
 
   useEffect(() => {
     let live = true;
