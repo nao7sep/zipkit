@@ -8,8 +8,10 @@
  * permanent deletion), moving a finished job's archive or originals to Trash
  * or deleting them, Verify and Refresh. A Create on a job still being planned
  * waits for that plan. Because no two effects overlap, no path needs claiming:
- * the order is the guarantee. Partial outcomes are reported exactly; one job
- * failing never blocks the rest.
+ * the order is the guarantee. Effects take turns for correctness, not speed:
+ * jobs can share originals and output folders, and compressing on one core
+ * would otherwise leave room for more (developer decision). Partial outcomes
+ * are reported exactly; one job failing never blocks the rest.
  *
  * This is GUI-side orchestration — when to call which capability — not archive
  * logic: every verdict it acts on (`writable`, the verify result) comes from the
