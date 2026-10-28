@@ -130,9 +130,11 @@ export interface QueueEngine {
   restore(saved: SavedJob[]): void;
   /** True while an effect runs on a job (not merely queued). */
   hasRunningJob(): boolean;
-  /** For app quit: cancel the running effect, drop the queued ones, and
-   *  resolve only once the running one has actually stopped, so quit can wait
-   *  for the writer's own `abort()` to remove its temp file. */
+  /** For app quit: cancel the running effect, drop the queued ones, stop every
+   *  plan and look at the inputs, and resolve only once all of it has actually
+   *  stopped, so quit can wait for the writer's own `abort()` to remove its temp
+   *  file and no file call is left running at exit. Edits stay accepted until
+   *  the admission closes them. */
   shutdown(): Promise<void>;
   beginQuit(): void;
   resume(): void;
@@ -147,8 +149,10 @@ interface Rec {
   planner: AbortController | null;
   planned: Promise<void>;
   planTimer?: ReturnType<typeof setTimeout>;
-  /** The input classification in flight; a newer one aborts it. */
+  /** The input classification in flight, and the promise that ends with it;
+   *  a newer one aborts it. */
   classifier: AbortController | null;
+  classified: Promise<void>;
   /** The archive path from the most recent write that actually committed. */
   publishedOutput: string | null;
   /** The archive's state when ZipKit last wrote or verified it. */
@@ -457,11 +461,15 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
    *  label, the input list, and the originals-still-present check stay accurate.
    *  A newer classification supersedes this one. Best-effort: a pathKinds
    *  failure leaves the prior entries rather than crashing. */
-  async function classifyInputs(rec: Rec): Promise<void> {
-    if (!deps.admission.accepting()) return;
+  function classifyInputs(rec: Rec): Promise<void> {
+    if (!deps.admission.accepting()) return Promise.resolve();
     rec.classifier?.abort();
     const aborter = new AbortController();
     rec.classifier = aborter;
+    rec.classified = classify(rec, aborter);
+    return rec.classified;
+  }
+  async function classify(rec: Rec, aborter: AbortController): Promise<void> {
     try {
       const entries = await deps.pathKinds(rec.job.inputs, aborter.signal);
       if (aborter.signal.aborted) return;
@@ -1004,8 +1012,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
 
   /** Close new effects, cancel the running one and empty the queue: a job
    *  that waited its turn goes back to where it was. */
-  function stopQueue(drainEdits: boolean): void {
-    if (drainEdits) deps.admission.beginClosing(); else deps.admission.close();
+  function stopQueue(): void {
+    deps.admission.beginClosing();
     for (const effect of effects.splice(0)) {
       const rec = recs.get(effect.id);
       if (effect.kind === "verify") effect.settle(Promise.resolve(null));
@@ -1026,7 +1034,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
   }
 
   function newRec(job: Job): Rec {
-    return { job, plan: null, planner: null, planned: Promise.resolve(), classifier: null, publishedOutput: null, fingerprint: null };
+    return { job, plan: null, planner: null, planned: Promise.resolve(), classifier: null, classified: Promise.resolve(), publishedOutput: null, fingerprint: null };
   }
 
   return {
@@ -1235,10 +1243,11 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       return false;
     },
     async shutdown() {
-      stopQueue(false);
-      await draining;
+      const running = [...recs.values()].flatMap((rec) => [rec.planned, rec.classified]);
+      stopQueue();
+      await Promise.all([draining, ...running]);
     },
-    beginQuit() { stopQueue(true); },
+    beginQuit() { stopQueue(); },
     resume() {
       if (deps.admission.accepting()) return;
       deps.admission.reopen();

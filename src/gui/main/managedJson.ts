@@ -4,7 +4,6 @@ import { lstat, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { record } from "./backupStore.js";
 import { InvalidManagedJsonError, parseJsonObject } from "./managed-json-envelope.js";
-import { MANAGED_IO_WAIT_MS, managedIO } from "./managed-io.js";
 import { writeManagedText, type ManagedWriteOptions } from "./managed-write.js";
 import { nullLog, type AppLog } from "./log.js";
 
@@ -25,17 +24,15 @@ function setAsideStamp(now: Date): string {
 /** Move an unreadable store aside by one rename in its own directory, so its bytes and modified
  *  time stay as they were. An earlier copy under the same name is never replaced: the clash fails
  *  the load like any other failure to set aside, and the live bytes stay where they are. rename()
- *  itself would replace, so absence is checked first; with one instance and each store's I/O in
- *  order, nothing in ZipKit can take the name in between. */
-async function setAside(file: string, logger: AppLog, now: Date, signal?: AbortSignal): Promise<string> {
+ *  itself would replace, so absence is checked first; with one instance, loading before any window
+ *  exists, nothing in ZipKit can take the name in between. */
+async function setAside(file: string, logger: AppLog, now: Date): Promise<string> {
   const target = path.join(path.dirname(file), `${path.parse(file).name}-${setAsideStamp(now)}.invalid`);
-  signal?.throwIfAborted();
   const taken = await lstat(target).then(() => true, (error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return false;
     throw error;
   });
   if (taken) throw Object.assign(new Error(`cannot set ${file} aside: ${target} already exists`), { code: "EEXIST" });
-  signal?.throwIfAborted();
   await rename(file, target);
   logger.warn("set aside an unreadable managed file", { original: file, setAside: target });
   return target;
@@ -70,34 +67,32 @@ export async function loadManagedJson<T>(
   logger: AppLog = nullLog,
   options: ManagedJsonLoadOptions<T> = {},
 ): Promise<ManagedJsonLoad<T>> {
-  return managedIO(file, async (signal) => {
-    let text: string;
-    try {
-      text = await readFile(file, { encoding: "utf8", signal });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        return { value: onDefault(), quarantinedTo: null, missing: true };
-      }
-      throw err;
+  let text: string;
+  try {
+    text = await readFile(file, { encoding: "utf8" });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { value: onDefault(), quarantinedTo: null, missing: true };
     }
-    const store = path.basename(file);
-    let value: T;
-    try {
-      value = parse(parseJsonObject(text, store));
-    } catch (err) {
-      if (!(err instanceof InvalidManagedJsonError)) throw err;
-      if (options.setAsideInvalid === false) {
-        logger.warn("unreadable managed file; using defaults until the next save replaces it", { file, error: err.message });
-        return { value: onDefault(), quarantinedTo: null, missing: false };
-      }
-      // Setting aside is outside the parse catch, so its failure propagates.
-      return { value: onDefault(), quarantinedTo: await setAside(file, logger, new Date(), signal), missing: false };
+    throw err;
+  }
+  const store = path.basename(file);
+  let value: T;
+  try {
+    value = parse(parseJsonObject(text, store));
+  } catch (err) {
+    if (!(err instanceof InvalidManagedJsonError)) throw err;
+    if (options.setAsideInvalid === false) {
+      logger.warn("unreadable managed file; using defaults until the next save replaces it", { file, error: err.message });
+      return { value: onDefault(), quarantinedTo: null, missing: false };
     }
-    if (options.incomplete?.(value)) {
-      return { value, quarantinedTo: await setAside(file, logger, new Date(), signal), missing: false };
-    }
-    return { value, quarantinedTo: null, missing: false };
-  }, MANAGED_IO_WAIT_MS);
+    // Setting aside is outside the parse catch, so its failure propagates.
+    return { value: onDefault(), quarantinedTo: await setAside(file, logger, new Date()), missing: false };
+  }
+  if (options.incomplete?.(value)) {
+    return { value, quarantinedTo: await setAside(file, logger, new Date()), missing: false };
+  }
+  return { value, quarantinedTo: null, missing: false };
 }
 
 /**
@@ -109,23 +104,66 @@ export async function loadManagedJson<T>(
  *
  * Writes `text` through {@link writeManagedText} (./managed-write), the one atomic write, passing on
  * its `createAbsent` and `replaceUnreadable` options. It waits for the write's actual outcome, with
- * no caller timeout; quit bounds its own wait. Throws on failure; the caller logs it.
+ * no timeout; each store's owner runs one save at a time ({@link newestSave}). Throws on failure;
+ * the caller logs it.
  *
  * A requested data-backup record fires strictly AFTER the rename lands, from the same `bytes` buffer just
- * written — never before the rename (a backup of a save that never happened) and never a re-read
- * (which could capture a concurrent writer's content). Best-effort and not awaited: record() hands the
- * bytes to the backups thread, swallows its own failures and never breaks or delays the save
- * (data-backup conventions).
+ * written — never before the rename (a backup of a save that never happened) and never a re-read.
+ * Best-effort and not awaited: record() hands the bytes to the backups thread, swallows its own
+ * failures and never breaks or delays the save (data-backup conventions).
  */
 export async function writeManagedJson(
   file: string,
-  text: string | (() => string),
-  options: ManagedWriteOptions & { record?: boolean; onWritten?: () => void } = {},
+  text: string,
+  options: ManagedWriteOptions & { record?: boolean } = {},
 ): Promise<void> {
-  await managedIO(file, async (signal) => {
-    // Field patches derive from the last physical commit, including a late one.
-    const bytes = Buffer.from(typeof text === "function" ? text() : text, "utf8");
-    if (await writeManagedText(file, bytes, signal, options) && options.record === true) void record(file, bytes);
-    options.onWritten?.();
-  });
+  const bytes = Buffer.from(text, "utf8");
+  if (await writeManagedText(file, bytes, options) && options.record === true) void record(file, bytes);
+}
+
+/** A store's own saves: one in flight, and only the newest value waiting behind it, so a burst of
+ *  changes writes the file as few times as it can and never out of order. `save` resolves once the
+ *  value it was given, or a newer one, is on disk, and rejects when the last write it waited for
+ *  failed; a failed value stays waiting for the next `save` or `flush`. */
+export function newestSave<T>(write: (value: T) => Promise<void>) {
+  let waiting: { value: T } | null = null;
+  let writing: { value: T } | null = null;
+  let running: Promise<void> | null = null;
+  // Called only with a value waiting, so it awaits a write before it can end, and `running` is
+  // set before its `finally` clears it.
+  async function drain(): Promise<void> {
+    try {
+      while (waiting) {
+        writing = waiting;
+        waiting = null;
+        try {
+          await write(writing.value);
+        } catch (error) {
+          if (waiting) continue;
+          waiting = writing;
+          throw error;
+        } finally {
+          writing = null;
+        }
+      }
+    } finally {
+      running = null;
+    }
+  }
+  const flush = (): Promise<void> => {
+    if (!running && waiting) running = drain();
+    return running ?? Promise.resolve();
+  };
+  return {
+    save(value: T): Promise<void> {
+      waiting = { value };
+      return flush();
+    },
+    flush,
+    /** The newest value not yet on disk: one that waits, failed and was not replaced, or is
+     *  being written. */
+    unsaved: (): T | undefined => (waiting ?? writing)?.value,
+    /** Forget a value that waits. */
+    discard(): void { waiting = null; },
+  };
 }

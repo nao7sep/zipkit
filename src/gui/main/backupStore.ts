@@ -32,10 +32,6 @@ function storeFile(): string {
   return path.join(storageRoot(), "backups.sqlite3");
 }
 
-/** How long {@link closeBackupStore} waits for the thread to finish what it holds; inside the quit
- *  sequence's own bound. */
-export const BACKUP_CLOSE_WAIT_MS = 5_000;
-
 /** The bundled app runs electron-vite's `backups-worker.js` beside this chunk; the tests run the
  *  source, which Node loads with its own type stripping. */
 function workerUrl(): URL {
@@ -62,13 +58,20 @@ function settlePending(): void {
 
 const THREAD_FAILED = "backup store: the recording thread failed; recording disabled for this session";
 
+/** Let go of the thread: it no longer speaks for the store. */
+function release(): Worker | null {
+  const current = worker;
+  worker = null;
+  current?.removeAllListeners();
+  return current;
+}
+
 function disable(message: string, error: unknown): void {
   if (disabled) return;
   disabled = true;
   log.warn(message, { file, error });
   settlePending();
-  void worker?.terminate();
-  worker = null;
+  void release()?.terminate();
 }
 
 function ensureWorker(): Worker {
@@ -77,9 +80,8 @@ function ensureWorker(): Worker {
   const created = new Worker(workerUrl(), { workerData: { database: file, session: log.session } satisfies BackupsWorkerData });
   // The thread never keeps the process alive; closeBackupStore is what waits for it.
   created.unref();
-  // A thread that closeBackupStore has already let go of no longer speaks for the store.
   created.on("message", (response: BackupsResponse) => {
-    if (worker !== created || response.type === "closed") return;
+    if (response.type === "closed") return;
     const entry = pending.get(response.id);
     pending.delete(response.id);
     if (response.type === "failed") {
@@ -91,12 +93,8 @@ function ensureWorker(): Worker {
     }
     entry?.settle();
   });
-  created.on("error", (err) => {
-    if (worker === created) disable(THREAD_FAILED, errorInfo(err));
-  });
-  created.on("exit", (code) => {
-    if (closing === null && worker === created) disable(THREAD_FAILED, { message: `exited with code ${code}` });
-  });
+  created.on("error", (err) => disable(THREAD_FAILED, errorInfo(err)));
+  created.on("exit", (code) => disable(THREAD_FAILED, { message: `exited with code ${code}` }));
   worker = created;
   return created;
 }
@@ -135,14 +133,13 @@ export function record(absolutePath: string, bytes: Buffer): Promise<void> {
 }
 
 /**
- * Let the thread finish the records it holds, within `waitMs`, then stop it. A record it has not
- * answered by then is reported once at `warn`: its outcome is unknown, as the thread may still
- * complete it. Resets the store so the next {@link record} re-opens against the current
+ * Let the thread finish the records it holds, then stop it; the quit's exit deadline bounds the
+ * wait. Resets the store so the next {@link record} re-opens against the current
  * `ZIPKIT_DATA_DIR` (tests use throwaway roots).
  */
-export function closeBackupStore(waitMs: number = BACKUP_CLOSE_WAIT_MS): Promise<void> {
+export function closeBackupStore(): Promise<void> {
   // The reset runs in `finally`, after `closing` is assigned, so a close with no thread still clears it.
-  closing ??= stopThread(waitMs).finally(() => {
+  closing ??= stopThread().finally(() => {
     settlePending();
     worker = null;
     disabled = false;
@@ -151,28 +148,22 @@ export function closeBackupStore(waitMs: number = BACKUP_CLOSE_WAIT_MS): Promise
   return closing;
 }
 
-async function stopThread(waitMs: number): Promise<void> {
+async function stopThread(): Promise<void> {
   const current = worker;
   if (!current) return;
+  // A thread asked to close ends on its own; that is no failure.
+  current.removeAllListeners("exit");
   await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, waitMs);
-    const settle = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    current.once("exit", settle);
+    current.once("exit", () => resolve());
     current.on("message", (response: BackupsResponse) => {
-      if (response.type === "closed") settle();
+      if (response.type === "closed") resolve();
     });
     try {
       current.postMessage({ type: "close" } satisfies BackupsRequest);
     } catch {
-      settle();
+      resolve();
     }
   });
-  if (pending.size > 0) {
-    log.warn("backup store: closed before the thread confirmed every record", { file, unconfirmed: pending.size });
-  }
   // Not awaited: a thread blocked inside SQLite stops only once that call returns.
-  current.terminate().catch(() => {});
+  release()?.terminate().catch(() => {});
 }

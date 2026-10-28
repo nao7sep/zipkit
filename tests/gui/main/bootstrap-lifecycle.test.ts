@@ -25,7 +25,6 @@ const m = vi.hoisted(() => {
     saveQueueBeforeSessionEnd: fn((_bound: number) => {}),
     settleSettingsSave: fn(async () => {}),
     saveSettingsBeforeSessionEnd: fn((_bound: number) => {}),
-    captureJobEdits: fn(async () => {}),
     layoutWritesSettled: fn(async () => {}),
     closeBackupStore: fn(async () => {}),
     logClose: fn(async () => {}),
@@ -66,7 +65,7 @@ vi.mock("../../../src/gui/main/renderer-page.js", () => ({ loadRendererPage: asy
 vi.mock("../../../src/gui/main/records-window.js", () => ({ notifyRecordsChanged: vi.fn() }));
 vi.mock("../../../src/gui/main/ipc.js", () => ({ registerIpc: vi.fn() }));
 vi.mock("../../../src/gui/main/queue.js", () => ({
-  beginQueueQuit: m.beginQueueQuit, cancelRunningJobAndWait: m.cancelRunningJobAndWait, flushQueue: m.flushQueue,
+  beginQueueQuit: m.beginQueueQuit, cancelRunningJobAndWait: m.cancelRunningJobAndWait, closeQueueEdits: vi.fn(), flushQueue: m.flushQueue,
   hasRunningJob: m.hasRunningJob, registerQueueIpc: vi.fn(), restoreQueue: vi.fn(),
   saveQueueBeforeSessionEnd: m.saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit: vi.fn(),
 }));
@@ -101,10 +100,8 @@ vi.mock("../../../src/gui/main/quit-confirm-dialog.js", () => ({
 }));
 vi.mock("../../../src/gui/main/windowActivity.js", () => ({ configureWindowActivity: vi.fn() }));
 vi.mock("../../../src/gui/main/backupStore.js", () => ({ closeBackupStore: m.closeBackupStore }));
-vi.mock("../../../src/gui/main/job-edit-capture.js", () => ({ captureJobEdits: m.captureJobEdits, resumeJobEdits: vi.fn() }));
 vi.mock("../../../src/gui/main/window-minimum.js", () => ({ configureWindowMinimum: vi.fn() }));
 vi.mock("../../../src/gui/main/force-exit.js", () => ({ forceExitProcess: m.forceExitProcess }));
-vi.mock("../../../src/gui/main/pending-work.js", () => ({ nativeWorkPending: () => false }));
 vi.mock("../../../src/gui/main/window-options.js", () => ({ mainWindowOptions: () => ({}) }));
 vi.mock("../../../src/gui/main/window-state-recovery.js", () => ({
   createWindowWithUsablePersistedBounds: (_name: string, create: () => unknown) => create(),
@@ -161,7 +158,6 @@ describe("macOS logout, restart and shutdown", () => {
     await vi.waitFor(() => expect(m.app.exit).toHaveBeenCalledWith(0));
     expect(quit.preventDefault).toHaveBeenCalled();
     for (const question of questions()) expect(question).not.toHaveBeenCalled();
-    expect(m.captureJobEdits).toHaveBeenCalled();
     expect(m.cancelRunningJobAndWait).toHaveBeenCalled();
     expect(m.settleSettingsSave).toHaveBeenCalled();
     expect(m.flushQueue).toHaveBeenCalled();

@@ -22,20 +22,18 @@ beforeEach(() => {
   effects.language.mockResolvedValue(undefined);
 });
 
-it("joins only the same submitted packet after a renderer reload, through interface application", async () => {
+it("runs one save at a time: a Save while another runs waits behind it, and the newest submission wins", async () => {
   let finish!: () => void;
   effects.language.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
   const packet = { ...DEFAULT_SETTINGS, theme: "dark" as const };
-  const save = submitSettings(packet);
+  const first = submitSettings(packet);
   await vi.waitFor(() => expect(effects.language).toHaveBeenCalledOnce());
-  try {
-    expect(submitSettings({ ...packet })).toBe(save);
-    const different = submitSettings({ ...packet, uiFontFamily: "Georgia" });
-    expect(different).not.toBe(save);
-    await expect(different).rejects.toThrow("pending");
-    expect(effects.write).toHaveBeenCalledOnce();
-  } finally { finish(); await save; }
-  await submitSettings({ ...packet, uiFontFamily: "Georgia" });
+  const skipped = submitSettings({ ...packet, uiFontFamily: "Courier" });
+  const newest = submitSettings({ ...packet, uiFontFamily: "Georgia" });
+  expect(effects.write).toHaveBeenCalledOnce();
+  finish();
+  await Promise.all([first, skipped, newest]);
+  expect(effects.write).toHaveBeenCalledTimes(2);
   expect(currentSettings().uiFontFamily).toBe("Georgia");
 });
 
@@ -55,12 +53,11 @@ it("refuses new Settings submissions during quit while joining the already submi
   } finally { appAdmission.reopen(); finish(); await save; }
 });
 
-it("joins actual publication, retains it through a close attempt, and broadcasts the commit", async () => {
+it("joins actual publication and broadcasts the commit", async () => {
   let finish!: () => void;
   effects.write.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
   const save = submitSettings({ ...DEFAULT_SETTINGS, theme: "dark" });
   const join = settleSettingsSave();
-  expect(() => discardSettingsSubmission()).toThrow("pending");
   expect(effects.write).toHaveBeenCalledOnce();
   expect(effects.send).not.toHaveBeenCalled();
   finish();

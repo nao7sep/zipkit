@@ -18,11 +18,11 @@ import { sdk } from "./sdk.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
+import { newestSave } from "./managedJson.js";
 import { appAdmission } from "./command-admission.js";
 
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
-let pendingJobs: SavedJob[] | undefined;
-let saveChain: Promise<void> = Promise.resolve();
+// One queue save runs at a time, the newest job list waiting behind it.
+const saves = newestSave(saveQueue);
 
 /** Whether a failed removal left the path gone: something else moved or
  *  deleted it first, so it is reported as gone rather than kept. */
@@ -94,19 +94,15 @@ const engine = createQueueEngine({
     return result;
   },
   emit: (jobs) => {
-    pendingJobs = toResumable(jobs);
-    clearTimeout(saveTimer);
     // The window shows a failed save until a later save succeeds; the failed
-    // snapshot stays pending, so the next change or quit tries it again.
-    saveTimer = setTimeout(() => {
-      void flushQueue().then(
-        () => sendQueueSaved(true),
-        (err) => {
-          log.error("failed to persist the queue", { error: errorInfo(err) });
-          sendQueueSaved(false);
-        },
-      );
-    }, 500);
+    // job list stays waiting, so the next change or quit tries it again.
+    saves.save(toResumable(jobs)).then(
+      () => sendQueueSaved(true),
+      (err) => {
+        log.error("failed to persist the queue", { error: errorInfo(err) });
+        sendQueueSaved(false);
+      },
+    );
     sendQueue(jobs);
   },
   progress: progressRun,
@@ -114,49 +110,16 @@ const engine = createQueueEngine({
   log,
 });
 
-/** Persist the newest emitted resumable snapshot now. Used by the debounce and
- * every window/process shutdown path so an immediately closed window loses no
- * queue mutation. */
-export async function flushQueue(): Promise<void> {
-  for (;;) {
-    clearTimeout(saveTimer);
-    saveTimer = undefined;
-    const jobs = pendingJobs;
-    let joined: Promise<void>;
-    if (jobs) {
-      pendingJobs = undefined;
-      const save = saveChain.catch(() => {}).then(() => saveQueue(jobs));
-      saveChain = save;
-      joined = save;
-      try {
-        await save;
-      } catch (err) {
-        // Keep a newer emitted snapshot if one arrived while this write was in
-        // flight; otherwise retain this failed snapshot for the next flush attempt.
-        pendingJobs ??= jobs;
-        throw err;
-      }
-    } else {
-      // A window-close flush may already have consumed pendingJobs while its
-      // durable write is still running. Quit must join that same write rather
-      // than treating the empty pending slot as proof that persistence finished.
-      joined = saveChain;
-      await joined;
-    }
-
-    // If another emission arrived while the joined save was in flight, fold it
-    // into this flush too. Another concurrent flush may have consumed that
-    // emission and extended saveChain already, so join the changed chain as well.
-    if (!pendingJobs && saveChain === joined) return;
-  }
+/** Settle the queue saves asked for so far, writing a failed one again; for window close and
+ *  quit. Rejects when the last write failed. */
+export function flushQueue(): Promise<void> {
+  return saves.flush();
 }
 
 /** Save the queue as it stands before returning, within `boundMs`, for the end of a Windows
- *  session, where nothing asynchronous runs after the handler returns. The debounced save it
- *  replaces would have written these same jobs. Throws when the save failed or did not finish. */
+ *  session, where nothing asynchronous runs after the handler returns. Throws when the save
+ *  failed or did not finish. */
 export function saveQueueBeforeSessionEnd(boundMs: number): void {
-  clearTimeout(saveTimer);
-  saveTimer = undefined;
   saveQueueWithin(toResumable(engine.snapshot()), boundMs);
 }
 
@@ -179,8 +142,10 @@ export function hasRunningJob(): boolean {
 export async function cancelRunningJobAndWait(): Promise<void> {
   await engine.shutdown();
 }
-/** Close new effects and cancel active work before waiting for issued edits. */
+/** Close new effects and cancel active work; edits stay accepted. */
 export function beginQueueQuit(): void { engine.beginQuit(); }
+/** Stop taking job edits, as the quit's queue save begins. */
+export function closeQueueEdits(): void { appAdmission.close(); }
 export function resumeQueueAfterCancelledQuit(): void { engine.resume(); }
 
 export function registerQueueIpc(): void {

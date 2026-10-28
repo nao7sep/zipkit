@@ -27,7 +27,7 @@ import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout.js";
 // A one-shot rename failure armed per test; when unarmed, the mock delegates to the real rename so
 // every atomic write (saveSettings/saveLayout/saveQueue) in setup still works against the real root.
 const armedRenameError = vi.hoisted(() => ({ current: null as Error | null }));
-const stageFault = vi.hoisted(() => ({ collision: false, write: null as Error | null, close: null as Error | null, future: null as { file: string; text: string } | null }));
+const stageFault = vi.hoisted(() => ({ collision: false, write: null as Error | null, close: null as Error | null }));
 const armedChmodError = vi.hoisted(() => ({ current: null as Error | null }));
 const stagedModes = vi.hoisted(() => ([] as number[]));
 const armedReadError = vi.hoisted(() => ({ current: null as Error | null }));
@@ -44,10 +44,6 @@ vi.mock("node:fs/promises", async (importActual) => {
       const handle = await actual.open(...args);
       if (args[1] === "wx") {
         stagedModes.push((await handle.stat()).mode & 0o777);
-        if (stageFault.future) {
-          writeFileSync(stageFault.future.file, stageFault.future.text);
-          stageFault.future = null;
-        }
         const write = stageFault.write;
         const close = stageFault.close;
         stageFault.write = null;
@@ -95,7 +91,6 @@ function resetFaults(): void {
   stageFault.collision = false;
   stageFault.write = null;
   stageFault.close = null;
-  stageFault.future = null;
 }
 
 describe("loadManagedJson: a failure to set aside propagates, never resets over corrupt bytes", () => {
@@ -282,16 +277,6 @@ describe("writeManagedJson", () => {
     await writeManagedJson(file, '{"a":1}', { record: false });
     expect(stagedModes).toEqual([0o600 & ~process.umask()]);
     expect(statSync(file).mode & 0o777).toBe(0o666 & ~process.umask());
-  });
-
-  it("refuses an unreadable file installed after staging began and removes only its stage", async () => {
-    const file = path.join(root, "queue.json");
-    writeFileSync(file, '{"jobs":[]}');
-    const replaced = "not json, but somebody's";
-    stageFault.future = { file, text: replaced };
-    await expect(writeManagedJson(file, '{"jobs":[1]}', { record: false })).rejects.toThrow("is invalid");
-    expect(readFileSync(file, "utf8")).toBe(replaced);
-    expect(readdirSync(root)).toEqual(["queue.json"]);
   });
 
   it("an exclusive stage collision preserves the preexisting stage", async () => {

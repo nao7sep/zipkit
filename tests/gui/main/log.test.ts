@@ -143,29 +143,6 @@ describe("createAppLog", () => {
     stderrSpy.mockRestore();
   });
 
-  it("hands a record still in flight to the fallback file when the database does not take it in time", async () => {
-    const dir = tempDir();
-    const database = path.join(dir, "records.sqlite3");
-    const logs = path.join(dir, "logs");
-    const log = createAppLog(database, logs, new Date("2026-06-14T05:25:48.123Z"));
-    // Observe the actual initialized writer before locking its write path.
-    await log.records({ op: "sessions" });
-    const lock = new DatabaseSync(database);
-    lock.exec("BEGIN IMMEDIATE");
-    try {
-      log.info("while the database is locked");
-      await log.close(50);
-    } finally {
-      lock.exec("ROLLBACK");
-      lock.close();
-      await log.close();
-    }
-
-    const lines = readFileSync(path.join(logs, "20260614-052548-utc.log"), "utf8").trim().split("\n")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(lines.map((line) => line.message)).toEqual(["while the database is locked"]);
-  });
-
   it("writes an entry made after close to the fallback file", async () => {
     const dir = tempDir();
     const logs = path.join(dir, "logs");
@@ -392,23 +369,12 @@ describe("records reads for the Records window", () => {
     expect(unavailable).toHaveBeenCalledTimes(1);
   });
 
-  it("fails a read the database cannot answer in time, or once it is unavailable or closed", async () => {
+  it("fails a read once the database is closed or unavailable", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
     const log = createAppLog(database, path.join(dir, "logs"));
     await log.records({ op: "sessions" });
-    const lock = new DatabaseSync(database);
-    lock.exec("BEGIN IMMEDIATE");
-    try {
-      // The read queues behind a real write held by another SQLite connection.
-      log.info("held write");
-      await expect(log.records({ op: "sessions" }, 50)).rejects.toThrow(/within 50 ms/);
-      await log.close(50);
-    } finally {
-      lock.exec("ROLLBACK");
-      lock.close();
-      await log.close();
-    }
+    await log.close();
     await expect(log.records({ op: "sessions" })).rejects.toThrow(/closed/);
 
     const blocker = path.join(dir, "blocker");
@@ -417,6 +383,7 @@ describe("records reads for the Records window", () => {
     await expect(unavailable.records({ op: "sessions" })).rejects.toThrow();
     await unavailable.close();
   });
+
 });
 
 describe("errorInfo", () => {

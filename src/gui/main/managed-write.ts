@@ -31,22 +31,16 @@ export interface ManagedWriteOptions {
  * bytes are disposable. Resolves `true` when the file was written, `false` when it already held
  * these bytes or was absent and `createAbsent` is false; throws on failure.
  */
-export async function writeManagedText(file: string, bytes: Buffer, signal?: AbortSignal, options: ManagedWriteOptions = {}): Promise<boolean> {
+export async function writeManagedText(file: string, bytes: Buffer, options: ManagedWriteOptions = {}): Promise<boolean> {
   const dir = path.dirname(file);
-  signal?.throwIfAborted();
   await mkdir(dir, { recursive: true });
-  signal?.throwIfAborted();
-  const admittedCurrent = async (): Promise<Buffer | null> => {
-    signal?.throwIfAborted();
-    const current = await readFile(file).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-    signal?.throwIfAborted();
-    if (current !== null && options.replaceUnreadable !== true) parseJsonObject(current.toString("utf8"), file);
-    return current;
-  };
-  const current = await admittedCurrent();
+  const current = await readFile(file).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  // The one check before the rename replaces the file: a live file ZipKit cannot read is
+  // never overwritten.
+  if (current !== null && options.replaceUnreadable !== true) parseJsonObject(current.toString("utf8"), file);
   if (current === null ? options.createAbsent === false : current.equals(bytes)) return false;
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   let owned = false;
@@ -54,23 +48,14 @@ export async function writeManagedText(file: string, bytes: Buffer, signal?: Abo
     const handle = await open(tmp, "wx", 0o600);
     owned = true;
     try {
-      signal?.throwIfAborted();
       await handle.writeFile(bytes);
-      const existing = await stat(file).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return null;
-        throw error;
-      });
-      signal?.throwIfAborted();
-      await chmod(tmp, existing ? existing.mode & 0o7777 : 0o666 & ~process.umask());
+      await chmod(tmp, current !== null ? (await stat(file)).mode & 0o7777 : 0o666 & ~process.umask());
       await handle.sync();
     } catch (error) {
       await handle.close().catch(() => {});
       throw error;
     }
     await handle.close();
-    signal?.throwIfAborted();
-    await admittedCurrent();
-    signal?.throwIfAborted();
     await rename(tmp, file);
     owned = false;
   } catch (err) {

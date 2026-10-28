@@ -1,4 +1,4 @@
-/** Held outbound sinks prove write-failure diversion, read timeouts and late responses. */
+/** Held outbound sinks prove write-failure diversion, reply routing and that a let-go thread speaks no more. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventEmitter } from "node:events";
 import type { RecordsRequest } from "../../../src/gui/main/records-worker.js";
@@ -9,13 +9,16 @@ interface TestWorker extends EventEmitter {
 }
 const fixture = vi.hoisted(() => ({
   workers: [] as TestWorker[],
-  append: vi.fn<(...args: unknown[]) => Promise<void>>(),
-  mkdir: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  lines: [] as string[],
 }));
-vi.mock("node:fs/promises", () => ({
-  mkdir: fixture.mkdir,
-  writeFile: vi.fn(async () => undefined),
-  appendFile: fixture.append,
+vi.mock("node:fs", () => ({
+  mkdirSync: () => undefined,
+  openSync: () => 3,
+  createWriteStream: () => ({
+    write: (line: string) => { fixture.lines.push(line); return true; },
+    end: (done: () => void) => done(),
+    on: () => undefined,
+  }),
 }));
 vi.mock("node:worker_threads", async () => {
   const { EventEmitter } = await import("node:events");
@@ -36,11 +39,10 @@ import { createAppLog } from "../../../src/gui/main/log.js";
 
 beforeEach(() => {
   fixture.workers.length = 0;
-  fixture.append.mockReset().mockResolvedValue(undefined);
-  fixture.mkdir.mockReset().mockResolvedValue(undefined);
-  vi.useFakeTimers();
+  fixture.lines.length = 0;
 });
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); });
+const fallbackMessages = (): string[] => fixture.lines.map((line) => (JSON.parse(line) as { message: string }).message);
 
 function worker(): TestWorker { return fixture.workers[0]!; }
 function writeRequests(): Exclude<RecordsRequest, { type: "close" }>[] {
@@ -65,8 +67,7 @@ describe("records sinks", () => {
     expect(stored).toHaveBeenCalledTimes(1);
     await expect(log.records({ op: "sessions" })).rejects.toThrow(/closed/);
     await log.close();
-    const lines = fixture.append.mock.calls.map(([, line]) => JSON.parse(String(line)) as { message: string });
-    expect(lines.map((line) => line.message)).toEqual(["records database unavailable", "first", "second"]);
+    expect(fallbackMessages()).toEqual(["records database unavailable", "first", "second"]);
   });
 
   it("ignores a write acknowledgement delivered after close has diverted that row", async () => {
@@ -82,19 +83,14 @@ describe("records sinks", () => {
     await log.close();
     expect(stored).not.toHaveBeenCalled();
     expect(worker().terminate).toHaveBeenCalledTimes(1);
-    expect(fixture.append.mock.calls.map(([, line]) => JSON.parse(String(line)) as { message: string }).map((line) => line.message))
-      .toEqual(["diverted", "after close"]);
+    expect(fallbackMessages()).toEqual(["diverted", "after close"]);
   });
 
-  it("removes timed-out reads and keeps read failures separate from write failure", async () => {
+  it("keeps read failures separate from write failure", async () => {
     const log = createAppLog("/test/records.sqlite3", "/test/logs");
-    const timedOut = expect(log.records({ op: "sessions" }, 50)).rejects.toThrow(/did not answer/);
-    await vi.advanceTimersByTimeAsync(50);
-    await timedOut;
     const next = log.records({ op: "sessions" });
     const nextRequest = worker().messages.at(-1)!;
     if (nextRequest.type === "close") throw new Error("unexpected close");
-    worker().emit("message", { type: "failed", id: 1, error: { message: "late" } });
     worker().emit("message", { type: "failed", id: nextRequest.id, error: { message: "read only transient" } });
     await expect(next).rejects.toThrow("read only transient");
     log.info("write still enabled");
@@ -102,6 +98,6 @@ describe("records sinks", () => {
     const last = writeRequests()[0]!;
     worker().emit("message", { type: "written", id: last.id });
     await log.close();
-    expect(fixture.append).not.toHaveBeenCalled();
+    expect(fixture.lines).toEqual([]);
   });
 });

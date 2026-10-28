@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createQuitControl,
   endSessionNow,
-  QUIT_BOUNDS_MS,
+  QUIT_DEADLINE_MS,
   SESSION_END_MARK_MS,
   StepTimeout,
   SESSION_END_SAVE_MS,
@@ -16,7 +16,6 @@ function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
   return {
     settingsDraftOpen: () => false,
     askDiscardSettingsDraft: vi.fn(async () => true),
-    captureEdits: vi.fn(async () => {}),
     stopJob: vi.fn(async () => {}),
     settleSettings: vi.fn(async () => {}),
     askSettingsNotSaved: vi.fn(async () => "quit" as const),
@@ -30,7 +29,6 @@ function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
     onStepFailed: vi.fn(),
     exit: vi.fn(),
     forceExit: vi.fn(),
-    nativeWorkPending: () => false,
     ...overrides,
   };
 }
@@ -58,14 +56,12 @@ function endingSession(): QuitSession {
 }
 
 const never = () => new Promise<void>(() => {});
-const totalBound = Object.values(QUIT_BOUNDS_MS).reduce((sum, ms) => sum + ms, 0);
 
 describe("stopFlushAndExit", () => {
   it("asks before discarding an open Settings draft, and Keep editing keeps the app open", async () => {
     const kept = steps({ settingsDraftOpen: () => true, askDiscardSettingsDraft: vi.fn(async () => false) });
     await stopFlushAndExit(kept, userQuit());
     expect(kept.onCancelled).toHaveBeenCalledOnce();
-    expect(kept.captureEdits).not.toHaveBeenCalled();
     expect(kept.flush).not.toHaveBeenCalled();
     expect(kept.exit).not.toHaveBeenCalled();
 
@@ -95,29 +91,6 @@ describe("stopFlushAndExit", () => {
     vi.useRealTimers();
   });
 
-  it("capture failure uses queue Retry and Cancel before shutdown closes admission", async () => {
-    const capture = vi.fn<() => Promise<void>>().mockRejectedValueOnce(new Error("capture failed")).mockResolvedValue(undefined);
-    const s = steps({ captureEdits: capture, askQueueNotSaved: vi.fn(async () => "retry" as const) });
-    await stopFlushAndExit(s, userQuit());
-    expect(capture).toHaveBeenCalledTimes(2);
-    expect(s.stopJob).toHaveBeenCalledOnce();
-    expect(s.askQueueNotSaved).toHaveBeenCalledOnce();
-    const cancelled = steps({ captureEdits: async () => { throw new Error("capture failed"); }, askQueueNotSaved: async () => "cancel" });
-    await stopFlushAndExit(cancelled, userQuit());
-    expect(cancelled.stopJob).not.toHaveBeenCalled();
-    expect(cancelled.onCancelled).toHaveBeenCalledOnce();
-    expect(cancelled.exit).not.toHaveBeenCalled();
-  });
-
-  it("OS capture has a finite bound and asks nothing", async () => {
-    const s = steps({ captureEdits: never });
-    const quit = stopFlushAndExit(s, endingSession());
-    await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.capture);
-    await quit;
-    expect(s.askQueueNotSaved).not.toHaveBeenCalled();
-    expect(s.forceExit).toHaveBeenCalledOnce();
-  });
-
   it("stops the job, saves the queue, settles the layout, closes the backups and the log, then exits", async () => {
     const order: string[] = [];
     let finishJob!: () => void;
@@ -143,12 +116,12 @@ describe("stopFlushAndExit", () => {
     expect(s.askQueueNotSaved).not.toHaveBeenCalled();
   });
 
-  it("waits for submitted Settings and cancels safely after the bounded wait", async () => {
+  it("waits for submitted Settings and cancels safely once the deadline passes", async () => {
     let finish!: () => void;
     const save = new Promise<void>((resolve) => { finish = resolve; });
     const s = steps({ settleSettings: () => save, askSettingsNotSaved: vi.fn(async () => "cancel" as const) });
     const quit = stopFlushAndExit(s, userQuit());
-    await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.settings);
+    await vi.advanceTimersByTimeAsync(QUIT_DEADLINE_MS);
     await quit;
     expect(s.askSettingsNotSaved).toHaveBeenCalledOnce();
     expect(s.flush).not.toHaveBeenCalled();
@@ -227,11 +200,11 @@ describe("stopFlushAndExit", () => {
     expect(s.exit).toHaveBeenCalledWith(0);
   });
 
-  it("asks when the queue save does not finish within its bound", async () => {
+  it("asks when the queue save does not finish within the deadline", async () => {
     const s = steps({ flush: never, askQueueNotSaved: vi.fn(async () => "cancel" as const) });
 
     const quitting = stopFlushAndExit(s, userQuit());
-    await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.flush - 1);
+    await vi.advanceTimersByTimeAsync(QUIT_DEADLINE_MS - 1);
     expect(s.askQueueNotSaved).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await quitting;
@@ -303,7 +276,7 @@ describe("stopFlushAndExit", () => {
     expect(s.exit).toHaveBeenCalledWith(0);
   });
 
-  it("bounds every step, and exits within the total when none of them finishes", async () => {
+  it("holds every step to one deadline, and exits at it when none of them finishes", async () => {
     const s = steps({
       stopJob: never,
       flush: never,
@@ -312,26 +285,25 @@ describe("stopFlushAndExit", () => {
       closeLog: never,
     });
 
-    // An ending session skips the backup history's pending writes, so its bound is not spent.
-    const endingBound = totalBound - QUIT_BOUNDS_MS.backups;
     const quitting = stopFlushAndExit(s, endingSession());
-    await vi.advanceTimersByTimeAsync(endingBound - 1);
+    await vi.advanceTimersByTimeAsync(QUIT_DEADLINE_MS - 1);
     expect(s.exit).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     await quitting;
 
-    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["job", "queue", "layout"]);
+    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["job", "settings", "queue", "layout"]);
+    // An ending session skips the backup history's pending writes.
     expect(s.closeBackups).not.toHaveBeenCalled();
     // Work left behind may be stuck in a native call, so the exit does not wait for it.
     expect(s.forceExit).toHaveBeenCalledOnce();
     expect(s.exit).not.toHaveBeenCalled();
   });
 
-  it("closes the backup history within its bound on an ordinary quit", async () => {
+  it("closes the backup history within the deadline on an ordinary quit", async () => {
     const s = steps({ closeBackups: vi.fn(never) });
 
     const quitting = stopFlushAndExit(s, userQuit());
-    await vi.advanceTimersByTimeAsync(QUIT_BOUNDS_MS.backups);
+    await vi.advanceTimersByTimeAsync(QUIT_DEADLINE_MS);
     await quitting;
 
     expect(s.closeBackups).toHaveBeenCalledOnce();
@@ -349,10 +321,6 @@ describe("stopFlushAndExit", () => {
     expect(s.forceExit).not.toHaveBeenCalled();
   });
 
-  it("keeps the whole quit under the five seconds an ending session allows", () => {
-    expect(totalBound - QUIT_BOUNDS_MS.backups).toBeLessThan(5_000);
-    expect(SESSION_END_SAVE_MS).toBeLessThan(5_000);
-  });
 });
 
 describe("endSessionNow (the end of a Windows session)", () => {
@@ -408,7 +376,6 @@ describe("endSessionNow (the end of a Windows session)", () => {
       onStepFailed: vi.fn(),
       exit: vi.fn(),
       forceExit: vi.fn(),
-    nativeWorkPending: () => false,
       ...overrides,
     };
   }

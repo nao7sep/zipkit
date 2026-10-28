@@ -18,7 +18,7 @@ import { buildRecoveryDialogs } from "./recoveryDialogs.js";
 import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
-import { beginQueueQuit, cancelRunningJobAndWait, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
+import { beginQueueQuit, cancelRunningJobAndWait, closeQueueEdits, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
 import { settingsDraftOpen, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
 import { loadSettings } from "./settings.js";
 import { applyTimeZonePreference, mainTranslator, onLanguageChanged, settleLanguage, settledTranslator } from "./i18n.js";
@@ -33,10 +33,8 @@ import { askDiscardSettingsDraft, askQueueNotSaved, askSettingsNotSaved, confirm
 import { configureWindowActivity } from "./windowActivity.js";
 import { createQuitControl, endSessionNow, finishStartupHalt, stopFlushAndExit, type QuitStep } from "./quit.js";
 import { closeBackupStore } from "./backupStore.js";
-import { captureJobEdits, resumeJobEdits } from "./job-edit-capture.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { forceExitProcess } from "./force-exit.js";
-import { nativeWorkPending } from "./pending-work.js";
 import { mainWindowOptions } from "./window-options.js";
 import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
 
@@ -82,7 +80,6 @@ function createWindow(): BrowserWindow {
       onStepFailed: logQuitStepFailure,
       exit: (code) => app.exit(code),
       forceExit: forceExitProcess,
-      nativeWorkPending,
     });
   });
   win.on("closed", () => {
@@ -147,7 +144,6 @@ async function reportStartupHalt(error: unknown): Promise<void> {
     onFailed: (failure) => log.error("startup failure presentation or cleanup failed", { error: errorInfo(failure) }),
     exit: (code) => app.exit(code),
     forceExit: forceExitProcess,
-    nativeWorkPending,
   });
 }
 
@@ -271,7 +267,6 @@ function logQuitStepFailure(step: QuitStep, error: unknown): void {
 const quit = createQuitControl({
   onFailed: (error) => {
     resumeQueueAfterCancelledQuit();
-    resumeJobEdits(getMainWindow());
     log.error("quit request failed; the app remains open", { error: errorInfo(error) });
   },
   hasRunningJob,
@@ -282,16 +277,15 @@ const quit = createQuitControl({
       {
         settingsDraftOpen,
         askDiscardSettingsDraft: (signal) => askDiscardSettingsDraft(getMainWindow(), signal),
-        captureEdits: () => captureJobEdits(getMainWindow()),
         stopJob: cancelRunningJobAndWait,
         settleSettings: settleSettingsSave,
         askSettingsNotSaved: (signal) => askSettingsNotSaved(getMainWindow(), signal),
-        flush: flushQueue,
+        // Edits the window sent are taken until the queue save begins.
+        flush: () => { closeQueueEdits(); return flushQueue(); },
         onFlushed: () => log.info("app quitting"),
         askQueueNotSaved: (signal) => askQueueNotSaved(getMainWindow(), signal),
         onCancelled: () => {
           resumeQueueAfterCancelledQuit();
-          resumeJobEdits(getMainWindow());
           log.info("quit cancelled with work not saved");
         },
         settleLayout: layoutWritesSettled,
@@ -300,7 +294,6 @@ const quit = createQuitControl({
         onStepFailed: logQuitStepFailure,
         exit: (code) => app.exit(code),
         forceExit: forceExitProcess,
-        nativeWorkPending,
       },
       session,
     );

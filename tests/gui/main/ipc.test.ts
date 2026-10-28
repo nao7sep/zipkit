@@ -94,6 +94,7 @@ describe("settings IPC", () => {
   it("returns committed settings with a safe warning when applying the interface fails", async () => {
     registerIpc();
     mocks.saveSettings.mockResolvedValue(DEFAULT_SETTINGS);
+    mocks.currentSettings.mockReturnValue(DEFAULT_SETTINGS);
     const failure = new Error("hostile EPERM /private/internal sentinel");
     mocks.applyTheme.mockImplementation(() => { throw failure; });
     mocks.applyLanguage.mockRejectedValue(failure);

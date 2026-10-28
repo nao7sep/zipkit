@@ -1,37 +1,15 @@
 /**
  * The preload bridge: exposes the typed `window.zipkit` surface to the renderer.
- * Methods invoke or subscribe to the matching main-process channel; job edits
- * retain their submission receipts so native Quit can capture them. Held to the shared `ZipKitGuiApi` interface via
- * `satisfies`, so the bridge and its declared type cannot drift.
+ * Methods invoke or subscribe to the matching main-process channel. Held to the
+ * shared `ZipKitGuiApi` interface via `satisfies`, so the bridge and its
+ * declared type cannot drift.
  */
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import { createJobEditSubmissions } from "./job-edits.js";
 import type { GuiOptions, GuiSettings } from "../shared/spec.js";
 import type { PaneLayout } from "../shared/layout.js";
 import type { RecordDetail, RecordKind, RecordSources, RecordsPage, RecordsQuery } from "../shared/records.js";
 import { LANGUAGE_CHANGED_CHANNEL, OPEN_ABOUT_CHANNEL, RECORDS_CHANGED_CHANNEL, WINDOW_ACTIVITY_CHANNEL, type AppInfo, type LanguageEnvironment, type SystemChoices, type JobCounts, type JobEvent, type GuiReportedError, type Job, type JobIntent, type PlanReport, type VerifyResult, type ZipKitGuiApi } from "../shared/api.js";
-
-const jobEdits = createJobEditSubmissions((id, patch) => ipcRenderer.invoke("zipkit:updateJob", id, patch));
-// Preload has a browser document but keeps Node types out of renderer compilation.
-const editorDocument = (globalThis as unknown as { document?: { body?: { inert: boolean } } }).document;
-let previousInert: boolean | undefined;
-ipcRenderer.on("zipkit:captureJobEdits", (_event, id: number) => {
-  if (!Number.isSafeInteger(id) || id <= 0) return;
-  if (editorDocument?.body) {
-    previousInert ??= editorDocument.body.inert;
-    editorDocument.body.inert = true;
-  }
-  void jobEdits.capture().then(
-    () => ipcRenderer.send(`zipkit:jobEditsCaptured:${id}`, true),
-    () => ipcRenderer.send(`zipkit:jobEditsCaptured:${id}`, false),
-  );
-});
-ipcRenderer.on("zipkit:resumeJobEdits", () => {
-  jobEdits.resume();
-  if (editorDocument?.body && previousInert !== undefined) editorDocument.body.inert = previousInert;
-  previousInert = undefined;
-});
 
 const api = {
   chooseInputs: (existingInputs?: string[]): Promise<string[]> => ipcRenderer.invoke("zipkit:chooseInputs", existingInputs),
@@ -78,7 +56,7 @@ const api = {
   updateJob: (
     id: string,
     patch: { options?: GuiOptions; intent?: JobIntent },
-  ): Promise<void> => jobEdits.submit(id, patch),
+  ): Promise<void> => ipcRenderer.invoke("zipkit:updateJob", id, patch),
   addJobInputs: (id: string, paths: string[]) => ipcRenderer.invoke("zipkit:addJobInputs", id, paths),
   removeJobInput: (id: string, path: string): Promise<void> => ipcRenderer.invoke("zipkit:removeJobInput", id, path),
   removeJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:removeJob", id),

@@ -11,16 +11,15 @@
  * I/O errors surface.
  *
  * Main holds the layout from the startup load on, so each window saves only its
- * own widths and keeps the other's, and a reopened window gets that copy. The
- * managed write's per-path order runs the writes one at a time, in the order the
- * windows sent them, and each patch reads `current` inside its own write slot.
+ * own widths and keeps the other's, and a reopened window gets that copy. One
+ * save runs at a time, the newest layout waiting behind it.
  */
 
 import path from "node:path";
 import { storageRoot } from "./storage.js";
 import { DEFAULT_LAYOUT, RECORDS_LIST_WIDTH, clampLayout, clampRecordsListWidth, type PaneLayout } from "../shared/layout.js";
 import { nullLog, type AppLog } from "./log.js";
-import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
+import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, newestSave, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
 
 /** Every width the layout file holds: the main window's panes and the Records
  *  window's list pane. */
@@ -65,7 +64,8 @@ export function serializeLayout(layout: StoredLayout): string {
 }
 
 let current: StoredLayout = freshLayout();
-let lastWrite: Promise<void> = Promise.resolve();
+const saves = newestSave((layout: StoredLayout) =>
+  writeManagedJson(layoutFile(), serializeLayout(layout), { replaceUnreadable: true }));
 
 /** Load the persisted layout once, at startup; the default layout if there is no file or it is
  *  damaged. Layout is disposable view state (store-recovery conventions), so a damaged file is not
@@ -77,24 +77,16 @@ export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonL
   return load;
 }
 
-/** One patch, applied to the layout last written; a failed save never advances `current`. */
+/** One window's widths, applied to main's copy and saved; the caller receives a failed save. */
 function persist(patch: Partial<StoredLayout>): Promise<void> {
-  let next: StoredLayout;
-  const write = writeManagedJson(layoutFile(), () => {
-    next = { ...current, ...patch };
-    return serializeLayout(next);
-  }, { replaceUnreadable: true, onWritten: () => { current = next; } });
-  lastWrite = write;
-  // The caller receives the failure; keeping the latest write must not create an unhandled rejection.
-  void write.catch(() => {});
-  return write;
+  current = { ...current, ...patch };
+  return saves.save(current);
 }
 
-/** Settles when every layout write started so far has, rejecting when the last one failed: the
- *  writes run in order, so the last to start is the last to settle. Quit waits for it within a
- *  bound, so a write in flight is not cut off mid-file. */
+/** Settles when the layout saves asked for so far have, rejecting when the last one failed. Quit
+ *  waits for it within its deadline, so a write in flight is not cut off mid-file. */
 export function layoutWritesSettled(): Promise<void> {
-  return lastWrite;
+  return saves.flush();
 }
 
 /** Persist the main window's pane widths, keeping the Records window's. */

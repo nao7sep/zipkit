@@ -163,8 +163,9 @@ describe("queue engine", () => {
       expect(engine.snapshot()[0]?.state).toBe("planning");
       expect(engine.snapshot()[0]?.output).toBeUndefined();
       expect(calls.write).toBe(0);
-      await engine.shutdown();
+      const stopped = engine.shutdown();
       releaseAll();
+      await stopped;
       expect(engine.snapshot()[0]?.options).toMatchObject({ fileName: "latest", comment: "last keystroke" });
       engine.resume();
       await until(() => expect(held).toHaveLength(1));
@@ -212,11 +213,14 @@ describe("queue engine", () => {
     expect(calls.trash).toEqual([]);
   });
 
-  it("closes mutation and run admission while quit awaits saves, then resumes cancelled planning", async () => {
+  it("closes run admission while quit awaits saves, edits once the queue save begins, then resumes cancelled planning", async () => {
     let finish!: () => void;
     let first = true;
     const { deps, calls } = makeDeps({ plan: async (_inputs, _options, signal) => {
-      if (first) { first = false; await new Promise<void>((resolve) => { finish = resolve; }); }
+      if (first) {
+        first = false;
+        await new Promise<void>((resolve) => { finish = resolve; signal.addEventListener("abort", () => resolve(), { once: true }); });
+      }
       signal.throwIfAborted();
       return planData(true);
     } });
@@ -224,6 +228,7 @@ describe("queue engine", () => {
     const id = engine.add(["/a"], DEFAULT_OPTIONS, SAVE);
     await engine.shutdown();
     expect(() => run(engine, id)).toThrow("shutting down");
+    deps.admission.close();
     expect(() => engine.update(id, { intent: TRASH })).toThrow("shutting down");
     expect(() => engine.addInputs(id, ["/b"])).toThrow("shutting down");
     expect(() => engine.add(["/new"], DEFAULT_OPTIONS, SAVE)).toThrow("shutting down");
@@ -285,7 +290,7 @@ describe("queue engine", () => {
     run(engine, id);
     if (action === "cancel") engine.cancel(id);
     if (action === "remove") engine.remove(id);
-    if (action === "shutdown") await engine.shutdown();
+    if (action === "shutdown") { const stopped = engine.shutdown(); release(); await stopped; }
     if (action === "edit") engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "other" } });
     release();
     await tick();

@@ -13,7 +13,7 @@ const { file, text, signal, port, options } = workerData as ManagedWriteWorkerDa
 
 let reply: ManagedWriteReply;
 try {
-  await writeManagedText(file, Buffer.from(text, "utf8"), undefined, options);
+  await writeManagedText(file, Buffer.from(text, "utf8"), options);
   reply = { ok: true };
 } catch (error) {
   reply = { ok: false, message: error instanceof Error ? error.message : String(error) };

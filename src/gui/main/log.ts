@@ -11,7 +11,7 @@
  * forwards its entries over IPC.
  */
 
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { createWriteStream, mkdirSync, openSync, type WriteStream } from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { fallbackLogDir, fileTimestamp, storageRoot } from "./storage.js";
@@ -76,31 +76,22 @@ export interface SessionAppLog extends AppLog {
    *  cannot be read. */
   jobEvents(jobId: string): Promise<JobEvent[]>;
   /** Read the records database for the Records window, after every entry
-   *  already given; rejects when it cannot be read within `waitMs`. */
-  records<R extends RecordsRead>(read: R, waitMs?: number): Promise<RecordsReadResults[R["op"]]>;
+   *  already given; rejects when it cannot be read. */
+  records<R extends RecordsRead>(read: R): Promise<RecordsReadResults[R["op"]]>;
   /** Called after each stored entry and once when the database becomes
    *  unavailable, so an open Records window can re-read and observe failure.
    *  Individual fallback entries do not notify. */
   onStored(listener: () => void): void;
-  /** Hand every record still in flight to the database, or to the fallback file
-   *  when the database does not take it within `waitMs`. Later entries go
-   *  straight to the fallback file. */
-  close(waitMs?: number): Promise<void>;
+  /** Let the records thread write what it holds, then stop it; whatever it did
+   *  not confirm goes to the fallback file. Later entries go straight to the
+   *  fallback file. The quit's exit deadline bounds the wait. */
+  close(): Promise<void>;
 }
 
 /** `~/.zipkit/records.sqlite3` (or under `ZIPKIT_DATA_DIR`). */
 export function defaultRecordsFile(): string {
   return path.join(storageRoot(), "records.sqlite3");
 }
-
-/** How long `close` waits for the database before the fallback file takes what
- *  it has not confirmed; inside the quit sequence's own bound. */
-export const LOG_CLOSE_WAIT_MS = 5_000;
-
-/** How long a read waits for the records thread, which answers in the order
- *  it was asked, behind the writes already posted; above SQLite's own 5 s
- *  busy timeout, so a locked database fails the read before this bound. */
-export const RECORDS_READ_WAIT_MS = 10_000;
 
 function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -140,8 +131,11 @@ export function createAppLog(
   // created exclusively, and SDK session logs in the same folder carry an id after their stamp.
   const fallbackFile = path.join(fallbackDir, `${fileTimestamp(now)}.log`);
 
-  let fallbackState: "closed" | "open" | "stderr" = "closed";
-  let fallbackTail: Promise<void> = Promise.resolve();
+  // The fallback file, opened at its first entry (and again for an entry after
+  // close); null while closed, and "stderr" once it cannot be written. The
+  // stream keeps the entries in order.
+  let fallback: WriteStream | "stderr" | null = null;
+  let fallbackCreated = false;
 
   const toStderr = (line: string): void => {
     try {
@@ -151,29 +145,24 @@ export function createAppLog(
     }
   };
 
-  const appendFallback = async (line: string): Promise<void> => {
-    if (fallbackState === "closed") {
-      try {
-        await mkdir(fallbackDir, { recursive: true });
-        // Exclusive create: a same-second file another session already
-        // holds is never appended into (logging conventions, toolkit filename).
-        await writeFile(fallbackFile, "", { flag: "wx" });
-        fallbackState = "open";
-      } catch (err) {
-        fallbackState = "stderr";
-        toStderr(`zipkit: log fallback file unavailable (${fallbackFile}: ${reason(err)}); logging to stderr\n`);
-      }
+  const openFallback = (): WriteStream | "stderr" => {
+    let fd: number;
+    try {
+      mkdirSync(fallbackDir, { recursive: true });
+      // Exclusive create: a same-second file another session already holds is
+      // never appended into (logging conventions, toolkit filename).
+      fd = openSync(fallbackFile, fallbackCreated ? "a" : "wx");
+      fallbackCreated = true;
+    } catch (err) {
+      toStderr(`zipkit: log fallback file unavailable (${fallbackFile}: ${reason(err)}); logging to stderr\n`);
+      return "stderr";
     }
-    if (fallbackState === "open") {
-      try {
-        await appendFile(fallbackFile, line);
-        return;
-      } catch (err) {
-        fallbackState = "stderr";
-        toStderr(`zipkit: log fallback file write failed (${reason(err)}); logging to stderr\n`);
-      }
-    }
-    toStderr(line);
+    const stream = createWriteStream(fallbackFile, { fd });
+    stream.on("error", (err) => {
+      fallback = "stderr";
+      toStderr(`zipkit: log fallback file write failed (${fallbackFile}: ${reason(err)}); logging to stderr\n`);
+    });
+    return stream;
   };
 
   const fallbackLine = (write: Write): string =>
@@ -195,40 +184,29 @@ export function createAppLog(
           event: JSON.parse(write.row.body) as unknown,
         });
 
-  // One append at a time, in the order the entries were made.
   const toFallback = (write: Write): void => {
     const line = `${fallbackLine(write)}\n`;
-    fallbackTail = fallbackTail.then(() => appendFallback(line));
+    fallback ??= openFallback();
+    if (fallback === "stderr") toStderr(line);
+    else fallback.write(line);
   };
 
-  let databaseFailureReported = false;
-  const reportDatabaseFailure = (error: unknown): void => {
-    if (databaseFailureReported) return;
-    databaseFailureReported = true;
-    toFallback({
-      type: "log",
-      row: {
-        time: new Date().toISOString(),
-        session,
-        level: "error",
-        message: "records database unavailable",
-        jobId: null,
-        fields: serializeFields({ database: databaseFile, error }),
-      },
-    });
-  };
-
+  // Where entries go: the records thread, until it fails or the log closes,
+  // then the fallback file.
+  let sink: "records" | "fallback" = "records";
   let worker: Worker | null = null;
-  let workerFailed = false;
   let closing: Promise<void> | null = null;
   let nextId = 1;
+  // Each reply goes to its caller: a write waits for its confirmation, a read
+  // for its rows.
   const pending = new Map<number, Write>();
   const reads = new Map<number, (response: RecordsResponse | Error) => void>();
   let storedListener: (() => void) | null = null;
+  // Set while `close` waits for the thread, so a failure meanwhile ends the wait.
+  let threadDone: (() => void) | null = null;
 
-  // Whatever the records thread has not confirmed goes to the fallback file, so
-  // a thread that fails or does not close in time loses none of it; a read it
-  // has not answered fails.
+  // Whatever the records thread has not confirmed goes to the fallback file, and
+  // a read it has not answered fails.
   const settleInFlight = (): void => {
     const writes = [...pending.values()];
     pending.clear();
@@ -238,15 +216,33 @@ export function createAppLog(
     for (const settle of waiting) settle(new Error("the records thread stopped before answering"));
   };
 
+  // The thread stops speaking for the records once it is let go of.
+  const release = (): Worker | null => {
+    const current = worker;
+    worker = null;
+    current?.removeAllListeners();
+    return current;
+  };
+
   const failWorker = (err: unknown): void => {
-    if (workerFailed) return;
-    workerFailed = true;
-    reportDatabaseFailure(errorInfo(err));
+    if (sink === "fallback") return;
+    sink = "fallback";
+    toFallback({
+      type: "log",
+      row: {
+        time: new Date().toISOString(),
+        session,
+        level: "error",
+        message: "records database unavailable",
+        jobId: null,
+        fields: serializeFields({ database: databaseFile, error: errorInfo(err) }),
+      },
+    });
     settleInFlight();
-    worker?.terminate().catch((err: unknown) =>
+    release()?.terminate().catch((err: unknown) =>
       toStderr(`zipkit: records thread did not stop (${reason(err)})\n`),
     );
-    worker = null;
+    threadDone?.();
     storedListener?.();
   };
 
@@ -263,8 +259,6 @@ export function createAppLog(
         read(response);
         return;
       }
-      // A response may arrive after a diversion or close.
-      if (!pending.has(response.id)) return;
       if (response.type === "failed") {
         // The records thread refuses every later write once one fails; the
         // rest go to the fallback file at once.
@@ -275,9 +269,7 @@ export function createAppLog(
       }
     });
     created.on("error", failWorker);
-    created.on("exit", (code) => {
-      if (closing === null && worker === created) failWorker(new Error(`records thread exited with code ${code}`));
-    });
+    created.on("exit", (code) => failWorker(new Error(`records thread exited with code ${code}`)));
     worker = created;
     return created;
   };
@@ -291,7 +283,7 @@ export function createAppLog(
   };
 
   const persist = (write: Write): void => {
-    if (workerFailed || closing !== null) {
+    if (sink === "fallback") {
       toFallback(write);
       return;
     }
@@ -336,21 +328,13 @@ export function createAppLog(
     return recorded;
   };
 
-  // Reads share the worker's ordered mailbox with writes. IDs are never
-  // reused, so a timed-out read needs no retained tombstone.
-  const read = (
-    request: (id: number) => RecordsRequest,
-    waitMs: number,
-  ): Promise<RecordsResponse> => {
-    if (workerFailed || closing !== null) return Promise.reject(new Error("the records database is closed"));
+  // Reads share the worker's ordered mailbox with writes, so a read answers
+  // after every entry given before it.
+  const read = (request: (id: number) => RecordsRequest): Promise<RecordsResponse> => {
+    if (sink === "fallback") return Promise.reject(new Error("the records database is closed"));
     const id = nextId++;
     return new Promise<RecordsResponse>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reads.delete(id);
-        reject(new Error(`the records database did not answer within ${waitMs} ms`));
-      }, waitMs);
       reads.set(id, (response) => {
-        clearTimeout(timer);
         if (response instanceof Error) reject(response);
         else if (response.type === "failed") reject(Object.assign(new Error("records read failed"), response.error));
         else resolve(response);
@@ -360,10 +344,10 @@ export function createAppLog(
   };
 
   const jobEvents = async (jobId: string): Promise<JobEvent[]> => {
-    if (workerFailed || closing !== null) return [];
+    if (sink === "fallback") return [];
     let rows: StoredJobEventRow[];
     try {
-      const response = await read((id) => ({ type: "readJobEvents", id, jobId, limit: JOB_EVENT_LIMIT }), RECORDS_READ_WAIT_MS);
+      const response = await read((id) => ({ type: "readJobEvents", id, jobId, limit: JOB_EVENT_LIMIT }));
       rows = response.type === "read" ? response.rows : [];
     } catch (err) {
       write("warn", "job progress could not be read", { jobId, error: errorInfo(err) });
@@ -379,56 +363,45 @@ export function createAppLog(
     }));
   };
 
-  const records = async <R extends RecordsRead>(
-    request: R,
-    waitMs: number = RECORDS_READ_WAIT_MS,
-  ): Promise<RecordsReadResults[R["op"]]> => {
-    const response = await read((id) => ({ type: "readRecords", id, read: request }), waitMs);
+  const records = async <R extends RecordsRead>(request: R): Promise<RecordsReadResults[R["op"]]> => {
+    const response = await read((id) => ({ type: "readRecords", id, read: request }));
     if (response.type !== "records") throw new Error(`unexpected records response: ${response.type}`);
     return response.value as RecordsReadResults[R["op"]];
   };
 
-  const close = (waitMs: number = LOG_CLOSE_WAIT_MS): Promise<void> => {
+  const close = (): Promise<void> => {
     closing ??= (async () => {
       const current = worker;
-      if (!current || workerFailed) return;
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, waitMs);
-        const settle = (): void => {
-          clearTimeout(timer);
-          resolve();
-        };
-        current.once("exit", settle);
-        current.on("message", (response: RecordsResponse) => {
-          if (response.type === "closed") settle();
+      if (current && sink === "records") {
+        // A thread asked to close ends on its own; that is no failure.
+        current.removeAllListeners("exit");
+        await new Promise<void>((resolve) => {
+          threadDone = resolve;
+          current.once("exit", () => resolve());
+          current.on("message", (response: RecordsResponse) => {
+            if (response.type === "closed") resolve();
+          });
+          try {
+            current.postMessage({ type: "close" } satisfies RecordsRequest);
+          } catch {
+            resolve();
+          }
         });
-        try {
-          current.postMessage({ type: "close" } satisfies RecordsRequest);
-        } catch {
-          settle();
-        }
-      });
-      worker = null;
-      // Not awaited: a thread blocked inside SQLite stops only once that call
-      // returns, and a record it then completes is also in the fallback file.
-      current.terminate().catch((err: unknown) =>
+        threadDone = null;
+      }
+      sink = "fallback";
+      release()?.terminate().catch((err: unknown) =>
         toStderr(`zipkit: records thread did not stop (${reason(err)})\n`),
       );
+      settleInFlight();
     })();
     // Entries made after the first close go straight to the fallback file, so
-    // every close waits for it.
-    return closing.then(() => {
-      settleInFlight();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      return Promise.race([
-        fallbackTail,
-        new Promise<void>((resolve) => {
-          timer = setTimeout(() => {
-            toStderr(`zipkit: log fallback did not finish within ${waitMs} ms; its outcome is unknown\n`);
-            resolve();
-          }, waitMs);
-        }),
-      ]).finally(() => clearTimeout(timer));
+    // every close waits for its stream to write them.
+    return closing.then(async () => {
+      const stream = fallback;
+      if (stream === null || stream === "stderr") return;
+      fallback = null;
+      await new Promise<void>((resolve) => { stream.end(resolve); });
     });
   };
 

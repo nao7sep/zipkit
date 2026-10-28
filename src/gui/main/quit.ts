@@ -1,8 +1,11 @@
 /**
  * Quitting, per the unsaved-edits-conventions (Quitting). Every quit reaches
- * the same sequence: ask before discarding an open Settings draft, capture issued job edits, stop the running job, finish submitted Settings, save the queue, let the last pane
+ * the same sequence: ask before discarding an open Settings draft, stop the
+ * running job, finish submitted Settings, save the queue, let the last pane
  * layout write land, let the backup history and the log write what they hold,
- * then terminate Electron.
+ * then terminate Electron. Job edits the window sent before the quit are taken
+ * while it waits for the job, since the engine accepts edits until the queue
+ * save begins.
  *
  * The queue and submitted Settings are the user's work. When either cannot be saved on a quit the user
  * started, the quit stops and asks: Retry, Quit Anyway, or Cancel, which keeps
@@ -10,13 +13,14 @@
  * ending the session nothing asks: a question already open is answered for it,
  * and a failed save is logged.
  *
- * Every step is bounded. OS-driven quit skips optional backup closure and its
- * bounds stay under five seconds; Windows session end uses one two-second save budget. A step past its bound is logged and
- * left behind, so quitting always ends in an exit; its outcome is unknown. Work
- * left behind may be stuck in a native call (a hung volume, a worker inside
- * SQLite), and Electron's ordinary exit waits for such work. Final exit uses
- * `forceExit` if a step was abandoned or native I/O is still physically pending,
- * even when its cancelled caller already settled successfully.
+ * The whole sequence has one deadline, {@link QUIT_DEADLINE_MS}, and each step
+ * draws on what is left of it; the user's time on a question does not count,
+ * and an answer starts the deadline again. OS-driven quit skips optional backup
+ * closure; Windows session end uses one two-second save budget. A step past the
+ * deadline is logged and left behind, so quitting always ends in an exit; its
+ * outcome is unknown. Work left behind may be stuck in a native call (a hung
+ * volume, a worker inside SQLite), and Electron's ordinary exit waits for such
+ * work, so the exit then uses `forceExit`.
  *
  * `app.quit()` is not a reliable continuation after macOS has already closed
  * the last window. `app.exit()` is safe here because the quit work has settled
@@ -25,16 +29,10 @@
 
 import { StepTimeout } from "./step-timeout.js";
 
-/** How long quit waits for each step before moving on without it. */
-export const QUIT_BOUNDS_MS = {
-  capture: 500,
-  stopJob: 1_500,
-  settings: 500,
-  flush: 1_000,
-  layout: 500,
-  backups: 500,
-  log: 500,
-} as const;
+/** How long the quit sequence's steps may take together before quit moves on
+ *  without what is left: under five seconds, so an OS-driven quit (macOS logout
+ *  or shutdown) exits before the OS gives up on the app. */
+export const QUIT_DEADLINE_MS = 4_500;
 
 /** Total time the end of a Windows session waits for required saves. */
 export const SESSION_END_SAVE_MS = 2_000;
@@ -66,7 +64,6 @@ export interface QuitSteps {
   settingsDraftOpen(): boolean;
   /** Ask whether to discard them; resolves `true` to discard. */
   askDiscardSettingsDraft(signal: AbortSignal): Promise<boolean>;
-  captureEdits(): Promise<void>;
   /** Cancel the running job and resolve once it has stopped. */
   stopJob(): Promise<void>;
   settleSettings(): Promise<void>;
@@ -84,20 +81,21 @@ export interface QuitSteps {
   closeBackups(): Promise<void>;
   /** Write the log's records still in flight. */
   closeLog(): Promise<void>;
-  /** A step failed or passed its bound; quit goes on without it. */
+  /** A step failed or ran past the deadline; quit goes on without it. */
   onStepFailed(step: QuitStep, error: unknown): void;
   exit(code: number): void;
   /** End the process without the runtime's own cleanup, which can wait forever
    *  on work stuck in a native call. */
   forceExit(): void;
-  nativeWorkPending(): boolean;
 }
 
 export { StepTimeout };
 
 /** Resolves `undefined` when `work` succeeds within `ms`, its error when it
- *  fails, and a timeout error when the bound elapses first. Never rejects. */
+ *  fails, and a timeout error when the time runs out first. Never rejects. */
 async function failureWithin(work: () => Promise<void>, ms: number, what: string): Promise<unknown> {
+  // No time left: the step is not started.
+  if (ms <= 0) return new StepTimeout(`${what} had no time left before the exit deadline`);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const elapsed = new Promise<Error>((resolve) => {
     timer = setTimeout(() => resolve(new StepTimeout(`${what} did not finish within ${ms} ms`)), ms);
@@ -120,8 +118,9 @@ async function failureWithin(work: () => Promise<void>, ms: number, what: string
 export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): Promise<void> {
   let cancelled = false;
   let leftBehind = false;
-  const bounded = async (work: () => Promise<void>, ms: number, what: string): Promise<unknown> => {
-    const error = await failureWithin(work, ms, what);
+  let deadline = Date.now() + QUIT_DEADLINE_MS;
+  const bounded = async (work: () => Promise<void>, what: string): Promise<unknown> => {
+    const error = await failureWithin(work, deadline - Date.now(), what);
     if (error instanceof StepTimeout) leftBehind = true;
     return error;
   };
@@ -137,31 +136,15 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
       }
       if (!discard && !session.ending) { cancelled = true; steps.onCancelled(); return; }
     }
-    for (;;) {
-      const captureError = await bounded(steps.captureEdits, QUIT_BOUNDS_MS.capture, "pending job edits");
-      if (captureError === undefined) break;
-      steps.onStepFailed("queue", captureError);
-      if (session.ending) break;
-      let choice: QueueNotSavedChoice;
-      try { choice = await steps.askQueueNotSaved(session.signal); }
-      catch (error) {
-        steps.onStepFailed("question", error);
-        if (session.ending) break;
-        cancelled = true; steps.onCancelled(); return;
-      }
-      if (session.ending || choice === "quit") break;
-      if (choice === "cancel") { cancelled = true; steps.onCancelled(); return; }
-    }
-    const jobError = await bounded(steps.stopJob, QUIT_BOUNDS_MS.stopJob, "the cancelled job");
+    deadline = Date.now() + QUIT_DEADLINE_MS;
+    const jobError = await bounded(steps.stopJob, "the cancelled job");
     if (jobError !== undefined) steps.onStepFailed("job", jobError);
     for (const save of [
-      { work: steps.settleSettings, bound: QUIT_BOUNDS_MS.settings, step: "settings" as const,
-        ask: steps.askSettingsNotSaved, done: () => {} },
-      { work: steps.flush, bound: QUIT_BOUNDS_MS.flush, step: "queue" as const,
-        ask: steps.askQueueNotSaved, done: steps.onFlushed },
+      { work: steps.settleSettings, step: "settings" as const, ask: steps.askSettingsNotSaved, done: () => {} },
+      { work: steps.flush, step: "queue" as const, ask: steps.askQueueNotSaved, done: steps.onFlushed },
     ]) {
       for (;;) {
-        const flushError = await bounded(save.work, save.bound, `the ${save.step} save`);
+        const flushError = await bounded(save.work, `the ${save.step} save`);
         if (flushError === undefined) {
           save.done();
           break;
@@ -184,22 +167,23 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
           steps.onCancelled();
           return;
         }
+        deadline = Date.now() + QUIT_DEADLINE_MS;
       }
     }
   } finally {
     if (!cancelled) {
-      const layoutError = await bounded(steps.settleLayout, QUIT_BOUNDS_MS.layout, "the pane layout write");
+      const layoutError = await bounded(steps.settleLayout, "the pane layout write");
       if (layoutError !== undefined) steps.onStepFailed("layout", layoutError);
       // The backup history may log a failure, so the log closes last. At the end of an OS session
       // its pending writes are skipped (data-backup conventions); SQLite's journal keeps the store
       // whole when the process ends with the thread still open.
       if (!session.ending) {
-        const backupsError = await bounded(steps.closeBackups, QUIT_BOUNDS_MS.backups, "the backup history");
+        const backupsError = await bounded(steps.closeBackups, "the backup history");
         if (backupsError !== undefined) steps.onStepFailed("backups", backupsError);
       }
       // A log that cannot close has nowhere to report it.
-      await bounded(steps.closeLog, QUIT_BOUNDS_MS.log, "the log");
-      if (leftBehind || steps.nativeWorkPending()) steps.forceExit();
+      await bounded(steps.closeLog, "the log");
+      if (leftBehind) steps.forceExit();
       else steps.exit(0);
     }
   }
@@ -213,17 +197,17 @@ export async function finishStartupHalt(steps: {
   onFailed(error: unknown): void;
   exit(code: number): void;
   forceExit(): void;
-  nativeWorkPending(): boolean;
 }): Promise<void> {
   try {
     await steps.present();
   } catch (error) {
     steps.onFailed(error);
   } finally {
-    const backups = await failureWithin(steps.closeBackups, QUIT_BOUNDS_MS.backups, "startup backup cleanup");
+    const deadline = Date.now() + QUIT_DEADLINE_MS;
+    const backups = await failureWithin(steps.closeBackups, deadline - Date.now(), "startup backup cleanup");
     if (backups !== undefined) steps.onFailed(backups);
-    const log = await failureWithin(steps.closeLog, QUIT_BOUNDS_MS.log, "startup log cleanup");
-    if (backups instanceof StepTimeout || log instanceof StepTimeout || steps.nativeWorkPending()) steps.forceExit();
+    const log = await failureWithin(steps.closeLog, deadline - Date.now(), "startup log cleanup");
+    if (backups instanceof StepTimeout || log instanceof StepTimeout) steps.forceExit();
     else steps.exit(1);
   }
 }
@@ -237,7 +221,6 @@ export interface SessionEndSteps {
   onStepFailed(step: QuitStep, error: unknown): void;
   exit(code: number): void;
   forceExit(): void;
-  nativeWorkPending(): boolean;
 }
 
 /**
@@ -245,10 +228,9 @@ export interface SessionEndSteps {
  * `before-quit` then, and the OS ends the process as soon as the main window's
  * `session-end` handler returns, so this saves submitted Settings and the queue within
  * its bound, logs a failure, and exits before returning. It never asks. The save
- * writes the engine's current jobs, never older than a debounced save already
- * under way; that save can finish only the one call it has started while this
- * thread waits, so an older rename landing last is not a path worth more
- * machinery.
+ * writes the engine's current jobs, never older than a save already under way;
+ * that save can finish only the one call it has started while this thread
+ * waits, so an older rename landing last is not a path worth more machinery.
  */
 export function endSessionNow(steps: SessionEndSteps): void {
   let leftBehind = false;
@@ -268,7 +250,7 @@ export function endSessionNow(steps: SessionEndSteps): void {
       }
     }
   } finally {
-    if (leftBehind || steps.nativeWorkPending()) steps.forceExit();
+    if (leftBehind) steps.forceExit();
     else steps.exit(0);
   }
 }
@@ -328,7 +310,7 @@ export function createQuitControl(steps: QuitRequestSteps): QuitControl {
         try {
           // A job still running has no bounded way to finish on its own schedule,
           // so quitting must choose: cancel it (its writer removes its own temp
-          // file, within quit's bound) or let the user keep working. An ending
+          // file, within quit's deadline) or let the user keep working. An ending
           // session cancels it without asking.
           if (!ending && steps.hasRunningJob()) {
             let confirmed: boolean;
