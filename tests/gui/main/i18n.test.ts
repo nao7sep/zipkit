@@ -80,22 +80,6 @@ describe("AppKit language alignment", () => {
   });
 });
 
-describe("applyLanguagePreference", () => {
-  it("keeps the last of overlapping saved choices, whichever catalogue loads first", async () => {
-    vi.resetModules();
-    const i18n = await import("../../../src/gui/main/i18n.js");
-    const { loadCatalogue } = await import("../../../src/gui/shared/i18n/catalogues.js");
-    await i18n.settleLanguage("en", vi.fn());
-    await loadCatalogue("de");
-
-    const first = i18n.applyLanguagePreference("fr", vi.fn());
-    const second = i18n.applyLanguagePreference("de", vi.fn());
-    await Promise.all([first, second]);
-
-    expect(i18n.mainTranslator().language).toBe("de");
-  });
-});
-
 describe("applyTimeZonePreference", () => {
   it("hands the windows the saved display zone with the language, and System as the computer's", async () => {
     vi.resetModules();

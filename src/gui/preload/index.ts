@@ -66,10 +66,11 @@ const api = {
   deleteOriginals: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:deleteOriginals", id),
   cancelJob: (id: string): Promise<void> => ipcRenderer.invoke("zipkit:cancelJob", id),
   getPlan: (id: string): Promise<PlanReport | null> => ipcRenderer.invoke("zipkit:getPlan", id),
-  getQueue: (): Promise<Job[]> => ipcRenderer.invoke("zipkit:getQueue"),
   onQueue: (callback: (jobs: Job[]) => void): (() => void) => {
     const handler = (_e: Electron.IpcRendererEvent, jobs: Job[]): void => callback(jobs);
     ipcRenderer.on("zipkit:queue", handler);
+    // Main answers with the whole job list, ahead of every later update.
+    ipcRenderer.send("zipkit:subscribeQueue");
     return () => {
       ipcRenderer.removeListener("zipkit:queue", handler);
     };

@@ -177,34 +177,22 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    let live = true;
-    let loaded = false;
-    let latestQueue: Job[] | null = null;
     let unsubscribe = () => {};
 
     try {
-      // Subscribe before the snapshot read so an update that lands during
-      // hydration cannot be overwritten by an older getQueue response.
-      unsubscribe = window.zipkit.onQueue((next) => {
-        latestQueue = next;
-        if (live && loaded) setJobs(next);
-      });
+      // The subscription's first message is the whole job list, and every
+      // later one replaces it, so the window has one source for its jobs.
+      unsubscribe = window.zipkit.onQueue(setJobs);
     } catch (error) {
       window.zipkit.reportError("subscribe to queue during app load", reportableError(error));
       setLoadState("failed");
-      return () => {
-        live = false;
-      };
+      return;
     }
 
     void Promise.all([
-      window.zipkit.getQueue(),
       window.zipkit.getSettings(),
       window.zipkit.getLayout(),
-    ]).then(([initialJobs, settings, layout]) => {
-      if (!live) return;
-      loaded = true;
-      setJobs(latestQueue ?? initialJobs);
+    ]).then(([settings, layout]) => {
       setDefaults(settings.defaults);
       setUiFontFamily(settings.uiFontFamily);
       setTheme(settings.theme);
@@ -217,15 +205,11 @@ export function App() {
       setIntent(clampLayout(layout));
       setLoadState("ready");
     }).catch((error) => {
-      if (!live) return;
       window.zipkit.reportError("load required application state", reportableError(error));
       setLoadState("failed");
     });
 
-    return () => {
-      live = false;
-      unsubscribe();
-    };
+    return unsubscribe;
   }, [loadAttempt]);
 
   // A failed queue save stays shown until a later save succeeds or it is dismissed.
@@ -717,8 +701,6 @@ function JobView({
   const [opts, setOpts] = useState<GuiOptions>(job.options);
   const [plan, setPlan] = useState<PlanReport | null>(null);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
-  const archiveRevision = useRef(job.archiveRevision);
-  archiveRevision.current = job.archiveRevision;
   const [planLoadFailed, setPlanLoadFailed] = useState(false);
   const [planAttempt, setPlanAttempt] = useState(0);
   // The job's progress: its recorded events, from this and earlier launches,
@@ -733,8 +715,6 @@ function JobView({
   const useDefaults = useSettingsIntent && parametersEqual(opts, defaults);
   // Folded while the job uses the Settings' parameters; unticking unfolds.
   const [paramsOpen, setParamsOpen] = useState(() => !parametersEqual(job.options, defaults));
-  const operationAttempt = useRef(0);
-  useEffect(() => () => { operationAttempt.current++; }, []);
 
   // The one rule the engine also enforces: what this pane disables is exactly what
   // the engine refuses.
@@ -746,34 +726,33 @@ function JobView({
     setUseSettingsIntent(parametersEqual(job.options, defaults));
   }, [editable, job.options, defaults]);
 
+  // A newer read of the job's plan supersedes this one.
   useEffect(() => {
-    let live = true;
+    const read = new AbortController();
     void window.zipkit.getPlan(job.id).then((p) => {
-      if (live) { setPlan(p); setPlanLoadFailed(false); }
+      if (!read.signal.aborted) { setPlan(p); setPlanLoadFailed(false); }
     }).catch((error) => {
-      if (!live) return;
+      if (read.signal.aborted) return;
       window.zipkit.reportError("load selected job plan", reportableError(error));
       setPlan(null);
       setPlanLoadFailed(true);
     });
-    return () => {
-      live = false;
-    };
+    return () => read.abort();
   }, [job.id, job.state, planAttempt]);
 
   useEffect(() => {
-    let live = true;
+    const read = new AbortController();
     const unsubscribe = window.zipkit.onEvents((batch) => {
       const mine = batch.filter((event) => event.jobId === job.id);
       if (mine.length > 0) setEvents((held) => mergeJobEvents(held, mine));
     });
     void window.zipkit.getJobEvents(job.id).then((recorded) => {
-      if (live) setEvents((held) => mergeJobEvents(recorded, held));
+      if (!read.signal.aborted) setEvents((held) => mergeJobEvents(recorded, held));
     }).catch((error) => {
       window.zipkit.reportError("load job progress", reportableError(error));
     });
     return () => {
-      live = false;
+      read.abort();
       unsubscribe();
     };
   }, [job.id]);
@@ -783,31 +762,20 @@ function JobView({
     if (mine) setCounts(mine.counts);
   }), [job.id]);
 
-  function beginOperation(): number {
-    const attempt = ++operationAttempt.current;
-    onOperationResult(null);
-    return attempt;
-  }
-
-  function finishOperation(attempt: number): void {
-    if (operationAttempt.current === attempt) onOperationResult(null);
-  }
-
-  function failOperation(attempt: number, context: string, result: MessageKey, error: unknown, recover?: () => void) {
+  // An operation clears the last one's result as it starts and shows its own
+  // failure.
+  function failOperation(context: string, result: MessageKey, error: unknown, recover?: () => void) {
     window.zipkit.reportError(context, reportableError(error));
-    if (operationAttempt.current !== attempt) return;
     recover?.();
     onOperationResult({ message: message(result), severity: "error" });
   }
 
   async function persistOptions(next: GuiOptions) {
-    const attempt = beginOperation();
+    onOperationResult(null);
     try {
       await window.zipkit.updateJob(job.id, { options: next });
-      finishOperation(attempt);
     } catch (error) {
       failOperation(
-        attempt,
         "update job options",
         "result.optionsSaveFailed",
         error,
@@ -844,10 +812,9 @@ function JobView({
   // job — nothing is moved or deleted until it actually runs, and that
   // consequence is surfaced on the run path, not on this selection.
   function changeIntent(intent: JobIntent) {
-    const attempt = beginOperation();
+    onOperationResult(null);
     void window.zipkit.updateJob(job.id, { intent })
-      .then(() => finishOperation(attempt))
-      .catch((error) => failOperation(attempt, "update job intent", "result.intentFailed", error));
+      .catch((error) => failOperation("update job intent", "result.intentFailed", error));
   }
 
   // Input CRUD: add appends paths (from the picker or a drop), skipping ones
@@ -918,10 +885,9 @@ function JobView({
     };
   }
   function removeInput(path: string) {
-    const attempt = beginOperation();
+    onOperationResult(null);
     void window.zipkit.removeJobInput(job.id, path)
-      .then(() => finishOperation(attempt))
-      .catch((error) => failOperation(attempt, "remove input from job", "result.removeInputFailed", error));
+      .catch((error) => failOperation("remove input from job", "result.removeInputFailed", error));
   }
 
   async function onCommand(c: JobCommand) {
@@ -933,33 +899,28 @@ function JobView({
         // archive-and-trash run and null for a plain save.
         const ask = runConfirmation(job, t);
         if (ask && !(await confirm(ask))) break;
-        const attempt = beginOperation();
-        try { await window.zipkit.runJob(job.id, { intent: job.intent, inputs: [...job.inputs] }); finishOperation(attempt); }
-        catch (error) { failOperation(attempt, "run job", "result.runFailed", error); }
+        onOperationResult(null);
+        try { await window.zipkit.runJob(job.id, { intent: job.intent, inputs: [...job.inputs] }); }
+        catch (error) { failOperation("run job", "result.runFailed", error); }
         break;
       }
       case "cancel": {
-        const attempt = beginOperation();
-        try { await window.zipkit.cancelJob(job.id); finishOperation(attempt); }
-        catch (error) { failOperation(attempt, "cancel job", "result.cancelJobFailed", error); }
+        onOperationResult(null);
+        try { await window.zipkit.cancelJob(job.id); }
+        catch (error) { failOperation("cancel job", "result.cancelJobFailed", error); }
         break;
       }
       case "verify": {
-        const attempt = beginOperation();
-        try {
-          const revision = archiveRevision.current;
-          const result = await window.zipkit.verify(job.id);
-          if (operationAttempt.current === attempt && revision === archiveRevision.current) setVerify(result);
-          finishOperation(attempt);
-        }
-        catch (error) { failOperation(attempt, "verify archive", "result.verifyFailed", error); }
+        onOperationResult(null);
+        try { setVerify(await window.zipkit.verify(job.id)); }
+        catch (error) { failOperation("verify archive", "result.verifyFailed", error); }
         break;
       }
       case "reveal": {
         if (job.output) {
-          const attempt = beginOperation();
-          try { await window.zipkit.reveal(job.output); finishOperation(attempt); }
-          catch (error) { failOperation(attempt, "reveal archive", "result.revealFailed", error); }
+          onOperationResult(null);
+          try { await window.zipkit.reveal(job.output); }
+          catch (error) { failOperation("reveal archive", "result.revealFailed", error); }
         }
         break;
       }
@@ -973,9 +934,9 @@ function JobView({
             danger: true,
           })
         ) {
-          const attempt = beginOperation();
-          try { await window.zipkit.trashOriginals(job.id); finishOperation(attempt); }
-          catch (error) { failOperation(attempt, "trash job originals", "result.trashOriginalsFailed", error); }
+          onOperationResult(null);
+          try { await window.zipkit.trashOriginals(job.id); }
+          catch (error) { failOperation("trash job originals", "result.trashOriginalsFailed", error); }
         }
         break;
       case "delete-originals":
@@ -988,9 +949,9 @@ function JobView({
             danger: true,
           })
         ) {
-          const attempt = beginOperation();
-          try { await window.zipkit.deleteOriginals(job.id); finishOperation(attempt); }
-          catch (error) { failOperation(attempt, "delete job originals", "result.deleteOriginalsFailed", error); }
+          onOperationResult(null);
+          try { await window.zipkit.deleteOriginals(job.id); }
+          catch (error) { failOperation("delete job originals", "result.deleteOriginalsFailed", error); }
         }
         break;
       case "remove-archive":
@@ -1004,9 +965,9 @@ function JobView({
             danger: true,
           })
         ) {
-          const attempt = beginOperation();
-          try { await window.zipkit.removeArchive(job.id); finishOperation(attempt); }
-          catch (error) { failOperation(attempt, "remove job archive", "result.removeArchiveFailed", error); }
+          onOperationResult(null);
+          try { await window.zipkit.removeArchive(job.id); }
+          catch (error) { failOperation("remove job archive", "result.removeArchiveFailed", error); }
         }
         break;
     }

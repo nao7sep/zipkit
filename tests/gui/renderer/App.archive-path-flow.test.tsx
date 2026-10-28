@@ -67,8 +67,11 @@ it("plans the picked folder with the edited name after parameter reset and job r
   const chooseOutputDir = vi.fn(async () => selected);
   const reportError = vi.fn();
   Object.defineProperty(window, "zipkit", { configurable: true, value: {
-    onQueue: (listener: typeof pushQueue) => { pushQueue = listener; return () => { pushQueue = () => {}; }; },
-    getQueue: async () => structuredClone(engine.snapshot()),
+    onQueue: (listener: typeof pushQueue) => {
+      pushQueue = listener;
+      listener(structuredClone(engine.snapshot()));
+      return () => { pushQueue = () => {}; };
+    },
     updateJob: async (jobId: string, patch: Parameters<QueueEngine["update"]>[1]) => engine.update(jobId, patch),
     getPlan: async (jobId: string) => { const plan = engine.getPlan(jobId); return plan ? toPlanReport(plan) : null; },
     refreshJob: (jobId: string) => engine.refresh(jobId),

@@ -56,19 +56,19 @@ export function RecordsApp(): ReactElement | null {
   const [listWidth, setListWidth] = useState<number | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    const reads = new AbortController();
     window.zipkit.getRecordsListWidth().then(
       (width) => {
-        if (!cancelled) setListWidth(width);
+        if (!reads.signal.aborted) setListWidth(width);
       },
       (error: unknown) => {
         report("read the records list width", error);
-        if (!cancelled) setListWidth(RECORDS_LIST_WIDTH.default);
+        if (!reads.signal.aborted) setListWidth(RECORDS_LIST_WIDTH.default);
       },
     );
     let settingsUpdated = false;
     const applyFont = (settings: GuiSettings) => {
-      if (cancelled) return;
+      if (reads.signal.aborted) return;
       const family = settings.uiFontFamily.trim();
       if (family) document.documentElement.style.setProperty("--font-ui", family);
       else document.documentElement.style.removeProperty("--font-ui");
@@ -82,7 +82,7 @@ export function RecordsApp(): ReactElement | null {
       (error: unknown) => report("read the UI font for the Records window", error),
     );
     return () => {
-      cancelled = true;
+      reads.abort();
       unsubscribe();
     };
   }, []);
@@ -203,21 +203,20 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
       setDetail({ status: "none" });
       return;
     }
-    let cancelled = false;
+    // A newer selection's read supersedes this one.
+    const read = new AbortController();
     setDetail({ status: "loading" });
     window.zipkit.readRecordDetail(selected.kind, selected.id).then(
       (record) => {
-        if (!cancelled) setDetail(record === null ? { status: "failed" } : { status: "ready", record });
+        if (!read.signal.aborted) setDetail(record === null ? { status: "failed" } : { status: "ready", record });
       },
       (error: unknown) => {
-        if (cancelled) return;
+        if (read.signal.aborted) return;
         report("read a record", error);
         setDetail({ status: "failed" });
       },
     );
-    return () => {
-      cancelled = true;
-    };
+    return () => read.abort();
     // The selection is compared by its key, not by the object holding it.
   }, [selectedKey]);
 

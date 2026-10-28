@@ -10,7 +10,7 @@
 import { ipcMain, shell } from "electron";
 import { nanoid } from "nanoid";
 import type { GuiOptions } from "../shared/spec.js";
-import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
+import type { JobIntent, SavedJob } from "../shared/queue.js";
 import type { JobAction, LogEvent, PlanReport, ProgressCounts, VerifyResult } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
@@ -149,7 +149,8 @@ export function closeQueueEdits(): void { appAdmission.close(); }
 export function resumeQueueAfterCancelledQuit(): void { engine.resume(); }
 
 export function registerQueueIpc(): void {
-  ipcMain.handle("zipkit:getQueue", async (): Promise<Job[]> => engine.snapshot());
+  // A window subscribing gets the whole job list first; later changes follow it.
+  ipcMain.on("zipkit:subscribeQueue", (event) => event.sender.send("zipkit:queue", engine.snapshot()));
 
   ipcMain.handle(
     "zipkit:addJob",

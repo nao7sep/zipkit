@@ -187,9 +187,8 @@ export interface ZipKitGuiApi {
   /** The full plan for a job's detail view, or null if it has none right now. */
   /** The selected job's plan as the report shows it: only the entries it lists. */
   getPlan(id: string): Promise<PlanReport | null>;
-  /** The current job list — the initial fetch on mount; `onQueue` pushes updates. */
-  getQueue(): Promise<Job[]>;
-  /** Subscribe to the job list; returns an unsubscribe function. */
+  /** Subscribe to the job list: the whole list first, then each change;
+   *  returns an unsubscribe function. */
   onQueue(callback: (jobs: Job[]) => void): () => void;
   /** Follow whether the latest queue save succeeded; returns an unsubscribe function. */
   onQueueSaved(callback: (saved: boolean) => void): () => void;

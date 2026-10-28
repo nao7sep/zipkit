@@ -39,7 +39,7 @@ describe("App file-drop receivers", () => {
   let container: HTMLDivElement;
   const addJob = vi.fn(async () => "job-from-drop");
   const chooseInputs = vi.fn<() => Promise<string[]>>();
-  const getQueue = vi.fn<() => Promise<Job[]>>();
+  const initialQueue = vi.fn<() => Job[]>();
   const updateJob = vi.fn(async (_id?: string, _patch?: { inputs?: string[] }) => {});
   const addJobInputs = vi.fn(async (_id: string, paths: string[]) => ({ accepted: paths, duplicates: 0 }));
 
@@ -47,15 +47,14 @@ describe("App file-drop receivers", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     addJob.mockReset().mockResolvedValue("job-from-drop");
     chooseInputs.mockReset().mockResolvedValue([]);
-    getQueue.mockReset().mockResolvedValue([]);
+    initialQueue.mockReset().mockReturnValue([]);
     updateJob.mockReset().mockResolvedValue(undefined);
     addJobInputs.mockReset().mockImplementation(async (_id, paths) => ({ accepted: paths, duplicates: 0 }));
     Object.defineProperty(window, "zipkit", {
       configurable: true,
       value: {
-        onQueue: () => () => {},
+        onQueue: (listener: (jobs: Job[]) => void) => { listener(initialQueue()); return () => {}; },
         onQueueSaved: () => () => {},
-        getQueue,
         onSettingsChanged: vi.fn(() => () => {}),
         onOpenAbout: vi.fn(() => () => {}),
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
@@ -123,7 +122,7 @@ describe("App file-drop receivers", () => {
   });
 
   it("adds a dropped file to the selected job only when it lands on Inputs", async () => {
-    getQueue.mockResolvedValue([{
+    initialQueue.mockReturnValue([{
       id: "job-1",
       inputs: ["/tmp/existing.txt"],
       entries: [{ path: "/tmp/existing.txt", kind: "file" }],
@@ -157,7 +156,7 @@ describe("App file-drop receivers", () => {
 
   it("keeps both overlapping deliveries while queue notifications are held", async () => {
     let inputs = ["/tmp/existing.txt"];
-    getQueue.mockResolvedValue([{
+    initialQueue.mockReturnValue([{
       id: "job-1", inputs, entries: [{ path: inputs[0]!, kind: "file" }],
       options: DEFAULT_OPTIONS, intent: SAVE, state: "ready",
     }]);

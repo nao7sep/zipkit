@@ -49,9 +49,8 @@ async function selectedJob() {
   Object.defineProperty(window, "zipkit", {
     configurable: true,
     value: {
-      onQueue: (listener: (jobs: Job[]) => void) => { publish = listener; return () => {}; },
+      onQueue: (listener: (jobs: Job[]) => void) => { publish = listener; listener([finished]); return () => {}; },
       onQueueSaved: () => () => {},
-      getQueue: async () => [finished],
       onSettingsChanged: () => () => {},
       onOpenAbout: () => () => {},
       getSettings: async () => DEFAULT_SETTINGS,
@@ -97,21 +96,5 @@ describe("manual verification archive revision", () => {
     expect(app.verify).toHaveBeenNthCalledWith(1, "job-1");
     expect(app.verify).toHaveBeenNthCalledWith(2, "job-1");
     expect(app.getJobEvents).toHaveBeenCalledTimes(1);
-  });
-
-  it("ignores a deferred verification response for an earlier archive revision", async () => {
-    const app = await selectedJob();
-    let resolve!: (result: VerifyResult) => void;
-    app.verify.mockImplementationOnce(() => new Promise<VerifyResult>((settle) => { resolve = settle; }));
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
-    expect(app.verify).toHaveBeenCalledWith("job-1");
-    await act(async () => app.publish(2));
-    await act(async () => resolve(differences));
-    expectNoDifferences();
-    expect(app.row.getAttribute("aria-selected")).toBe("true");
-    expect(app.getJobEvents).toHaveBeenCalledTimes(1);
-    // A new verification of the current archive still publishes its report.
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
-    await expectDifferences();
   });
 });

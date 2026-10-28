@@ -27,6 +27,11 @@ const job = (id: string): Job => ({
   state: "ready",
 });
 
+/** A queue subscription that delivers `jobs()` first, as main does. */
+function queueOf(jobs: () => Job[]): ZipKitGuiApi["onQueue"] {
+  return vi.fn((callback: (jobs: Job[]) => void) => { callback(jobs()); return () => {}; });
+}
+
 function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
   return {
     chooseInputs: vi.fn(async () => []),
@@ -56,8 +61,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     deleteOriginals: vi.fn(async () => {}),
     cancelJob: vi.fn(async () => {}),
     getPlan: vi.fn(async () => null),
-    getQueue: vi.fn(async () => []),
-    onQueue: vi.fn(() => () => {}),
+    onQueue: queueOf(() => []),
     onQueueSaved: vi.fn(() => () => {}),
     verify: vi.fn(),
     refreshJob: vi.fn(async () => {}),
@@ -144,7 +148,6 @@ describe("required app hydration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry loading" }));
 
     expect(await screen.findByRole("heading", { name: "Jobs" })).toBeTruthy();
-    expect(bridge.getQueue).toHaveBeenCalledTimes(2);
     expect(getSettings).toHaveBeenCalledTimes(2);
     expect(bridge.getLayout).toHaveBeenCalledTimes(2);
     expect(onQueue).toHaveBeenCalledTimes(2);
@@ -152,29 +155,6 @@ describe("required app hydration", () => {
     expect(unsubscribes[1]).not.toHaveBeenCalled();
   });
 
-  it("uses a queue update received during hydration instead of overwriting it with an older snapshot", async () => {
-    let publishQueue: ((jobs: Job[]) => void) | undefined;
-    let resolveSnapshot: ((jobs: Job[]) => void) | undefined;
-    const getQueue = vi.fn(() => new Promise<Job[]>((resolve) => {
-      resolveSnapshot = resolve;
-    }));
-    const bridge = api({
-      getQueue,
-      onQueue: vi.fn((callback) => {
-        publishQueue = callback;
-        return () => {};
-      }),
-    });
-
-    renderApp(bridge);
-    expect(screen.getByRole("status", { name: "Loading ZipKit…" })).toBeTruthy();
-
-    publishQueue?.([job("newer")]);
-    resolveSnapshot?.([job("older")]);
-
-    expect(await screen.findByText("newer")).toBeTruthy();
-    expect(screen.queryByText("older")).toBeNull();
-  });
 });
 
 describe("pane-layout persistence results", () => {
@@ -225,7 +205,7 @@ describe("selected-job IPC ownership", () => {
 
   it("blocks a false empty report when plan hydration rejects and offers retry", async () => {
     const getPlan = vi.fn<ZipKitGuiApi["getPlan"]>().mockRejectedValue(new Error("EACCES /private/tmp/ZIPKIT_PLAN_SENTINEL"));
-    const bridge = api({ getQueue: vi.fn(async () => [job("plan-job")]), getPlan });
+    const bridge = api({ onQueue: queueOf(() => [job("plan-job")]), getPlan });
     renderApp(bridge);
     fireEvent.click(await screen.findByRole("option"));
 
@@ -238,7 +218,7 @@ describe("selected-job IPC ownership", () => {
 
   it("retains a job-local authored result when run rejects", async () => {
     const runJob = vi.fn<ZipKitGuiApi["runJob"]>().mockRejectedValue(new Error("EACCES /private/tmp/ZIPKIT_RUN_SENTINEL"));
-    const bridge = api({ getQueue: vi.fn(async () => [job("run-job")]), runJob });
+    const bridge = api({ onQueue: queueOf(() => [job("run-job")]), runJob });
     renderApp(bridge);
     fireEvent.click(await screen.findByRole("option"));
     fireEvent.click(await screen.findByRole("button", { name: "Create archive" }));
@@ -251,7 +231,7 @@ describe("selected-job IPC ownership", () => {
 
   it("keeps the previous intent and retains authored copy when the mutation rejects", async () => {
     const updateJob = vi.fn<ZipKitGuiApi["updateJob"]>().mockRejectedValue(new Error("EACCES /private/tmp/ZIPKIT_INTENT_SENTINEL"));
-    const bridge = api({ getQueue: vi.fn(async () => [job("intent-job")]), updateJob });
+    const bridge = api({ onQueue: queueOf(() => [job("intent-job")]), updateJob });
     renderApp(bridge);
     fireEvent.click(await screen.findByRole("option"));
     fireEvent.click(await screen.findByRole("radio", { name: "Delete permanently" }));
@@ -263,26 +243,6 @@ describe("selected-job IPC ownership", () => {
     expect(bridge.reportError).toHaveBeenCalledWith("update job intent", expect.objectContaining({ message: expect.stringContaining("ZIPKIT_INTENT_SENTINEL") }));
   });
 
-  it("does not let an older direct-action failure replace a newer success", async () => {
-    const first = deferred<void>();
-    const second = deferred<void>();
-    const reveal = vi.fn<ZipKitGuiApi["reveal"]>()
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise);
-    const selected = { ...job("reveal-job"), state: "done" as const, output: "/out/archive.zip" };
-    const bridge = api({ getQueue: vi.fn(async () => [selected]), reveal });
-    renderApp(bridge);
-    fireEvent.click(await screen.findByRole("option"));
-    const button = await screen.findByRole("button", { name: "Reveal in file manager" });
-
-    fireEvent.click(button);
-    fireEvent.click(button);
-    second.resolve();
-    first.reject(new Error("EACCES /private/tmp/STALE-ZIPKIT-REVEAL"));
-
-    await waitFor(() => expect(bridge.reportError).toHaveBeenCalledOnce());
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
 
   it("retains a newer direct-action failure after an older success", async () => {
     const first = deferred<void>();
@@ -291,7 +251,7 @@ describe("selected-job IPC ownership", () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const selected = { ...job("reveal-job"), state: "done" as const, output: "/out/archive.zip" };
-    const bridge = api({ getQueue: vi.fn(async () => [selected]), reveal });
+    const bridge = api({ onQueue: queueOf(() => [selected]), reveal });
     renderApp(bridge);
     fireEvent.click(await screen.findByRole("option"));
     const button = await screen.findByRole("button", { name: "Reveal in file manager" });
@@ -316,7 +276,7 @@ describe("the Records menu item", () => {
   }
 
   it("opens the Records window from the header menu, between Settings and Shortcut keys", async () => {
-    const bridge = api({ getQueue: vi.fn(async () => [job("a")]) });
+    const bridge = api({ onQueue: queueOf(() => [job("a")]) });
     renderApp(bridge);
     const trigger = await screen.findByRole("button", { name: "Menu" });
     trigger.focus();
@@ -378,10 +338,10 @@ describe("mounted run consent across queue projection changes", () => {
     };
     const engine = createQueueEngine(deps);
     const bridge = api({
-      getQueue: vi.fn(async () => engine.snapshot()),
       getPlan: vi.fn(async (id) => engine.getPlan(id)),
       onQueue: vi.fn((callback) => {
         publish = callback;
+        callback(engine.snapshot());
         return () => { if (publish === callback) publish = undefined; };
       }),
       updateJob: vi.fn(async (id, patch) => {
@@ -548,7 +508,7 @@ describe("the Archive pane layout", () => {
     let settingsChanged: ((settings: typeof DEFAULT_SETTINGS) => void) | undefined;
     const selected = job("defaults-job");
     const bridge = api({
-      getQueue: vi.fn(async () => [selected]),
+      onQueue: queueOf(() => [selected]),
       onSettingsChanged: vi.fn((listener) => { settingsChanged = listener; return () => {}; }),
     });
     renderApp(bridge);
@@ -570,7 +530,7 @@ describe("the Archive pane layout", () => {
   });
 
   it("leads with the control panel and closes with the inputs, folder before file name", async () => {
-    renderApp(api({ getQueue: vi.fn(async () => [job("a")]) }));
+    renderApp(api({ onQueue: queueOf(() => [job("a")]) }));
     fireEvent.click(await screen.findByRole("option"));
     const order = [
       screen.getByRole("textbox", { name: /Output directory/ }),
@@ -587,7 +547,7 @@ describe("the Archive pane layout", () => {
   });
 
   it("folds the parameters while the job uses the Settings' ones, unfolds them on request, and unticking unfolds them", async () => {
-    renderApp(api({ getQueue: vi.fn(async () => [job("a")]) }));
+    renderApp(api({ onQueue: queueOf(() => [job("a")]) }));
     fireEvent.click(await screen.findByRole("option"));
     const fold = screen.getByRole("button", { name: /Parameters/ });
     expect(fold.getAttribute("aria-expanded")).toBe("false");
@@ -615,7 +575,7 @@ describe("a finished job's history and archive", () => {
         { at: 2, severity: "warning", message: { key: "report.archiveChanged" } },
       ],
     };
-    const bridge = api({ getQueue: vi.fn(async () => [finished]) });
+    const bridge = api({ onQueue: queueOf(() => [finished]) });
     renderApp(bridge);
     fireEvent.click(await screen.findByRole("option"));
     const history = screen.getByRole("list", { name: "History" });

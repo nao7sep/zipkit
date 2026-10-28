@@ -148,18 +148,14 @@ export function onLanguageChanged(listener: (translator: Translator) => void): (
   };
 }
 
-let applying = 0;
-
 /** Applies a saved choice: the window and every native surface follow at once.
- *  Of overlapping calls, the last one wins. */
+ *  The Settings owner saves, and so applies, one choice at a time. */
 export async function applyLanguagePreference(value: unknown, onError: (error: unknown) => void): Promise<void> {
-  const request = ++applying;
   await settledTranslator();
   const preference = normalizeLanguagePreference(value);
   if (preference === state!.preference) return;
   const { systemLanguage, systemLocale } = state!;
   const next = await build(systemLanguage, systemLocale, preference);
-  if (request !== applying) return;
   const previous = state!.translator.language;
   state = next;
   alignAppKit(preference, onError);

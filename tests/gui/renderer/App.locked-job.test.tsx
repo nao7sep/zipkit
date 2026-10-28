@@ -56,10 +56,10 @@ describe("a job that finishes mid-edit", () => {
       value: {
         onQueue: (listener: (jobs: Job[]) => void) => {
           pushQueue = listener;
+          listener([readyJob, otherJob]);
           return () => {};
         },
         onQueueSaved: () => () => {},
-        getQueue: async () => [readyJob, otherJob],
         onSettingsChanged: vi.fn(() => () => {}),
         onOpenAbout: vi.fn(() => () => {}),
         getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
