@@ -3,9 +3,9 @@
  * it unable to lose data: the archive does not sit inside an input (removing
  * that input would take it along), it verifies against its manifest, and a
  * fresh scan of the inputs still matches that manifest. Each check runs only
- * once those before it passed. The archive's state is read first, so the
- * answer can say which file verified, and once more right before the
- * originals go. Then each original goes in turn.
+ * once those before it passed, together the one check right before the
+ * originals go. The archive's state is read first, so the answer can say which
+ * file verified. Then each original goes in turn.
  */
 
 import { classify, fsFailure, ZipKitError } from "./errors.ts";
@@ -79,12 +79,6 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   try {
     const comparison = await steps.compare();
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
-    // The archive is read once more right before the originals go, so one
-    // replaced or removed during the checks does not let them go.
-    const after = await steps.state();
-    if (after.kind !== "present" || after.fingerprint !== verified.fingerprint) {
-      throw new ZipKitError("archive.changed", "Archive changed during the removal checks", { subject: archive });
-    }
   } catch (error) {
     return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive).toJSON() }, verified);
   }

@@ -42,7 +42,6 @@ export const ERROR_CODES = {
   "scan.output-is-input": "invalid",
   "write.not-writable": "invalid",
   "write.source-changed": "unavailable",
-  "archive.changed": "unavailable",
   "archive.not-zip": "invalid",
   "archive.malformed": "invalid",
   "archive.unsupported-method": "invalid",

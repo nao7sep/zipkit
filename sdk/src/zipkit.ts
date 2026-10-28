@@ -156,8 +156,8 @@ export class ZipKit {
    * Remove the originals an archive was made from, once removing them cannot
    * lose data, checked in order: the archive does not sit at or inside an
    * input, it verifies against its manifest, and a fresh scan of the spec's
-   * inputs still matches that manifest, every file and link by its content;
-   * the archive is read once more right before the originals go. Reads the
+   * inputs still matches that manifest, every file and link by its content.
+   * Reads the
    * archive once and every original once, reporting how far through
    * `onProgress` (stage `verify`, then `recheck`). Then each of the spec's
    * inputs goes in turn, to the Trash through the instance's `trash` option or
