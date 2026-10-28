@@ -11,6 +11,7 @@ import {
   type QuitSteps,
   type SessionEndSteps,
 } from "../../../src/gui/main/quit.js";
+import { eventually } from "../../helpers/eventually.js";
 
 function steps(overrides: Partial<QuitSteps> = {}): QuitSteps {
   return {
@@ -105,7 +106,7 @@ describe("stopFlushAndExit", () => {
     });
 
     const quitting = stopFlushAndExit(s, userQuit());
-    await vi.waitFor(() => expect(finishJob).toBeTypeOf("function"));
+    await eventually(() => expect(finishJob).toBeTypeOf("function"));
     expect(order).toEqual([]);
 
     finishJob();
@@ -235,7 +236,7 @@ describe("stopFlushAndExit", () => {
     });
 
     const quitting = stopFlushAndExit(s, session);
-    await vi.waitFor(() => expect(s.askQueueNotSaved).toHaveBeenCalledOnce());
+    await eventually(() => expect(s.askQueueNotSaved).toHaveBeenCalledOnce());
     session.end();
     await quitting;
 
@@ -418,10 +419,10 @@ describe("createQuitControl", () => {
     const control = createQuitControl({ hasRunningJob: () => true, confirmQuit, shutdown, onFailed });
     const event = { preventDefault: vi.fn() };
     control.beforeQuit(event);
-    await vi.waitFor(() => expect(onFailed).toHaveBeenCalledWith(failure));
+    await eventually(() => expect(onFailed).toHaveBeenCalledWith(failure));
     expect(shutdown).not.toHaveBeenCalled();
     control.beforeQuit(event);
-    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+    await eventually(() => expect(shutdown).toHaveBeenCalledOnce());
   });
 
   const quitEvent = () => ({ preventDefault: vi.fn() });
@@ -452,7 +453,7 @@ describe("createQuitControl", () => {
     expect(exit).not.toHaveBeenCalled();
 
     finish();
-    await vi.waitFor(() => expect(exit).toHaveBeenCalledOnce());
+    await eventually(() => expect(exit).toHaveBeenCalledOnce());
   });
 
   it("asks before cancelling a running job, and stays running when declined", async () => {
@@ -462,7 +463,7 @@ describe("createQuitControl", () => {
     const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => true, confirmQuit, shutdown });
 
     quit.beforeQuit(quitEvent());
-    await vi.waitFor(() => expect(confirmQuit).toHaveBeenCalledOnce());
+    await eventually(() => expect(confirmQuit).toHaveBeenCalledOnce());
     await Promise.resolve();
     expect(shutdown).not.toHaveBeenCalled();
 
@@ -470,7 +471,7 @@ describe("createQuitControl", () => {
     const again = quitEvent();
     quit.beforeQuit(again);
     expect(again.preventDefault).toHaveBeenCalledOnce();
-    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+    await eventually(() => expect(shutdown).toHaveBeenCalledOnce());
     expect(shutdown.mock.calls[0]?.[0]).toMatchObject({ ending: false });
   });
 
@@ -482,7 +483,7 @@ describe("createQuitControl", () => {
     quit.sessionEnding();
     quit.beforeQuit(quitEvent());
 
-    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+    await eventually(() => expect(shutdown).toHaveBeenCalledOnce());
     expect(confirmQuit).not.toHaveBeenCalled();
     expect(shutdown.mock.calls[0]?.[0]).toMatchObject({ ending: true });
   });
@@ -498,7 +499,7 @@ describe("createQuitControl", () => {
       await vi.advanceTimersByTimeAsync(SESSION_END_MARK_MS);
       quit.beforeQuit(quitEvent());
 
-      await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+      await eventually(() => expect(shutdown).toHaveBeenCalledOnce());
       expect(confirmQuit).toHaveBeenCalledOnce();
       const [signal] = confirmQuit.mock.calls[0] as unknown as [AbortSignal];
       expect(signal.aborted).toBe(false);
@@ -535,9 +536,9 @@ describe("createQuitControl", () => {
     const quit = createQuitControl({ onFailed: vi.fn(), hasRunningJob: () => true, confirmQuit, shutdown });
 
     quit.beforeQuit(quitEvent());
-    await vi.waitFor(() => expect(confirmQuit).toHaveBeenCalledOnce());
+    await eventually(() => expect(confirmQuit).toHaveBeenCalledOnce());
     quit.sessionEnding();
 
-    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+    await eventually(() => expect(shutdown).toHaveBeenCalledOnce());
   });
 });

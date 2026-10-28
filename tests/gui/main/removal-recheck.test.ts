@@ -17,6 +17,7 @@ import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
+import { eventually } from "../../helpers/eventually.js";
 
 it("keeps the originals when one was edited to the same size with its time put back", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-recheck-"));
@@ -52,9 +53,9 @@ it("keeps the originals when one was edited to the same size with its time put b
   });
   try {
     const id = engine.add([input], DEFAULT_OPTIONS, TRASH);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await eventually(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id, { intent: TRASH, inputs: [input] });
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.originalsChanges).toBeDefined(), { timeout: 10_000 });
+    await eventually(() => expect(engine.snapshot()[0]?.originalsChanges).toBeDefined());
     expect(engine.snapshot()[0]?.originalsChanges).toEqual({ missing: [], added: [], changed: [edited], unlisted: [] });
     expect(stages).toEqual(["verify", "recheck"]);
     expect(trash).not.toHaveBeenCalled();

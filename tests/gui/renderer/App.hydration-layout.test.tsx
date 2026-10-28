@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
@@ -13,6 +13,7 @@ import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { SAVE, TRASH } from "../../helpers/intents.js";
 import { SAFEST_INTENT } from "../../../src/gui/shared/queue.js";
+import { eventuallyRendered } from "../../helpers/eventually.js";
 
 class ResizeObserverStub {
   observe(): void {}
@@ -118,7 +119,7 @@ describe("queue save result", () => {
     expect(await screen.findByText(/The queue wasn’t saved/)).toBeTruthy();
 
     act(() => publish?.(true));
-    await waitFor(() => expect(screen.queryByText(/The queue wasn’t saved/)).toBeNull());
+    await eventuallyRendered(() => expect(screen.queryByText(/The queue wasn’t saved/)).toBeNull());
   });
 });
 
@@ -167,7 +168,7 @@ describe("pane-layout persistence results", () => {
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
     fireEvent.keyUp(splitter, { key: "ArrowRight" });
 
-    await waitFor(() => expect(bridge.reportError).toHaveBeenCalledWith("persist pane layout", expect.objectContaining({ message: "disk full" })));
+    await eventuallyRendered(() => expect(bridge.reportError).toHaveBeenCalledWith("persist pane layout", expect.objectContaining({ message: "disk full" })));
     expect(screen.queryByRole("alert")).toBeNull();
     const width = Number(splitter.getAttribute("aria-valuenow"));
     expect(width).toBeGreaterThan(DEFAULT_LAYOUT.jobsWidth);
@@ -301,7 +302,7 @@ describe("the Records menu item", () => {
     expect(bridge.reportError).toHaveBeenCalledWith("open the Records window", expect.objectContaining({ message: "no page" }));
 
     await chooseRecords();
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await eventuallyRendered(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 });
 
@@ -360,7 +361,7 @@ describe("mounted run consent across queue projection changes", () => {
     const { engine, deps, bridge, id } = ownedQueue(SAVE);
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
-      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
       // The job's own fields are editable while it uses the Settings' parameters,
@@ -387,7 +388,7 @@ describe("mounted run consent across queue projection changes", () => {
     const { engine, bridge } = ownedQueue(SAVE);
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
-      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
       fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "delivery" } });
@@ -407,12 +408,12 @@ describe("mounted run consent across queue projection changes", () => {
     const { engine, deps, bridge, id } = ownedQueue(SAVE);
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
-      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
       fireEvent.click(await screen.findByRole("radio", { name: "Move to Trash" }));
       const destructive = { ...SAVE, originals: "trash" as const };
-      await waitFor(() => expect(bridge.updateJob).toHaveBeenCalledWith(id, { intent: destructive }));
+      await eventuallyRendered(() => expect(bridge.updateJob).toHaveBeenCalledWith(id, { intent: destructive }));
       expect(engine.snapshot()[0]?.intent).toEqual(destructive);
       expect((screen.getByRole("radio", { name: "Keep" }) as HTMLInputElement).checked).toBe(true);
 
@@ -439,7 +440,7 @@ describe("mounted run consent across queue projection changes", () => {
     vi.mocked(bridge.chooseInputs).mockReturnValueOnce(new Promise<string[]>((resolve) => { releasePicker = resolve; }));
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
-      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
       fireEvent.click(within(screen.getByText("Inputs").parentElement!).getByRole("button", { name: "Add" }));
@@ -450,7 +451,7 @@ describe("mounted run consent across queue projection changes", () => {
       expect(bridge.runJob).not.toHaveBeenCalled();
 
       await act(async () => releasePicker([added]));
-      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       expect(bridge.addJobInputs).toHaveBeenCalledExactlyOnceWith(id, [added]);
       expect(engine.snapshot()[0]?.inputs).toEqual([original, added]);
       expect(dialog.textContent).toContain("the 1 original item will be moved");
@@ -474,7 +475,7 @@ describe("mounted run consent across queue projection changes", () => {
     const { engine, deps, bridge, id } = ownedQueue(SAFEST_INTENT, { withholdIntentProjection: false });
     let mounted: ReturnType<typeof renderApp> | undefined;
     try {
-      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
       const verify = await screen.findByRole("checkbox", { name: "Verify the archive after creating it" }) as HTMLInputElement;
@@ -483,8 +484,8 @@ describe("mounted run consent across queue projection changes", () => {
       expect((screen.getByRole("radio", { name: "Keep" }) as HTMLInputElement).checked).toBe(true);
 
       fireEvent.click(screen.getByRole("radio", { name: "Delete permanently" }));
-      await waitFor(() => expect(engine.snapshot()[0]?.intent).toEqual({ verify: true, originals: "delete" }));
-      await waitFor(() => expect(verify.disabled).toBe(true));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.intent).toEqual({ verify: true, originals: "delete" }));
+      await eventuallyRendered(() => expect(verify.disabled).toBe(true));
       expect(verify.checked).toBe(true);
       expect(screen.getByText("Removing the originals always verifies the archive first.")).toBeTruthy();
 
@@ -492,7 +493,7 @@ describe("mounted run consent across queue projection changes", () => {
       const dialog = await screen.findByRole("dialog", { name: "Create archive and delete originals permanently?" });
       expect(dialog.textContent).toContain("can’t be undone");
       fireEvent.click(within(dialog).getByRole("button", { name: "Create and delete permanently" }));
-      await waitFor(() => expect(engine.snapshot()[0]?.state).toBe("done"));
+      await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("done"));
       expect(bridge.runJob).toHaveBeenCalledWith(id, { intent: { verify: true, originals: "delete" }, inputs: [original] });
       expect(deps.deleteOriginals).toHaveBeenCalledWith([original], expect.any(AbortSignal));
       expect(deps.trash).not.toHaveBeenCalled();
@@ -585,7 +586,7 @@ describe("a finished job's history and archive", () => {
     ]);
     // A verified archive offers no second Verify.
     expect(screen.queryByRole("button", { name: "Verify" })).toBeNull();
-    await waitFor(() => expect(bridge.refreshJob).toHaveBeenCalledWith("a"));
+    await eventuallyRendered(() => expect(bridge.refreshJob).toHaveBeenCalledWith("a"));
     const before = vi.mocked(bridge.refreshJob).mock.calls.length;
     fireEvent.focus(window);
     expect(vi.mocked(bridge.refreshJob).mock.calls.length).toBe(before + 1);

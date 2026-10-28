@@ -51,11 +51,11 @@ describe("EntryCompressor", () => {
     }
   });
 
-  it("delivers the whole stream in order to a sink with random delays", async () => {
+  it("delivers the whole stream in order to a sink that answers on later turns", async () => {
     const input = Buffer.concat([randomBytes(1024 * 1024), Buffer.alloc(1024 * 1024, "zipkit ")]);
     const written: Buffer[] = [];
     const compressor = new EntryCompressor("deflate", async (chunk) => {
-      await new Promise((resolve) => setTimeout(resolve, Math.random() * 2));
+      if (Math.random() < 0.5) await new Promise((resolve) => setImmediate(resolve));
       written.push(Buffer.from(chunk));
     }, CHUNK, 6);
 
@@ -88,7 +88,7 @@ describe("EntryCompressor", () => {
     const compressor = new EntryCompressor("deflate", async () => {
       if (disposed) after++;
       inFlight++;
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setImmediate(resolve));
       inFlight--;
     }, CHUNK, 1);
     for (const chunk of chunksOf(randomBytes(1024 * 1024))) await compressor.update(chunk);
@@ -97,7 +97,7 @@ describe("EntryCompressor", () => {
     disposed = true;
 
     expect(inFlight).toBe(0);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setImmediate(resolve));
     expect(after).toBe(0);
   });
 });

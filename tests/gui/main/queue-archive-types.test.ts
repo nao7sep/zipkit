@@ -9,6 +9,7 @@ import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { ZipKit } from "zipkitsdk";
 import { TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
+import { eventually } from "../../helpers/eventually.js";
 
 it("keeps originals when a real archive's file type changes after publication", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-queue-type-"));
@@ -41,9 +42,9 @@ it("keeps originals when a real archive's file type changes after publication", 
   });
   try {
     const id = engine.add([input], DEFAULT_OPTIONS, TRASH);
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    await eventually(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
     engine.run(id, { intent: TRASH, inputs: [input] });
-    await vi.waitFor(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
+    await eventually(() => expect(engine.snapshot()[0]?.state).toBe("failed"));
     expect(trash).not.toHaveBeenCalled();
     expect(await readFile(input, "utf8")).toBe("target.txt");
   } finally {

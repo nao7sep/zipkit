@@ -2,7 +2,7 @@
 /** The selected folder must survive the job editor, parameter reset, pane
  * reopening and queue restore, then become the real SDK plan's destination.
  * Only native selection and the window transport are substituted. */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,6 +19,7 @@ import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { toPlanReport } from "../../../src/gui/shared/plan-report";
 import type { Job } from "../../../src/gui/shared/queue";
+import { eventuallyRendered } from "../../helpers/eventually.js";
 
 let root: string | undefined;
 const engines: QueueEngine[] = [];
@@ -63,7 +64,7 @@ it("plans the picked folder with the edited name after parameter reset and job r
   let engine = makeEngine();
   const id = engine.add(inputs, { ...DEFAULT_OPTIONS, level: 3 });
   const other = engine.add([inputs[0]!], DEFAULT_OPTIONS);
-  await vi.waitFor(() => expect(engine.snapshot().every((job) => job.state === "ready")).toBe(true));
+  await eventuallyRendered(() => expect(engine.snapshot().every((job) => job.state === "ready")).toBe(true));
   const chooseOutputDir = vi.fn(async () => selected);
   const reportError = vi.fn();
   Object.defineProperty(window, "zipkit", { configurable: true, value: {
@@ -84,7 +85,7 @@ it("plans the picked folder with the edited name after parameter reset and job r
   const show = () => render(<DialogHost><App /></DialogHost>);
   let view = show();
   const open = async (jobId: string) => {
-    await waitFor(() => expect(view.container.querySelector(`[data-job-id="${jobId}"]`)).toBeTruthy());
+    await eventuallyRendered(() => expect(view.container.querySelector(`[data-job-id="${jobId}"]`)).toBeTruthy());
     await act(async () => { fireEvent.click(view.container.querySelector(`[data-job-id="${jobId}"]`)!); });
   };
   await open(id);
@@ -106,7 +107,7 @@ it("plans the picked folder with the edited name after parameter reset and job r
   await engine.shutdown();
   engine = makeEngine();
   engine.restore((await loadQueue()).value.jobs);
-  await vi.waitFor(() => expect(engine.snapshot().every((job) => job.state === "ready")).toBe(true));
+  await eventuallyRendered(() => expect(engine.snapshot().every((job) => job.state === "ready")).toBe(true));
   view = show();
   await open(id);
   expect((screen.getByRole("textbox", { name: /^Output directory/ }) as HTMLInputElement).value).toBe(selected);

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { eventually } from "../../helpers/eventually.js";
 const mocks = vi.hoisted(() => ({
   exit: vi.fn(), quit: vi.fn(), notifyStartupFailure: vi.fn(async () => {}),
   bootstrapLoaded: vi.fn(), installAppMenu: vi.fn(), prepareStorage: vi.fn((_root: string) => {}),
@@ -42,7 +43,7 @@ describe("startup entry", () => {
     if (stage === "resolution") mocks.storageRoot.mockImplementationOnce(() => { throw error; });
     else mocks.prepareStorage.mockImplementationOnce(() => { throw error; });
     await expect(import("../../../src/gui/main/index.js")).resolves.toBeDefined();
-    await vi.waitFor(() => expect(mocks.exit).toHaveBeenCalledWith(1));
+    await eventually(() => expect(mocks.exit).toHaveBeenCalledWith(1));
     expect(mocks.notifyStartupFailure).toHaveBeenCalledExactlyOnceWith("startup.dataFolder");
     expect(mocks.installAppMenu).toHaveBeenCalledOnce();
     expect(mocks.setPath).not.toHaveBeenCalled();

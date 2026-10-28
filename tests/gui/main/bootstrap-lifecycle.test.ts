@@ -8,6 +8,7 @@
  */
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eventually } from "../../helpers/eventually.js";
 
 const m = vi.hoisted(() => {
   const fn = vi.fn;
@@ -114,7 +115,7 @@ let processListeners: { uncaught: Function[]; rejection: Function[] };
 async function start(host: NodeJS.Platform) {
   Object.defineProperty(process, "platform", { ...platform, value: host });
   await import("../../../src/gui/main/bootstrap.js");
-  await vi.waitFor(() => expect(m.app.listenerCount("activate")).toBe(1));
+  await eventually(() => expect(m.app.listenerCount("activate")).toBe(1));
   return m.windows[0]!;
 }
 
@@ -155,7 +156,7 @@ describe("macOS logout, restart and shutdown", () => {
     m.powerMonitor.emit("shutdown", quitEvent());
     const quit = quitEvent();
     m.app.emit("before-quit", quit);
-    await vi.waitFor(() => expect(m.app.exit).toHaveBeenCalledWith(0));
+    await eventually(() => expect(m.app.exit).toHaveBeenCalledWith(0));
     expect(quit.preventDefault).toHaveBeenCalled();
     for (const question of questions()) expect(question).not.toHaveBeenCalled();
     expect(m.cancelRunningJobAndWait).toHaveBeenCalled();
@@ -173,7 +174,7 @@ describe("macOS logout, restart and shutdown", () => {
     m.flushQueue.mockRejectedValueOnce(new Error("disk full"));
     m.powerMonitor.emit("shutdown", quitEvent());
     m.app.emit("before-quit", quitEvent());
-    await vi.waitFor(() => expect(m.app.exit).toHaveBeenCalledWith(0));
+    await eventually(() => expect(m.app.exit).toHaveBeenCalledWith(0));
     for (const question of questions()) expect(question).not.toHaveBeenCalled();
   });
 
@@ -182,7 +183,7 @@ describe("macOS logout, restart and shutdown", () => {
     m.hasRunningJob.mockReturnValue(true);
     m.confirmQuitDuringWrite.mockResolvedValueOnce(false);
     m.app.emit("before-quit", quitEvent());
-    await vi.waitFor(() => expect(m.confirmQuitDuringWrite).toHaveBeenCalledOnce());
+    await eventually(() => expect(m.confirmQuitDuringWrite).toHaveBeenCalledOnce());
     expect(m.app.exit).not.toHaveBeenCalled();
   });
 });
@@ -250,7 +251,7 @@ describe("settings admission before startup surfaces", () => {
     Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
     m.loadSettings.mockRejectedValueOnce(new Error("unreadable settings"));
     await import("../../../src/gui/main/bootstrap.js");
-    await vi.waitFor(() => expect(m.app.exit).toHaveBeenCalledWith(1));
+    await eventually(() => expect(m.app.exit).toHaveBeenCalledWith(1));
     expect(m.settledTranslator).toHaveBeenCalledOnce();
     expect(m.installAppMenu).toHaveBeenCalledOnce();
     expect(m.settleLanguage).not.toHaveBeenCalled();

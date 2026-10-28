@@ -14,6 +14,7 @@ import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
 import { SAVE } from "../../../helpers/intents.js";
+import { eventuallyRendered } from "../../../helpers/eventually.js";
 
 afterEach(cleanup);
 
@@ -130,12 +131,12 @@ describe("JobListbox", () => {
     renderListbox({ jobs: [job("a"), job("b")], selectedId: "a", onRemove, confirmRemove });
     rows()[0]!.focus();
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Delete" });
-    await vi.waitFor(() => expect(confirmRemove).toHaveBeenCalledOnce());
+    await eventuallyRendered(() => expect(confirmRemove).toHaveBeenCalledOnce());
     await Promise.resolve();
     expect(onRemove).not.toHaveBeenCalled();
     answer = true;
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Delete" });
-    await vi.waitFor(() => expect(onRemove).toHaveBeenCalledWith("a"));
+    await eventuallyRendered(() => expect(onRemove).toHaveBeenCalledWith("a"));
   });
 
   it("keeps the keyboard target on the same job through live updates and reordering", () => {

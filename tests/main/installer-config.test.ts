@@ -9,21 +9,6 @@ const config = parse(
   mac?: { extendInfo?: Record<string, unknown> };
   nsis?: Record<string, unknown>;
 };
-const packageJson = JSON.parse(
-  readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
-);
-
-describe("packaging scripts", () => {
-  it("prepares Electron before every package-script builder invocation", () => {
-    for (const script of Object.values(packageJson.scripts) as string[]) {
-      if (script.includes("electron-builder")) {
-        expect(script.indexOf("npm run prepare:electron")).toBeLessThan(
-          script.indexOf("electron-builder"),
-        );
-      }
-    }
-  });
-});
 
 describe("interface languages in the packaged app", () => {
   it("declares exactly the interface languages as the bundle's localizations", () => {

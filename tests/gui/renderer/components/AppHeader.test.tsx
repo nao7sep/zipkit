@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AppHeader } from "../../../../src/gui/renderer/src/components/AppHeader";
+import { eventuallyRendered } from "../../../helpers/eventually.js";
 
 afterEach(cleanup);
 
@@ -18,7 +19,7 @@ function mountHeader() {
 
 async function focused(name: string) {
   const item = await screen.findByRole("menuitem", { name });
-  await waitFor(() => expect(document.activeElement).toBe(item));
+  await eventuallyRendered(() => expect(document.activeElement).toBe(item));
   return item;
 }
 
@@ -38,8 +39,8 @@ describe("AppHeader menu targets", () => {
     expect(header.onOpenAbout).toHaveBeenCalledTimes(1);
     expect(header.onOpenSettings).not.toHaveBeenCalled();
     expect(header.onOpenShortcuts).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(header.trigger));
+    await eventuallyRendered(() => expect(screen.queryByRole("menu")).toBeNull());
+    await eventuallyRendered(() => expect(document.activeElement).toBe(header.trigger));
   });
 
   it.each(["Enter", " ", "ArrowDown"])("opens with %s at the first command, then moves on the first arrow", async (key) => {
@@ -66,15 +67,15 @@ describe("AppHeader menu targets", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Records" }));
     expect(header.onOpenRecords).toHaveBeenCalledTimes(1);
     expect(header.onOpenAbout).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await eventuallyRendered(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 
   it.each(["Escape", "Tab"])("closes with %s and returns focus to the trigger", async (key) => {
     const { trigger } = mountHeader();
     fireEvent.keyDown(trigger, { key: "Enter" });
     fireEvent.keyDown(await focused("Settings"), { key });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    await eventuallyRendered(() => expect(screen.queryByRole("menu")).toBeNull());
+    await eventuallyRendered(() => expect(document.activeElement).toBe(trigger));
   });
 
   it("leaves IME keys to composition rather than opening, moving, activating or closing", async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { InputList } from "../../../../src/gui/renderer/src/components/InputList";
 import { settleReceiverResult } from "../../../../src/gui/renderer/src/externalDropBoundary";
@@ -9,6 +9,7 @@ import type { Job } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
 import { message } from "../../../../src/gui/shared/i18n/translate";
 import { SAVE } from "../../../helpers/intents.js";
+import { eventuallyRendered } from "../../../helpers/eventually.js";
 
 afterEach(cleanup);
 
@@ -71,7 +72,7 @@ describe("InputList external-drop receiver", () => {
     fireEvent.dragOver(receiver, { dataTransfer });
 
     fireEvent.drop(receiver, { dataTransfer });
-    await waitFor(() => expect(onDropFiles).toHaveBeenCalledWith([file]));
+    await eventuallyRendered(() => expect(onDropFiles).toHaveBeenCalledWith([file]));
     view.rerender(
       <InputList
         job={job}
@@ -138,7 +139,7 @@ describe("InputList external-drop receiver", () => {
     const receiver = container.querySelector<HTMLElement>('[data-drop-receiver="inputs"]')!;
 
     fireEvent.drop(receiver, { dataTransfer: transfer(["Files"], [file]) });
-    await waitFor(() => expect(onDropFiles).toHaveBeenCalledTimes(1));
+    await eventuallyRendered(() => expect(onDropFiles).toHaveBeenCalledTimes(1));
     view.rerender(
       <InputList
         job={job}
@@ -153,7 +154,7 @@ describe("InputList external-drop receiver", () => {
     expect((await screen.findByRole("status")).textContent).toContain("already in this job");
 
     fireEvent.drop(receiver, { dataTransfer: transfer(["Files"], [file]) });
-    await waitFor(() => expect(onDropFiles).toHaveBeenCalledTimes(2));
+    await eventuallyRendered(() => expect(onDropFiles).toHaveBeenCalledTimes(2));
     view.rerender(
       <InputList
         job={job}
@@ -168,7 +169,7 @@ describe("InputList external-drop receiver", () => {
     expect(screen.getByRole("status").textContent).toContain("already in this job");
 
     fireEvent.drop(receiver, { dataTransfer: transfer(["Files"], [file]) });
-    await waitFor(() => expect(onDropFiles).toHaveBeenCalledTimes(3));
+    await eventuallyRendered(() => expect(onDropFiles).toHaveBeenCalledTimes(3));
     view.rerender(
       <InputList
         job={job}
@@ -206,7 +207,7 @@ describe("InputList external-drop receiver", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
-    await waitFor(() => expect(onResult).toHaveBeenCalledWith({
+    await eventuallyRendered(() => expect(onResult).toHaveBeenCalledWith({
       operationKey: "inputs:job-1:picker",
       entryKey: "inputs:job-1:picker",
       result: {

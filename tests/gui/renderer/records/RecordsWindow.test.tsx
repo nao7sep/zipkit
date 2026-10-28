@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { waitFor } from "@testing-library/react";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +9,7 @@ import type { ZipKitGuiApi } from "../../../../src/gui/shared/api";
 import { BODY_PADDING, RECORDS_DETAIL_MIN_WIDTH, RECORDS_LIST_WIDTH, SPLITTER_WIDTH } from "../../../../src/gui/shared/layout";
 import type { RecordDetail, RecordsPage, RecordsQuery, RecordSummary } from "../../../../src/gui/shared/records";
 import { DEFAULT_SETTINGS } from "../../../../src/gui/shared/spec";
+import { eventuallyRendered } from "../../../helpers/eventually.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -221,14 +221,14 @@ describe("RecordsWindow", () => {
     await mount();
     await act(async () => options()[0]!.focus());
     await press("End");
-    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.index).toBe("99"));
+    await eventuallyRendered(() => expect((document.activeElement as HTMLElement).dataset.index).toBe("99"));
     expect(readRecordsPage.mock.calls.map(([query]) => query.after?.id ?? null)).toContain(201);
     const lastIndex = Number(options()[0]!.getAttribute("aria-setsize")) - 1;
     await press("End");
-    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.index).toBe(String(lastIndex)));
+    await eventuallyRendered(() => expect((document.activeElement as HTMLElement).dataset.index).toBe(String(lastIndex)));
     expect(readRecordDetail).toHaveBeenLastCalledWith("log", 300 - lastIndex);
     await press("Home");
-    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.index).toBe("0"));
+    await eventuallyRendered(() => expect((document.activeElement as HTMLElement).dataset.index).toBe("0"));
     expect(readRecordDetail).toHaveBeenLastCalledWith("log", 300);
   });
 

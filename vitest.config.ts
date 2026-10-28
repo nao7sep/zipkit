@@ -14,6 +14,10 @@ export default defineConfig({
   // `React.createElement`. Node-side tests have no JSX and are unaffected.
   plugins: [react()],
   test: {
+    // Tests carry no timeouts (tests-folder conventions): a test waits for the
+    // event it needs, and the runner reports how long each one took.
+    testTimeout: 0,
+    hookTimeout: 0,
     // Two projects, so `vitest` at the repository root runs both suites and a
     // path under either tests folder resolves: the app's, configured here, and
     // the SDK's, which keeps its own configuration in sdk/ as it would in a
@@ -52,8 +56,6 @@ export default defineConfig({
       exclude: [
         "src/gui/main/index.ts", // Electron main entry: storage-root guard + dynamic import
         "src/gui/main/bootstrap.ts", // window creation + app lifecycle wiring
-        "src/gui/main/sdk-host-entry.ts", // the utility process's parent-port wiring
-        "src/gui/main/sdk-process.ts", // utilityProcess.fork wiring
         "src/gui/preload/index.ts", // contextBridge: one-line ipcRenderer passthroughs
         "src/gui/renderer/src/main.tsx", // React DOM mount
         "src/gui/renderer/src/records.tsx", // the Records window's React DOM mount

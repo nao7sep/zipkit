@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { writeManagedText } from "../../../src/gui/main/managed-write.js";
 import { writeManagedJson } from "../../../src/gui/main/managedJson.js";
+import { eventually } from "../../helpers/eventually.js";
 
 const faults = vi.hoisted(() => ({
   events: [] as string[], file: null as Error | null, hold: null as Promise<void> | null, record: vi.fn(),
@@ -60,7 +61,7 @@ it("a pending flush retains the primary write until its actual settlement", asyn
   let settled = false;
   const pending = save().then(() => { settled = true; });
   try {
-    await vi.waitFor(() => expect(faults.events).toContain("file sync"));
+    await eventually(() => expect(faults.events).toContain("file sync"));
     expect(settled).toBe(false);
     expect(await readdir(root)).not.toContain("config.json");
     expect(faults.events).not.toContain("rename");

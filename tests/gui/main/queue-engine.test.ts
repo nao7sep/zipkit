@@ -16,6 +16,7 @@ import type { LogEvent, PlanData } from "../../../src/gui/shared/api.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { createTranslator, type Message } from "../../../src/gui/shared/i18n/translate.js";
 import { DELETE, SAVE, TRASH } from "../../helpers/intents.js";
+import { eventually } from "../../helpers/eventually.js";
 
 const en = createTranslator("en");
 /** A job or action message as the English reader sees it. */
@@ -28,10 +29,9 @@ function run(engine: QueueEngine, id: string): void {
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** Wait for the engine to reach a state. Each step settles within a few turns of
- *  the event loop, so the check is polled every millisecond rather than at
- *  waitFor's default 50 ms, which would idle most of each test. */
-const until = <T>(check: () => T | Promise<T>): Promise<T> => vi.waitFor(check, { interval: 1 });
+/** Wait for the engine to reach a state; each step settles within a few turns
+ *  of the event loop. */
+const until = eventually;
 
 /** A plan that is writable unless its first input is the literal "bad". */
 function planData(writable: boolean, output = "/tmp/out.zip"): PlanData {
@@ -186,17 +186,19 @@ describe("queue engine", () => {
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
     try {
       await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+      // The planning delay runs on the fake clock, past where it would have fired.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "cancelled" } });
       engine.cancel(id);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await vi.advanceTimersByTimeAsync(300);
       expect(engine.snapshot()[0]?.state).toBe("needs-attention");
       expect(calls.plan).toBe(1);
       engine.update(id, { options: { ...DEFAULT_OPTIONS, fileName: "removed" } });
       engine.remove(id);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await vi.advanceTimersByTimeAsync(300);
       expect(calls.plan).toBe(1);
       expect(engine.snapshot()).toEqual([]);
-    } finally { await engine.shutdown(); }
+    } finally { vi.useRealTimers(); await engine.shutdown(); }
   });
   it("rejects a run whose projected consent differs from the authoritative intent or inputs", async () => {
     const { deps, calls } = makeDeps();
@@ -949,7 +951,6 @@ describe("queue engine", () => {
     await until(() => expect(engine.snapshot()[0]?.entries?.[0]?.kind).toBe("missing"));
     const trashedBefore = calls.trash.length;
     engine.removeArchive(id);
-    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(calls.trash.length).toBe(trashedBefore);
     expect(engine.snapshot()[0]?.state).toBe("done");
   });

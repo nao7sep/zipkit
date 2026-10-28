@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { createQueueEngine, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
@@ -10,6 +10,7 @@ import type { JobIntent } from "../../../src/gui/shared/queue.js";
 import { ZipKit } from "zipkitsdk";
 import { SAVE, TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
+import { eventually } from "../../helpers/eventually.js";
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-archive-ownership-"));
@@ -43,7 +44,7 @@ async function fixture() {
   const engine = createQueueEngine(deps);
   const add = async (input: string, intent: JobIntent, fileName = "") => {
     const id = engine.add([input], { ...DEFAULT_OPTIONS, overwrite: true, fileName }, intent);
-    await vi.waitFor(() => expect(engine.snapshot().find((job) => job.id === id)?.state).toBe("ready"));
+    await eventually(() => expect(engine.snapshot().find((job) => job.id === id)?.state).toBe("ready"));
     return id;
   };
   return { root, a, b, zip, deps, engine, add, output: path.join(root, "same.zip"),
@@ -53,7 +54,7 @@ function run(engine: QueueEngine, id: string) {
   const job = engine.snapshot().find((job) => job.id === id)!;
   engine.run(id, { intent: job.intent, inputs: [...job.inputs] });
 }
-const terminal = (engine: QueueEngine, id: string, state: string) => vi.waitFor(() => expect(engine.snapshot().find((job) => job.id === id)?.state).toBe(state));
+const terminal = (engine: QueueEngine, id: string, state: string) => eventually(() => expect(engine.snapshot().find((job) => job.id === id)?.state).toBe(state));
 
 it("refuses an older job's archive removal after a real later job overwrites it and moves its originals", async () => {
   const f = await fixture();
@@ -65,7 +66,7 @@ it("refuses an older job's archive removal after a real later job overwrites it 
     // The file there is the later job's, so the older job leaves it alone, says
     // so, and goes back to be created again; its originals stay untouched.
     const older = () => f.engine.snapshot().find((job) => job.id === a)!;
-    await vi.waitFor(() => expect(older().history?.map((entry) => entry.message.key)).toContain("action.archiveReplaced"));
+    await eventually(() => expect(older().history?.map((entry) => entry.message.key)).toContain("action.archiveReplaced"));
     await terminal(f.engine, a, "ready");
     expect(await readFile(f.output)).toEqual(published);
     expect(await readFile(f.a, "utf8")).toBe("original A");

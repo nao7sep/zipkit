@@ -13,6 +13,7 @@ vi.mock("../../../src/gui/main/startup-dialog.js", () => ({ showAppMessageDialog
 import { discardSettingsSubmission, saveSettingsBeforeSessionEnd, settleSettingsSave, submitSettings } from "../../../src/gui/main/settings-save.js";
 import { currentSettings } from "../../../src/gui/main/settings.js";
 import { appAdmission } from "../../../src/gui/main/command-admission.js";
+import { eventually } from "../../helpers/eventually.js";
 
 beforeEach(() => {
   appAdmission.reopen();
@@ -27,7 +28,7 @@ it("runs one save at a time: a Save while another runs waits behind it, and the 
   effects.language.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
   const packet = { ...DEFAULT_SETTINGS, theme: "dark" as const };
   const first = submitSettings(packet);
-  await vi.waitFor(() => expect(effects.language).toHaveBeenCalledOnce());
+  await eventually(() => expect(effects.language).toHaveBeenCalledOnce());
   const skipped = submitSettings({ ...packet, uiFontFamily: "Courier" });
   const newest = submitSettings({ ...packet, uiFontFamily: "Georgia" });
   expect(effects.write).toHaveBeenCalledOnce();

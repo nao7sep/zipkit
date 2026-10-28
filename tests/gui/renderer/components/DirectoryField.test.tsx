@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DirectoryField } from "../../../../src/gui/renderer/src/components/DirectoryField";
+import { eventuallyRendered } from "../../../helpers/eventually.js";
 
 afterEach(cleanup);
 
@@ -13,13 +14,13 @@ describe("DirectoryField picker failure", () => {
     const inputs = ["/source/a.txt"];
     const view = render(<DirectoryField label="Output" value="" inputs={inputs} fileName="bundle" onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
-    await waitFor(() => expect(screen.getByRole("button").hasAttribute("disabled")).toBe(false));
+    await eventuallyRendered(() => expect(screen.getByRole("button").hasAttribute("disabled")).toBe(false));
     expect(chooseOutputDir).toHaveBeenLastCalledWith("", inputs, "bundle");
     expect(onChange).not.toHaveBeenCalled();
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("");
     view.rerender(<DirectoryField label="Output" value="~/typed" inputs={inputs} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
-    await waitFor(() => expect(chooseOutputDir).toHaveBeenLastCalledWith("~/typed", inputs, undefined));
+    await eventuallyRendered(() => expect(chooseOutputDir).toHaveBeenLastCalledWith("~/typed", inputs, undefined));
   });
   it("sends typing immediately and uses the latest parent owner when a picker settles late", async () => {
     let finish!: (value: string) => void;
@@ -33,7 +34,7 @@ describe("DirectoryField picker failure", () => {
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     view.rerender(<DirectoryField label="Output" value="/typed" onChange={latest} />);
     finish("/chosen");
-    await waitFor(() => expect(latest).toHaveBeenCalledExactlyOnceWith("/chosen"));
+    await eventuallyRendered(() => expect(latest).toHaveBeenCalledExactlyOnceWith("/chosen"));
     expect(first).toHaveBeenCalledOnce();
   });
   it("retains the path, authors the result, and logs hostile diagnostics", async () => {
@@ -70,6 +71,6 @@ describe("DirectoryField picker failure", () => {
     expect(chooseOutputDir).toHaveBeenCalledOnce();
     expect((choose as HTMLButtonElement).disabled).toBe(true);
     finish("");
-    await waitFor(() => expect((choose as HTMLButtonElement).disabled).toBe(false));
+    await eventuallyRendered(() => expect((choose as HTMLButtonElement).disabled).toBe(false));
   });
 });

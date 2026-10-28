@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildAppMessageDialogDocument, presentDialogWindow, showAppQuestionDialog, visibleOwner } from "../../../src/gui/main/startup-dialog.js";
+import { eventually } from "../../helpers/eventually.js";
 
 const windows = vi.hoisted(() => ([] as Array<{
   events: EventEmitter;
@@ -111,7 +112,7 @@ describe("standalone quit question lifetime", () => {
 describe("dialog activation", () => {
   it("shows a question focused, on top of whatever app was in front", async () => {
     const result = showAppQuestionDialog(options(new AbortController().signal));
-    await vi.waitFor(() => expect(windows[0]!.showed).toBe(true));
+    await eventually(() => expect(windows[0]!.showed).toBe(true));
     expect(controls.order.slice(-2)).toEqual(["show", "focus"]);
     windows[0]!.contents.emit("will-navigate", { preventDefault() {} }, "zipkit-dialog-choice://0");
     await result;

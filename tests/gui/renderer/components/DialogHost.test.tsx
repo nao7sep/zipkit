@@ -7,8 +7,9 @@
 
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ConfirmOptions, DialogHost, useConfirm } from "../../../../src/gui/renderer/src/components/DialogHost";
+import { eventuallyRendered } from "../../../helpers/eventually.js";
 
 afterEach(cleanup);
 
@@ -39,7 +40,7 @@ describe("DialogHost", () => {
     );
     fireEvent.click(screen.getByText("askA"));
     fireEvent.click(await screen.findByText("Yes"));
-    await waitFor(() => expect(log()).toBe("a:true"));
+    await eventuallyRendered(() => expect(log()).toBe("a:true"));
   });
 
   it("settles false on Cancel", async () => {
@@ -50,7 +51,7 @@ describe("DialogHost", () => {
     );
     fireEvent.click(screen.getByText("askA"));
     fireEvent.click(await screen.findByText("Cancel"));
-    await waitFor(() => expect(log()).toBe("a:false"));
+    await eventuallyRendered(() => expect(log()).toBe("a:false"));
   });
 
   it("queues concurrent requests and settles each in turn", async () => {
@@ -70,6 +71,6 @@ describe("DialogHost", () => {
     await screen.findByText("Second?"); // B now surfaces
     fireEvent.click(screen.getByText("Cancel")); // settle B (false)
 
-    await waitFor(() => expect(log()).toBe("a:true,b:false"));
+    await eventuallyRendered(() => expect(log()).toBe("a:true,b:false"));
   });
 });

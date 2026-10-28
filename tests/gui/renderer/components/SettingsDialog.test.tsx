@@ -14,15 +14,13 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Every test mounts the whole dialog in jsdom, its 34 exclusion rows included;
-// on a busy machine or a Windows runner one has taken over 6 s.
-vi.setConfig({ testTimeout: 20_000 });
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { languageNameIn, SettingsDialog } from "../../../../src/gui/renderer/src/components/SettingsDialog";
 import { loadCatalogue } from "../../../../src/gui/shared/i18n/catalogues";
 import { createTranslator } from "../../../../src/gui/shared/i18n/translate";
 import { DEFAULT_PARAMETERS, type GuiSettings } from "../../../../src/gui/shared/spec";
 import type { SystemChoices } from "../../../../src/gui/shared/api";
+import { eventuallyRendered } from "../../../helpers/eventually.js";
 
 afterEach(cleanup);
 
@@ -83,7 +81,7 @@ describe("SettingsDialog theme", () => {
 describe("SettingsDialog initial focus", () => {
   it("names Cancel as the control that takes focus on open", async () => {
     renderDialog();
-    await waitFor(() => expect(document.activeElement?.textContent).toBe("Cancel"));
+    await eventuallyRendered(() => expect(document.activeElement?.textContent).toBe("Cancel"));
     expect(screen.getByText("Cancel").hasAttribute("data-modal-autofocus")).toBe(true);
   });
 });
@@ -109,7 +107,7 @@ describe("SettingsDialog reset", () => {
     fireEvent.click(reset());
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText("Cancel"));
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await eventuallyRendered(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it("edits after reset save the whole new copy", () => {
@@ -201,10 +199,10 @@ describe("SettingsDialog reset", () => {
     const view = render(<SettingsDialog system={SYSTEM} settings={CUSTOM} onSave={onSave} onClose={vi.fn()} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
-    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    await eventuallyRendered(() => expect(screen.getByRole("alert")).toBeTruthy());
     fireEvent.change(fontInput(), { target: { value: "Georgia" } });
     view.rerender(<SettingsDialog system={SYSTEM} settings={{ ...CUSTOM, uiFontFamily: "Menlo" }} onSave={onSave} onClose={vi.fn()} />);
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await eventuallyRendered(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(fontInput().value).toBe("Georgia");
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(false);
   });
@@ -215,7 +213,7 @@ describe("SettingsDialog reset", () => {
     render(<SettingsDialog system={SYSTEM} settings={CUSTOM} onSave={onSave} onClose={onClose} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Settings were not saved"));
+    await eventuallyRendered(() => expect(screen.getByRole("alert").textContent).toContain("Settings were not saved"));
     expect(screen.getByRole("alert").textContent).not.toContain("HOSTILE-SENTINEL");
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -235,7 +233,7 @@ describe("SettingsDialog while a save runs", () => {
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
 
-    await waitFor(() => expect(fontInput().disabled).toBe(true));
+    await eventuallyRendered(() => expect(fontInput().disabled).toBe(true));
     expect(levelInput().matches(":disabled")).toBe(true); // through the options fieldset
     expect((screen.getByRole("combobox", { name: "Language" }) as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole("radio", { name: "Light" }) as HTMLInputElement).disabled).toBe(true);
@@ -247,7 +245,7 @@ describe("SettingsDialog while a save runs", () => {
     expect(screen.queryByText("Discard changes?")).toBeNull();
 
     save.resolve();
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await eventuallyRendered(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it("unfreezes and stays open with the error when the save actually fails", async () => {
@@ -256,11 +254,11 @@ describe("SettingsDialog while a save runs", () => {
     render(<SettingsDialog system={SYSTEM} settings={CUSTOM} onSave={() => save.promise} onClose={onClose} />);
     fireEvent.change(fontInput(), { target: { value: "Menlo" } });
     fireEvent.click(screen.getByText("Save"));
-    await waitFor(() => expect(fontInput().disabled).toBe(true));
+    await eventuallyRendered(() => expect(fontInput().disabled).toBe(true));
 
     save.reject(new Error("disk full"));
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Settings were not saved"));
+    await eventuallyRendered(() => expect(screen.getByRole("alert").textContent).toContain("Settings were not saved"));
     expect(fontInput().disabled).toBe(false);
     expect(fontInput().value).toBe("Menlo");
     expect(onClose).not.toHaveBeenCalled();

@@ -60,6 +60,7 @@ import { shell } from "electron";
 import { flushQueue, restoreQueue, saveQueueBeforeSessionEnd } from "../../../src/gui/main/queue.js";
 import type { SavedJob } from "../../../src/gui/shared/queue.js";
 import { SAVE } from "../../helpers/intents.js";
+import { eventually } from "../../helpers/eventually.js";
 
 const trashItem = vi.mocked(shell.trashItem);
 
@@ -89,7 +90,7 @@ describe("restoreQueue", () => {
     let releaseFirst!: () => void;
     mocks.saveQueue.mockImplementationOnce(() => new Promise<void>((resolve) => { releaseFirst = resolve; }));
     mocks.deps!.emit([{ id: "first" }]);
-    await vi.waitFor(() => expect(mocks.saveQueue).toHaveBeenCalledTimes(1));
+    await eventually(() => expect(mocks.saveQueue).toHaveBeenCalledTimes(1));
     mocks.deps!.emit([{ id: "second" }]);
     mocks.deps!.emit([{ id: "newest" }]);
     const flushed = flushQueue();
