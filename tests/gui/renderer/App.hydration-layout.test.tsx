@@ -326,10 +326,9 @@ describe("mounted run consent across queue projection changes", () => {
       })),
       write: vi.fn(async () => 123),
       verify: vi.fn(async () => true),
-      checkRemoval: vi.fn(async () => ({ refusal: null, verified: { fingerprint: null } })),
+      removeOriginals: vi.fn(async (_output: string, inputs: string[]) => ({ refusal: null, verified: { fingerprint: null }, outcome: { moved: inputs, failed: [] } })),
       pathKinds: vi.fn(async (paths: string[]) => paths.map((path) => ({ path, kind: "file" as const }))),
       trash: vi.fn(async (paths) => ({ moved: paths, failed: [] })),
-      deleteOriginals: vi.fn(async (paths: string[]) => ({ moved: paths, failed: [] })),
       pathState: vi.fn(async (target: string) => ({ kind: "present" as const, fingerprint: `1:${target}:1:1` })),
       inspect: vi.fn(async () => ({ ok: true, summary: { total: 1, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 } as never, missing: [], extra: [] })),
       emit: vi.fn((jobs) => { if (!withholdProjection) publish?.(jobs); }),
@@ -495,7 +494,7 @@ describe("mounted run consent across queue projection changes", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Create and delete permanently" }));
       await eventuallyRendered(() => expect(engine.snapshot()[0]?.state).toBe("done"));
       expect(bridge.runJob).toHaveBeenCalledWith(id, { intent: { verify: true, originals: "delete" }, inputs: [original] });
-      expect(deps.deleteOriginals).toHaveBeenCalledWith([original], expect.any(AbortSignal));
+      expect(deps.removeOriginals).toHaveBeenCalledWith(expect.any(String), [original], [], expect.anything(), "delete", expect.any(AbortSignal), expect.any(Function));
       expect(deps.trash).not.toHaveBeenCalled();
     } finally {
       mounted?.unmount();

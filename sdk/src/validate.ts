@@ -162,6 +162,12 @@ export function validateDebug(debug: unknown): boolean {
   return debug;
 }
 
+/** The host's Trash, when given: a function. */
+export function validateTrash(trash: unknown): ((path: string) => Promise<void>) | undefined {
+  if (trash === undefined || typeof trash === "function") return trash as ((path: string) => Promise<void>) | undefined;
+  throw new ZipKitError("options.invalid", "trash must be a function");
+}
+
 /** Validate an instance-level policy, applying filter-rule defaults. */
 export function validatePolicy(policy: DeepPartial<ArchivePolicy>): DeepPartial<ArchivePolicy> {
   const result = partialPolicySchema.safeParse(policy);
@@ -207,7 +213,7 @@ export function validateCallOptions(options: unknown): void {
   }
 }
 
-const INSTANCE_OPTIONS = new Set(["policy", "app", "chunkSize", "debug"]);
+const INSTANCE_OPTIONS = new Set(["policy", "app", "chunkSize", "debug", "trash"]);
 
 const programSchema = z.strictObject({ name: z.string().min(1).max(256), version: z.string().min(1).max(256).optional() });
 
@@ -241,15 +247,17 @@ export function validateVerifyRequest(request: unknown): VerifyRequest {
   return checked;
 }
 
-const REMOVAL_REQUEST = new Set(["spec", "archive", "removed"]);
+const REMOVAL_REQUEST = new Set(["spec", "archive", "removed", "method"]);
 
-/** What `checkRemoval` is asked to check: a spec, an absolute archive, and
- *  absolute removed inputs; the spec itself is validated as for a plan. */
+/** What `removeOriginals` is asked to do: a spec, an absolute archive,
+ *  absolute removed inputs and a method; the spec itself is validated as for a
+ *  plan. */
 export function validateRemovalRequest(request: unknown): RemovalRequest {
   if (request === null || typeof request !== "object") throw new ZipKitError("request.invalid", "the removal request must be an object");
   refuseUnknownKeys(request, REMOVAL_REQUEST, "removal setting", "request.invalid");
   const r = request as RemovalRequest;
-  const checked: RemovalRequest = { spec: r.spec, archive: requireAbsolute(r.archive, "archive") };
+  if (r.method !== "trash" && r.method !== "delete") throw new ZipKitError("request.invalid", "the removal method must be trash or delete");
+  const checked: RemovalRequest = { spec: r.spec, archive: requireAbsolute(r.archive, "archive"), method: r.method };
   if (r.removed !== undefined) checked.removed = requireAbsoluteList(r.removed, "removed");
   return checked;
 }

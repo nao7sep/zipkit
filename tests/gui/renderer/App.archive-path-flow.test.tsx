@@ -54,7 +54,7 @@ it("plans the picked folder with the edited name after parameter reset and job r
       pathKinds: (paths) => sdk.pathKinds(paths),
       plan: (paths, options, signal, onEvent) => sdk.plan(paths, options, { signal, onEvent }),
       write: unexpected, verify: unexpected, inspect: unexpected,
-      checkRemoval: unexpected, trash: unexpected, deleteOriginals: unexpected,
+      removeOriginals: unexpected, trash: unexpected,
       emit: (jobs) => pushQueue(structuredClone(jobs)), progress: () => () => {},
       newId: () => `job-${++nextId}`, log: nullLog,
     });

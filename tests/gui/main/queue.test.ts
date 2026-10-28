@@ -6,16 +6,14 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn((): unknown[] => []),
   toResumable: vi.fn((jobs: unknown) => jobs),
   restore: vi.fn(),
-  sdk: { pathState: vi.fn(), deletePath: vi.fn(), plan: vi.fn(), write: vi.fn(), verify: vi.fn(), pathKinds: vi.fn() },
+  sdk: { pathState: vi.fn(), removeOriginals: vi.fn(), plan: vi.fn(), write: vi.fn(), verify: vi.fn(), pathKinds: vi.fn() },
+  // The Trash the app hands its SDK.
+  hostTrash: undefined as undefined | ((target: string) => Promise<void>),
   deps: undefined as
     | undefined
     | {
         emit(jobs: unknown[]): void;
         trash(
-          paths: string[],
-          signal: AbortSignal,
-        ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; gone?: string[] }>;
-        deleteOriginals(
           paths: string[],
           signal: AbortSignal,
         ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; gone?: string[] }>;
@@ -38,15 +36,14 @@ vi.mock("../../../src/gui/main/runtime.js", () => ({
   sendQueue: vi.fn(),
   sendQueueSaved: vi.fn(),
 }));
-vi.mock("../../../src/gui/main/sdk.js", () => ({ sdk: mocks.sdk }));
+vi.mock("../../../src/gui/main/sdk.js", () => ({
+  appZipKit: (trash: (target: string) => Promise<void>) => { mocks.hostTrash = trash; return {}; },
+  createSdk: () => mocks.sdk,
+}));
 vi.mock("../../../src/gui/main/queue-engine.js", () => ({
   createQueueEngine: (deps: {
     emit(jobs: unknown[]): void;
     trash(
-      paths: string[],
-      signal: AbortSignal,
-    ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; gone?: string[] }>;
-    deleteOriginals(
       paths: string[],
       signal: AbortSignal,
     ): Promise<{ moved: string[]; failed: Array<{ path: string; message: string }>; gone?: string[] }>;
@@ -185,6 +182,7 @@ describe("the SDK wiring", () => {
     write(plan: object, signal: AbortSignal, onEvent: () => void): Promise<number | null>;
     verify(output: string, signal: AbortSignal, onEvent: () => void, manifestName: string | null): Promise<boolean>;
     pathKinds(paths: string[]): Promise<unknown>;
+    removeOriginals(output: string, inputs: string[], removed: string[], options: unknown, method: string, signal: AbortSignal, onEvent: () => void): Promise<unknown>;
   };
   const wired = () => mocks.deps as unknown as Wired;
 
@@ -208,32 +206,16 @@ describe("the SDK wiring", () => {
     await expect(wired().verify("/out.zip", signal, vi.fn(), "zipkit.json")).resolves.toBe(true);
     await expect(wired().pathKinds(["/in"])).resolves.toEqual([{ path: "/in", kind: "directory" }]);
   });
-});
 
-describe("the delete dependency", () => {
-  beforeEach(() => mocks.sdk.deletePath.mockReset());
-
-  it("deletes each path in turn and reports each outcome", async () => {
-    mocks.sdk.deletePath.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("EACCES"));
-    const result = await mocks.deps!.deleteOriginals(["/a", "/b"], new AbortController().signal);
-    expect(mocks.sdk.deletePath.mock.calls).toEqual([["/a"], ["/b"]]);
-    expect(result).toMatchObject({ moved: ["/a"], failed: [{ path: "/b", message: "EACCES" }], gone: [] });
-  });
-
-  it("reports a path already gone when its deletion came as gone, not kept", async () => {
-    mocks.sdk.deletePath.mockRejectedValueOnce(Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" }));
-    const result = await mocks.deps!.deleteOriginals(["/a"], new AbortController().signal);
-    expect(result).toMatchObject({ moved: [], failed: [], gone: ["/a"] });
-  });
-
-  it("lets a running deletion end when the signal aborts, and starts no other", async () => {
-    let finish!: () => void;
-    mocks.sdk.deletePath.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
-    const controller = new AbortController();
-    const pending = mocks.deps!.deleteOriginals(["/a", "/b"], controller.signal);
-    controller.abort();
-    finish();
-    expect(await pending).toMatchObject({ moved: ["/a"], failed: [{ path: "/b", message: "cancelled before deletion" }], gone: [] });
-    expect(mocks.sdk.deletePath.mock.calls).toEqual([["/a"]]);
+  it("asks the SDK to remove the originals, which it moves to the OS Trash through Electron", async () => {
+    const removal = { refusal: null, verified: null, outcome: { moved: ["/in"], failed: [] } };
+    mocks.sdk.removeOriginals.mockResolvedValueOnce(removal);
+    const signal = new AbortController().signal;
+    const onEvent = vi.fn();
+    await expect(wired().removeOriginals("/out.zip", ["/in"], [], { level: 6 }, "trash", signal, onEvent)).resolves.toBe(removal);
+    expect(mocks.sdk.removeOriginals).toHaveBeenLastCalledWith("/out.zip", ["/in"], [], { level: 6 }, "trash", { signal, onEvent, onProgress: undefined });
+    trashItem.mockResolvedValueOnce(undefined);
+    await mocks.hostTrash!("/in");
+    expect(trashItem).toHaveBeenLastCalledWith("/in");
   });
 });

@@ -72,11 +72,12 @@ describe("onProgress", () => {
   });
 
   it("follows a removal check through verification and then the recheck of every original", async () => {
-    const zip = new ZipKit();
+    // A Trash that keeps everything.
+    const zip = new ZipKit({ trash: async () => {} });
     const archive = path.join(root, "o.zip");
     await zip.create({ inputs: [proj], output: archive });
     const counts: ProgressCounts[] = [];
-    expect((await zip.checkRemoval({ spec: { inputs: [proj] }, archive }, { onProgress: (c) => counts.push(c) })).refusal).toBeNull();
+    expect((await zip.removeOriginals({ spec: { inputs: [proj] }, archive, method: "trash" }, { onProgress: (c) => counts.push(c) })).refusal).toBeNull();
     expect(counts.at(-1)).toEqual({ stage: "recheck", entriesDone: 2, entriesTotal: 2, bytesDone: 11, bytesTotal: 11 });
     expect(counts.map((c) => c.stage).join(" ")).toMatch(/^(verify )+(recheck ?)+$/);
   });

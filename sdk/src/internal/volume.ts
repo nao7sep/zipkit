@@ -76,7 +76,7 @@ export const nodeFileSystem: FileSystemPort = {
   rename: (from, to) => fsp.rename(from, to),
   link: (existing, created) => fsp.link(existing, created),
   unlink: (path) => fsp.unlink(path),
-  rm: (path) => fsp.rm(path, { force: true }),
+  rm: (path) => fsp.rm(path, { recursive: true }),
   chmod: (path, mode) => fsp.chmod(path, mode),
   mkdir: async (path) => { await fsp.mkdir(path, { recursive: true }); },
 };
@@ -169,6 +169,13 @@ export class Volume {
   /** Unlink a path this run created, as cleanup. Errors propagate. */
   unlink(path: string): Promise<void> {
     return this.#run("cleanup", () => this.#port.unlink(path));
+  }
+
+  /** Delete a path for good, as work: a folder with everything in it, a
+   *  file, or a link itself, never what it points to. A missing path fails
+   *  with ENOENT. */
+  remove(path: string): Promise<void> {
+    return this.#run("work", () => this.#port.rm(path));
   }
 
   /** Remove a temp file this run created, best-effort: never stopped by the

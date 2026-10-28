@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { ZipKit, type ProgressCounts } from "zipkitsdk";
+import { createSdk } from "../../../src/gui/main/sdk.js";
 import { createQueueEngine } from "../../../src/gui/main/queue-engine.js";
 import { nullLog } from "../../../src/gui/main/log.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
@@ -29,9 +30,10 @@ it("keeps the originals when one was edited to the same size with its time put b
   // A whole-second time, so putting it back is exact on every file system.
   const when = new Date("2020-01-02T03:04:05Z");
   await utimes(edited, when, when);
-  const zip = new ZipKit();
   const stages: ProgressCounts["stage"][] = [];
   const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [] }));
+  const zip = new ZipKit({ trash: async (target) => { await trash([target]); } });
+  const sdk = createSdk(zip);
   const engine = createQueueEngine({
     admission: new CommandAdmission(),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
@@ -43,10 +45,9 @@ it("keeps the originals when one was edited to the same size with its time put b
       return result.mode === "write" ? result.bytes : null;
     },
     verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
-    checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent, onProgress: (counts) => { if (stages.at(-1) !== counts.stage) stages.push(counts.stage); } }),
+    removeOriginals: (archive, inputs, removed, options, method, signal, onEvent) =>
+      sdk.removeOriginals(archive, inputs, removed, options, method, { signal, onEvent, onProgress: (counts) => { if (stages.at(-1) !== counts.stage) stages.push(counts.stage); } }),
     pathKinds: async (paths) => paths.map((p) => ({ path: p, kind: "directory" as const })),
-    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [] }),
     pathState: realPathState,
     inspect: async () => { throw new Error("not used"); },
     trash, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,

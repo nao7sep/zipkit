@@ -218,6 +218,12 @@ export interface ZipKitOptions {
    * minimum); defaults to 65536 (64 KB).
    */
   chunkSize?: number;
+  /**
+   * Moves a path to the platform's recoverable Trash, as the host provides it
+   * (Electron's `shell.trashItem`, for one); `removeOriginals` with method
+   * `trash` needs it.
+   */
+  trash?: (path: string) => Promise<void>;
 }
 
 /**
@@ -237,7 +243,7 @@ export interface ZipKitCallOptions {
    *  caller that wants a record writes these events where it keeps its own.
    *  The first call that listens also receives the instance's `session.start`. */
   onEvent?: (event: LogEvent) => void;
-  /** How far `write`/`create`, `verify` and `checkRemoval` have got, for a
+  /** How far `write`/`create`, `verify` and `removeOriginals` have got, for a
    *  progress bar, as counts rather than events: at the start, at most every
    *  100 ms while entries stream, and once at the end of a run that finishes.
    *  The other methods report none. */
@@ -683,7 +689,7 @@ export interface SourceComparison {
 }
 
 /** Why the originals may not be removed: the first check of
- *  `ZipKit.checkRemoval` that refused. */
+ *  `ZipKit.removeOriginals` that refused. */
 export type RemovalRefusal =
   /** The archive sits at or inside an input, so removing it would take the archive along. */
   | { reason: "inside" }
@@ -705,20 +711,39 @@ export interface VerifyReport {
   findings: Finding[];
 }
 
-/** The answer of `ZipKit.checkRemoval`. */
-export interface RemovalCheck {
-  /** Null when removing the originals cannot lose data. */
+/** What `ZipKit.removeOriginals` did with each original; a path lands in
+ *  exactly one list. */
+export interface RemovalOutcome {
+  /** Moved to the Trash or deleted for good, as the method says. */
+  removed: string[];
+  /** Already gone when its turn came: something else had moved or deleted it. */
+  gone: string[];
+  /** Still there: its removal failed, or a cancel came before its turn
+   *  (`operation.cancelled`). */
+  kept: Array<{ path: string; error: ZipKitErrorData }>;
+}
+
+/** The answer of `ZipKit.removeOriginals`. */
+export interface RemovalResult {
+  /** Null when the checks passed and the originals were removed. */
   refusal: RemovalRefusal | null;
   /** Set once the archive verified, even if a later check refused: the
    *  fingerprint of the file that verified, null when its state could not be
    *  read. Null when it did not verify. */
   verified: { fingerprint: string | null } | null;
+  /** What became of each original; null when the checks refused. */
+  outcome: RemovalOutcome | null;
 }
 
-/** What `ZipKit.checkRemoval` checks. */
+/** How the originals leave: to the platform's recoverable Trash, through the
+ *  instance's `trash` option, or deleted for good. */
+export type RemovalMethod = "trash" | "delete";
+
+/** What `ZipKit.removeOriginals` checks and removes. */
 export interface RemovalRequest {
   /** The spec the archive was created with, its inputs only those still to be
-   *  removed, so the same entries are included and excluded. */
+   *  removed, so the same entries are included and excluded. These inputs are
+   *  what is removed. */
   spec: ArchiveSpec;
   /** The archive's absolute path. */
   archive: string;
@@ -726,6 +751,7 @@ export interface RemovalRequest {
    *  partial removal: what the archive holds from them is not counted as
    *  missing, and only the rest are checked. */
   removed?: readonly string[];
+  method: RemovalMethod;
 }
 
 // ---------------------------------------------------------------------------

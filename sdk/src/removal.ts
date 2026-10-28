@@ -1,16 +1,23 @@
 /**
- * The checks before the originals an archive was made from are removed, so
- * that removing them cannot lose data: the archive does not sit inside an
- * input (removing that input would take it along), it verifies against its
- * manifest, and a fresh scan of the inputs still matches that manifest. Each
- * check runs only once those before it passed. The archive's state is read
- * first, so the answer can say which file verified.
+ * Removing the originals an archive was made from, after the checks that make
+ * it unable to lose data: the archive does not sit inside an input (removing
+ * that input would take it along), it verifies against its manifest, and a
+ * fresh scan of the inputs still matches that manifest. Each check runs only
+ * once those before it passed. The archive's state is read first, so the
+ * answer can say which file verified, and once more right before the
+ * originals go. Then each original goes in turn.
  */
 
-import { classify, ZipKitError } from "./errors.ts";
+import { classify, fsFailure, ZipKitError } from "./errors.ts";
 import { isWithin } from "./internal/path.ts";
 import type { Volume } from "./internal/volume.ts";
-import type { PathState, RemovalCheck, SourceComparison, VerifyReport } from "./types.ts";
+import type { PathState, RemovalOutcome, RemovalRefusal, SourceComparison, VerifyReport } from "./types.ts";
+
+/** What the checks answered: a refusal, or null, and which file verified. */
+export interface RemovalCheck {
+  refusal: RemovalRefusal | null;
+  verified: { fingerprint: string | null } | null;
+}
 
 /** Whether `output` resolves to a location at or inside any of `inputs`. Both
  *  sides are resolved to their physical identities, so a link cannot hide the
@@ -48,7 +55,7 @@ function stepFailure(error: unknown, subject: string): ZipKitError {
  * cancellation is thrown instead, since it answers nothing.
  */
 export async function checkRemoval(steps: RemovalSteps, archive: string): Promise<RemovalCheck> {
-  const refuse = (refusal: NonNullable<RemovalCheck["refusal"]>, verified: RemovalCheck["verified"] = null): RemovalCheck =>
+  const refuse = (refusal: RemovalRefusal, verified: RemovalCheck["verified"] = null): RemovalCheck =>
     ({ refusal, verified });
   let seen: PathState | null = null;
   try {
@@ -72,8 +79,8 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
   try {
     const comparison = await steps.compare();
     if (!comparison.matches) return refuse({ reason: "changed", comparison }, verified);
-    // The archive is read once more right before removal is authorized, so
-    // one replaced or removed during the checks does not authorize it.
+    // The archive is read once more right before the originals go, so one
+    // replaced or removed during the checks does not let them go.
     const after = await steps.state();
     if (after.kind !== "present" || after.fingerprint !== verified.fingerprint) {
       throw new ZipKitError("archive.changed", "Archive changed during the removal checks", { subject: archive });
@@ -82,4 +89,34 @@ export async function checkRemoval(steps: RemovalSteps, archive: string): Promis
     return refuse({ reason: "error", step: "recheck", error: stepFailure(error, archive).toJSON() }, verified);
   }
   return { refusal: null, verified };
+}
+
+/** How one original goes: to the Trash or deleted for good. */
+export interface RemovalSink {
+  remove(path: string): Promise<void>;
+  /** Whether a path whose removal failed is gone anyway, removed by something else. */
+  gone(path: string, error: unknown): Promise<boolean>;
+}
+
+/**
+ * Remove each path in turn, every call run to its end. A cancel stops before
+ * the next path, which is kept; a path whose removal failed is gone when
+ * something else already took it, and kept otherwise.
+ */
+export async function removeInTurn(paths: readonly string[], sink: RemovalSink, signal?: AbortSignal): Promise<RemovalOutcome> {
+  const outcome: RemovalOutcome = { removed: [], gone: [], kept: [] };
+  for (const path of paths) {
+    if (signal?.aborted) {
+      outcome.kept.push({ path, error: new ZipKitError("operation.cancelled", "cancelled before its turn", { subject: path }).toJSON() });
+      continue;
+    }
+    try {
+      await sink.remove(path);
+      outcome.removed.push(path);
+    } catch (error) {
+      if (await sink.gone(path, error)) outcome.gone.push(path);
+      else outcome.kept.push({ path, error: fsFailure(error, path).toJSON() });
+    }
+  }
+  return outcome;
 }

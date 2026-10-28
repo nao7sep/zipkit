@@ -26,7 +26,7 @@ import { compareWithManifest, explainRemoved, onDisk } from "./compare/sources.t
 import { verifyArchive, type ManifestRecord } from "./read/verify.ts";
 import { fromInstructions } from "./internal/instructions.ts";
 import { pathKinds, pathState } from "./paths.ts";
-import { checkRemoval, outputInsideInputs } from "./removal.ts";
+import { checkRemoval, outputInsideInputs, removeInTurn, type RemovalSink } from "./removal.ts";
 import { nodeFileSystem, Volume } from "./internal/volume.ts";
 import { planArchive } from "./plan/plan.ts";
 import { MANIFEST_DEFAULTS, resolvePolicy } from "./policy.ts";
@@ -41,6 +41,7 @@ import {
   validateApp,
   validateInstanceOptionKeys,
   validateRemovalRequest,
+  validateTrash,
   validateSpec,
   validateVerifyRequest,
 } from "./validate.ts";
@@ -58,8 +59,8 @@ import type {
   PathState,
   Program,
   ProgressCounts,
-  RemovalCheck,
   RemovalRequest,
+  RemovalResult,
   VerifyData,
   VerifyRequest,
   ZipKitCallOptions,
@@ -83,6 +84,8 @@ export class ZipKit {
   #startupLogged = false;
   /** Whether `debug` events reach the hook. */
   readonly #debug: boolean;
+  /** The host's Trash, for `removeOriginals` with method `trash`. */
+  readonly #trash: ((path: string) => Promise<void>) | undefined;
 
   constructor(options: ZipKitOptions = {}) {
     validateInstanceOptionKeys(options);
@@ -91,6 +94,7 @@ export class ZipKit {
     this.#chunkSize =
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
     this.#debug = validateDebug(options.debug);
+    this.#trash = validateTrash(options.trash);
   }
 
   /**
@@ -149,18 +153,27 @@ export class ZipKit {
   }
 
   /**
-   * Whether the originals an archive was made from can be removed without
-   * losing data, checked in order: the archive does not sit at or inside an
+   * Remove the originals an archive was made from, once removing them cannot
+   * lose data, checked in order: the archive does not sit at or inside an
    * input, it verifies against its manifest, and a fresh scan of the spec's
-   * inputs still matches that manifest, every file and link by its content.
-   * Reads the archive once and every original once, reporting how far through
-   * `onProgress` (stage `verify`, then `recheck`). Removes nothing. A check
-   * that cannot finish refuses, naming its step and carrying its error, and is
-   * not a failure of the call; a cancellation is thrown.
+   * inputs still matches that manifest, every file and link by its content;
+   * the archive is read once more right before the originals go. Reads the
+   * archive once and every original once, reporting how far through
+   * `onProgress` (stage `verify`, then `recheck`). Then each of the spec's
+   * inputs goes in turn, to the Trash through the instance's `trash` option or
+   * deleted for good (a folder with everything in it, a file, or a link
+   * itself, never what it points to), as `method` says. A check that cannot
+   * finish refuses, naming its step and carrying its error, and is not a
+   * failure of the call. A cancel during the checks is thrown; once removal
+   * has begun it stops before the next original, which is kept.
    */
-  async checkRemoval(request: RemovalRequest, options: ZipKitCallOptions = {}): Promise<RemovalCheck> {
+  async removeOriginals(request: RemovalRequest, options: ZipKitCallOptions = {}): Promise<RemovalResult> {
     return this.#run("verify", options, async (run) => {
-      const { spec, archive, removed = [] } = validateRemovalRequest(request);
+      const { spec, archive, removed = [], method } = validateRemovalRequest(request);
+      const trash = this.#trash;
+      if (method === "trash" && trash === undefined) {
+        throw new ZipKitError("request.invalid", "moving the originals to the Trash needs the trash option");
+      }
       const validated = validateSpec(spec);
       const policy = resolvePolicy(this.#policy, validated.policy);
       const manifestName = policy.manifest !== false ? policy.manifest.name : MANIFEST_DEFAULTS.name;
@@ -179,7 +192,14 @@ export class ZipKit {
         compare: () => this.#compareSources(rescan, records, removed, run),
       }, archive);
       run.signal?.throwIfAborted();
-      return check;
+      if (check.refusal !== null) return { ...check, outcome: null };
+      // A path that failed is looked at without the signal, so a cancel does
+      // not hide that it is gone.
+      const look = this.volume();
+      const sink: RemovalSink = method === "trash"
+        ? { remove: trash!, gone: async (path) => (await pathState(path, look).catch(() => null))?.kind === "missing" }
+        : { remove: (path) => run.volume.remove(path), gone: async (_path, error) => (error as { code?: unknown }).code === "ENOENT" };
+      return { ...check, outcome: await removeInTurn(validated.inputs, sink, run.signal) };
     });
   }
 
@@ -262,7 +282,7 @@ export class ZipKit {
     });
   }
 
-  /** The shared verification of `verify()` and `checkRemoval()`. */
+  /** The shared verification of `verify()` and `removeOriginals()`. */
   #verify(
     archive: string,
     manifest: boolean,

@@ -1,7 +1,6 @@
 /**
  * Binds the queue engine to its real dependencies — the SDK verbs (with progress
- * forwarded to the renderer), the OS Trash, permanent deletion, persistence,
- * and id minting — and
+ * forwarded to the renderer), the OS Trash, persistence, and id minting — and
  * registers the IPC handlers that delegate to it. The engine itself
  * (./queue-engine) is Electron-free and unit-tested with injected fakes; this
  * file is the wiring.
@@ -14,12 +13,15 @@ import type { JobIntent, SavedJob } from "../shared/queue.js";
 import type { JobAction, LogEvent, PlanReport, ProgressCounts, VerifyResult } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
-import { sdk } from "./sdk.js";
+import { appZipKit, createSdk } from "./sdk.js";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
 import { createQueueEngine, type TrashResult } from "./queue-engine.js";
 import { newestSave } from "./managedJson.js";
 import { appAdmission } from "./command-admission.js";
+
+// The app's one SDK instance, moving the originals to the OS Trash through Electron.
+const sdk = createSdk(appZipKit((target) => shell.trashItem(target)));
 
 // One queue save runs at a time, the newest job list waiting behind it.
 const saves = newestSave(saveQueue);
@@ -53,11 +55,11 @@ const engine = createQueueEngine({
   write: (plan, signal, onEvent) => sdk.write(plan, { signal, onEvent, onProgress: countsFor(onEvent) }),
   verify: (output, signal, onEvent, manifestName) =>
     sdk.verify(output, manifestName, { signal, onEvent, onProgress: countsFor(onEvent) }),
-  checkRemoval: (output, inputs, removed, options, signal, onEvent) =>
-    sdk.checkRemoval(output, inputs, removed, options, { signal, onEvent, onProgress: countsFor(onEvent) }),
+  removeOriginals: (output, inputs, removed, options, method, signal, onEvent) =>
+    sdk.removeOriginals(output, inputs, removed, options, method, { signal, onEvent, onProgress: countsFor(onEvent) }),
   pathKinds: (paths, signal) => sdk.pathKinds(paths, { signal }),
-  // Each path goes to the OS Trash in turn, each call awaited to its end; a
-  // cancel stops before the next path, never during a call.
+  // The archive goes to the OS Trash, the call awaited to its end; a cancel
+  // stops before a path, never during a call.
   trash: async (paths, signal) => {
     const result: TrashResult = { moved: [], failed: [], gone: [] };
     for (const p of paths) {
@@ -70,24 +72,6 @@ const engine = createQueueEngine({
         result.moved.push(p);
       } catch (err) {
         if (await goneNow(p)) result.gone!.push(p);
-        else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
-      }
-    }
-    return result;
-  },
-  // Each path is deleted for good in turn; a cancel stops before the next path.
-  deleteOriginals: async (paths, signal) => {
-    const result: TrashResult = { moved: [], failed: [], gone: [] };
-    for (const p of paths) {
-      if (signal.aborted) {
-        result.failed.push({ path: p, message: "cancelled before deletion" });
-        continue;
-      }
-      try {
-        await sdk.deletePath(p);
-        result.moved.push(p);
-      } catch (err) {
-        if ((err as { code?: unknown }).code === "ENOENT") result.gone!.push(p);
         else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }

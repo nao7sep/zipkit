@@ -47,7 +47,7 @@ import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type Tra
 import { message, sentences, type Message } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
-import { isZipKitError, sameFile, type PathState, type RemovalCheck, type RemovalRefusal } from "zipkitsdk";
+import { isZipKitError, sameFile, type PathState, type RemovalRefusal, type RemovalResult } from "zipkitsdk";
 
 export type { TrashResult } from "./trash-outcome.js";
 
@@ -67,27 +67,26 @@ export interface EngineDeps {
   /** Verify a written archive on request: the verdict, the counts and the
    *  paths that disagree, for the job's review. */
   inspect(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifestName: string | null): Promise<VerifyReport>;
-  /** Every check before the originals are removed (the SDK's checkRemoval):
-   *  the archive is not inside them, it verifies against its manifest, and a
-   *  fresh scan of `inputs` under the job's options still matches it; `removed`
-   *  are inputs already gone. */
-  checkRemoval(
+  /** Remove the originals `inputs` by `method` after every check (the SDK's
+   *  removeOriginals): the archive is not inside them, it verifies against its
+   *  manifest, and a fresh scan of `inputs` under the job's options still
+   *  matches it; `removed` are inputs already gone. A cancel during the checks
+   *  is thrown; once removal began, the inputs not yet started are kept. */
+  removeOriginals(
     output: string,
     inputs: string[],
     removed: string[],
     options: GuiOptions,
+    method: RemovalMethod,
     signal: AbortSignal,
     onEvent: (e: LogEvent) => void,
-  ): Promise<AppRemovalCheck>;
+  ): Promise<AppRemoval>;
   /** Classify input paths on disk (dir/file/missing) for the job's `entries`. */
   pathKinds(paths: string[], signal?: AbortSignal): Promise<InputEntry[]>;
-  /** Move each path in turn to the OS Trash and report the exact outcome. A
-   *  path not yet started when `signal` aborts is reported in `failed` (kept);
-   *  a call already running ends first. */
+  /** Move each path in turn to the OS Trash and report the exact outcome, for
+   *  the archive. A path not yet started when `signal` aborts is reported in
+   *  `failed` (kept); a call already running ends first. */
   trash(paths: string[], signal: AbortSignal): Promise<TrashResult>;
-  /** Delete each path permanently and report the exact outcome, in the same
-   *  buckets as {@link trash}: `moved` holds what was deleted. */
-  deleteOriginals(paths: string[], signal: AbortSignal): Promise<TrashResult>;
   /** Push the current job list to observers (renderer + persistence). */
   emit(jobs: Job[]): void;
   /** Start a Progress run for a job's action: every event the returned sink
@@ -212,12 +211,14 @@ function archiveRemovable(job: Job): boolean {
 }
 
 /** Why the originals may not be removed: the SDK's refusals. */
-type TrashRefusal = NonNullable<AppRemovalCheck["refusal"]>;
+type TrashRefusal = NonNullable<AppRemoval["refusal"]>;
 
-/** A removal check as the engine handles it: the SDK's, or one that ended as a
- *  whole, carrying whatever ended it. */
-export type AppRemovalCheck = Omit<RemovalCheck, "refusal"> & {
+/** A removal as the engine handles it: the SDK's, with what became of each
+ *  original in the app's buckets, or one that ended as a whole, carrying
+ *  whatever ended it. */
+export type AppRemoval = Omit<RemovalResult, "refusal" | "outcome"> & {
   refusal: Exclude<RemovalRefusal, { reason: "error" }> | { reason: "error"; step: "location" | "verify" | "recheck"; error: unknown } | null;
+  outcome: TrashResult | null;
 };
 
 /** The message for a refused Trash; only the location sentence differs between
@@ -395,40 +396,30 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     set(rec, { archiveStatus: "verified" });
   }
 
-  /** Reconfirm the verified archive once, right before the originals are
-   *  removed together; one changed or gone since the checks refuses removal. */
-  async function removeChecked(rec: Rec, output: string, inputs: string[], signal: AbortSignal, method: "trash" | "delete"): Promise<TrashResult> {
-    const state = await deps.pathState(output, signal);
-    if (rec.fingerprint === null || state.kind !== "present" || state.fingerprint !== rec.fingerprint) {
-      throw new Error("Archive changed or could not be confirmed before originals removal");
-    }
-    signal.throwIfAborted();
-    return (method === "trash" ? deps.trash : deps.deleteOriginals)(inputs, signal);
-  }
-
-  /** Every check before the originals are removed, the SDK's, in order. Null
-   *  when all pass. */
-  async function checkBeforeTrash(
+  /** Remove the originals after every check, the SDK's, in order: the
+   *  refusal, or what became of each original. */
+  async function removeAfterChecks(
     rec: Rec,
     output: string,
     inputs: string[],
+    method: RemovalMethod,
     signal: AbortSignal,
     onEvent: (e: LogEvent) => void,
     removed: string[] = [],
-  ): Promise<TrashRefusal | null> {
+  ): Promise<{ refusal: TrashRefusal; outcome: null } | { refusal: null; outcome: TrashResult }> {
     const id = rec.job.id;
     set(rec, { originalsChanges: undefined });
-    let check: AppRemovalCheck;
+    let check: AppRemoval;
     try {
-      check = await deps.checkRemoval(output, inputs, removed, rec.job.options, signal, onEvent);
+      check = await deps.removeOriginals(output, inputs, removed, rec.job.options, method, signal, onEvent);
     } catch (error) {
       // The check as a whole ended, which the recheck's message covers: the
-      // originals were not checked.
-      check = { refusal: { reason: "error", step: "recheck", error }, verified: null };
+      // originals were not checked, and none was removed.
+      check = { refusal: { reason: "error", step: "recheck", error }, verified: null, outcome: null };
     }
     if (check.verified) markVerified(rec, check.verified.fingerprint);
     const refusal = check.refusal;
-    if (refusal === null) return null;
+    if (refusal === null) return { refusal: null, outcome: check.outcome! };
     switch (refusal.reason) {
       case "inside":
         deps.log.error("trash blocked: archive inside source", { jobId: id, output });
@@ -448,7 +439,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         deps.log.error(`trash blocked: ${refusal.step} check errored; originals kept`, { jobId: id, error: errorInfo(refusal.error) });
         break;
     }
-    return refusal;
+    return { refusal, outcome: null };
   }
 
   /** A progress sink for one run of an action on a job: Create's fresh plan,
@@ -678,21 +669,13 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // The originals leave: every check, then Trash or deletion — kept on any failure.
       if (!removal) return; // a run that keeps them finished above
       const gone = rec.job.inputs.filter((p) => !inputs.includes(p));
-      const refusal = await checkBeforeTrash(rec, output, inputs, signal, onEvent, gone);
+      const { refusal, outcome: removed } = await removeAfterChecks(rec, output, inputs, removal, signal, onEvent, gone);
       if (refusal) {
         const again = resumeFrom !== null && refusal.reason === "verify-failed";
         set(rec, {
           state: "failed",
           message: again ? message("job.verifyFailedAgain") : refusalMessage(refusal, "job.insideSource"),
         });
-        return;
-      }
-      let removed: TrashResult;
-      try {
-        removed = await removeChecked(rec, output, inputs, signal, removal);
-      } catch (err) {
-        set(rec, { state: "failed", message: message(removal === "trash" ? "job.trashFailed" : "job.deleteFailed") });
-        deps.log.error("job removal of the originals failed after verify", { jobId: id, method: removal, error: errorInfo(err) });
         return;
       }
       if (!trashConfirmed(removed)) {
@@ -919,21 +902,18 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         // is not read as missing; what remains must still match.
         const inputs = rec.job.entries!.filter(present).map((entry) => entry.path);
         const gone = rec.job.entries!.filter((entry) => entry.kind === "missing").map((entry) => entry.path);
-        const refusal = await checkBeforeTrash(rec, output, inputs, signal, progressFor(id, method), gone);
-        if (signal.aborted) {
+        const { refusal, outcome: removed } = await removeAfterChecks(rec, output, inputs, method, signal, progressFor(id, method), gone);
+        if (refusal && signal.aborted) {
           result = { severity: "warning", message: message(trash ? "action.originalsTrashCancelled" : "action.originalsDeleteCancelled") };
           deps.log.info("removing originals cancelled", { jobId: id, method });
         } else if (refusal) {
           result = { severity: "error", message: refusalMessage(refusal, "action.archiveInsideOriginal") };
+        } else if (trashConfirmed(removed)) {
+          result = { severity: "info", message: describeRemovalDone(removed, method, "action", gone.length) };
+          deps.log.info(trash ? "originals trashed" : "originals deleted", { jobId: id, count: removed.moved.length, gone: gone.length + (removed.gone?.length ?? 0) });
         } else {
-          const removed = await removeChecked(rec, output, inputs, signal, trash ? "trash" : "delete");
-          if (trashConfirmed(removed)) {
-            result = { severity: "info", message: describeRemovalDone(removed, method, "action", gone.length) };
-            deps.log.info(trash ? "originals trashed" : "originals deleted", { jobId: id, count: removed.moved.length, gone: gone.length + (removed.gone?.length ?? 0) });
-          } else {
-            result = { severity: "error", message: describeOriginalsRemoval(removed, method) };
-            deps.log.error("removing originals not fully confirmed", { jobId: id, method, ...removed });
-          }
+          result = { severity: "error", message: describeOriginalsRemoval(removed, method) };
+          deps.log.error("removing originals not fully confirmed", { jobId: id, method, ...removed });
         }
       }
     } catch (err) {

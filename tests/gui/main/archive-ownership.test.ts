@@ -8,6 +8,7 @@ import { nullLog } from "../../../src/gui/main/log.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { JobIntent } from "../../../src/gui/shared/queue.js";
 import { ZipKit } from "zipkitsdk";
+import { createSdk } from "../../../src/gui/main/sdk.js";
 import { SAVE, TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
 import { eventually } from "../../helpers/eventually.js";
@@ -18,22 +19,23 @@ async function fixture() {
   await mkdir(trashDir);
   const a = path.join(root, "a.txt"), b = path.join(root, "b.txt");
   await writeFile(a, "original A"); await writeFile(b, "original B");
-  const zip = new ZipKit();
   let ids = 0, moves = 0;
+  const toTrash = (file: string) => rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
+  const zip = new ZipKit({ trash: toTrash });
+  const sdk = createSdk(zip);
   const deps: EngineDeps = {
     admission: new CommandAdmission(),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
     write: async (plan, signal, onEvent) =>
       ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent })),
     verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
-    checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),
+    removeOriginals: (archive, inputs, removed, options, method, signal, onEvent) =>
+      sdk.removeOriginals(archive, inputs, removed, options, method, { signal, onEvent }),
     pathKinds: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
-      for (const file of paths) await rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
+      for (const file of paths) await toTrash(file);
       return { moved: paths, failed: [] };
     },
-    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {
       const data = await zip.verify(manifestName === null ? { archive } : { archive, manifest: true, manifestName }, { signal, onEvent });

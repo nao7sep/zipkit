@@ -7,14 +7,14 @@
  * separate process contains a large folder.
  */
 
-import { rm } from "node:fs/promises";
-import { ZipKit, type PathState, type PlanData, type RemovalCheck, type VerifyRequest } from "zipkitsdk";
+import { ZipKit, type PathState, type PlanData, type RemovalMethod, type VerifyRequest } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
 import { APP_NAME, APP_VERSION } from "../shared/identity.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
 import { outputRequest } from "./output.js";
+import type { AppRemoval } from "./queue-engine.js";
 
 /** What one SDK call answers to and reports through. */
 export interface SdkCall {
@@ -30,10 +30,11 @@ function verifyRequest(archive: string, manifestName: string | null): VerifyRequ
 }
 
 /** The SDK as the app runs it: its manifests name ZipKit and its version
- *  beside the SDK, debug events follow the app's own switch, and main records
- *  every event itself. */
-export function appZipKit(): ZipKit {
-  return new ZipKit({ app: { name: APP_NAME, version: APP_VERSION }, debug: process.env.ZIPKIT_DEBUG === "1" });
+ *  beside the SDK, debug events follow the app's own switch, main records
+ *  every event itself, and the originals go to the Trash through `trash`, the
+ *  platform's as Electron provides it. */
+export function appZipKit(trash?: (target: string) => Promise<void>): ZipKit {
+  return new ZipKit({ app: { name: APP_NAME, version: APP_VERSION }, debug: process.env.ZIPKIT_DEBUG === "1", trash });
 }
 
 /** The verbs the queue engine uses, in the app's terms. */
@@ -62,16 +63,21 @@ export function createSdk(zip: ZipKit = appZipKit()) {
       const data = await zip.verify(verifyRequest(archive, manifestName), call);
       return { ok: data.ok, summary: data.summary, missing: data.missing, extra: data.extra };
     },
-    checkRemoval: (output: string, inputs: string[], removed: string[], options: GuiOptions, call: SdkCall = {}): Promise<RemovalCheck> =>
-      zip.checkRemoval({ spec: buildSpec(inputs, options), archive: output, removed }, call),
+    // The originals go after every check; what became of each is in the app's
+    // buckets, a kept one's error code in its message for the log.
+    removeOriginals: async (
+      output: string, inputs: string[], removed: string[], options: GuiOptions, method: RemovalMethod, call: SdkCall = {},
+    ): Promise<AppRemoval> => {
+      const result = await zip.removeOriginals({ spec: buildSpec(inputs, options), archive: output, removed, method }, call);
+      const outcome = result.outcome && {
+        moved: result.outcome.removed,
+        gone: result.outcome.gone,
+        failed: result.outcome.kept.map(({ path, error }) => ({ path, message: `${error.code}: ${error.message}` })),
+      };
+      return { ...result, outcome };
+    },
     pathKinds: (paths: string[], call: SdkCall = {}): Promise<InputEntry[]> => zip.pathKinds(paths, call),
-    // Deletes one original for good: a folder with everything in it, a file, or
-    // a link itself, never what a link points to. Only after the job's checks.
-    deletePath: (target: string): Promise<void> => rm(target, { recursive: true }),
   };
 }
 
 export type Sdk = ReturnType<typeof createSdk>;
-
-/** The app's one SDK instance. */
-export const sdk = createSdk();

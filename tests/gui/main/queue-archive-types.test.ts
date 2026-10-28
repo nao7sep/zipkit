@@ -7,6 +7,7 @@ import { nullLog } from "../../../src/gui/main/log.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { buildSpec, DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { ZipKit } from "zipkitsdk";
+import { createSdk } from "../../../src/gui/main/sdk.js";
 import { TRASH } from "../../helpers/intents.js";
 import { realPathState } from "../../helpers/archiveState.js";
 import { eventually } from "../../helpers/eventually.js";
@@ -15,8 +16,9 @@ it("keeps originals when a real archive's file type changes after publication", 
   const root = await mkdtemp(path.join(tmpdir(), "zipkit-queue-type-"));
   const input = path.join(root, "source.txt"), output = path.join(root, "archive.zip");
   await writeFile(input, "target.txt");
-  const zip = new ZipKit();
   const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [] }));
+  const zip = new ZipKit({ trash: async (target) => { await trash([target]); } });
+  const sdk = createSdk(zip);
   const engine = createQueueEngine({
     admission: new CommandAdmission(),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
@@ -29,10 +31,9 @@ it("keeps originals when a real archive's file type changes after publication", 
       return result.mode === "write" ? result.bytes : null;
     },
     verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
-    checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
-      zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),
+    removeOriginals: (archive, inputs, removed, options, method, signal, onEvent) =>
+      sdk.removeOriginals(archive, inputs, removed, options, method, { signal, onEvent }),
     pathKinds: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
-    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {
       const data = await zip.verify(manifestName === null ? { archive } : { archive, manifest: true, manifestName }, { signal, onEvent });

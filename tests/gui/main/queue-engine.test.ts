@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { createQueueEngine, type AppRemovalCheck, type EngineDeps, type QueueEngine } from "../../../src/gui/main/queue-engine.js";
+import { createQueueEngine, type AppRemoval, type EngineDeps, type QueueEngine, type TrashResult } from "../../../src/gui/main/queue-engine.js";
 import { ZipKitError, type SourceComparison, type VerifyReport } from "zipkitsdk";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
 import { nullLog } from "../../../src/gui/main/log.js";
@@ -50,12 +50,14 @@ const FAILED_REPORT: VerifyReport = {
   summary: { total: 1, crc32Failed: 1, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 }, missing: [], extra: [], findings: [],
 };
 
-/** The SDK's removal check's own steps, faked one by one: the engine's fake
- *  `checkRemoval` runs them in the SDK's order, and like it, refuses at the
- *  first check that refuses or cannot finish. */
+/** The SDK's removal's own steps, faked one by one: the engine's fake
+ *  `removeOriginals` runs them in the SDK's order, and like it, refuses at the
+ *  first check that refuses or cannot finish, and otherwise removes the
+ *  originals through `trash` or `deleteOriginals`. */
 interface RemovalFakes {
   recheck(output: string, inputs: string[], options: typeof DEFAULT_OPTIONS, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<SourceComparison>;
   outputInsideInputs(output: string, inputs: string[], signal: AbortSignal): Promise<boolean>;
+  deleteOriginals(paths: string[], signal: AbortSignal): Promise<TrashResult>;
 }
 
 function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
@@ -87,27 +89,25 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
       calls.trash.push(paths);
       return { moved: paths, failed: [] };
     },
-    deleteOriginals: async (paths) => {
-      calls.deleted.push(paths);
-      return { moved: paths, failed: [] };
-    },
     emit: () => {},
     progress: () => () => {},
     newId: () => `job-${++idN}`,
     log: nullLog,
-    checkRemoval: async (output, inputs, _removed, options, signal, onEvent): Promise<AppRemovalCheck> => {
+    removeOriginals: async (output, inputs, _removed, options, method, signal, onEvent): Promise<AppRemoval> => {
       const seen = await deps.pathState(output, signal).catch(() => null);
       try {
-        if (await fakes.outputInsideInputs(output, inputs, signal)) return { refusal: { reason: "inside" }, verified: null };
-      } catch (error) { return { refusal: { reason: "error", step: "location", error }, verified: null }; }
+        if (await fakes.outputInsideInputs(output, inputs, signal)) return { refusal: { reason: "inside" }, verified: null, outcome: null };
+      } catch (error) { return { refusal: { reason: "error", step: "location", error }, verified: null, outcome: null }; }
       try {
-        if (!(await deps.verify(output, signal, onEvent, "zipkit.json"))) return { refusal: { reason: "verify-failed", report: FAILED_REPORT }, verified: null };
-      } catch (error) { return { refusal: { reason: "error", step: "verify", error }, verified: null }; }
+        if (!(await deps.verify(output, signal, onEvent, "zipkit.json"))) return { refusal: { reason: "verify-failed", report: FAILED_REPORT }, verified: null, outcome: null };
+      } catch (error) { return { refusal: { reason: "error", step: "verify", error }, verified: null, outcome: null }; }
       const verified = { fingerprint: seen?.kind === "present" ? seen.fingerprint : null };
       try {
         const comparison = await fakes.recheck(output, inputs, options, signal, onEvent);
-        return { refusal: comparison.matches ? null : { reason: "changed", comparison }, verified };
-      } catch (error) { return { refusal: { reason: "error", step: "recheck", error }, verified }; }
+        if (!comparison.matches) return { refusal: { reason: "changed", comparison }, verified, outcome: null };
+      } catch (error) { return { refusal: { reason: "error", step: "recheck", error }, verified, outcome: null }; }
+      signal.throwIfAborted();
+      return { refusal: null, verified, outcome: await (method === "trash" ? deps.trash : fakes.deleteOriginals)(inputs, signal) };
     },
     ...overrides,
   };
@@ -117,6 +117,10 @@ function makeDeps(overrides: Partial<EngineDeps & RemovalFakes> = {}) {
       return { matches: true, added: [], missing: [], changed: [], unlisted: [] };
     },
     outputInsideInputs: async () => false,
+    deleteOriginals: async (paths) => {
+      calls.deleted.push(paths);
+      return { moved: paths, failed: [] };
+    },
     ...overrides,
   };
   return { deps, calls };
@@ -1144,9 +1148,7 @@ describe("queue engine", () => {
 
   it("trashOriginals surfaces a Trash failure instead of claiming success", async () => {
     const { deps } = makeDeps({
-      trash: async () => {
-        throw new Error("trash boom");
-      },
+      trash: async (paths) => ({ moved: [], failed: paths.map((path) => ({ path, message: "io.failed: trash boom" })) }),
     });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/a"], DEFAULT_OPTIONS, SAVE);
@@ -1155,7 +1157,7 @@ describe("queue engine", () => {
     await until(() => expect(engine.snapshot()[0]?.state).toBe("done"));
     engine.removeOriginals(id, "trash");
     await until(() =>
-      expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("could not be moved to Trash"),
+      expect(say(engine.snapshot()[0]?.actionResult?.message)).toContain("1 original was kept"),
     );
     expect(engine.snapshot()[0]?.actionResult?.severity).toBe("error");
     expect(engine.snapshot()[0]?.state).toBe("done"); // unchanged
@@ -1227,9 +1229,9 @@ describe("queue engine", () => {
       },
       pathKinds: async (paths) => paths.map((path) => ({ path, kind: trashCall > 0 && path === "/x/a" ? "missing" as const : "file" as const })),
       // What the archive holds from a moved input is the SDK's to forgive.
-      checkRemoval: async (_output, inputs, removed) => {
+      removeOriginals: async (_output, inputs, removed, _options, _method, signal) => {
         checked = { inputs, removed };
-        return { refusal: null, verified: { fingerprint: null } };
+        return { refusal: null, verified: { fingerprint: null }, outcome: await deps.trash(inputs, signal) };
       },
     });
     const engine = createQueueEngine(deps);

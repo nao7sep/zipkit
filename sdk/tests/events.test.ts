@@ -81,11 +81,11 @@ describe("the event stream", () => {
   it("records no fault for a removal check that refuses because a step could not finish", async () => {
     const zip = new ZipKit();
     const { seen, onEvent } = collector();
-    const check = await zip.checkRemoval({ spec: { inputs: [proj] }, archive: path.join(root, "absent.zip") }, { onEvent });
+    const check = await zip.removeOriginals({ spec: { inputs: [proj] }, archive: path.join(root, "absent.zip"), method: "delete" }, { onEvent });
     expect(check.refusal).toMatchObject({ reason: "error", step: "verify", error: { code: "path.missing" } });
     const junk = path.join(root, "junk.zip");
     await writeFile(junk, "not a zip");
-    const failed = await zip.checkRemoval({ spec: { inputs: [proj] }, archive: junk }, { onEvent });
+    const failed = await zip.removeOriginals({ spec: { inputs: [proj] }, archive: junk, method: "delete" }, { onEvent });
     expect(failed.refusal).toMatchObject({ reason: "error", step: "verify", error: { code: "archive.not-zip", subject: junk } });
     expect(seen.filter((e) => e.event === "fault")).toEqual([]);
   });

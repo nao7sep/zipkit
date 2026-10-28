@@ -1,8 +1,8 @@
-import { mkdtemp, readdir, rm, symlink, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createSdk } from "../../../src/gui/main/sdk.js";
+import { appZipKit, createSdk } from "../../../src/gui/main/sdk.js";
 import { isZipKitError } from "zipkitsdk";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import type { LogEvent, ProgressCounts } from "../../../src/gui/shared/api.js";
@@ -32,19 +32,21 @@ describe("the app's SDK verbs", () => {
     expect((await readdir(root)).sort()).toEqual(["photos", "photos.zip"]);
   });
 
-  it("checks the originals against the written archive before removal, and classifies paths", async () => {
+  it("removes the originals only after checking them against the written archive, and classifies paths", async () => {
     const input = path.join(root, "docs");
     await mkdir(input);
     await writeFile(path.join(input, "note.txt"), "hello");
-    const sdk = createSdk();
+    const trashed: string[] = [];
+    const sdk = createSdk(appZipKit(async (target) => { trashed.push(target); }));
     const plan = await sdk.plan([input], { ...DEFAULT_OPTIONS });
     await sdk.write(plan);
-    const check = await sdk.checkRemoval(plan.output, [input], [], { ...DEFAULT_OPTIONS });
-    expect(check).toEqual({ refusal: null, verified: { fingerprint: expect.any(String) } });
+    const removal = await sdk.removeOriginals(plan.output, [input], [], { ...DEFAULT_OPTIONS }, "trash");
+    expect(removal).toEqual({ refusal: null, verified: { fingerprint: expect.any(String) }, outcome: { moved: [input], gone: [], failed: [] } });
+    expect(trashed).toEqual([input]);
     await writeFile(path.join(input, "late.txt"), "added after the archive");
-    expect((await sdk.checkRemoval(plan.output, [input], [], { ...DEFAULT_OPTIONS })).refusal)
-      .toMatchObject({ reason: "changed", comparison: { added: [path.join(input, "late.txt")] } });
-    const missing = await sdk.checkRemoval(path.join(root, "none.zip"), [input], [], { ...DEFAULT_OPTIONS });
+    expect(await sdk.removeOriginals(plan.output, [input], [], { ...DEFAULT_OPTIONS }, "delete"))
+      .toMatchObject({ refusal: { reason: "changed", comparison: { added: [path.join(input, "late.txt")] } }, outcome: null });
+    const missing = await sdk.removeOriginals(path.join(root, "none.zip"), [input], [], { ...DEFAULT_OPTIONS }, "delete");
     expect(missing.refusal).toMatchObject({ reason: "error", step: "verify", error: { name: expect.any(String), message: expect.any(String) } });
     expect(await sdk.pathKinds([input, path.join(root, "gone")])).toEqual([
       { path: input, kind: "directory" },
@@ -65,20 +67,18 @@ describe("the app's SDK verbs", () => {
     expect(await sdk.pathState(archive)).toEqual({ kind: "missing" });
   });
 
-  it("deletes an original for good: a folder with its contents, or a link itself rather than its target", async () => {
-    const folder = path.join(root, "folder");
-    await mkdir(path.join(folder, "nested"), { recursive: true });
-    await writeFile(path.join(folder, "nested", "a.txt"), "a");
-    const target = path.join(root, "target.txt");
-    await writeFile(target, "kept");
-    const link = path.join(root, "link");
-    await symlink(target, link);
-    const sdk = createSdk();
-    await sdk.deletePath(folder);
-    await sdk.deletePath(link);
-    expect((await readdir(root)).sort()).toEqual(["target.txt"]);
-    // The errno code says an original was already gone rather than that its deletion failed.
-    await expect(sdk.deletePath(path.join(root, "missing"))).rejects.toMatchObject({ code: "ENOENT", message: expect.stringContaining("ENOENT") });
+  it("deletes an original for good, and keeps one that could not go with its code for the log", async () => {
+    const input = path.join(root, "folder");
+    await mkdir(path.join(input, "nested"), { recursive: true });
+    await writeFile(path.join(input, "nested", "a.txt"), "a");
+    const sdk = createSdk(appZipKit(async () => { throw new Error("Trash unavailable"); }));
+    const plan = await sdk.plan([input], { ...DEFAULT_OPTIONS });
+    await sdk.write(plan);
+    expect((await sdk.removeOriginals(plan.output, [input], [], { ...DEFAULT_OPTIONS }, "trash")).outcome)
+      .toEqual({ moved: [], gone: [], failed: [{ path: input, message: "io.failed: Trash unavailable" }] });
+    expect((await sdk.removeOriginals(plan.output, [input], [], { ...DEFAULT_OPTIONS }, "delete")).outcome)
+      .toEqual({ moved: [input], gone: [], failed: [] });
+    expect(await readdir(root)).toEqual(["folder.zip"]);
   });
 
   it("fails with the SDK's own error, which its guard recognizes", async () => {

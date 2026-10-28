@@ -1,5 +1,5 @@
 /**
- * The delete gate's source check, end to end through `checkRemoval`: an
+ * The delete gate's source check, end to end through `removeOriginals`: an
  * archive's inputs re-scanned against its embedded manifest. Only included
  * files and symlinks count, by source path, type, size, modification time and
  * content; junk written into the tree and folder times do not.
@@ -34,9 +34,12 @@ afterEach(async () => {
 
 const SAME = { matches: true, added: [], missing: [], changed: [], unlisted: [] };
 
+/** A Trash that keeps everything, so a check that passes leaves the originals in place. */
+const keeping = () => new ZipKit({ trash: async () => {} });
+
 /** The removal check's comparison: the same as archived, or what its refusal says changed. */
 async function compare(archive = output, spec = { inputs: [proj] }): Promise<SourceComparison> {
-  const { refusal } = await new ZipKit().checkRemoval({ spec, archive });
+  const { refusal } = await keeping().removeOriginals({ spec, archive, method: "trash" });
   if (refusal === null) return SAME;
   if (refusal.reason !== "changed") throw new Error(`refused for ${refusal.reason}`);
   return refusal.comparison;
@@ -102,7 +105,7 @@ describe("the source check", () => {
   it("refuses when the archive holds no manifest", async () => {
     const bare = path.join(dir, "bare.zip");
     await new ZipKit().create({ inputs: [proj], output: bare, policy: { manifest: false } });
-    const { refusal } = await new ZipKit().checkRemoval({ spec: { inputs: [proj] }, archive: bare });
+    const { refusal } = await keeping().removeOriginals({ spec: { inputs: [proj] }, archive: bare, method: "trash" });
     expect(refusal).toMatchObject({ reason: "error", step: "verify", error: { code: "manifest.missing" } });
   });
 });
@@ -150,7 +153,7 @@ describe.skipIf(process.platform === "win32")("literal backslashes in source inp
     const archive = path.join(dir, "partial.zip");
     await new ZipKit().create({ inputs: [proj, removed], output: archive });
     await rm(removed, { recursive: true });
-    const result = await new ZipKit().checkRemoval({ spec: { inputs: [proj] }, archive, removed: [removed] });
+    const result = await keeping().removeOriginals({ spec: { inputs: [proj] }, archive, removed: [removed], method: "trash" });
     expect(result.refusal).toBeNull();
   });
 });
