@@ -31,7 +31,7 @@ it.each(["file", "symlink"] as const)("selects SHA-only, CRC-only or mixed diges
   const sha = createHash("sha256").update(bytes).digest("hex");
   const crc = crc32(bytes);
   const base = { archivePath: "source", sourcePath: "source", type, size: bytes.length, mtime: { ns: source.mtimeNs.toString() }, crc32: crc };
-  const deps = { volume: realVolume(), limit: <T>(run: () => Promise<T>) => run(), chunkSize: 65536 };
+  const deps = { volume: realVolume(), chunkSize: 65536 };
   for (const mode of ["sha", "crc", "mixed"] as const) {
     vi.mocked(createHash).mockClear();
     vi.mocked(crc32).mockClear();

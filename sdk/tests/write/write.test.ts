@@ -42,7 +42,7 @@ function write(plan: Awaited<ReturnType<ZipKit["plan"]>>, volume?: Volume) {
   return writeArchive(plan, {
     logger: createLogger(),
     chunkSize: 64,
-    volume: volume ?? new Volume(fileSystemWith("", (h) => h), 30_000),
+    volume: volume ?? new Volume(fileSystemWith("", (h) => h)),
   });
 }
 
@@ -68,7 +68,7 @@ describe("a source file changed during Create", () => {
         return st;
       },
     }));
-    await expectSourceChanged(write(plan, new Volume(port, 30_000)));
+    await expectSourceChanged(write(plan, new Volume(port)));
   });
 
   it("fails when the file returns more bytes than were scanned", async () => {
@@ -83,7 +83,7 @@ describe("a source file changed during Create", () => {
         return { bytesRead: length, buffer };
       },
     }));
-    await expectSourceChanged(write(plan, new Volume(port, 30_000)));
+    await expectSourceChanged(write(plan, new Volume(port)));
   });
 
   it("fails when the file was edited on disk after the scan", async () => {
@@ -167,7 +167,7 @@ describe.each([
   it("is a refusal like a plan that blocks, and the other file is kept", async () => {
     const plan = await new ZipKit().plan({ inputs: [proj], output });
     await writeFile(output, "someone else's");
-    const result = await write(plan, new Volume(port, 30_000));
+    const result = await write(plan, new Volume(port));
     expect(result).toMatchObject({ mode: "plan", output, writable: false, instructions: { writable: false } });
     expect((result as PlanData).findings.at(-1)).toMatchObject({ rule: "output.exists", severity: "error", path: output });
     expect(result.summary.errors).toBe(plan.summary.errors + 1);
@@ -177,7 +177,7 @@ describe.each([
 
   it("is not in the way when the name is free: the archive is published whole", async () => {
     const plan = await new ZipKit().plan({ inputs: [proj], output });
-    expect(await write(plan, new Volume(port, 30_000))).toMatchObject({ mode: "write", output });
+    expect(await write(plan, new Volume(port))).toMatchObject({ mode: "write", output });
     expect(readdirSync(dir).sort()).toEqual(["out.zip", "proj"]);
     expect((await new ZipKit().verify({ archive: output, manifest: true })).ok).toBe(true);
   });

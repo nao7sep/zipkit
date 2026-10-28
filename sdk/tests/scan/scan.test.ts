@@ -11,7 +11,6 @@ import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import pLimit from "p-limit";
 import { matcherFor } from "../../src/filter/match.ts";
 import { createLogger } from "../../src/log/logger.ts";
 import { resolvePolicy } from "../../src/policy.ts";
@@ -35,7 +34,6 @@ afterEach(async () => {
 function deps(policy: ArchivePolicy) {
   return {
     matcher: matcherFor(policy),
-    limit: <T>(fn: () => Promise<T>): Promise<T> => fn(),
     logger: createLogger(),
     signal: undefined,
     volume: realVolume(),
@@ -52,46 +50,31 @@ function names(result: { entries: { archivePath: string }[] }): string[] {
 }
 
 describe("scan over a real tree", () => {
-  it("cancels a followed descendant through a single-slot scan pool", async () => {
+  it("cancels a followed descendant once the file call in hand ends", async () => {
     const proj = path.join(dir, "proj"), target = path.join(dir, "target");
     await mkdir(proj); await mkdir(target);
-    const file = path.join(target, "file.txt");
-    await writeFile(file, "content");
+    await writeFile(path.join(target, "a.txt"), "content");
+    await writeFile(path.join(target, "b.txt"), "content");
     await createDirectoryLink(target, path.join(proj, "link"));
     let entered!: () => void, release!: () => void;
     const started = new Promise<void>((r) => { entered = r; });
     const held = new Promise<void>((r) => { release = r; });
     const controller = new AbortController();
-    const canonicalFile = await nodeFileSystem.realpath(file);
-    let finished!: () => void;
-    const settled = new Promise<void>((r) => { finished = r; });
+    const canonicalTarget = await nodeFileSystem.realpath(target);
+    const looked: string[] = [];
     const volume = new Volume({ ...nodeFileSystem, lstat: async (name) => {
-      if (name !== canonicalFile) return nodeFileSystem.lstat(name);
-      entered(); await held;
-      try { return await nodeFileSystem.lstat(name); }
-      finally { finished(); }
-    } }, 30_000, controller.signal);
+      if (path.dirname(name) !== canonicalTarget) return nodeFileSystem.lstat(name);
+      looked.push(name);
+      if (looked.length === 1) { entered(); await held; }
+      return nodeFileSystem.lstat(name);
+    } }, controller.signal);
     const policy = resolvePolicy(undefined, { symlinks: "follow", followExternal: true });
     const work = scan({ inputs: [proj] }, policy, {
-      ...deps(policy), volume, signal: controller.signal, limit: pLimit(1),
+      ...deps(policy), volume, signal: controller.signal,
     });
-    const rejected = expect(work).rejects.toHaveProperty("code", "operation.cancelled");
-    try { await started; controller.abort(); await rejected; }
-    finally { release(); await settled; }
-  });
-
-  it.each([1, 4])("follows directories with all %i scan slots occupied by links", async (concurrency) => {
-    const proj = path.join(dir, "proj");
-    await mkdir(proj);
-    for (let i = 0; i < concurrency; i++) {
-      const target = path.join(dir, `target-${i}`);
-      await mkdir(target);
-      await writeFile(path.join(target, "file.txt"), "content");
-      await createDirectoryLink(target, path.join(proj, `link-${i}`));
-    }
-    const policy = resolvePolicy(undefined, { symlinks: "follow", followExternal: true });
-    const result = await scan({ inputs: [proj] }, policy, { ...deps(policy), limit: pLimit(concurrency) });
-    expect(names(result)).toEqual(Array.from({ length: concurrency }, (_, i) => [`link-${i}`, `link-${i}/file.txt`]).flat());
+    await started; controller.abort(); release();
+    await expect(work).rejects.toHaveProperty("code", "operation.cancelled");
+    expect(looked).toHaveLength(1);
   });
 
   it("includes each named root when multiple input directories are empty", async () => {
@@ -114,37 +97,13 @@ describe("scan over a real tree", () => {
     const volume = new Volume({ ...nodeFileSystem, readdir: async (name) => {
       listed.push(name);
       return nodeFileSystem.readdir(name);
-    } }, 30_000);
+    } });
 
     const result = await runScan({ inputs: [excluded, kept] }, {}, volume);
 
     expect(names(result)).toEqual(["kept"]);
     expect(result.prunedDirs.map((entry) => entry.archivePath)).toEqual(["__MACOSX"]);
     expect(listed).toEqual([kept]);
-  });
-
-  it("admits no more than two unresolved tasks for a flat directory with a two-slot pool", async () => {
-    const proj = path.join(dir, "proj");
-    await mkdir(proj);
-    const fileNames = Array.from({ length: 257 }, (_, i) => `file-${String(i).padStart(3, "0")}.txt`);
-    await Promise.all(fileNames.map((name) => writeFile(path.join(proj, name), "x")));
-    const volume = new Volume(nodeFileSystem, 30_000);
-    const pool = pLimit(2);
-    let unresolved = 0, maximum = 0, submitted = 0;
-    const limit = Object.assign(<T>(run: () => Promise<T>): Promise<T> => {
-      submitted++;
-      unresolved++;
-      maximum = Math.max(maximum, unresolved);
-      return pool(run).finally(() => { unresolved--; });
-    }, { concurrency: pool.concurrency });
-    const policy = resolvePolicy();
-
-    const result = await scan({ inputs: [proj] }, policy, { ...deps(policy), limit, volume });
-
-    expect(names(result)).toEqual(fileNames);
-    expect(submitted).toBe(fileNames.length);
-    expect(maximum).toBe(2);
-    expect(unresolved).toBe(0);
   });
 
   it("fails on an unlistable root but records an unlistable descendant as unlisted", async () => {
@@ -156,7 +115,7 @@ describe("scan over a real tree", () => {
         if (name === blocked) throw denied;
         return nodeFileSystem.readdir(name);
       },
-    }, 30_000);
+    });
     await expect(runScan({ inputs: [proj] }, {}, inaccessible(proj))).rejects.toMatchObject({ code: "path.denied", subject: proj });
     const result = await runScan({ inputs: [proj] }, {}, inaccessible(locked));
     expect(names(result)).toEqual(["locked"]);
@@ -211,7 +170,7 @@ describe("scan over a real tree", () => {
     const volume = new Volume({ ...nodeFileSystem, readlink: async (name) => {
       reads.push(name);
       return nodeFileSystem.readlink(name);
-    } }, 30_000);
+    } });
 
     const result = await runScan({ inputs: [proj] }, { symlinks }, volume);
 

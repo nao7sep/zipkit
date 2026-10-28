@@ -41,7 +41,7 @@ import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/s
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
 import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type TrashResult } from "./trash-outcome.js";
-import { message, sentences, type Message, type MessageValues } from "../shared/i18n/translate.js";
+import { message, sentences, type Message } from "../shared/i18n/translate.js";
 import type { MessageKey } from "../shared/i18n/catalogues.js";
 import type { CommandAdmission } from "./command-admission.js";
 import { isZipKitError, sameFile, type PathClaim, type PathClaims, type PathResource, type PathState, type RemovalCheck, type RemovalRefusal } from "zipkitsdk";
@@ -59,8 +59,7 @@ export interface EngineDeps {
   plan(inputs: string[], options: GuiOptions, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<PlanData>;
   /** Write a planned archive; resolves to the byte count, or null when the SDK
    *  refused because an output appeared at the path since the plan. */
-  write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void,
-    onPhysicalSettlement: (settlement: Promise<void>) => void): Promise<number | null>;
+  write(plan: PlanData, signal: AbortSignal, onEvent: (e: LogEvent) => void): Promise<number | null>;
   /** Verify a written archive: every entry's CRC-32, and against the manifest
    *  named, when one is; resolves to the SDK's verdict. */
   verify(output: string, signal: AbortSignal, onEvent: (e: LogEvent) => void, manifestName: string | null): Promise<boolean>;
@@ -81,11 +80,9 @@ export interface EngineDeps {
   ): Promise<AppRemovalCheck>;
   /** Classify input paths on disk (dir/file/missing) for the job's `entries`. */
   pathKinds(paths: string[]): Promise<InputEntry[]>;
-  /** Move each path independently to the OS Trash and report the exact outcome.
-   *  Bounded and cancellable like `plan`/`write`/`verify`: a path not yet started
-   *  when `signal` aborts is reported in `failed` (kept); one whose Trash call was
-   *  still running when `signal` aborted or its time ran out is reported in
-   *  `unconfirmed`, because that call may still move it. */
+  /** Move each path in turn to the OS Trash and report the exact outcome. A
+   *  path not yet started when `signal` aborts is reported in `failed` (kept);
+   *  a call already running ends first. */
   trash(paths: string[], signal: AbortSignal): Promise<TrashResult>;
   /** Delete each path permanently and report the exact outcome, in the same
    *  buckets as {@link trash}: `moved` holds what was deleted. */
@@ -158,23 +155,16 @@ interface Rec {
   runAfterPlan: boolean;
 }
 
-/** The code of an SDK failure, or of the SDK host's own exit. Undefined for
- *  plain or Node errors, so a Node `code` like ENOENT is never mistaken for an
- *  SDK code. */
 /** The manifest a job's archive is verified against: its name, or null when
  *  the job embeds none. */
 function manifestOf(options: GuiOptions): string | null {
   return options.manifest ? options.manifestName : null;
 }
 
+/** The code of an SDK failure. Undefined for plain or Node errors, so a Node
+ *  `code` like ENOENT is never mistaken for an SDK code. */
 function errCode(err: unknown): string | undefined {
-  if (isZipKitError(err)) return err.code;
-  return (err as { code?: unknown } | null)?.code === "host.exited" ? "host.exited" : undefined;
-}
-
-/** The path a stalled volume stopped responding at. */
-function stalledPath(err: unknown): string | undefined {
-  return isZipKitError(err) && err.code === "io.stalled" ? err.subject : undefined;
+  return isZipKitError(err) ? err.code : undefined;
 }
 
 /** The archive path of the source file a write found changed since the scan. */
@@ -182,23 +172,12 @@ function changedSourcePath(err: unknown): string | undefined {
   return isZipKitError(err) && err.code === "write.source-changed" ? err.subject : undefined;
 }
 
-/** Whether a stall struck while a finished archive was being published, so the
- *  archive may still appear once the stalled call completes. */
-function stalledWhileCommitting(err: unknown): boolean {
-  return stalledPath(err) !== undefined && isZipKitError(err) && err.effect === "unknown";
-}
-
 /** A failed write's job message: a source file that changed while it was read
- *  is named, so the user knows the archive was refused rather than broken, and a
- *  publication that stalled says the archive may still appear rather than that
- *  it could not be written (an unknown outcome is reported as unknown). */
-function writeFailureMessage(err: unknown, output: string): Message {
+ *  is named, so the user knows the archive was refused rather than broken. */
+function writeFailureMessage(err: unknown): Message {
   const changed = changedSourcePath(err);
   if (changed !== undefined) return message("job.sourceChanged", { path: changed });
-  if (stalledWhileCommitting(err)) {
-    return failureMessage(err, "job.writeUnconfirmed", { path: output });
-  }
-  return failureMessage(err, "job.writeFailed");
+  return message("job.writeFailed");
 }
 
 const ERRORED_KEYS: Record<Extract<RemovalRefusal, { reason: "error" }>["step"], MessageKey> = {
@@ -221,7 +200,7 @@ function archiveRemovable(job: Job): boolean {
 type TrashRefusal = NonNullable<AppRemovalCheck["refusal"]> | { reason: "replaced" };
 
 /** A removal check as the engine handles it: the SDK's, or one that ended as a
- *  whole, such as when the SDK host's process did, carrying whatever ended it. */
+ *  whole, carrying whatever ended it. */
 export type AppRemovalCheck = Omit<RemovalCheck, "refusal"> & {
   refusal: Exclude<RemovalRefusal, { reason: "error" }> | { reason: "error"; step: "location" | "verify" | "recheck"; error: unknown } | null;
 };
@@ -250,19 +229,8 @@ function refusalMessage(refusal: TrashRefusal, insideKey: MessageKey): Message {
       return sentences([...counts, message("job.originalsChanged")])!;
     }
     case "error":
-      return failureMessage(refusal.error, ERRORED_KEYS[refusal.step]);
+      return message(ERRORED_KEYS[refusal.step]);
   }
-}
-
-/** A failed step's job message: the step's own sentence, led by the path that
- *  stopped responding when the failure was a stalled volume. */
-function failureMessage(err: unknown, key: MessageKey, values?: MessageValues): Message {
-  // The SDK host's process ended mid-job; most likely the folder needed more
-  // memory than the computer could give it.
-  if (errCode(err) === "host.exited") return sentences([message("error.hostExited"), message(key, values)]) ?? message(key, values);
-  const path = stalledPath(err);
-  if (path === undefined) return message(key, values);
-  return sentences([message("error.stalled", { path }), message(key, values)]) ?? message(key, values);
 }
 
 /** Whether a plan found a folder it could not list. */
@@ -432,9 +400,6 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     return rec.publication?.identity !== null && rec.publication !== null &&
       current?.identity === rec.publication.identity;
   }
-  function retainTrash(claim: PathClaim, result: TrashResult): void {
-    if (result.unconfirmed.length > 0) claim.release(result.settlement ?? null);
-  }
 
   /** Reconfirm the verified archive once, right before the originals are
    *  removed together; one changed or gone since the checks refuses removal. */
@@ -464,8 +429,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     try {
       check = await deps.checkRemoval(output, inputs, removed, rec.job.options, signal, onEvent);
     } catch (error) {
-      // The check as a whole ended, such as when the SDK host's process did,
-      // which the recheck's message covers: the originals were not checked.
+      // The check as a whole ended, which the recheck's message covers: the
+      // originals were not checked.
       check = { refusal: { reason: "error", step: "recheck", error }, verified: null };
     }
     if (check.verified) markVerified(rec, check.verified.fingerprint);
@@ -576,7 +541,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         state: "needs-attention",
         writable: false,
         scanIncomplete: undefined,
-        message: failureMessage(err, "job.prepareFailed"),
+        message: message("job.prepareFailed"),
         errorCode: errCode(err),
       });
       deps.log.error("job plan failed", { jobId: id, error: errorInfo(err) });
@@ -616,7 +581,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         state: "needs-attention",
         writable: false,
         scanIncomplete: undefined,
-        message: failureMessage(err, "job.prepareFailed"),
+        message: message("job.prepareFailed"),
         errorCode: errCode(err),
       });
       deps.log.error("job run re-plan failed", { jobId: id, error: errorInfo(err) });
@@ -637,7 +602,6 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     }
 
     let bytes: number | null;
-    let settlement: Promise<void> | undefined;
     let claim: PathClaim;
     const removing = removesOriginals(rec.job.intent);
     try { claim = await claimFiles(removing ? [] : rec.job.inputs,
@@ -651,16 +615,16 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     rec.publication = null;
     set(rec, { archiveWritten: false });
     try {
-      bytes = await deps.write(plan, signal, onEvent, (physical) => { settlement = physical; });
+      bytes = await deps.write(plan, signal, onEvent);
     } catch (err) {
-      claim.release(settlement ?? (stalledWhileCommitting(err) ? null : undefined));
-      set(rec, { state: "failed", message: writeFailureMessage(err, plan.output) });
+      claim.release();
+      set(rec, { state: "failed", message: writeFailureMessage(err) });
       deps.log.error("job write failed", { jobId: id, error: errorInfo(err) });
       return null;
     }
     if (bytes === null) {
       // Another file took the archive's name since the plan; nothing was written.
-      claim.release(settlement);
+      claim.release();
       set(rec, { state: "needs-attention", writable: false, message: message("job.noLongerWritable") });
       deps.log.warn("job write refused: the output appeared since the plan", { jobId: id });
       return null;
@@ -705,7 +669,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         try {
           entries = await deps.pathKinds(rec.job.inputs);
         } catch (err) {
-          set(rec, { state: "failed", message: failureMessage(err, "job.prepareFailed") });
+          set(rec, { state: "failed", message: message("job.prepareFailed") });
           deps.log.error("job resume could not classify inputs", { jobId: id, error: errorInfo(err) });
           return;
         }
@@ -737,7 +701,6 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       let removed: TrashResult;
       try {
         removed = await removeChecked(rec, output, inputs, signal, removal);
-        retainTrash(claim!, removed);
       } catch (err) {
         set(rec, { state: "failed", message: message(removal === "trash" ? "job.trashFailed" : "job.deleteFailed") });
         deps.log.error("job removal of the originals failed after verify", { jobId: id, method: removal, error: errorInfo(err) });
@@ -763,7 +726,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // The originals now read as gone, so the job offers what is left to do.
       void classifyInputs(id);
     } catch (error) {
-      set(rec, { state: "failed", message: failureMessage(error, removal === "delete" ? "job.deleteFailed" : "job.trashFailed") });
+      set(rec, { state: "failed", message: message(removal === "delete" ? "job.deleteFailed" : "job.trashFailed") });
       deps.log.error("job archive action failed", { jobId: id, error: errorInfo(error) });
     } finally {
       claim?.release();
@@ -787,7 +750,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     try {
       verified = await deps.verify(output, signal, onEvent, manifestOf(rec.job.options));
     } catch (err) {
-      set(rec, { state: "failed", message: failureMessage(err, "job.savedVerifyErrored") });
+      set(rec, { state: "failed", message: message("job.savedVerifyErrored") });
       deps.log.error("job saved; verification errored", { jobId: id, output, error: errorInfo(err) });
       return;
     }
@@ -1072,19 +1035,8 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
             deps.log.warn("archive removal refused: publication was replaced", { jobId: id, output });
             return;
           }
-          // Cancel, and quit, stop the wait, not the OS call: an archive the
-          // wait was cut short on is reported as possibly reaching Trash.
           const result = await deps.trash([output], aborter.signal);
-          retainTrash(claim, result);
-          if (result.unconfirmed.length > 0) {
-            set(rec, {
-              actionResult: {
-                severity: "warning",
-                message: message("action.archiveTrashUnconfirmed"),
-              },
-            });
-            deps.log.warn("remove archive unconfirmed", { jobId: id, output, cancelled: aborter.signal.aborted });
-          } else if (result.failed.length > 0) {
+          if (result.failed.length > 0) {
             set(rec, {
               actionResult: {
                 severity: "error",
@@ -1171,7 +1123,6 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
               result = { severity: "error", message: refusalMessage(refusal, "action.archiveInsideOriginal") };
             } else {
               const removed = await removeChecked(rec, output, inputs, aborter.signal, trash ? "trash" : "delete");
-              retainTrash(claim, removed);
               if (trashConfirmed(removed)) {
                 result = { severity: "info", message: describeRemovalDone(removed, method, "action", gone.length) };
                 deps.log.info(trash ? "originals trashed" : "originals deleted", { jobId: id, count: removed.moved.length, gone: gone.length + (removed.gone?.length ?? 0) });
@@ -1226,7 +1177,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
           return report;
         } catch (err) {
           deps.log.error("verify failed", { jobId: id, output, error: errorInfo(err) });
-          set(rec, { actionResult: { severity: "error", message: failureMessage(err, "action.verifyErrored") } });
+          set(rec, { actionResult: { severity: "error", message: message("action.verifyErrored") } });
           throw err;
         } finally {
           claim?.release();

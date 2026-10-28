@@ -8,7 +8,7 @@ let root: string;
 beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), "zipkit-volume-mode-")); });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
-const volume = (port: FileSystemPort = nodeFileSystem): Volume => new Volume(port, 30_000);
+const volume = (port: FileSystemPort = nodeFileSystem): Volume => new Volume(port);
 
 describe("ordinary staging and replacement modes", () => {
   it.skipIf(process.platform === "win32")("stages with owner access before bytes and restores the ordinary new-file mode before publication", async () => {

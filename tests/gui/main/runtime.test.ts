@@ -7,7 +7,7 @@ const hoisted = vi.hoisted(() => ({
 vi.mock("electron", () => ({ BrowserWindow: class {} }));
 vi.mock("../../../src/gui/main/log.js", () => ({ createAppLog: () => ({ jobEvent: hoisted.jobEvent }) }));
 
-import { SdkHostError } from "../../../src/gui/main/sdk-client.js";
+import { ZipKitError } from "zipkitsdk";
 import {
   clearMainWindow,
   ensureMainWindow,
@@ -127,24 +127,10 @@ describe("GUI error presentation", () => {
     expect(JSON.stringify(result)).not.toContain("HOSTILE-SENTINEL");
   });
 
-  it("names the path that stopped responding for a stalled volume", () => {
-    const stalled = new SdkHostError({ name: "ZipKitError", message: "read did not respond", code: "io.stalled", kind: "unavailable", effect: "none", subject: "/Volumes/NAS/a.zip" });
-    expect(toGuiError(stalled)).toEqual({
-      kind: "unavailable",
-      code: "io.stalled",
-      presentation: { key: "error.stalled", values: { path: "/Volumes/NAS/a.zip" } },
-    });
-  });
-
   it("presents an SDK failure by its kind, without its text", () => {
-    const read = new SdkHostError({ name: "ZipKitError", message: "EACCES /private/HOSTILE", code: "path.denied", kind: "unavailable", effect: "none" });
+    const read = new ZipKitError("path.denied", "EACCES /private/HOSTILE");
     expect(toGuiError(read)).toEqual({ kind: "unavailable", code: "path.denied", presentation: { key: "error.readFailed" } });
-    const write = new SdkHostError({ name: "ZipKitError", message: "x", code: "write.failed", kind: "unavailable", effect: "none" });
+    const write = new ZipKitError("write.source-changed", "x");
     expect(toGuiError(write).presentation).toEqual({ key: "error.verifyIncomplete" });
-  });
-
-  it("explains a host process that ended during the work", () => {
-    const ended = new SdkHostError({ name: "SdkHostExited", message: "ended", code: "host.exited", kind: "unavailable", effect: "unknown" });
-    expect(toGuiError(ended)).toEqual({ kind: "unavailable", code: "host.exited", presentation: { key: "error.hostExited" } });
   });
 });

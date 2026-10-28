@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../src/index.ts";
 import { ZipWriter } from "../src/write/zipWriter.ts";
 import { parseZip, readEntryData } from "../src/read/zipReader.ts";
-import pLimit from "p-limit";
 import { verifyArchive } from "../src/read/verify.ts";
 import { writeArchive } from "../src/write/write.ts";
 import { nodeFileSystem, Volume, type FileSystemPort } from "../src/internal/volume.ts";
@@ -148,13 +147,13 @@ describe("abort propagation", () => {
     await expect(
       verifyArchive(
         { archive, manifest: false, manifestName: "zipkit.json" },
-        { limit: pLimit(1), logger: createLogger(), chunkSize, signal: controller.signal, volume: new Volume(port, 30_000, controller.signal) },
+        { logger: createLogger(), chunkSize, signal: controller.signal, volume: new Volume(port, controller.signal) },
       ),
     ).rejects.toMatchObject({ code: "operation.cancelled" });
     expect(chunkReads).toBeLessThan(16);
   });
 
-  it("rejects a write cancelled while a destination write is held, and leaves no temp file once it lands", async () => {
+  it("rejects a write cancelled while a destination write is held, once that write ends, and leaves no temp file", async () => {
     const proj = path.join(dir, "big");
     await mkdir(proj);
     await writeFile(path.join(proj, "noise.bin"), randomBytes(4 * 1024 * 1024));
@@ -185,7 +184,7 @@ describe("abort propagation", () => {
       },
     };
 
-    const volume = new Volume(port, 30_000, controller.signal);
+    const volume = new Volume(port, controller.signal);
     const run = writeArchive(plan, {
       logger: createLogger(),
       chunkSize: 64 * 1024,
@@ -195,10 +194,9 @@ describe("abort propagation", () => {
     const outcome = run.then(() => "written", (error: unknown) => error);
     await holding;
     controller.abort();
+    release();
 
     expect(await outcome).toMatchObject({ code: "operation.cancelled" });
-    release();
-    await volume.whenSettled();
     expect(readdirSync(dir).sort()).toEqual(["big"]);
   });
 });

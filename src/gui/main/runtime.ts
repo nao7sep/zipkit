@@ -102,16 +102,9 @@ export function sendQueueSaved(saved: boolean): void {
   liveWindow()?.webContents.send("zipkit:queueSaved", saved);
 }
 
-/** SDK failures reach main from the SDK host with their fields
- *  (./sdk-client); the window gets the code, its kind and the app's copy. */
+/** An SDK failure as the window gets it: the code, its kind and the app's copy. */
 export function toGuiError(err: unknown): GuiError {
-  if ((err as { code?: unknown } | null)?.code === "host.exited") {
-    return { kind: "unavailable", code: "host.exited", presentation: message("error.hostExited") };
-  }
   if (!isZipKitError(err)) return { kind: "internal", code: "unknown", presentation: message("error.verifyIncomplete") };
-  if (err.code === "io.stalled" && err.subject !== undefined) {
-    return { kind: err.kind, code: err.code, presentation: message("error.stalled", { path: err.subject }) };
-  }
   return { kind: err.kind, code: err.code, presentation: message(READ_FAILURES.test(err.code) ? "error.readFailed" : "error.verifyIncomplete") };
 }
 

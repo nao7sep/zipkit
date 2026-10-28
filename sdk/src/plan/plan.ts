@@ -35,7 +35,7 @@ import { buildWorkItems, buildWriteEntries, toPlannedEntry } from "./workItem.ts
 export function planArchive(scan: ScanResult, policy: ArchivePolicy): PlanData {
   const matcher = matcherFor(policy);
   // In path order, a folder before what it holds, rather than the order the
-  // scan's concurrent stats happened to finish: the same tree always plans,
+  // file system listed them: the same tree always plans,
   // writes and records its entries in the same order.
   const items = buildWorkItems(scan).sort((a, b) => comparePaths(a.archivePath, b.archivePath));
 

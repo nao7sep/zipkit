@@ -15,7 +15,7 @@
  *  - `invalid`: the call or its inputs are wrong (a malformed spec, a damaged
  *    archive); fix them, do not retry;
  *  - `unavailable`: the world did not cooperate (a missing or unreadable file,
- *    permissions, a stalled volume); it may succeed later;
+ *    permissions, a disconnected drive); it may succeed later;
  *  - `cancelled`: the caller's signal stopped it, never a failure;
  *  - `internal`: the SDK broke its own invariant; report it. */
 export type ErrorKind = "invalid" | "unavailable" | "cancelled" | "internal";
@@ -39,7 +39,6 @@ export const ERROR_CODES = {
   "path.missing": "unavailable",
   "path.denied": "unavailable",
   "io.failed": "unavailable",
-  "io.stalled": "unavailable",
   "scan.output-is-input": "invalid",
   "write.not-writable": "invalid",
   "write.source-changed": "unavailable",
@@ -59,11 +58,8 @@ export const ERROR_CODES = {
 /** A condition the SDK can fail with. */
 export type ErrorCode = keyof typeof ERROR_CODES;
 
-/** The fields a code carries beyond the common ones. */
-export interface ErrorDetails {
-  /** The operation that did not settle within the time budget. */
-  "io.stalled": { operation: string; timeoutMs: number };
-}
+/** The fields a code carries beyond the common ones; no code carries any yet. */
+export interface ErrorDetails {}
 
 /** Diagnostic fields carried as plain data; arbitrary custom payloads are excluded. */
 export interface ErrorDiagnostic {
@@ -150,20 +146,6 @@ export function isZipKitError(value: unknown): value is ZipKitErrorData {
     typeof v.message === "string";
 }
 
-/** A file operation that did not settle within its time budget, naming the
- *  operation and the path. When it was publishing a finished file
- *  (`committing`), that work may still land, so the effect is unknown. */
-export function stallError(operation: string, path: string, timeoutMs: number, committing: boolean): ZipKitError<"io.stalled"> {
-  const message = committing
-    ? `${operation} did not finish within ${timeoutMs} ms and may still complete: ${path}`
-    : `${operation} did not respond within ${timeoutMs} ms: ${path}`;
-  return new ZipKitError("io.stalled", message, {
-    effect: committing ? "unknown" : "none",
-    subject: path,
-    details: { operation, timeoutMs },
-  });
-}
-
 /** `err` as a failure that may have left something behind: once an operation
  *  has written part of its output, whatever stopped it leaves the effect
  *  unknown. A value that is not a ZipKit error is returned as it is. */
@@ -208,11 +190,6 @@ export function classify(err: unknown, subject: string): ZipKitError {
   if (err instanceof ZipKitError) return err;
   if (typeof (err as { code?: unknown } | null)?.code === "string") return fsFailure(err, subject);
   return new ZipKitError("internal.unexpected", err instanceof Error ? err.message : String(err), { cause: err, subject });
-}
-
-/** Whether `err` is a stalled-volume failure. */
-export function isStall(err: unknown): err is ZipKitError<"io.stalled"> {
-  return err instanceof ZipKitError && err.code === "io.stalled";
 }
 
 /** The cancellation error for a signal's reason. */

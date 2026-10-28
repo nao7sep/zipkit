@@ -37,7 +37,6 @@
   "dependencies": {
     "defu": "^6.1.7",
     "nanoid": "^6.0.2",
-    "p-limit": "^7.3.3",
     "picomatch": "^4.0.7",
     "stream-chain": "^4.2.6",
     "stream-json": "^3.7.0",

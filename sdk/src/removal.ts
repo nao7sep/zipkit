@@ -14,7 +14,7 @@ import type { PathState, RemovalCheck, SourceComparison, VerifyReport } from "./
 
 /** Whether `output` resolves to a location at or inside any of `inputs`. Both
  *  sides are resolved to their physical identities, so a link cannot hide the
- *  archive inside an input; a stalled drive fails the check instead of hanging. */
+ *  archive inside an input. */
 export async function outputInsideInputs(output: string, inputs: readonly string[], volume: Volume): Promise<boolean> {
   const out = await volume.realpath(output);
   const roots = await Promise.all(inputs.map((input) => volume.realpath(input)));

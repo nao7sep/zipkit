@@ -155,40 +155,6 @@ export function validateChunkSize(chunkSize: number): number {
   return chunkSize;
 }
 
-/** The largest delay a timer can hold (2^31 - 1 ms, about 24.8 days). */
-const MAX_TIMER_MS = 2_147_483_647;
-
-/**
- * Validate the per-operation filesystem budget: a positive integer number of
- * milliseconds a timer can represent. Like {@link validateChunkSize} it is a
- * runtime knob whose bound the SDK owns.
- */
-export function validateIoTimeout(ioTimeoutMs: number): number {
-  if (!Number.isInteger(ioTimeoutMs) || ioTimeoutMs <= 0 || ioTimeoutMs > MAX_TIMER_MS) {
-    throw new ZipKitError(
-      "options.invalid",
-      `ioTimeoutMs must be a positive integer number of milliseconds up to ${MAX_TIMER_MS} (got ${ioTimeoutMs})`,
-    );
-  }
-  return ioTimeoutMs;
-}
-
-/**
- * Validate the concurrency limit: a positive integer count of in-flight file
- * operations. Like {@link validateChunkSize} this is a runtime knob, not policy,
- * but its bound is still the SDK's to own — a non-positive or fractional value
- * is a caller mistake rejected at the boundary rather than silently defaulted.
- */
-export function validateConcurrency(concurrency: number): number {
-  if (!Number.isInteger(concurrency) || concurrency <= 0) {
-    throw new ZipKitError(
-      "options.invalid",
-      `concurrency must be a positive integer (got ${concurrency})`,
-    );
-  }
-  return concurrency;
-}
-
 /** Validate the debug switch: a boolean when given (`false` when unset). */
 export function validateDebug(debug: unknown): boolean {
   if (debug === undefined) return false;
@@ -214,7 +180,7 @@ export function requireAbsolute(value: string, what: string): string {
   return value;
 }
 
-const CALL_HOOKS = ["onEvent", "onProgress", "onPhysicalSettlement"] as const;
+const CALL_HOOKS = ["onEvent", "onProgress"] as const;
 const CALL_OPTIONS = new Set<string>(["signal", ...CALL_HOOKS]);
 
 /** Refuse any key of `value` outside `known`, as `code`: a misspelt setting
@@ -241,7 +207,7 @@ export function validateCallOptions(options: unknown): void {
   }
 }
 
-const INSTANCE_OPTIONS = new Set(["policy", "app", "concurrency", "chunkSize", "ioTimeoutMs", "debug"]);
+const INSTANCE_OPTIONS = new Set(["policy", "app", "chunkSize", "debug"]);
 
 const programSchema = z.strictObject({ name: z.string().min(1).max(256), version: z.string().min(1).max(256).optional() });
 

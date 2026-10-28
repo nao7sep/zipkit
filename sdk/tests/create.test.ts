@@ -290,19 +290,9 @@ describe("plan / inspect / write flow", () => {
 });
 
 describe("options validation", () => {
-  it("rejects a non-positive or fractional concurrency at construction (the SDK owns the bound)", () => {
-    expect(() => new ZipKit({ concurrency: 0 })).toThrow(invalidError);
-    expect(() => new ZipKit({ concurrency: -2 })).toThrow(invalidError);
-    expect(() => new ZipKit({ concurrency: 1.5 })).toThrow(invalidError);
-  });
-
   it("rejects a chunkSize below zlib's minimum of 64 at construction", () => {
     expect(() => new ZipKit({ chunkSize: 0 })).toThrow(invalidError);
     expect(() => new ZipKit({ chunkSize: 63 })).toThrow(invalidError);
-  });
-
-  it("accepts a valid concurrency", () => {
-    expect(() => new ZipKit({ concurrency: 8 })).not.toThrow();
   });
 });
 

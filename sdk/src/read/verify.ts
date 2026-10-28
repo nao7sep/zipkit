@@ -10,13 +10,12 @@
  * archive as a whole, or of the disk it is on, ends the run.
  *
  * Reads are positioned against one open handle, never a whole-archive buffer,
- * and entries run concurrently within the pool, so memory stays bounded. Every
- * file-system call goes through the run's bounded {@link Volume}.
+ * and entries are read one at a time, so memory stays bounded. Every
+ * file-system call goes through the run's {@link Volume}.
  */
 
-import { boundedMap, workerCount } from "../internal/bounded-map.ts";
 import { createHash } from "node:crypto";
-import { fsFailure, isStall, throwIfAborted, withSubject, ZipKitError } from "../errors.ts";
+import { fsFailure, throwIfAborted, withSubject, ZipKitError } from "../errors.ts";
 import type { Volume, VolumeFile } from "../internal/volume.ts";
 import { reportFindings } from "../log/findings.ts";
 import type { Logger } from "../log/logger.ts";
@@ -28,11 +27,10 @@ import { createManifestReader, type ManifestReading } from "./manifestReader.ts"
 import { localHeaderMismatch, parseZip, readEntryData, type ParsedZip, type ReadEntry, type EntryReadResult } from "./zipReader.ts";
 
 export interface VerifyDeps {
-  limit: <T>(fn: () => Promise<T>) => Promise<T>;
   logger: Logger;
   chunkSize: number;
   signal?: AbortSignal;
-  /** The run's bounded file access, built with the same signal. */
+  /** The run's file access, built with the same signal. */
   volume: Volume;
   /** The caller's `onProgress`, for how far the read has got. */
   onProgress?: ((counts: ProgressCounts) => void) | undefined;
@@ -125,7 +123,7 @@ async function loadManifest(
     }, chunkSize);
     reading = await reader.finish();
   } catch (err) {
-    // A stall, a cancel or a damaged archive keeps its own code; only the
+    // A cancel or a damaged archive keeps its own code; only the
     // document itself failing to parse is an invalid manifest.
     if (err instanceof ZipKitError) throw err;
     throw new ZipKitError("manifest.invalid", `manifest ${name} is not valid JSON`, { cause: err, subject: name });
@@ -249,39 +247,30 @@ export async function verifyArchive(request: VerifyCheck, deps: VerifyDeps): Pro
     const localMismatches = new Map<string, string>();
     const unreadable = new Map<string, string>();
 
-    // `allSettled`, not `all`: every task runs to completion so none keeps
-    // reading the handle the caller is about to release. Each task's calls are
-    // bounded, and once one stalls the volume refuses the rest, so this wait is
-    // bounded too. A stall is reported ahead of the refusals it caused.
-    const settled = await boundedMap(parsed.entries, workerCount(deps.limit), (entry) =>
-        deps.limit(async (): Promise<VerifiedEntry> => {
-          throwIfAborted(signal);
-          const isManifestEntry = entry.archivePath === manifestEntryPath;
-          const record = request.manifest && !isManifestEntry ? manifestMap.get(entry.archivePath) : undefined;
-          // The archive's own header is all the CRC check compares against, so
-          // a replaced entry passes it; comparing the central directory's type,
-          // size and CRC-32 with the manifest catches it even without a SHA-256.
-          if (record && recordMismatches(record, entry)) manifestMismatches.add(entry.archivePath);
-          const local = await localHeaderMismatch(archive, entry);
-          if (local !== null) localMismatches.set(entry.archivePath, local);
-          const storedSha = request.manifest && !isManifestEntry ? (record?.sha256 ?? null) : undefined;
-          // Parsing already streamed the manifest's bytes and measured them.
-          // Reuse that integrity result; its local header is still checked here.
-          const read = entry === loadedManifest?.entry
-            ? { crc32: loadedManifest.integrity.crc32 === (entry.crc32 >>> 0) ? "ok" as const : "fail" as const }
-            : await readEntry(archive, entry, deps.chunkSize, storedSha, signal, meter);
-          if (read.unreadable !== undefined) unreadable.set(entry.archivePath, read.unreadable);
-          meter.entry();
-          deps.logger.emit({ stage: "verify", level: "debug", event: "entry.verified", path: entry.archivePath });
-          const result: VerifiedEntry = { archivePath: entry.archivePath, type: entry.type, crc32: read.crc32 };
-          if (read.sha256 !== undefined) result.sha256 = read.sha256;
-          return result;
-        }),
-    );
-    const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
-    const failure = failures.find((f) => isStall(f)) ?? failures[0];
-    if (failure !== undefined) throw failure;
-    const entries = settled.map((s) => (s as PromiseFulfilledResult<VerifiedEntry>).value);
+    const entries: VerifiedEntry[] = [];
+    for (const entry of parsed.entries) {
+      throwIfAborted(signal);
+      const isManifestEntry = entry.archivePath === manifestEntryPath;
+      const record = request.manifest && !isManifestEntry ? manifestMap.get(entry.archivePath) : undefined;
+      // The archive's own header is all the CRC check compares against, so
+      // a replaced entry passes it; comparing the central directory's type,
+      // size and CRC-32 with the manifest catches it even without a SHA-256.
+      if (record && recordMismatches(record, entry)) manifestMismatches.add(entry.archivePath);
+      const local = await localHeaderMismatch(archive, entry);
+      if (local !== null) localMismatches.set(entry.archivePath, local);
+      const storedSha = request.manifest && !isManifestEntry ? (record?.sha256 ?? null) : undefined;
+      // Parsing already streamed the manifest's bytes and measured them.
+      // Reuse that integrity result; its local header is still checked here.
+      const read = entry === loadedManifest?.entry
+        ? { crc32: loadedManifest.integrity.crc32 === (entry.crc32 >>> 0) ? "ok" as const : "fail" as const }
+        : await readEntry(archive, entry, deps.chunkSize, storedSha, signal, meter);
+      if (read.unreadable !== undefined) unreadable.set(entry.archivePath, read.unreadable);
+      meter.entry();
+      deps.logger.emit({ stage: "verify", level: "debug", event: "entry.verified", path: entry.archivePath });
+      const result: VerifiedEntry = { archivePath: entry.archivePath, type: entry.type, crc32: read.crc32 };
+      if (read.sha256 !== undefined) result.sha256 = read.sha256;
+      entries.push(result);
+    }
 
     const findings: Finding[] = [];
     const seen = new Set<string>();

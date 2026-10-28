@@ -666,7 +666,7 @@ const S = "2026-06-14T05:00:00.000Z";
 describe("progressRuns", () => {
   it("heads a plan run once, leaves out the SDK's startup line, and folds findings by kind", () => {
     const events = [
-      jobEvent(1, { event: "session.start", version: "0.1.0", concurrency: 2, chunkSize: 1 }),
+      jobEvent(1, { event: "session.start", version: "0.1.0", chunkSize: 1 }),
       jobEvent(2, { event: "scan.start", inputs: 1, time: "2026-06-14T05:00:01.000Z" }),
       jobEvent(3, { event: "entry.flagged", rule: "exclude.pattern", path: "a", severity: "info" }),
       jobEvent(4, { event: "entry.flagged", rule: "name.reserved", path: "b", severity: "warning", level: "warn" }),
@@ -781,9 +781,8 @@ describe("progress presentation", () => {
       level: "info",
       event: "session.start",
       version: "0.1.0",
-      concurrency: 2,
       chunkSize: 1024,
-      message: "zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)",
+      message: "zipkit 0.1.0 (chunk 1024 bytes)",
     } as LogEvent;
     const written = {
       time: start.time,
@@ -794,9 +793,9 @@ describe("progress presentation", () => {
       message: "archive written: 12 bytes (zip64)",
     } as LogEvent;
 
-    expect(progressMessage(start, en)).toBe("ZipKit 0.1.0 (concurrency 2, chunk 1,024 bytes)");
+    expect(progressMessage(start, en)).toBe("ZipKit 0.1.0 (chunk 1,024 bytes)");
     expect(progressMessage(written, en)).toBe("Archive written: 12 bytes (ZIP64)");
-    expect(start.message).toBe("zipkit 0.1.0 (concurrency 2, chunk 1024 bytes)");
+    expect(start.message).toBe("zipkit 0.1.0 (chunk 1024 bytes)");
     expect(written.message).toBe("archive written: 12 bytes (zip64)");
   });
 

@@ -36,7 +36,6 @@ import { closeBackupStore } from "./backupStore.js";
 import { captureJobEdits, resumeJobEdits } from "./job-edit-capture.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { forceExitProcess } from "./force-exit.js";
-import { sdk } from "./sdk-process.js";
 import { nativeWorkPending } from "./pending-work.js";
 import { mainWindowOptions } from "./window-options.js";
 import { createWindowWithUsablePersistedBounds } from "./window-state-recovery.js";
@@ -50,16 +49,6 @@ process.on("unhandledRejection", (reason) => {
   log.error("unhandled rejection", { error: errorInfo(reason) });
 });
 
-// Ending the app ends the SDK host's utility process with it, whatever that
-// process is still doing; nothing durable is in its keeping.
-function exitApp(code: number): void {
-  sdk.stop();
-  app.exit(code);
-}
-function forceExitApp(): void {
-  sdk.stop();
-  forceExitProcess();
-}
 
 function createWindow(): BrowserWindow {
   const options = mainWindowOptions(path.join(import.meta.dirname, "../preload/index.mjs"), nativeTheme.shouldUseDarkColors);
@@ -91,8 +80,8 @@ function createWindow(): BrowserWindow {
       saveQueueNow: saveQueueBeforeSessionEnd,
       onSaved: () => log.info("app quitting"),
       onStepFailed: logQuitStepFailure,
-      exit: exitApp,
-      forceExit: forceExitApp,
+      exit: (code) => app.exit(code),
+      forceExit: forceExitProcess,
       nativeWorkPending,
     });
   });
@@ -156,8 +145,8 @@ async function reportStartupHalt(error: unknown): Promise<void> {
     closeBackups: () => closeBackupStore(),
     closeLog: () => log.close(),
     onFailed: (failure) => log.error("startup failure presentation or cleanup failed", { error: errorInfo(failure) }),
-    exit: exitApp,
-    forceExit: forceExitApp,
+    exit: (code) => app.exit(code),
+    forceExit: forceExitProcess,
     nativeWorkPending,
   });
 }
@@ -309,8 +298,8 @@ const quit = createQuitControl({
         closeBackups: () => closeBackupStore(),
         closeLog: () => log.close(),
         onStepFailed: logQuitStepFailure,
-        exit: exitApp,
-        forceExit: forceExitApp,
+        exit: (code) => app.exit(code),
+        forceExit: forceExitProcess,
         nativeWorkPending,
       },
       session,

@@ -292,7 +292,7 @@ describe("zip64", () => {
       stat: async () => { throw Object.assign(new Error("no previous output"), { code: "ENOENT" }); },
       chmod: async () => {}, rename: async () => {},
     };
-    const writer = new ZipWriter(path.join(tmpdir(), "zipkit-synthetic.zip"), { ...baseOptions, overwrite: true }, new Volume(port, 30_000));
+    const writer = new ZipWriter(path.join(tmpdir(), "zipkit-synthetic.zip"), { ...baseOptions, overwrite: true }, new Volume(port));
     // Decode the captured on-wire bytes independently, overlaying positioned
     // local-header patches without allocating the unwritten sparse payload.
     const read = (position: number, length: number) => {

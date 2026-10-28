@@ -9,7 +9,7 @@ import { messageFor } from "../../src/log/messages.ts";
 import { resolvePolicy } from "../../src/policy.ts";
 import type { LogEventBody } from "../../src/types.ts";
 
-const startup = { event: "session.start", version: "0.1.0", concurrency: 8, chunkSize: 65536, ioTimeoutMs: 30000, debug: false, policy: resolvePolicy(undefined, undefined) } as const;
+const startup = { event: "session.start", version: "0.1.0", chunkSize: 65536, debug: false, policy: resolvePolicy(undefined, undefined) } as const;
 const error = { name: "ZipKitError", code: "archive.not-zip", kind: "invalid", effect: "none", message: "not a zip" } as const;
 
 const samples: LogEventBody[] = [
@@ -57,7 +57,7 @@ describe("messageFor", () => {
 
   it("renders the startup line with the version and runtime config", () => {
     const m = messageFor(startup);
-    for (const part of ["0.1.0", "8", "65536", "30000"]) expect(m).toContain(part);
+    for (const part of ["0.1.0", "65536"]) expect(m).toContain(part);
     expect(m).not.toContain("debug");
     expect(messageFor({ ...startup, debug: true })).toContain("debug");
   });

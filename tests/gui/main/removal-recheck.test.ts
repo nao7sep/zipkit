@@ -30,14 +30,14 @@ it("keeps the originals when one was edited to the same size with its time put b
   await utimes(edited, when, when);
   const zip = new ZipKit();
   const stages: ProgressCounts["stage"][] = [];
-  const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }));
+  const trash = vi.fn(async (paths: string[]) => ({ moved: paths, failed: [] }));
   const engine = createQueueEngine({
     admission: new CommandAdmission(),
     effects: createPathClaims(),
     resources: (paths, signal) => zip.pathResources(paths, { signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output }, { signal }),
-    write: async (plan, signal, onEvent, onPhysicalSettlement) => {
-      const result = await zip.write(plan, { signal, onEvent, onPhysicalSettlement });
+    write: async (plan, signal, onEvent) => {
+      const result = await zip.write(plan, { signal, onEvent });
       // After the archive is made: same size, first byte changed, time put back.
       await writeFile(edited, "Alpha");
       await utimes(edited, when, when);
@@ -47,7 +47,7 @@ it("keeps the originals when one was edited to the same size with its time put b
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent, onProgress: (counts) => { if (stages.at(-1) !== counts.stage) stages.push(counts.stage); } }),
     pathKinds: async (paths) => paths.map((p) => ({ path: p, kind: "directory" as const })),
-    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
+    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [] }),
     pathState: realPathState,
     inspect: async () => { throw new Error("not used"); },
     trash, emit: () => {}, progress: () => () => {}, newId: () => "job", log: nullLog,

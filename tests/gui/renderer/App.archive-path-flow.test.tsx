@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** The selected folder must survive the job editor, parameter reset, pane
  * reopening and queue restore, then become the real SDK plan's destination.
- * Only native selection and the window/process transport are substituted. */
+ * Only native selection and the window transport are substituted. */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,8 +12,7 @@ import { App } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
 import { createQueueEngine, type QueueEngine } from "../../../src/gui/main/queue-engine";
 import { CommandAdmission } from "../../../src/gui/main/command-admission";
-import { createSdkClient, type HostProcess } from "../../../src/gui/main/sdk-client";
-import { createSdkHost, type HostReply } from "../../../src/gui/main/sdk-host";
+import { createSdk } from "../../../src/gui/main/sdk";
 import { loadQueue, saveQueue, toResumable } from "../../../src/gui/main/persist";
 import { closeBackupStore } from "../../../src/gui/main/backupStore";
 import { nullLog } from "../../../src/gui/main/log";
@@ -21,16 +20,6 @@ import { DEFAULT_LAYOUT } from "../../../src/gui/shared/layout";
 import { DEFAULT_OPTIONS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { toPlanReport } from "../../../src/gui/shared/plan-report";
 import type { Job } from "../../../src/gui/shared/queue";
-
-function inProcessHost(): HostProcess {
-  let deliver: (reply: HostReply) => void = () => {};
-  const host = createSdkHost((reply) => queueMicrotask(() => deliver(structuredClone(reply))));
-  return {
-    postMessage: (request) => queueMicrotask(() => host.handle(structuredClone(request))),
-    onMessage: (listener) => { deliver = listener; },
-    onExit: () => {}, kill: () => {},
-  };
-}
 
 let root: string | undefined;
 const engines: QueueEngine[] = [];
@@ -54,17 +43,17 @@ it("plans the picked folder with the edited name after parameter reset and job r
   await mkdir(selected);
   const inputs = [path.join(source, "one.txt"), path.join(source, "two.txt")];
   await Promise.all(inputs.map((input) => writeFile(input, "contents")));
-  const sdk = createSdkClient(inProcessHost);
+  const sdk = createSdk();
   let pushQueue = (_jobs: Job[]): void => {};
   let nextId = 0;
   const unexpected = async (): Promise<never> => { throw new Error("This flow only plans archives"); };
   const makeEngine = (): QueueEngine => {
     const engine = createQueueEngine({
       admission: new CommandAdmission(), effects: createPathClaims(),
-      resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
-      pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
-      pathKinds: (paths) => sdk.call("pathKinds", [paths]),
-      plan: (paths, options, signal, onEvent) => sdk.call("plan", [paths, options], { signal, onEvent }),
+      resources: (paths, signal) => sdk.resources(paths, { signal }),
+      pathState: (target, signal) => sdk.pathState(target, { signal }),
+      pathKinds: (paths) => sdk.pathKinds(paths),
+      plan: (paths, options, signal, onEvent) => sdk.plan(paths, options, { signal, onEvent }),
       write: unexpected, verify: unexpected, inspect: unexpected,
       checkRemoval: unexpected, trash: unexpected, deleteOriginals: unexpected,
       emit: (jobs) => pushQueue(structuredClone(jobs)), progress: () => () => {},

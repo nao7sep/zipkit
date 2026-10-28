@@ -37,27 +37,26 @@ function collector(): { seen: LogEvent[]; onEvent: (e: LogEvent) => void } {
 
 describe("the event stream", () => {
   it("opens with one startup event per instance, carrying the version and runtime config", async () => {
-    const zip = new ZipKit({ concurrency: 8, chunkSize: 65536 });
+    const zip = new ZipKit({ chunkSize: 65536 });
     const { seen, onEvent } = collector();
     await zip.create({ inputs: [proj], output: path.join(root, "o1.zip") }, { onEvent });
     await zip.create({ inputs: [proj], output: path.join(root, "o2.zip") }, { onEvent });
     const startups = seen.filter((e) => e.event === "session.start");
     expect(startups).toHaveLength(1);
     expect(seen[0]).toMatchObject({
-      event: "session.start", stage: "session", level: "info", version: VERSION, concurrency: 8, chunkSize: 65536,
-      ioTimeoutMs: 30_000, debug: false,
+      event: "session.start", stage: "session", level: "info", version: VERSION, chunkSize: 65536, debug: false,
     });
     expect(seen.filter((e) => e.event === "write.done")).toHaveLength(2);
   });
 
   it("gives the startup event to the first call that listens, with the instance policy resolved", async () => {
     const policy = { emptyDirs: "prune" as const };
-    const zip = new ZipKit({ policy, ioTimeoutMs: 5000, debug: true });
+    const zip = new ZipKit({ policy, debug: true });
     await zip.plan({ inputs: [proj], output: path.join(root, "quiet.zip") });
     await zip.pathState(proj);
     const { seen, onEvent } = collector();
     await zip.plan({ inputs: [proj], output: path.join(root, "heard.zip") }, { onEvent });
-    expect(seen[0]).toMatchObject({ event: "session.start", ioTimeoutMs: 5000, debug: true, policy: resolvePolicy(policy, undefined) });
+    expect(seen[0]).toMatchObject({ event: "session.start", debug: true, policy: resolvePolicy(policy, undefined) });
   });
 
   it("records a failure once, as the error thrown, and a cancellation at info", async () => {

@@ -1,6 +1,7 @@
 /**
  * Binds the queue engine to its real dependencies — the SDK verbs (with progress
- * forwarded to the renderer), the OS Trash, persistence, and id minting — and
+ * forwarded to the renderer), the OS Trash, permanent deletion, persistence,
+ * and id minting — and
  * registers the IPC handlers that delegate to it. The engine itself
  * (./queue-engine) is Electron-free and unit-tested with injected fakes; this
  * file is the wiring.
@@ -13,7 +14,7 @@ import type { Job, JobIntent, SavedJob } from "../shared/queue.js";
 import type { JobAction, LogEvent, PlanReport, ProgressCounts, VerifyResult } from "../shared/api.js";
 import { toPlanReport } from "../shared/plan-report.js";
 import { log, sendCounts, sendQueue, sendQueueSaved, startProgressRun, toGuiError } from "./runtime.js";
-import { sdk } from "./sdk-process.js";
+import { sdk } from "./sdk.js";
 import { createPathClaims } from "zipkitsdk";
 import { errorInfo } from "./log.js";
 import { saveQueue, saveQueueWithin, toResumable } from "./persist.js";
@@ -24,55 +25,11 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingJobs: SavedJob[] | undefined;
 let saveChain: Promise<void> = Promise.resolve();
 
-/** How long one path's Trash call may run before it is reported rather than
- *  awaited forever — `shell.trashItem` has no timeout or cancel of its own. */
-const TRASH_TIMEOUT_MS = 10_000;
-
-/** Move one path to the OS Trash, bounded by `TRASH_TIMEOUT_MS` and cancellable
- *  via `signal`. Neither condition stops the underlying OS call — Electron's API
- *  offers no way to do that — so a path the job stops waiting on resolves as
- *  `unconfirmed`: its move may still complete afterward, and it must never be
- *  reported as kept. Rejects only when the OS call itself fails. */
-function trashPath(path: string, signal: AbortSignal): Promise<{ outcome: "moved" | "unconfirmed"; settlement: Promise<void> }> {
-  return new Promise((resolve, reject) => {
-    const physical = shell.trashItem(path);
-    const settlement = physical.then(() => {}, () => {});
-    let settled = false;
-    const finish = (fn: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      fn();
-    };
-    const timer = setTimeout(() => finish(() => resolve({ outcome: "unconfirmed", settlement })), TRASH_TIMEOUT_MS);
-    const onAbort = (): void => finish(() => resolve({ outcome: "unconfirmed", settlement }));
-    signal.addEventListener("abort", onAbort);
-    physical.then(
-      () => finish(() => resolve({ outcome: "moved", settlement })),
-      (err: unknown) => finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
-    );
-  });
-}
-
-// Every look at the user's files runs in the SDK host's utility process
-// (./sdk-host); the engine supplies a job-tagging `onEvent`, so progress
-// reaches the right job's Progress stream. A plan is plain data, so it crosses
-// each way as it is and can still be written on the other side.
-/** Ending the caller's wait never ends an already-issued deletion. */
-function waitForDeletion(call: Promise<unknown>, signal: AbortSignal): Promise<"done" | "unconfirmed"> {
-  return new Promise((resolve, reject) => {
-    const finish = (fn: () => void): void => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      fn();
-    };
-    const onAbort = (): void => finish(() => resolve("unconfirmed"));
-    const timer = setTimeout(onAbort, TRASH_TIMEOUT_MS);
-    signal.addEventListener("abort", onAbort, { once: true });
-    call.then(() => finish(() => resolve("done")), (error) => finish(() => reject(error)));
-    if (signal.aborted) onAbort();
-  });
+/** Whether a failed removal left the path gone: something else moved or
+ *  deleted it first, so it is reported as gone rather than kept. */
+async function goneNow(target: string): Promise<boolean> {
+  try { return (await sdk.pathState(target)).kind === "missing"; }
+  catch { return false; }
 }
 
 /** The app's one set of path claims, shared by every job and command. */
@@ -94,65 +51,52 @@ function countsFor(onEvent: (event: LogEvent) => void): ((counts: ProgressCounts
 const engine = createQueueEngine({
   admission: appAdmission,
   effects: appPathClaims,
-  resources: (paths, signal) => sdk.call("resources", [paths], { signal }),
-  pathState: (target, signal) => sdk.call("pathState", [target], { signal }),
+  resources: (paths, signal) => sdk.resources(paths, { signal }),
+  pathState: (target, signal) => sdk.pathState(target, { signal }),
   inspect: (output, signal, onEvent, manifestName) =>
-    sdk.call("inspect", [output, manifestName], { signal, onEvent, onProgress: countsFor(onEvent) }),
-  plan: (inputs, options, signal, onEvent) => sdk.call("plan", [inputs, options], { signal, onEvent }),
-  write: (plan, signal, onEvent, onPhysicalSettlement) =>
-    sdk.call("write", [plan], { signal, onEvent, onPhysicalSettlement, onProgress: countsFor(onEvent) }),
+    sdk.inspect(output, manifestName, { signal, onEvent, onProgress: countsFor(onEvent) }),
+  plan: (inputs, options, signal, onEvent) => sdk.plan(inputs, options, { signal, onEvent }),
+  write: (plan, signal, onEvent) => sdk.write(plan, { signal, onEvent, onProgress: countsFor(onEvent) }),
   verify: (output, signal, onEvent, manifestName) =>
-    sdk.call("verify", [output, manifestName], { signal, onEvent, onProgress: countsFor(onEvent) }),
+    sdk.verify(output, manifestName, { signal, onEvent, onProgress: countsFor(onEvent) }),
   checkRemoval: (output, inputs, removed, options, signal, onEvent) =>
-    sdk.call("checkRemoval", [output, inputs, removed, options], { signal, onEvent, onProgress: countsFor(onEvent) }),
-  pathKinds: (paths) => sdk.call("pathKinds", [paths]),
+    sdk.checkRemoval(output, inputs, removed, options, { signal, onEvent, onProgress: countsFor(onEvent) }),
+  pathKinds: (paths) => sdk.pathKinds(paths),
+  // Each path goes to the OS Trash in turn, each call awaited to its end; a
+  // cancel stops before the next path, never during a call.
   trash: async (paths, signal) => {
-    const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
-    const settlements: Promise<void>[] = [];
+    const result: TrashResult = { moved: [], failed: [], gone: [] };
     for (const p of paths) {
       if (signal.aborted) {
         result.failed.push({ path: p, message: "cancelled before Trash" });
         continue;
       }
       try {
-        const moved = await trashPath(p, signal);
-        settlements.push(moved.settlement);
-        if (moved.outcome === "moved") result.moved.push(p);
-        else result.unconfirmed.push(p);
+        await shell.trashItem(p);
+        result.moved.push(p);
       } catch (err) {
-        // A path something else moved or deleted first is gone, not kept.
-        let state;
-        try { state = await sdk.call("pathState", [p]); } catch { state = undefined; }
-        if (state?.kind === "missing") result.gone!.push(p);
+        if (await goneNow(p)) result.gone!.push(p);
         else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }
-    result.settlement = Promise.all(settlements).then(() => {});
     return result;
   },
-  // Each path is deleted in the SDK host, one at a time. A deletion still
-  // running when the job stops waiting may yet finish, so it is reported as
-  // unconfirmed, never as kept.
+  // Each path is deleted for good in turn; a cancel stops before the next path.
   deleteOriginals: async (paths, signal) => {
-    const result: TrashResult = { moved: [], failed: [], unconfirmed: [], gone: [] };
-    const settlements: Promise<void>[] = [];
+    const result: TrashResult = { moved: [], failed: [], gone: [] };
     for (const p of paths) {
-      if (signal.aborted || result.unconfirmed.length > 0) {
+      if (signal.aborted) {
         result.failed.push({ path: p, message: "cancelled before deletion" });
         continue;
       }
       try {
-        const physical = sdk.call("deletePath", [p]);
-        settlements.push(physical.then(() => {}, () => {}));
-        const outcome = await waitForDeletion(physical, signal);
-        if (outcome === "unconfirmed") result.unconfirmed.push(p);
-        else result.moved.push(p);
+        await sdk.deletePath(p);
+        result.moved.push(p);
       } catch (err) {
         if ((err as { code?: unknown }).code === "ENOENT") result.gone!.push(p);
         else result.failed.push({ path: p, message: err instanceof Error ? err.message : String(err) });
       }
     }
-    result.settlement = Promise.all(settlements).then(() => {});
     return result;
   },
   emit: (jobs) => {

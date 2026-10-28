@@ -454,10 +454,10 @@ export async function readEntryData(
     for await (const chunk of source) await consume(chunk);
   } else {
     // The pipeline tears every stage down on the first failure from any of them
-    // — a read that stalled or was cancelled, a corrupt stream, or the sink's own
+    // — a read that failed or was cancelled, a corrupt stream, or the sink's own
     // throw (an abort, a size overrun) — so a large entry stops at the failing
-    // chunk rather than draining. The handle is shared across concurrent
-    // entries and is never closed here.
+    // chunk rather than draining. The handle is shared across entries and is
+    // never closed here.
     const externalErrors = new Set<unknown>();
     async function* input(): AsyncGenerator<Buffer> {
       try { yield* source; }

@@ -55,10 +55,10 @@ describe("createTranslator", () => {
     const joined = sentences([
       message("trash.moved", { count: 1 }),
       message("trash.kept", { count: 1 }),
-      message("trash.unconfirmed", { count: 2 }),
+      message("originals.alreadyGone", { count: 2 }),
     ]);
     expect(t.text(joined!)).toBe(
-      "1 original was moved to recoverable Trash. 1 original was kept. 2 originals were still being moved and may yet reach recoverable Trash.",
+      "1 original was moved to recoverable Trash. 1 original was kept. 2 originals were already gone.",
     );
     expect(sentences([])).toBeNull();
   });

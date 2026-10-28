@@ -21,7 +21,7 @@ function entries(n: number): string {
 export function messageFor(body: LogEventBody): string {
   switch (body.event) {
     case "session.start":
-      return `zipkitsdk ${body.version} (concurrency ${body.concurrency}, chunk ${body.chunkSize} bytes, I/O timeout ${body.ioTimeoutMs} ms${body.debug ? ", debug" : ""})`;
+      return `zipkitsdk ${body.version} (chunk ${body.chunkSize} bytes${body.debug ? ", debug" : ""})`;
     case "scan.start":
       return `scanning ${body.inputs} input${s(body.inputs)}`;
     case "scan.dir":

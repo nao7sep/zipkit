@@ -12,7 +12,7 @@ import { pathKinds, mountPointOf, pathState, sameFile } from "../src/paths.ts";
 import { ZipKit } from "../src/index.ts";
 import { nodeFileSystem, Volume } from "../src/internal/volume.ts";
 
-const volume = new Volume(nodeFileSystem, 30_000);
+const volume = new Volume(nodeFileSystem);
 let root: string;
 beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), "zipkit-path-state-")); });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });

@@ -1,43 +1,22 @@
 /**
  * The SDK's one file-access boundary. Every filesystem call the scan, write,
- * and verify edges make on a user volume goes through a {@link Volume}, which
- * is where that call's wait is bounded.
+ * and verify edges make on a user volume goes through a {@link Volume}.
  *
- * A filesystem call has no timeout or cancel of its own, and a volume that
- * stalls (a network share that dropped, a removable drive that went away) can
- * leave one pending forever. Node already runs these calls on its libuv
- * threadpool, off the JS thread, so the owner can abandon a stuck one: it races
- * each call against a per-operation budget and the verb's `AbortSignal`, and
- * whichever wins first decides what the verb sees. The abandoned call cannot be
- * killed; its eventual outcome is swallowed, an abandoned `open` has its
- * handle closed when it arrives, and an abandoned temp-file create also has its
- * file removed.
+ * Each call is Node's asynchronous file API, run on libuv's threadpool off the
+ * JS thread, and is awaited to its end: a local or removable volume gets no
+ * timeout (transaction conventions), and a stalled one is left to the user to
+ * reconnect or to quit. The verb's `AbortSignal` is honoured between calls:
  *
- * Three modes, one per call site kind:
- *
- * - `work` — ordinary reads and writes. Refused once the verb is cancelled or
- *   the volume has already stalled, abandoned on cancel or timeout. A timeout
- *   marks the whole volume stalled, so sibling work (verification reads entries
- *   concurrently) stops at its next call instead of each waiting its own budget.
- * - `commit` — publication of a finished file (a rename or hard link into the
- *   destination). Refused before it starts under the same rules as `work`, but
- *   once started a cancel no longer abandons it: publication is the commit point,
- *   and abandoning it would leave its outcome unknown. Only the budget does, and
- *   the resulting `io.stalled` error says the file may still appear.
+ * - `work` — ordinary reads and writes, and the publication of a finished
+ *   file (a rename or hard link into the destination). None starts once the
+ *   verb is cancelled.
  * - `cleanup` — closing handles and removing this run's own temp files after a
- *   failure. Always attempted, bounded by the budget, never stopped by the
- *   cancel or an earlier stall that triggered it.
- *
- * A file handle keeps its descriptor until every call on it settles (Node's
- * `FileHandle.close()` waits for pending operations), so an abandoned read or
- * write can never land on a recycled descriptor that now belongs to another
- * file; releasing a handle with an abandoned call on it closes it in the
- * background instead of waiting.
+ *   failure. Always attempted, never stopped by the cancel that triggered it.
  */
 
 import type { BigIntStats } from "node:fs";
 import * as fsp from "node:fs/promises";
-import { stallError, toAbortError, ZipKitError } from "../errors.ts";
+import { toAbortError } from "../errors.ts";
 
 /** A directory entry as the walker needs it. */
 export interface DirEntry {
@@ -56,7 +35,7 @@ export interface FileHandlePort {
 }
 
 /** The raw filesystem the SDK runs on: Node's `fs/promises` in production, a
- *  fake in tests. It carries no timing policy; the {@link Volume} adds that. */
+ *  fake in tests. */
 export interface FileSystemPort {
   open(path: string, flags: string, mode?: number): Promise<FileHandlePort>;
   stat(path: string): Promise<BigIntStats>;
@@ -102,70 +81,48 @@ export const nodeFileSystem: FileSystemPort = {
   mkdir: async (path) => { await fsp.mkdir(path, { recursive: true }); },
 };
 
-type Mode = "work" | "commit" | "cleanup";
-
-interface RunOptions<T> {
-  /** Called synchronously when the owner stops waiting on the call. */
-  onAbandon?: () => void;
-  /** Receives the call's value if it arrives after the owner stopped waiting. */
-  onLateValue?: (value: T) => void | Promise<unknown>;
-}
+type Mode = "work" | "cleanup";
 
 /**
- * The bounded owner of one verb run's file access. Built per run with the
- * run's budget and signal; see the module comment for the modes.
+ * One verb run's file access, built per run with the run's signal; see the
+ * module comment for the modes.
  */
 export class Volume {
-  readonly #physical = new Set<Promise<unknown>>();
   readonly #port: FileSystemPort;
-  readonly #timeoutMs: number;
   readonly #signal: AbortSignal | undefined;
-  /** The first stall this run hit; later work and commit calls fail with it. */
-  #stall: ZipKitError<"io.stalled"> | undefined;
 
-  constructor(port: FileSystemPort, timeoutMs: number, signal?: AbortSignal) {
+  constructor(port: FileSystemPort, signal?: AbortSignal) {
     this.#port = port;
-    this.#timeoutMs = timeoutMs;
     this.#signal = signal;
-  }
-  /** @internal Retain a raw pipeline, including cleanup beyond a bounded wait. */
-  trackPhysical<T>(work: Promise<T>): Promise<T> {
-    this.#physical.add(work);
-    void work.then(() => this.#physical.delete(work), () => this.#physical.delete(work));
-    return work;
-  }
-  /** The run is physically settled only after its late continuations finish. */
-  async whenSettled(): Promise<void> {
-    while (this.#physical.size > 0) await Promise.allSettled([...this.#physical]);
   }
 
   stat(path: string): Promise<BigIntStats> {
-    return this.#run("work", "stat", path, () => this.#port.stat(path));
+    return this.#run("work", () => this.#port.stat(path));
   }
 
   lstat(path: string): Promise<BigIntStats> {
-    return this.#run("work", "lstat", path, () => this.#port.lstat(path));
+    return this.#run("work", () => this.#port.lstat(path));
   }
 
   realpath(path: string): Promise<string> {
-    return this.#run("work", "realpath", path, () => this.#port.realpath(path));
+    return this.#run("work", () => this.#port.realpath(path));
   }
 
   readlink(path: string): Promise<string> {
-    return this.#run("work", "readlink", path, () => this.#port.readlink(path));
+    return this.#run("work", () => this.#port.readlink(path));
   }
 
   readdir(path: string): Promise<DirEntry[]> {
-    return this.#run("work", "readdir", path, () => this.#port.readdir(path));
+    return this.#run("work", () => this.#port.readdir(path));
   }
 
   /** Create a folder with any missing parents, as ordinary work. */
   mkdir(path: string): Promise<void> {
-    return this.#run("work", "mkdir", path, () => this.#port.mkdir(path));
+    return this.#run("work", () => this.#port.mkdir(path));
   }
 
   chmod(path: string, mode: number): Promise<void> {
-    return this.#run("work", "chmod", path, () => this.#port.chmod(path, mode));
+    return this.#run("work", () => this.#port.chmod(path, mode));
   }
 
   /**
@@ -201,25 +158,25 @@ export class Volume {
 
   /** Publish a finished temp file by renaming it over `to`. */
   publishRename(from: string, to: string): Promise<void> {
-    return this.#run("commit", "publish", to, () => this.#port.rename(from, to));
+    return this.#run("work", () => this.#port.rename(from, to));
   }
 
   /** Publish a finished temp file by hard-linking it at `to`. */
   publishLink(existing: string, to: string): Promise<void> {
-    return this.#run("commit", "publish", to, () => this.#port.link(existing, to));
+    return this.#run("work", () => this.#port.link(existing, to));
   }
 
   /** Unlink a path this run created, as cleanup. Errors propagate. */
   unlink(path: string): Promise<void> {
-    return this.#run("cleanup", "unlink", path, () => this.#port.unlink(path));
+    return this.#run("cleanup", () => this.#port.unlink(path));
   }
 
-  /** Remove a temp file this run created, best-effort: bounded, never stopped
-   *  by the cancel, and silent on failure. Whether it is gone afterwards; one
+  /** Remove a temp file this run created, best-effort: never stopped by the
+   *  cancel, and silent on failure. Whether it is gone afterwards; one
    *  that cannot be removed stays visible under its `.tmp` name. */
   async discard(path: string): Promise<boolean> {
     try {
-      await this.#run("cleanup", "remove", path, () => this.#port.rm(path));
+      await this.#run("cleanup", () => this.#port.rm(path));
       return true;
     } catch (err) {
       return (err as { code?: unknown }).code === "ENOENT";
@@ -227,83 +184,33 @@ export class Volume {
   }
 
   async open(path: string, flags: string): Promise<VolumeFile> {
-    const handle = await this.#run("work", "open", path, () => this.#port.open(path, flags), {
-      onLateValue: (late) => late.close(),
-    });
+    const handle = await this.#run("work", () => this.#port.open(path, flags));
     return new VolumeFile(this, handle, path);
   }
 
-  /**
-   * Create this run's own temp file at a fresh, unique path, exclusively. An
-   * abandoned create may still make the file when it lands, after the caller
-   * has given up and cleaned up; the file is then closed and removed, so a
-   * cancellation retains ownership through attempted late cleanup. A failed
-   * close or removal can leave the temp behind rather than guessing it is gone.
-   */
+  /** Create this run's own temp file at a fresh, unique path, exclusively. */
   async createTemp(path: string): Promise<VolumeFile> {
-    const handle = await this.#run("work", "open", path, () => this.#port.open(path, "wx", 0o600), {
-      onLateValue: async (late) => { await late.close(); await this.#port.rm(path); },
-    });
+    const handle = await this.#run("work", () => this.#port.open(path, "wx", 0o600));
     return new VolumeFile(this, handle, path);
   }
 
   /** @internal Run one call on an open handle; used by {@link VolumeFile}. */
-  runOnHandle<T>(mode: Mode, operation: string, path: string, start: () => Promise<T>, onAbandon: () => void): Promise<T> {
-    return this.#run(mode, operation, path, start, { onAbandon });
+  runOnHandle<T>(mode: Mode, start: () => Promise<T>): Promise<T> {
+    return this.#run(mode, start);
   }
 
-  #run<T>(mode: Mode, operation: string, path: string, start: () => Promise<T>, options: RunOptions<T> = {}): Promise<T> {
+  #run<T>(mode: Mode, start: () => Promise<T>): Promise<T> {
     const signal = this.#signal;
-    if (mode !== "cleanup") {
-      if (this.#stall) return Promise.reject(this.#stall);
-      if (signal?.aborted) return Promise.reject(toAbortError(signal.reason));
-    }
-    let pending: Promise<T>;
-    try {
-      pending = start();
-    } catch (err) {
-      return Promise.reject(err);
-    }
-    let abandoned = false;
-    // Keep one physical token across a late result and its cleanup continuation.
-    void this.trackPhysical(pending.then((value) => abandoned ? options.onLateValue?.(value) : undefined, () => {}));
-    return new Promise<T>((resolve, reject) => {
-      let settled = false;
-      const finish = (fn: () => void): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        fn();
-      };
-      const abandon = (err: Error): void =>
-        finish(() => {
-          options.onAbandon?.();
-          abandoned = true;
-          reject(err);
-        });
-      const timer = setTimeout(() => {
-        const stall = stallError(operation, path, this.#timeoutMs, mode === "commit");
-        if (mode !== "cleanup") this.#stall ??= stall;
-        abandon(stall);
-      }, this.#timeoutMs);
-      const onAbort = (): void => abandon(toAbortError(signal?.reason));
-      if (mode === "work") signal?.addEventListener("abort", onAbort, { once: true });
-      pending.then(
-        (value) => finish(() => resolve(value)),
-        (err: unknown) => finish(() => reject(err)),
-      );
-    });
+    if (mode !== "cleanup" && signal?.aborted) return Promise.reject(toAbortError(signal.reason));
+    return start();
   }
 }
 
-/** An open file whose every call is bounded by its {@link Volume}. */
+/** An open file whose every call goes through its {@link Volume}. */
 export class VolumeFile {
   readonly #volume: Volume;
   readonly #handle: FileHandlePort;
   readonly #path: string;
-  /** Set when a call on this handle was abandoned and may still be running. */
-  #abandoned = false;
 
   constructor(volume: Volume, handle: FileHandlePort, path: string) {
     this.#volume = volume;
@@ -311,15 +218,13 @@ export class VolumeFile {
     this.#path = path;
   }
 
-  #run<T>(mode: Mode, operation: string, start: () => Promise<T>): Promise<T> {
-    return this.#volume.runOnHandle(mode, operation, this.#path, start, () => {
-      this.#abandoned = true;
-    });
+  #run<T>(mode: Mode, start: () => Promise<T>): Promise<T> {
+    return this.#volume.runOnHandle(mode, start);
   }
 
   /** One positioned read; resolves to the byte count (0 at end of file). */
   async read(buffer: Buffer, offset: number, length: number, position: number): Promise<number> {
-    const { bytesRead } = await this.#run("work", "read", () => this.#handle.read(buffer, offset, length, position));
+    const { bytesRead } = await this.#run("work", () => this.#handle.read(buffer, offset, length, position));
     return bytesRead;
   }
 
@@ -328,7 +233,7 @@ export class VolumeFile {
     let written = 0;
     while (written < buffer.length) {
       const at = position === null ? null : position + written;
-      const { bytesWritten } = await this.#run("work", "write", () =>
+      const { bytesWritten } = await this.#run("work", () =>
         this.#handle.write(buffer, written, buffer.length - written, at),
       );
       if (bytesWritten === 0) throw new Error(`write made no progress: ${this.#path}`);
@@ -337,25 +242,16 @@ export class VolumeFile {
   }
 
   async sync(): Promise<void> {
-    await this.#run("work", "sync", () => this.#handle.sync());
+    await this.#run("work", () => this.#handle.sync());
   }
 
   stat(): Promise<BigIntStats> {
-    return this.#run("work", "stat", () => this.#handle.stat());
+    return this.#run("work", () => this.#handle.stat());
   }
 
-  /**
-   * Close the handle; bounded, and errors propagate. When a call on this handle
-   * was abandoned, the close is left to run in the background: it completes
-   * only once that call settles, and waiting for it here would just wait out
-   * the same stall again.
-   */
+  /** Close the handle; errors propagate. */
   async close(): Promise<void> {
-    if (this.#abandoned) {
-      void this.#volume.trackPhysical(this.#handle.close()).catch(() => {});
-      return;
-    }
-    await this.#run("cleanup", "close", () => this.#handle.close());
+    await this.#run("cleanup", () => this.#handle.close());
   }
 
   /** Close after a failure, best-effort and silent. */

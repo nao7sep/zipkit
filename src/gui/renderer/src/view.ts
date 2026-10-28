@@ -693,7 +693,6 @@ export function progressMessage(event: LogEvent, t: Translator): string {
     case "session.start":
       return t.t("event.sessionStart", {
         version: event.version,
-        concurrency: event.concurrency,
         chunkSize: event.chunkSize,
       });
     case "scan.start":

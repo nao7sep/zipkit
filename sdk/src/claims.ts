@@ -85,7 +85,7 @@ async function canonicalPrefix(file: string, volume: Volume): Promise<{ location
   }
 }
 /** Namespace identity protects replacement; resolved identity also covers
- * directory aliases and hard links. All lookups use bounded SDK volume I/O. */
+ * directory aliases and hard links. All lookups use SDK volume I/O. */
 export async function pathResources(files: readonly string[], volume: Volume): Promise<PathResource[]> {
   const resources: PathResource[] = [];
   for (const file of files) {

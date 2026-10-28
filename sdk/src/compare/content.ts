@@ -8,13 +8,12 @@
  * originals are read once more.
  *
  * A link's content is its target, as the writer stored it. Reads go through the
- * run's bounded {@link Volume} and run concurrently within the pool.
+ * run's {@link Volume}, one source at a time.
  */
 
-import { boundedMap, workerCount } from "../internal/bounded-map.ts";
 import { createHash } from "node:crypto";
 import { crc32 } from "node:zlib";
-import { fsFailure, isStall, throwIfAborted } from "../errors.ts";
+import { fsFailure, throwIfAborted } from "../errors.ts";
 import type { WriteEntry } from "../internal/types.ts";
 import type { Volume } from "../internal/volume.ts";
 import { Meter } from "../progress.ts";
@@ -23,7 +22,6 @@ import type { ProgressCounts } from "../types.ts";
 
 export interface RecheckDeps {
   volume: Volume;
-  limit: <T>(fn: () => Promise<T>) => Promise<T>;
   chunkSize: number;
   signal?: AbortSignal | undefined;
   onProgress?: ((counts: ProgressCounts) => void) | undefined;
@@ -104,38 +102,31 @@ export async function recheckContent(
     deps.onProgress,
   );
   const changed: string[] = [];
-  // `allSettled`, as verification does, so no read is still using the volume
-  // when the check returns; a stall is reported ahead of what it caused.
-  const settled = await boundedMap(checked, workerCount(deps.limit), (entry) =>
-      deps.limit(async () => {
-        throwIfAborted(deps.signal);
-        const candidates = (bySource.get(entry.sourcePath) ?? []).filter((record) =>
-          record.type === entry.type && record.size === entry.size && record.mtime.ns === entry.mtimeNs.toString());
-        if (candidates.length === 0) {
-          changed.push(entry.sourcePath);
-        } else {
-          // Shared source names can have mixed records. Read once, calculating
-          // only the checksums that these candidates can actually compare.
-          const needs = {
-            sha256: candidates.some(record => record.sha256 !== undefined),
-            crc32: candidates.some(record => record.sha256 === undefined),
-          };
-          const digest = entry.type === "symlink"
-            ? digestBytes(Buffer.from(entry.linkTarget ?? "", "utf8"), needs)
-            : await digestFile(entry, needs, deps, meter);
-          // Claimed after the read, from what is still unclaimed: a source
-          // sharing this path may have taken a record while this one was read.
-          const pool = bySource.get(entry.sourcePath)!;
-          const match = pool.findIndex((record) => candidates.includes(record) && matches(digest, record));
-          if (match === -1) changed.push(entry.sourcePath);
-          else pool.splice(match, 1);
-        }
-        meter.entry();
-      }),
-  );
-  const failures = settled.flatMap((s) => (s.status === "rejected" ? [s.reason as unknown] : []));
-  const failure = failures.find((f) => isStall(f)) ?? failures[0];
-  if (failure !== undefined) throw failure;
+  for (const entry of checked) {
+    throwIfAborted(deps.signal);
+    const candidates = (bySource.get(entry.sourcePath) ?? []).filter((record) =>
+      record.type === entry.type && record.size === entry.size && record.mtime.ns === entry.mtimeNs.toString());
+    if (candidates.length === 0) {
+      changed.push(entry.sourcePath);
+    } else {
+      // Shared source names can have mixed records. Read once, calculating
+      // only the checksums that these candidates can actually compare.
+      const needs = {
+        sha256: candidates.some(record => record.sha256 !== undefined),
+        crc32: candidates.some(record => record.sha256 === undefined),
+      };
+      const digest = entry.type === "symlink"
+        ? digestBytes(Buffer.from(entry.linkTarget ?? "", "utf8"), needs)
+        : await digestFile(entry, needs, deps, meter);
+      // Claimed from what is still unclaimed: an earlier source sharing
+      // this path may have taken a record.
+      const pool = bySource.get(entry.sourcePath)!;
+      const match = pool.findIndex((record) => candidates.includes(record) && matches(digest, record));
+      if (match === -1) changed.push(entry.sourcePath);
+      else pool.splice(match, 1);
+    }
+    meter.entry();
+  }
   meter.finish();
   return [...new Set(changed)].sort();
 }

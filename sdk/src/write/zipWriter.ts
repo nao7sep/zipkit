@@ -301,7 +301,7 @@ export class ZipWriter {
   readonly #output: string;
   readonly #tempPath: string;
   readonly #options: ZipWriterOptions;
-  /** The run's bounded file access; every call on the temp file and the
+  /** The run's file access; every call on the temp file and the
    *  publication go through it. */
   readonly #volume: Volume;
   #file: VolumeFile | null = null;
@@ -598,8 +598,8 @@ export class ZipWriter {
     return { zip64: needZip64, bytes, publication };
   }
 
-  /** Abandon the write: close and remove the temp file, best-effort and
-   *  bounded, and still attempted after a cancel or a stall. Whether the temp
+  /** Abandon the write: close and remove the temp file, best-effort, and
+   *  still attempted after a cancel. Whether the temp
    *  file is gone. */
   async abort(): Promise<boolean> {
     const file = this.#file;

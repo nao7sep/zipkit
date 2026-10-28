@@ -17,8 +17,6 @@
  * hook is deliberately silent so it cannot break a call.
  */
 
-import os from "node:os";
-import pLimit from "p-limit";
 import { toAbortError, ZipKitError } from "./errors.ts";
 import { matcherFor } from "./filter/match.ts";
 import { reportFindings } from "./log/findings.ts";
@@ -36,8 +34,6 @@ import { MANIFEST_DEFAULTS, resolvePolicy } from "./policy.ts";
 import { scan } from "./scan/scan.ts";
 import {
   validateChunkSize,
-  validateConcurrency,
-  validateIoTimeout,
   validatePolicy,
   validateDebug,
   requireAbsolute,
@@ -73,42 +69,17 @@ import type {
 
 export type { PlanData, WriteData } from "./types.ts";
 
-/**
- * The default concurrency tracks the host's available parallelism (which
- * respects cgroup and CPU-affinity limits, so it does the right thing in CI and
- * containers), bounded at both ends. All streamed I/O is now chunked, so an
- * in-flight entry holds only about `chunkSize` of buffer rather than its whole
- * file; peak memory is therefore roughly `chunkSize × concurrency`. The cap
- * keeps a many-core box from opening an unbounded number of streams at once.
- * The floor keeps the work — which is largely I/O-bound — parallel even on a
- * single-vCPU container, where `availableParallelism()` returns 1. Concurrency
- * governs the scan and verification (each entry is read on its own); the
- * create write is a single ordered byte stream and runs sequentially.
- */
-const MIN_DEFAULT_CONCURRENCY = 4;
-const MAX_DEFAULT_CONCURRENCY = 16;
+// The scan, verification and source comparison look at one entry at a time,
+// as the write streams one; no measurement on real folders has shown a delay
+// that parallel file work would remove.
 
 /** Default chunk size (64 KB) for all streamed I/O — see {@link ZipKitOptions.chunkSize}. */
 const DEFAULT_CHUNK_SIZE = 65536;
 
-/**
- * Default per-operation filesystem budget — see {@link ZipKitOptions.ioTimeoutMs}.
- * One operation moves at most a chunk, so on any working volume it settles in
- * well under a second; 30 s leaves room for a sleeping network drive or a disk
- * spinning up while still ending a job on a volume that has gone away.
- */
-const DEFAULT_IO_TIMEOUT_MS = 30_000;
-
-function defaultConcurrency(): number {
-  return Math.max(MIN_DEFAULT_CONCURRENCY, Math.min(os.availableParallelism(), MAX_DEFAULT_CONCURRENCY));
-}
-
 export class ZipKit {
   readonly #policy: DeepPartial<ArchivePolicy> | undefined;
   readonly #app: Program | undefined;
-  readonly #concurrency: number;
   readonly #chunkSize: number;
-  readonly #ioTimeoutMs: number;
   /** Whether the once-per-instance startup event has been delivered yet. */
   #startupLogged = false;
   /** Whether `debug` events reach the hook. */
@@ -118,14 +89,8 @@ export class ZipKit {
     validateInstanceOptionKeys(options);
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
     this.#app = options.app !== undefined ? validateApp(options.app) : undefined;
-    this.#concurrency =
-      options.concurrency !== undefined
-        ? validateConcurrency(options.concurrency)
-        : defaultConcurrency();
     this.#chunkSize =
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
-    this.#ioTimeoutMs =
-      options.ioTimeoutMs !== undefined ? validateIoTimeout(options.ioTimeoutMs) : DEFAULT_IO_TIMEOUT_MS;
     this.#debug = validateDebug(options.debug);
   }
 
@@ -220,20 +185,19 @@ export class ZipKit {
   }
 
   /**
-   * The SDK's bounded file access, for a caller that must touch the same user
-   * volumes outside a verb (checking an input or an output location). Each call
-   * is bounded by this instance's `ioTimeoutMs` and answers to `signal`, and
-   * fails with a `io.stalled` error naming the path when the volume stops responding.
+   * The SDK's file access, for a caller that must touch the same user volumes
+   * outside a verb (checking an input or an output location). Each call answers
+   * to `signal` between file calls.
    */
   volume(signal?: AbortSignal): Volume {
-    return new Volume(nodeFileSystem, this.#ioTimeoutMs, signal);
+    return new Volume(nodeFileSystem, signal);
   }
 
   /**
    * What is at a path now: there with a fingerprint, missing, or out of reach on a
    * drive that is not connected or a path that cannot be read. Compare two
    * fingerprints with `sameFile` to tell a file rewritten in place from another
-   * file put in its place. Bounded like every look at a user volume.
+   * file put in its place.
    */
   async pathState(target: string, options: ZipKitCallOptions = {}): Promise<PathState> {
     return this.#run("scan", options, (run) => pathState(requireAbsolute(target, "path"), run.volume));
@@ -248,14 +212,14 @@ export class ZipKit {
 
   /** What each path is on disk now, in order (see `PathKind`). */
   async pathKinds(paths: readonly string[], options: ZipKitCallOptions = {}): Promise<PathEntry[]> {
-    return this.#run("scan", options, (run) => pathKinds(requireAbsoluteList(paths, "paths"), run.volume, process.platform, this.#concurrency));
+    return this.#run("scan", options, (run) => pathKinds(requireAbsoluteList(paths, "paths"), run.volume, process.platform));
   }
 
   /**
    * The one seam every method runs through: checks the call options, builds
-   * the call's logger on its `onEvent` hook and its bounded volume, runs the
-   * method, classifies whatever it throws and records that as the call's one
-   * `fault` event, and hands `onPhysicalSettlement` the volume's settlement.
+   * the call's logger on its `onEvent` hook and its volume, runs the method,
+   * classifies whatever it throws and records that as the call's one `fault`
+   * event.
    * `stage` is where a failure is recorded when its code names no domain.
    */
   async #run<U>(stage: LogStage, options: ZipKitCallOptions, fn: (run: Run) => Promise<U>): Promise<U> {
@@ -272,9 +236,7 @@ export class ZipKit {
         level: "info",
         event: "session.start",
         version: VERSION,
-        concurrency: this.#concurrency,
         chunkSize: this.#chunkSize,
-        ioTimeoutMs: this.#ioTimeoutMs,
         debug: this.#debug,
         policy: resolvePolicy(this.#policy, undefined),
       });
@@ -286,11 +248,6 @@ export class ZipKit {
       const error = classified(err, options.signal);
       reportFault(logger, error, stage);
       throw error;
-    } finally {
-      // Capture after logical cleanup: an earlier empty set could report idle
-      // before the first write, or omit continuations spawned by late calls.
-      try { options.onPhysicalSettlement?.(volume.whenSettled()); }
-      catch { /* Like the event hook, the observer cannot break the call. */ }
     }
   }
 
@@ -299,7 +256,7 @@ export class ZipKit {
     const validated = validateSpec(spec);
     const policy = resolvePolicy(this.#policy, validated.policy);
     const scanResult = await scan(validated, policy, {
-      matcher: matcherFor(policy), limit: pLimit(this.#concurrency), logger: run.logger, signal: run.signal, volume: run.volume,
+      matcher: matcherFor(policy), logger: run.logger, signal: run.signal, volume: run.volume,
     });
     const plan = planArchive(scanResult, policy);
     reportPlan(run.logger, plan);
@@ -322,7 +279,6 @@ export class ZipKit {
     keepRecords?: (records: ManifestRecord[]) => void,
   ): Promise<VerifyData> {
     return verifyArchive({ archive, manifest, manifestName }, {
-      limit: pLimit(this.#concurrency),
       chunkSize: this.#chunkSize,
       logger: run.logger,
       signal: run.signal,
@@ -350,9 +306,8 @@ export class ZipKit {
     run: Run,
   ): Promise<SourceComparison> {
     const policy = resolvePolicy(this.#policy, spec.policy);
-    const limit = pLimit(this.#concurrency);
     const scanned = await scan(spec, policy, {
-      matcher: matcherFor(policy), limit, logger: run.logger, signal: run.signal, volume: run.volume,
+      matcher: matcherFor(policy), logger: run.logger, signal: run.signal, volume: run.volume,
     });
     const plan = planArchive(scanned, policy);
     const unlistedDirs = new Set(scanned.unlistedDirs);
@@ -374,7 +329,7 @@ export class ZipKit {
       compareWithManifest(fresh, unlisted.map((e) => e.sourcePath), records), spec.inputs, removed);
     if (comparison.matches) {
       const changed = await recheckContent(fresh, records, {
-        volume: run.volume, limit, chunkSize: this.#chunkSize, signal: run.signal, onProgress: run.onProgress,
+        volume: run.volume, chunkSize: this.#chunkSize, signal: run.signal, onProgress: run.onProgress,
       });
       if (changed.length > 0) comparison = { ...comparison, matches: false, changed };
     }
@@ -382,7 +337,7 @@ export class ZipKit {
   }
 }
 
-/** What one call's work runs with: its logger, its bounded volume, its
+/** What one call's work runs with: its logger, its volume, its
  *  signal and its progress hook. */
 interface Run {
   logger: Logger;
@@ -447,7 +402,7 @@ function classified(err: unknown, signal: AbortSignal | undefined): ZipKitError 
 }
 
 /** The log stage of the domain an error code names; codes outside these
- *  domains (a policy, a stall, a cancellation) are recorded under the call's
+ *  domains (a policy, a cancellation) are recorded under the call's
  *  own stage. */
 const STAGE_FOR_CODE_DOMAIN: Record<string, LogStage> = {
   scan: "scan",

@@ -13,16 +13,13 @@
  * against escaping the input tree unless `followExternal` is set. A symlink
  * given directly as a top-level input is always followed, as it is explicit.
  *
- * Every filesystem call goes through the run's bounded {@link Volume}, so a
- * source on a stalled volume fails the scan with a `io.stalled` error naming the
- * path instead of hanging it. The places that deliberately tolerate a failed
- * call (an unreadable link, a broken link, an unreadable subdirectory) tolerate
- * only a filesystem refusal, never a stall or a cancel.
+ * Every filesystem call goes through the run's {@link Volume}. The places that
+ * deliberately tolerate a failed call (an unreadable link, a broken link, an
+ * unreadable subdirectory) tolerate only a filesystem refusal, never a cancel.
  */
 
 import type { BigIntStats } from "node:fs";
 import path from "node:path";
-import { workerCount } from "../internal/bounded-map.ts";
 import { fsFailure, throwIfAborted, ZipKitError } from "../errors.ts";
 import type { FilterMatcher } from "../filter/match.ts";
 import { isWithin } from "../internal/path.ts";
@@ -42,10 +39,9 @@ import type { ArchivePolicy, ArchiveSpec } from "../types.ts";
 
 export interface ScanDeps {
   matcher: FilterMatcher;
-  limit: <T>(fn: () => Promise<T>) => Promise<T>;
   logger: Logger;
   signal: AbortSignal | undefined;
-  /** The run's bounded file access, built with the same signal. */
+  /** The run's file access, built with the same signal. */
   volume: Volume;
 }
 
@@ -53,7 +49,6 @@ interface ScanContext {
   matcher: FilterMatcher;
   symlinks: ArchivePolicy["symlinks"];
   followExternal: boolean;
-  limit: <T>(fn: () => Promise<T>) => Promise<T>;
   signal: AbortSignal | undefined;
   logger: Logger;
   volume: Volume;
@@ -81,8 +76,6 @@ interface ScanContext {
   unlistedDirs: string[];
   followedDirs: Set<string>;
   inputRoots: string[];
-  /** First failure closes admission while issued logical work is joined. */
-  failure?: { error: unknown };
 }
 
 /** A path's filesystem identity: same file ⇔ same `dev:ino`, regardless of how
@@ -142,11 +135,8 @@ function skip(ctx: ScanContext, paths: EntryPaths, kind: SkipKind): void {
   ctx.skipped.push({ archivePath: paths.archive, sourcePath: paths.source, diskPath: paths.disk, kind });
 }
 
-function checkFailure(ctx: ScanContext): void {
-  if (ctx.failure) throw ctx.failure.error;
-}
-
-/** Rethrow a stall or a cancel from a call whose ordinary failure is tolerated. */
+/** Rethrow a cancel or a classified failure from a call whose ordinary
+ *  failure is tolerated. */
 function rethrowClassified(err: unknown): void {
   if (err instanceof ZipKitError) throw err;
 }
@@ -204,9 +194,8 @@ async function handleSymlink(
   if (ctx.artifactIds.has(fileId(resolved))) return;
 
   if (resolved.isDirectory()) {
-    // Check and claim with no await in between, so concurrent symlinks to the
-    // same real directory cannot both pass the cycle guard. A repeat visit is
-    // silent: the first visit already archived that content.
+    // A repeat visit to the same real directory is silent: the first visit
+    // already archived that content.
     if (ctx.followedDirs.has(real)) return;
     ctx.followedDirs.add(real);
     ctx.entries.push(makeEntry(real, inputIndex, paths, "dir", resolved));
@@ -246,13 +235,11 @@ async function processPath(
   }
 }
 
-/** List one directory, then stat its entries one batch at a time under the
- * shared pool. Excluded folders are pruned before descent, and descendants run
- * after the batch releases its slots, so nested links cannot deadlock the pool.
- * A subdirectory that cannot be listed is recorded as unlisted; the input root
- * failing to list, a stall or a cancel ends the scan. */
+/** List one directory, then look at its entries one at a time. Excluded
+ * folders are pruned before descent. A subdirectory that cannot be listed is
+ * recorded as unlisted; the input root failing to list or a cancel ends the
+ * scan. */
 async function crawlDirectory(ctx: ScanContext, absDir: string, anchors: EntryPaths, inputIndex: number, required = true): Promise<void> {
-  checkFailure(ctx);
   throwIfAborted(ctx.signal);
   let listing: DirEntry[];
   try {
@@ -263,32 +250,20 @@ async function crawlDirectory(ctx: ScanContext, absDir: string, anchors: EntryPa
     ctx.unlistedDirs.push(anchors.archive);
     return;
   }
-  const count = workerCount(ctx.limit);
-  for (let start = 0; start < listing.length; start += count) {
-    checkFailure(ctx);
+  for (const entry of listing) {
     throwIfAborted(ctx.signal);
-    const batch = listing.slice(start, start + count);
-    const results = await Promise.allSettled(batch.map((entry) => ctx.limit(async () => {
-      const paths = {
-        archive: joinArchivePath(anchors.archive, entry.name),
-        source: joinArchivePath(anchors.source, entry.name),
-        disk: path.join(anchors.disk, entry.name),
-      };
-      const rule = entry.isDirectory() ? ctx.matcher.match(paths.archive, true) : null;
-      if (rule) {
-        ctx.prunedDirs.push({ archivePath: paths.archive, diskPath: paths.disk, reason: rule.describe, excludedBy: rule.excludedBy });
-        return;
-      }
-      return processPath(ctx, path.join(absDir, entry.name), paths, inputIndex);
-    })));
-    const failure = results.find((result) => result.status === "rejected");
-    if (failure?.status === "rejected") { ctx.failure = { error: failure.reason }; throw failure.reason; }
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value) {
-        const next = result.value;
-        await crawlDirectory(ctx, next.real, next.paths, next.inputIndex, false);
-      }
+    const paths = {
+      archive: joinArchivePath(anchors.archive, entry.name),
+      source: joinArchivePath(anchors.source, entry.name),
+      disk: path.join(anchors.disk, entry.name),
+    };
+    const rule = entry.isDirectory() ? ctx.matcher.match(paths.archive, true) : null;
+    if (rule) {
+      ctx.prunedDirs.push({ archivePath: paths.archive, diskPath: paths.disk, reason: rule.describe, excludedBy: rule.excludedBy });
+      continue;
     }
+    const next = await processPath(ctx, path.join(absDir, entry.name), paths, inputIndex);
+    if (next) await crawlDirectory(ctx, next.real, next.paths, next.inputIndex, false);
   }
 }
 
@@ -389,7 +364,6 @@ export async function scan(
     matcher: deps.matcher,
     symlinks: policy.symlinks,
     followExternal: policy.followExternal,
-    limit: deps.limit,
     signal,
     logger: deps.logger,
     volume: deps.volume,

@@ -205,7 +205,6 @@ export interface ZipKitOptions {
   /** The app calling the SDK, recorded in every manifest it writes beside the
    *  SDK itself; each string at most 256 characters. */
   app?: Program;
-  concurrency?: number;
   /**
    * Whether `debug` events reach `onEvent`. Off by
    * default: they are a developer's firehose, not an end user's record.
@@ -215,20 +214,10 @@ export interface ZipKitOptions {
    * The chunk size, in bytes, for all streamed I/O — the `highWaterMark` of the
    * read/inflate/deflate/write streams. A runtime/performance concern, not a
    * policy: it changes only how the work is buffered, never the archive's bytes.
-   * Peak memory is roughly this times `concurrency`. At least 64 (zlib's
+   * At least 64 (zlib's
    * minimum); defaults to 65536 (64 KB).
    */
   chunkSize?: number;
-  /**
-   * The inactivity budget, in milliseconds, for each filesystem operation a
-   * verb performs: one stat, directory listing, open, chunk read or write,
-   * sync, or rename. An operation that has not settled within it is treated as
-   * a stalled volume (a dropped network share, a removed drive): the verb stops
-   * waiting and fails with a `io.stalled` error naming the operation and the path.
-   * It bounds each operation, not the whole verb, so a large archive on a
-   * healthy volume is never cut short. Defaults to 30000 (30 s).
-   */
-  ioTimeoutMs?: number;
 }
 
 /**
@@ -253,10 +242,6 @@ export interface ZipKitCallOptions {
    *  100 ms while entries stream, and once at the end of a run that finishes.
    *  The other methods report none. */
   onProgress?: (counts: ProgressCounts) => void;
-  /** Delivered after the call's logical outcome: the promise joins raw I/O
-   *  and late cleanup that may outlive a cancelled or timed-out wait. Callers
-   *  reserving output paths retain them until it settles. */
-  onPhysicalSettlement?: (settlement: Promise<void>) => void;
 }
 
 /** How far a write or a read has got. A write counts the entries it streams
@@ -765,9 +750,7 @@ export type LogEventBody =
   | {
       event: "session.start";
       version: string;
-      concurrency: number;
       chunkSize: number;
-      ioTimeoutMs: number;
       debug: boolean;
       /** The instance policy, resolved: what every call starts from. */
       policy: ArchivePolicy;

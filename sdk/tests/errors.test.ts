@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ERROR_CODES, isZipKitError, ZipKit, ZipKitError } from "../src/index.ts";
-import { stallError, toAbortError, withUnknownEffect } from "../src/errors.ts";
+import { toAbortError, withUnknownEffect } from "../src/errors.ts";
 
 let root: string;
 beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), "zipkit-errors-")); });
@@ -26,12 +26,11 @@ describe("ZipKitError", () => {
   });
 
   it("crosses a process boundary as plain data the guard still recognizes", () => {
-    const err = stallError("publish", "/out/a.zip", 30_000, true);
+    const err = new ZipKitError("io.failed", "publish failed: /out/a.zip", { effect: "unknown", subject: "/out/a.zip" });
     const data = structuredClone(JSON.parse(JSON.stringify(err)));
     expect(data).toEqual({
-      stack: expect.any(String), name: "ZipKitError", code: "io.stalled", kind: "unavailable", effect: "unknown",
-      message: "publish did not finish within 30000 ms and may still complete: /out/a.zip",
-      subject: "/out/a.zip", details: { operation: "publish", timeoutMs: 30_000 },
+      stack: expect.any(String), name: "ZipKitError", code: "io.failed", kind: "unavailable", effect: "unknown",
+      message: "publish failed: /out/a.zip", subject: "/out/a.zip",
     });
     expect(isZipKitError(data)).toBe(true);
     expect(isZipKitError(err)).toBe(true);

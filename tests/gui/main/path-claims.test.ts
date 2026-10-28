@@ -107,17 +107,17 @@ async function fixture() {
     admission: new CommandAdmission(), effects: createPathClaims(),
     resources: (paths, signal) => zip.pathResources(paths, { signal: signal }),
     plan: (inputs, options, signal) => zip.plan({ ...buildSpec(inputs, options), output: path.join(root, options.fileName || "same.zip") }, { signal }),
-    write: async (plan, signal, onEvent, onPhysicalSettlement) =>
-      ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent, onPhysicalSettlement })),
+    write: async (plan, signal, onEvent) =>
+      ((w) => (w.mode === "write" ? w.bytes : null))(await zip.write(plan, { signal, onEvent })),
     verify: async (archive, signal) => (await zip.verify({ archive, manifest: true }, { signal })).ok,
     checkRemoval: (archive, inputs, removed, options, signal, onEvent) =>
       zip.checkRemoval({ spec: buildSpec(inputs, options), archive, removed }, { signal, onEvent }),
     pathKinds: async (paths) => paths.map((path) => ({ path, kind: "file" as const })),
     trash: async (paths) => {
       for (const file of paths) await rename(file, path.join(trashDir, `${++moves}-${path.basename(file)}`));
-      return { moved: paths, failed: [], unconfirmed: [] };
+      return { moved: paths, failed: [] };
     },
-    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [], unconfirmed: [] }),
+    deleteOriginals: async (paths: string[]) => ({ moved: paths, failed: [] }),
     pathState: realPathState,
     inspect: async (archive, signal, onEvent, manifestName) => {
       const data = await zip.verify(manifestName === null ? { archive } : { archive, manifest: true, manifestName }, { signal, onEvent });
@@ -159,30 +159,6 @@ it("refuses an older job's archive removal after a real later job overwrites it 
     expect(older().state).toBe("ready");
     expect(await readFile(f.a, "utf8")).toBe("original A");
   } finally { await f.close(); }
-});
-
-it("blocks replacement until an unconfirmed archive Trash physically settles, while disjoint work proceeds", async () => {
-  const f = await fixture();
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  let physical: Promise<void> | undefined;
-  try {
-    const a = await f.add(f.a, SAVE); run(f.engine, a); await terminal(f.engine, a, "done");
-    const original = await readFile(f.output);
-    f.deps.trash = async (paths) => {
-      physical = gate.then(() => rename(paths[0]!, path.join(f.root, "trash", "late.zip")));
-      return { moved: [], failed: [], unconfirmed: paths, settlement: physical };
-    };
-    f.engine.removeArchive(a);
-    await vi.waitFor(() => expect(f.engine.snapshot().find((job) => job.id === a)?.actionResult?.severity).toBe("warning"));
-    const b = await f.add(f.b, SAVE); run(f.engine, b); await terminal(f.engine, b, "failed");
-    expect(await readFile(f.output)).toEqual(original);
-    const independent = await f.add(f.b, SAVE, "independent.zip");
-    run(f.engine, independent); await terminal(f.engine, independent, "done");
-    release(); await physical;
-    run(f.engine, b); await terminal(f.engine, b, "done");
-    expect(await readFile(f.output)).not.toEqual(original);
-  } finally { release(); await physical; await f.close(); }
 });
 
 it.runIf(fileSymlinksSupported)("canonicalizes parent aliases for path claims and publication receipts", async () => {

@@ -529,7 +529,7 @@ describe("single manifest data pass", () => {
       },
     }));
     class Instrumented extends ZipKit {
-      override volume(signal?: AbortSignal) { return new Volume(port, 30000, signal); }
+      override volume(signal?: AbortSignal) { return new Volume(port, signal); }
     }
     const progress: Array<{ bytesDone: number; entriesDone: number }> = [];
     const report = await new Instrumented().verify({ archive, manifest: true }, { onProgress: (counts) => progress.push(counts) });

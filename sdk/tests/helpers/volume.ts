@@ -1,92 +1,15 @@
-/**
- * Volumes for tests: the real filesystem behind the SDK's bounded owner, and a
- * stalling filesystem whose chosen calls never settle until released — the
- * shape of a network share or removable drive that stopped responding.
- */
+/** Volumes for tests: the real filesystem behind the SDK's file access. */
 
 import { nodeFileSystem, Volume, type FileSystemPort, type VolumeFile } from "../../src/internal/volume.ts";
 
-/** The real filesystem with the default budget. */
+/** The real filesystem. */
 export function realVolume(signal?: AbortSignal): Volume {
-  return new Volume(nodeFileSystem, 30_000, signal);
+  return new Volume(nodeFileSystem, signal);
 }
 
-/** Open a real file for reading through a bounded handle. */
+/** Open a real file for reading through a volume handle. */
 export function openRead(path: string): Promise<VolumeFile> {
   return realVolume().open(path, "r");
-}
-
-export interface StallingFileSystem {
-  port: FileSystemPort;
-  /** `"<operation> <path>"` for every call held so far. */
-  stalled: string[];
-  /** Calls that were not held and have not settled yet. While this is 0, every
-   *  budget timer the Volume has pending belongs to a held call, so advancing
-   *  fake time can expire only held calls. */
-  readonly inFlight: number;
-  /** Let every held call run now, late, against the real filesystem; resolves
-   *  once each of them has settled. */
-  release(): Promise<void>;
-}
-
-/**
- * The real filesystem, except that a call for which `shouldStall(operation,
- * path)` is true is held: it does not start until `release()`, and then runs
- * for real, so a test can prove its late completion changes nothing.
- */
-export function stallingFileSystem(shouldStall: (operation: string, path: string) => boolean): StallingFileSystem {
-  const held: Array<() => Promise<unknown>> = [];
-  const stalled: string[] = [];
-  let inFlight = 0;
-  function track<T>(run: () => Promise<T>): Promise<T> {
-    inFlight++;
-    return run().finally(() => {
-      inFlight--;
-    });
-  }
-  function gate<T>(operation: string, path: string, run: () => Promise<T>): Promise<T> {
-    if (!shouldStall(operation, path)) return track(run);
-    stalled.push(`${operation} ${path}`);
-    return new Promise<T>((resolve, reject) => {
-      held.push(() => run().then(resolve, reject));
-    });
-  }
-  const real = nodeFileSystem;
-  const port: FileSystemPort = {
-    open: async (path, flags, mode) => {
-      const handle = await gate("open", path, () => real.open(path, flags, mode));
-      return {
-        read: (buffer, offset, length, position) =>
-          gate("read", path, () => handle.read(buffer, offset, length, position)),
-        write: (buffer, offset, length, position) =>
-          gate("write", path, () => handle.write(buffer, offset, length, position)),
-        sync: () => gate("sync", path, () => handle.sync()),
-        stat: () => gate("fstat", path, () => handle.stat()),
-        close: () => track(() => handle.close()),
-      };
-    },
-    stat: (path) => gate("stat", path, () => real.stat(path)),
-    lstat: (path) => gate("lstat", path, () => real.lstat(path)),
-    realpath: (path) => gate("realpath", path, () => real.realpath(path)),
-    readlink: (path) => gate("readlink", path, () => real.readlink(path)),
-    readdir: (path) => gate("readdir", path, () => real.readdir(path)),
-    rename: (from, to) => gate("rename", to, () => real.rename(from, to)),
-    link: (existing, created) => gate("link", created, () => real.link(existing, created)),
-    unlink: (path) => gate("unlink", path, () => real.unlink(path)),
-    rm: (path) => gate("rm", path, () => real.rm(path)),
-    chmod: (path, mode) => gate("chmod", path, () => real.chmod(path, mode)),
-    mkdir: (path) => gate("mkdir", path, () => real.mkdir(path)),
-  };
-  return {
-    port,
-    stalled,
-    get inFlight() {
-      return inFlight;
-    },
-    release: async () => {
-      await Promise.allSettled(held.splice(0).map((run) => run()));
-    },
-  };
 }
 
 type PortHandle = Awaited<ReturnType<FileSystemPort["open"]>>;

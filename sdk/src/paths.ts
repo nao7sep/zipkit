@@ -4,8 +4,8 @@
  * reach, never missing, when the drive that holds it is not connected or the path
  * cannot be read, so an ejected drive or a permission change is never taken for
  * a deletion. Inputs are classified the same way. The drive rule is pure given
- * the platform, so it unit-tests without one; every look-up uses the bounded
- * `Volume`, so a stalled drive rejects rather than hangs.
+ * the platform, so it unit-tests without one; every look-up goes through the
+ * run's `Volume`.
  */
 
 import path from "node:path";
@@ -45,8 +45,8 @@ export async function driveMissing(target: string, volume: Volume, platform: Nod
   }
 }
 
-/** What is at `target` now. A stalled volume rejects, so a caller keeps what
- *  it knew rather than guessing. */
+/** What is at `target` now. A failed look rejects, so a caller keeps what it
+ *  knew rather than guessing. */
 export async function pathState(target: string, volume: Volume, platform: NodeJS.Platform = process.platform): Promise<PathState> {
   try {
     const st = await volume.lstat(target);
@@ -65,15 +65,15 @@ export function sameFile(a: string, b: string): boolean {
 
 /** What each path is on disk now, in order: a folder, a file, something else,
  *  missing, or out of reach. A vanished path is reported, never dropped. */
-export async function pathKinds(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform, concurrency = 1): Promise<PathEntry[]> {
-  const result = new Array<PathEntry>(paths.length);
-  let next = 0;
-  let failure: { error: unknown } | undefined;
-  async function classify(target: string): Promise<PathEntry> {
+export async function pathKinds(paths: readonly string[], volume: Volume, platform: NodeJS.Platform = process.platform): Promise<PathEntry[]> {
+  const result: PathEntry[] = [];
+  for (const target of paths) {
     const state = await pathState(target, volume, platform);
-    if (state.kind === "missing") return { path: target, kind: "missing" };
-    if (state.kind === "unavailable") return { path: target, kind: "unavailable" };
-    let kind: PathKind = "missing";
+    if (state.kind === "missing" || state.kind === "unavailable") {
+      result.push({ path: target, kind: state.kind });
+      continue;
+    }
+    let kind: PathKind;
     try {
       const st = await volume.stat(target);
       kind = st.isDirectory() ? "directory" : st.isFile() ? "file" : "other";
@@ -82,16 +82,7 @@ export async function pathKinds(paths: readonly string[], volume: Volume, platfo
       // There, but what it points at is not: a link whose target is gone.
       kind = "other";
     }
-    return { path: target, kind };
+    result.push({ path: target, kind });
   }
-  await Promise.allSettled(Array.from({ length: Math.min(concurrency, paths.length) }, async () => {
-    while (!failure) {
-      const index = next++;
-      if (index >= paths.length) return;
-      try { result[index] = await classify(paths[index]!); }
-      catch (error) { failure ??= { error }; }
-    }
-  }));
-  if (failure) throw failure.error;
   return result;
 }

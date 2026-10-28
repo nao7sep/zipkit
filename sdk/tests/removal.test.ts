@@ -96,18 +96,18 @@ describe("checkRemoval", () => {
     expect(await check(steps({ inside: async () => true }, ran))).toEqual({ refusal: { reason: "inside" }, verified: null });
     expect(ran).toEqual(["state"]);
     expect((await check(steps({ verify: async () => ({ ok: false, report }) }))).refusal).toEqual({ reason: "verify-failed", report });
-    const stalled = new ZipKitError("io.stalled", "stalled", { subject: "/out/a.zip", details: { operation: "read", timeoutMs: 1 } });
-    expect(await check(steps({ verify: async () => { throw stalled; } })))
-      .toEqual({ refusal: { reason: "error", step: "verify", error: stalled.toJSON() }, verified: null });
+    const failed = new ZipKitError("io.failed", "read failed", { subject: "/out/a.zip" });
+    expect(await check(steps({ verify: async () => { throw failed; } })))
+      .toEqual({ refusal: { reason: "error", step: "verify", error: failed.toJSON() }, verified: null });
     // A raw file-system failure arrives classified, naming the archive.
     const missing = Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
     expect((await check(steps({ inside: async () => { throw missing; } }))).refusal)
       .toMatchObject({ reason: "error", step: "location", error: { code: "path.missing", kind: "unavailable", subject: "/out/a.zip" } });
     // A later refusal still says the archive verified.
-    expect(await check(steps({ compare: async () => { throw stalled; } })))
-      .toEqual({ refusal: { reason: "error", step: "recheck", error: stalled.toJSON() }, verified: { fingerprint: "f1" } });
+    expect(await check(steps({ compare: async () => { throw failed; } })))
+      .toEqual({ refusal: { reason: "error", step: "recheck", error: failed.toJSON() }, verified: { fingerprint: "f1" } });
     // The refusal is plain data, so it crosses a process boundary as it is.
-    const { refusal } = await check(steps({ compare: async () => { throw stalled; } }));
+    const { refusal } = await check(steps({ compare: async () => { throw failed; } }));
     expect(refusal).not.toBeInstanceOf(Error);
     expect(structuredClone(refusal)).toEqual(refusal);
     // A fault in the SDK itself is not taken for the disk's.

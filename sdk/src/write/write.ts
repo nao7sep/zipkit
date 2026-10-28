@@ -21,7 +21,7 @@ import { createHash, type Hash } from "node:crypto";
 import path from "node:path";
 import type { BigIntStats } from "node:fs";
 import { createPathClaims, pathResources } from "../claims.ts";
-import { classify, fsFailure, isStall, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
+import { classify, fsFailure, throwIfAborted, toAbortError, withUnknownEffect, ZipKitError } from "../errors.ts";
 import type { PlanInternals } from "../internal/instructions.ts";
 import { fromPlan } from "../internal/instructions.ts";
 import type { Volume } from "../internal/volume.ts";
@@ -47,7 +47,7 @@ export interface WriteDeps {
   logger: Logger;
   chunkSize: number;
   signal?: AbortSignal;
-  /** The run's bounded file access, built with the same signal. */
+  /** The run's file access, built with the same signal. */
   volume: Volume;
   /** The caller's `onProgress`, for how far the write has got. */
   onProgress?: ((counts: ProgressCounts) => void) | undefined;
@@ -401,14 +401,11 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
     // failure's effect is not nothing.
     const cleaned = await writer.abort();
     const left = (e: unknown): unknown => (cleaned ? e : withUnknownEffect(e));
-    // A publication stall keeps its truthful output status, even when
-    // cancellation arrived during that publication.
-    if (isStall(err)) throw left(err);
     if (signal?.aborted) throw left(toAbortError(signal.reason));
     // The sources and the writer classify their own file failures; anything
     // else is the SDK's own fault.
     throw left(classify(err, output));
   } finally {
-    claim.release(deps.volume.whenSettled());
+    claim.release();
   }
 }
