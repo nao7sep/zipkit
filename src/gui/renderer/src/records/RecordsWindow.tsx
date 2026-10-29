@@ -178,7 +178,16 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
 
   // A stored record reaches the list at once while it is scrolled to the top;
   // otherwise it waits until the list is back there, so the list never moves
-  // under the reader.
+  // under the reader. A page that arrives after the list left the top waits too.
+  const readNewestAtTop = (): void => {
+    void readNewest(() => {
+      const scroll = scrollRef.current;
+      if (scroll === null || atTop(scroll)) return true;
+      newestPending.current = true;
+      return false;
+    });
+  };
+
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const unsubscribe = window.zipkit.onRecordsChanged(() => {
@@ -186,7 +195,7 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
       timer = setTimeout(() => {
         timer = null;
         const scroll = scrollRef.current;
-        if (scroll === null || atTop(scroll)) readNewest();
+        if (scroll === null || atTop(scroll)) readNewestAtTop();
         else newestPending.current = true;
       }, LIVE_INTERVAL_MS);
     });
@@ -262,7 +271,7 @@ export function RecordsWindow({ initialListWidth }: { initialListWidth: number }
     if (scroll === null) return;
     if (newestPending.current && atTop(scroll)) {
       newestPending.current = false;
-      void readNewest();
+      readNewestAtTop();
     }
     if (nearEnd(scroll)) void loadMore();
   };

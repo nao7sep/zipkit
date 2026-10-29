@@ -53,11 +53,13 @@ export function useRecordsPages(filters: Filters) {
     }
   }, []);
 
-  const readNewest = useCallback(async () => {
+  /** `shown` is asked once the page arrives; when it answers false the page is
+   *  dropped, so a list scrolled away meanwhile does not move. */
+  const readNewest = useCallback(async (shown: () => boolean = () => true) => {
     const signal = begin("newest");
     try {
       const page = await window.zipkit.readRecordsPage({ ...filtersRef.current, after: null });
-      if (signal.aborted) return;
+      if (signal.aborted || !shown()) return;
       loaded.current = mergeNewestPage(loaded.current.records, loaded.current.more, page);
       failures.current.delete("list");
       setStatus("ready");

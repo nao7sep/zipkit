@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 import { readFileSync } from "node:fs";
 
@@ -28,6 +28,8 @@ export default defineConfig({
         test: {
           name: "app",
           include: ["tests/**/*.test.{ts,tsx}"],
+          // The full gate's tests need the built app (vitest.live.config.ts).
+          exclude: [...configDefaults.exclude, "tests/live/**"],
           // Redirect every test's storage root and log directory off the real
           // `~/.zipkit` (see tests/setup.ts), so the suite never writes into the
           // developer's home directory.

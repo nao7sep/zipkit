@@ -520,6 +520,25 @@ describe("RecordsWindow", () => {
     expect(titles()).toEqual(["job added", "fault", "verify failed"]);
   });
 
+  it("holds a newest page that arrives after the list left the top until it is back there", async () => {
+    await mount();
+    vi.useFakeTimers();
+    const next = deferred<RecordsPage>();
+    readRecordsPage.mockReturnValueOnce(next.promise);
+    readRecordsPage.mockResolvedValueOnce({ records: [newer, event, line], more: false });
+
+    await signal();
+    await act(async () => vi.advanceTimersByTime(1000));
+    expect(readRecordsPage).toHaveBeenCalledTimes(2);
+    await scrollTo(300);
+    await act(async () => next.resolve({ records: [newer, event, line], more: false }));
+    expect(titles()).toEqual(["fault", "verify failed"]);
+
+    await scrollTo(0);
+    expect(readRecordsPage).toHaveBeenCalledTimes(3);
+    expect(titles()).toEqual(["job added", "fault", "verify failed"]);
+  });
+
   it("keeps the selected record selected through an update", async () => {
     await mount();
     await act(async () => options()[1]!.click());
