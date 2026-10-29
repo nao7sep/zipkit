@@ -21,7 +21,8 @@
  * deadline is logged and left behind, so quitting always ends in an exit; its
  * outcome is unknown. Work left behind may be stuck in a native call (a hung
  * volume, a worker inside SQLite), and Electron's ordinary exit waits for such
- * work, so the exit then uses `forceExit`.
+ * work, so the exit then uses `forceExit`; an ordinary exit that has not ended
+ * the process by the deadline is forced too.
  *
  * `app.quit()` is not a reliable continuation after macOS has already closed
  * the last window. `app.exit()` is safe here because the quit work has settled
@@ -114,6 +115,13 @@ async function failureWithin(work: () => Promise<void>, ms: number, what: string
   }
 }
 
+/** Exits at once, keeping the deadline armed through the exit: one that has not
+ *  ended the process by then, whatever holds it, is forced. */
+function exitWithin(steps: { exit(code: number): void; forceExit(): void }, code: number, deadline: number): void {
+  setTimeout(() => steps.forceExit(), Math.max(0, deadline - Date.now()));
+  steps.exit(code);
+}
+
 /** The quit sequence. It ends the process, unless the user chose to keep the
  *  app open after the queue could not be saved. */
 export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): Promise<void> {
@@ -183,7 +191,7 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
       // A log that cannot close has nowhere to report it.
       await bounded(steps.closeLog, "the log");
       if (leftBehind) steps.forceExit();
-      else steps.exit(0);
+      else exitWithin(steps, 0, deadline);
     }
   }
 }
@@ -207,7 +215,7 @@ export async function finishStartupHalt(steps: {
     if (backups !== undefined) steps.onFailed(backups);
     const log = await failureWithin(steps.closeLog, deadline - Date.now(), "startup log cleanup");
     if (backups instanceof StepTimeout || log instanceof StepTimeout) steps.forceExit();
-    else steps.exit(1);
+    else exitWithin(steps, 1, deadline);
   }
 }
 
@@ -250,7 +258,7 @@ export function endSessionNow(steps: SessionEndSteps): void {
     }
   } finally {
     if (leftBehind) steps.forceExit();
-    else steps.exit(0);
+    else exitWithin(steps, 0, deadline);
   }
 }
 

@@ -266,6 +266,15 @@ describe("stopFlushAndExit", () => {
     expect(s.exit).toHaveBeenCalledWith(0);
   });
 
+  it("keeps the deadline armed through the exit, forcing one that has not ended the process by then", async () => {
+    const s = steps();
+    await stopFlushAndExit(s, endingSession());
+    expect(s.exit).toHaveBeenCalledWith(0);
+    expect(s.forceExit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(QUIT_DEADLINE_MS);
+    expect(s.forceExit).toHaveBeenCalledOnce();
+  });
+
   it("logs a failed layout write and still exits", async () => {
     const error = new Error("layout write failed");
     const s = steps({ settleLayout: async () => { throw error; } });
