@@ -163,8 +163,8 @@ describe("macOS logout, restart and shutdown", () => {
     expect(m.settleSettingsSave).toHaveBeenCalled();
     expect(m.flushQueue).toHaveBeenCalled();
     expect(m.logClose).toHaveBeenCalled();
-    // Optional backup closing is skipped while the session ends.
-    expect(m.closeBackupStore).not.toHaveBeenCalled();
+    // The backup history's pending writes are skipped while the session ends; its thread still stops.
+    expect(m.closeBackupStore).toHaveBeenCalledWith(false);
     expect(m.forceExitProcess).not.toHaveBeenCalled();
   });
 

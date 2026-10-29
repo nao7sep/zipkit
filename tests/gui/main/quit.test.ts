@@ -292,10 +292,23 @@ describe("stopFlushAndExit", () => {
     await vi.advanceTimersByTimeAsync(1);
     await quitting;
 
-    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["job", "settings", "queue", "layout"]);
-    // An ending session skips the backup history's pending writes.
+    // No time is left for the backup history, so its step is not started.
+    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["job", "settings", "queue", "layout", "backups"]);
     expect(s.closeBackups).not.toHaveBeenCalled();
     // Work left behind may be stuck in a native call, so the exit does not wait for it.
+    expect(s.forceExit).toHaveBeenCalledOnce();
+    expect(s.exit).not.toHaveBeenCalled();
+  });
+
+  it("stops the backup history's thread without its pending writes when the session ends, and forces the exit when it does not stop", async () => {
+    const s = steps({ closeBackups: vi.fn(never) });
+
+    const quitting = stopFlushAndExit(s, endingSession());
+    await vi.advanceTimersByTimeAsync(QUIT_DEADLINE_MS);
+    await quitting;
+
+    expect(s.closeBackups).toHaveBeenCalledWith(false);
+    expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["backups"]);
     expect(s.forceExit).toHaveBeenCalledOnce();
     expect(s.exit).not.toHaveBeenCalled();
   });
@@ -307,7 +320,7 @@ describe("stopFlushAndExit", () => {
     await vi.advanceTimersByTimeAsync(QUIT_DEADLINE_MS);
     await quitting;
 
-    expect(s.closeBackups).toHaveBeenCalledOnce();
+    expect(s.closeBackups).toHaveBeenCalledWith(true);
     expect(vi.mocked(s.onStepFailed).mock.calls.map(([step]) => step)).toEqual(["backups"]);
     expect(s.forceExit).toHaveBeenCalledOnce();
   });

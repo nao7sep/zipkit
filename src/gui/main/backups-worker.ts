@@ -99,9 +99,8 @@ class BackupsStore {
       // The first writer under the root does the `mkdir -p` (storage-path
       // conventions); the store may be the first thing written on a fresh root.
       mkdirSync(path.dirname(this.#database), { recursive: true });
+      // The app's only connection to the file: no busy timeout, nothing to wait for.
       db = new DatabaseSync(this.#database);
-      // Independent diagnostic readers may briefly contend with a checkpoint/write.
-      db.exec("PRAGMA busy_timeout = 5000");
       db.exec("PRAGMA journal_mode = WAL");
       db.exec(TABLE);
       db.exec(INDEXES);

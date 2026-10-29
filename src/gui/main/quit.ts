@@ -15,8 +15,9 @@
  *
  * The whole sequence has one deadline, {@link QUIT_DEADLINE_MS}, and each step
  * draws on what is left of it; the user's time on a question does not count,
- * and an answer starts the deadline again. OS-driven quit skips optional backup
- * closure; Windows session end uses one two-second save budget. A step past the
+ * and an answer starts the deadline again. OS-driven quit skips the backup
+ * history's pending writes but still stops its thread within the deadline;
+ * Windows session end uses one two-second save budget. A step past the
  * deadline is logged and left behind, so quitting always ends in an exit; its
  * outcome is unknown. Work left behind may be stuck in a native call (a hung
  * volume, a worker inside SQLite), and Electron's ordinary exit waits for such
@@ -77,8 +78,8 @@ export interface QuitSteps {
   onCancelled(): void;
   /** Settle the pane layout writes in flight. */
   settleLayout(): Promise<void>;
-  /** Write the backup history's records still in flight. */
-  closeBackups(): Promise<void>;
+  /** Stop the backup history's thread, writing its records still in flight when `drain`. */
+  closeBackups(drain: boolean): Promise<void>;
   /** Write the log's records still in flight. */
   closeLog(): Promise<void>;
   /** A step failed or ran past the deadline; quit goes on without it. */
@@ -175,12 +176,10 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
       const layoutError = await bounded(steps.settleLayout, "the pane layout write");
       if (layoutError !== undefined) steps.onStepFailed("layout", layoutError);
       // The backup history may log a failure, so the log closes last. At the end of an OS session
-      // its pending writes are skipped (data-backup conventions); SQLite's journal keeps the store
-      // whole when the process ends with the thread still open.
-      if (!session.ending) {
-        const backupsError = await bounded(steps.closeBackups, "the backup history");
-        if (backupsError !== undefined) steps.onStepFailed("backups", backupsError);
-      }
+      // its pending writes are skipped (data-backup conventions), but its thread still stops
+      // within the deadline: Electron's exit would wait for one blocked inside SQLite.
+      const backupsError = await bounded(() => steps.closeBackups(!session.ending), "the backup history");
+      if (backupsError !== undefined) steps.onStepFailed("backups", backupsError);
       // A log that cannot close has nowhere to report it.
       await bounded(steps.closeLog, "the log");
       if (leftBehind) steps.forceExit();
@@ -192,7 +191,7 @@ export async function stopFlushAndExit(steps: QuitSteps, session: QuitSession): 
 /** Startup presentation failure still reaches a bounded cleanup and exit tail. */
 export async function finishStartupHalt(steps: {
   present(): Promise<void>;
-  closeBackups(): Promise<void>;
+  closeBackups(drain: boolean): Promise<void>;
   closeLog(): Promise<void>;
   onFailed(error: unknown): void;
   exit(code: number): void;
@@ -204,7 +203,7 @@ export async function finishStartupHalt(steps: {
     steps.onFailed(error);
   } finally {
     const deadline = Date.now() + QUIT_DEADLINE_MS;
-    const backups = await failureWithin(steps.closeBackups, deadline - Date.now(), "startup backup cleanup");
+    const backups = await failureWithin(() => steps.closeBackups(true), deadline - Date.now(), "startup backup cleanup");
     if (backups !== undefined) steps.onFailed(backups);
     const log = await failureWithin(steps.closeLog, deadline - Date.now(), "startup log cleanup");
     if (backups instanceof StepTimeout || log instanceof StepTimeout) steps.forceExit();

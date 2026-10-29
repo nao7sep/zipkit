@@ -133,19 +133,25 @@ export function record(absolutePath: string, bytes: Buffer): Promise<void> {
 }
 
 /**
- * Let the thread finish the records it holds, then stop it; the quit's exit deadline bounds the
- * wait. Resets the store so the next {@link record} re-opens against the current
+ * Stop the thread, first letting it finish the records it holds when `drain`; the quit's exit
+ * deadline bounds the wait. Resets the store so the next {@link record} re-opens against the current
  * `ZIPKIT_DATA_DIR` (tests use throwaway roots).
  */
-export function closeBackupStore(): Promise<void> {
+export function closeBackupStore(drain = true): Promise<void> {
   // The reset runs in `finally`, after `closing` is assigned, so a close with no thread still clears it.
-  closing ??= stopThread().finally(() => {
+  closing ??= (drain ? stopThread() : abandonThread()).finally(() => {
     settlePending();
     worker = null;
     disabled = false;
     closing = null;
   });
   return closing;
+}
+
+/** Ends the thread without its pending records; resolves once it has stopped, which a thread
+ *  blocked inside SQLite does only when that call returns. */
+async function abandonThread(): Promise<void> {
+  await release()?.terminate();
 }
 
 async function stopThread(): Promise<void> {

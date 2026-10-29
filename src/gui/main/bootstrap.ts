@@ -139,7 +139,7 @@ async function reportStartupHalt(error: unknown): Promise<void> {
       installAppMenu(await settledTranslator(), menuActions);
       await notifyStartupFailure("startup.halted");
     },
-    closeBackups: () => closeBackupStore(),
+    closeBackups: (drain) => closeBackupStore(drain),
     closeLog: () => log.close(),
     onFailed: (failure) => log.error("startup failure presentation or cleanup failed", { error: errorInfo(failure) }),
     exit: (code) => app.exit(code),
@@ -289,7 +289,7 @@ const quit = createQuitControl({
           log.info("quit cancelled with work not saved");
         },
         settleLayout: layoutWritesSettled,
-        closeBackups: () => closeBackupStore(),
+        closeBackups: (drain) => closeBackupStore(drain),
         closeLog: () => log.close(),
         onStepFailed: logQuitStepFailure,
         exit: (code) => app.exit(code),
