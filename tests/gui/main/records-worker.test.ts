@@ -45,4 +45,4 @@ it("marks a write failure before the next mailbox message, without disabling rea
     lock.close();
     rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
-}, 15_000);
+});

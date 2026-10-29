@@ -241,8 +241,8 @@ class RecordsStore {
     let db: DatabaseSync | undefined;
     try {
       mkdirSync(path.dirname(this.#database), { recursive: true });
+      // The app's only connection to the file: no busy timeout, nothing to wait for.
       db = new DatabaseSync(this.#database);
-      db.exec("PRAGMA busy_timeout = 5000");
       db.exec("PRAGMA journal_mode = WAL");
       db.exec(SCHEMA);
       this.#db = db;
@@ -347,8 +347,9 @@ if (parentPort) {
       reply(answer(store, request));
     } catch (err) {
       const error = errorData(err);
-      // Mark failure before processing another message: queued writes must not
-      // each spend SQLite's busy timeout waiting on the same broken sink.
+      // Mark failure before processing another message: the main process sends
+      // every unconfirmed write to the fallback file at the first failure, so a
+      // queued write must not land in the database as well.
       if (writing) writeFailure = error;
       reply({ type: "failed", id: request.id, error });
     }
