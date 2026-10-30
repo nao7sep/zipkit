@@ -10,7 +10,7 @@ import { isSafePathComponent, exclusionIssue } from "zipkitsdk/types";
 import { storageRoot } from "./storage.js";
 import { changedSettings, DEFAULT_OPTIONS, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, PARAMETER_KEYS, SETTINGS_KEYS, THEME_PREFERENCES, type ArchiveParameters, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
-import { isCardRowLimit, isDisplayZone } from "../shared/spec.js";
+import { COMPRESSION_LEVEL_RANGE, isCardRowLimit, isDisplayZone, isWholeNumberIn } from "../shared/spec.js";
 import { singleLine } from "../shared/textCleanup.js";
 import { nullLog, type AppLog } from "./log.js";
 import { InvalidManagedJsonError, isPlainObject, loadManagedJson, managedJsonText, writeManagedJson, type ManagedJsonLoad } from "./managedJson.js";
@@ -40,7 +40,7 @@ const OPTION_CHECKS: Array<[keyof GuiOptions, (value: unknown) => boolean]> = [
   ["exclusions", (v) => Array.isArray(v) && v.every(isExclusion)],
   ["strict", (v) => typeof v === "boolean"],
   ["invalidChars", (v) => v === "tidy" || v === "replace" || v === "fullwidth" || v === "remove"],
-  ["level", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 9],
+  ["level", (v) => isWholeNumberIn(v, COMPRESSION_LEVEL_RANGE)],
   ["symlinks", (v) => v === "ignore" || v === "preserve" || v === "follow"],
   ["emptyDirs", (v) => v === "keep" || v === "prune"], ["manifest", (v) => typeof v === "boolean"],
   ["manifestName", (v) => typeof v === "string" && isSafePathComponent(v)],

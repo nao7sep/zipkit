@@ -35,9 +35,10 @@ const readyJob: Job = {
 };
 const otherJob: Job = { ...readyJob, id: "job-2", inputs: ["/tmp/other.txt"], entries: [{ path: "/tmp/other.txt", kind: "file" }] };
 
-/** Type into a React-controlled textarea the way a keystroke does, without leaving it. */
-function typeInto(field: HTMLTextAreaElement, value: string): void {
-  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, value);
+/** Type into a React-controlled field the way a keystroke does, without leaving it. */
+function typeInto(field: HTMLTextAreaElement | HTMLInputElement, value: string): void {
+  const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(field, value);
   field.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
@@ -107,6 +108,13 @@ describe("a job that finishes mid-edit", () => {
     return label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   };
   const comment = (): HTMLTextAreaElement => container.querySelector("textarea")!;
+  const level = (): HTMLInputElement => {
+    const label = [...container.querySelectorAll("label")]
+      .find((node) => node.textContent?.includes("Compression level"))!;
+    return label.querySelector<HTMLInputElement>("input")!;
+  };
+  const create = (): HTMLButtonElement => [...container.querySelectorAll("button")]
+    .find((node) => node.textContent === "Create archive") as HTMLButtonElement;
 
   it("sends a checkbox change at once", async () => {
     await renderApp();
@@ -149,5 +157,39 @@ describe("a job that finishes mid-edit", () => {
       vi.advanceTimersByTime(1000);
     });
     expect(updateJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a typed level that is not one, sends only valid levels and holds Create back", async () => {
+    await renderApp();
+    await openJob("job-1");
+
+    for (const typed of ["", "0", "10", "4.5"]) {
+      await act(async () => typeInto(level(), typed));
+      expect(level().value).toBe(typed);
+      expect(level().getAttribute("aria-invalid")).toBe("true");
+      expect(container.textContent).toContain("Whole number from 1 to 9");
+      expect(container.textContent).toContain("Create archive waits until the compression level under Parameters is valid.");
+      expect(create().disabled).toBe(true);
+    }
+    expect(updateJob).not.toHaveBeenCalled();
+
+    await act(async () => typeInto(level(), "7"));
+    expect(updateJob).toHaveBeenCalledExactlyOnceWith("job-1", { options: { ...CUSTOM_OPTIONS, level: 7 } });
+    expect(container.textContent).not.toContain("Whole number from 1 to 9");
+    expect(create().disabled).toBe(false);
+  });
+
+  it("keeps a job's typed level when another job is selected and back", async () => {
+    await renderApp();
+    await openJob("job-1");
+    await act(async () => typeInto(level(), "12"));
+
+    await openJob("job-2");
+    expect(level().value).toBe(String(CUSTOM_OPTIONS.level));
+    expect(create().disabled).toBe(false);
+    await openJob("job-1");
+    expect(level().value).toBe("12");
+    expect(create().disabled).toBe(true);
+    expect(updateJob).not.toHaveBeenCalled();
   });
 });

@@ -1352,6 +1352,19 @@ describe("queue engine", () => {
     expect(engine.snapshot()[0]?.options.level).toBe(1); // change still applied
   });
 
+  it("refuses a compression level outside 1 to 9 instead of storing or correcting it", async () => {
+    const { deps } = makeDeps();
+    const engine = createQueueEngine(deps);
+    expect(() => engine.add(["/x"], { ...DEFAULT_OPTIONS, level: 0 }, SAVE)).toThrow(/Compression level/);
+    expect(engine.snapshot()).toEqual([]);
+    const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
+    await until(() => expect(engine.snapshot()[0]?.state).toBe("ready"));
+    for (const level of [10, 2.5, Number.NaN]) {
+      expect(() => engine.update(id, { options: { ...DEFAULT_OPTIONS, level } })).toThrow(/Compression level/);
+    }
+    expect(engine.snapshot()[0]?.options.level).toBe(DEFAULT_OPTIONS.level);
+  });
+
   it("re-plans and re-classifies when a job's inputs change", async () => {
     const { deps, calls } = makeDeps();
     const engine = createQueueEngine(deps);

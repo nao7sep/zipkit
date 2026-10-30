@@ -42,7 +42,7 @@ import {
   type SavedJob,
 } from "../shared/queue.js";
 import type { JobAction, LogEvent, PlanData, VerifyReport } from "../shared/api.js";
-import { optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
+import { COMPRESSION_LEVEL_RANGE, isWholeNumberIn, optionsEqual, planAffectingChanged, type GuiOptions } from "../shared/spec.js";
 import { errorInfo, type AppLog } from "./log.js";
 import { reportChanged } from "./plan-review.js";
 import { describeOriginalsRemoval, describeRemovalDone, trashConfirmed, type TrashResult } from "./trash-outcome.js";
@@ -174,6 +174,14 @@ type Effect =
 
 /** The manifest a job's archive is verified against: its name, or null when
  *  the job embeds none. */
+/** The window holds back a level outside the range its field accepts; one that
+ *  still arrives is refused, never corrected, so it cannot reach `queue.json`. */
+function admitLevel(options: GuiOptions): void {
+  if (!isWholeNumberIn(options.level, COMPRESSION_LEVEL_RANGE)) {
+    throw new Error(`Compression level must be a whole number from ${COMPRESSION_LEVEL_RANGE.min} to ${COMPRESSION_LEVEL_RANGE.max}`);
+  }
+}
+
 function manifestOf(options: GuiOptions): string | null {
   return options.manifest ? options.manifestName : null;
 }
@@ -1023,6 +1031,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
     snapshot,
     add(inputs, options, intent = SAFEST_INTENT) {
       if (!deps.admission.accepting()) throw new Error("The app is shutting down");
+      admitLevel(options);
       const id = deps.newId();
       const rec = newRec({ id, inputs, options, intent, state: "planning" });
       recs.set(id, rec);
@@ -1043,6 +1052,7 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
       // arrive after the job finishes; accepting it would drop
       // the published output the Trash command needs and re-plan the result away.
       if (!rec || !isEditable(rec.job)) return;
+      if (patch.options !== undefined) admitLevel(patch.options);
       // A Create asked for while planning describes the settings at that click.
       // Later edits must not turn a save request into an unconfirmed Trash run.
       if ((patch.intent !== undefined && !sameIntent(patch.intent, rec.job.intent)) ||

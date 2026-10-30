@@ -423,3 +423,50 @@ describe("SettingsDialog exclusion patterns", () => {
     expect((within(panel).getByLabelText("Pattern 1") as HTMLInputElement).value).toBe(".DS_Store");
   });
 });
+
+describe("SettingsDialog number fields", () => {
+  const rowLimitInput = () => screen.getByLabelText("Items a Status card lists before folding") as HTMLInputElement;
+  const save = () => screen.getByText("Save") as HTMLButtonElement;
+
+  it("keeps a typed level that is not one, says what it takes and holds Save", () => {
+    const onSave = renderDialog();
+    for (const typed of ["", "0", "10", "3.5", "x"]) {
+      fireEvent.change(levelInput(), { target: { value: typed } });
+      expect(levelInput().value).toBe(typed);
+      expect(levelInput().getAttribute("aria-invalid")).toBe("true");
+      expect(screen.getByText("Whole number from 1 to 9")).toBeTruthy();
+      expect(save().disabled).toBe(true);
+    }
+    fireEvent.change(levelInput(), { target: { value: "2" } });
+    expect(screen.queryByText("Whole number from 1 to 9")).toBeNull();
+    fireEvent.click(save());
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...CUSTOM.defaults, level: 2 } });
+  });
+
+  it("keeps a typed row limit that is not one, says what it takes and holds Save", () => {
+    const onSave = renderDialog();
+    for (const typed of ["", "-1", "101", "2.5"]) {
+      fireEvent.change(rowLimitInput(), { target: { value: typed } });
+      expect(rowLimitInput().value).toBe(typed);
+      expect(screen.getByText("Whole number from 0 to 100")).toBeTruthy();
+      expect(save().disabled).toBe(true);
+    }
+    fireEvent.change(rowLimitInput(), { target: { value: "0" } });
+    fireEvent.click(save());
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, cardRowLimit: 0 });
+  });
+
+  it("counts a typed number that is not valid as an unsaved edit", async () => {
+    renderDialog();
+    fireEvent.change(rowLimitInput(), { target: { value: "" } });
+    await eventuallyRendered(() => expect(window.zipkit.reportSettingsDraft).toHaveBeenLastCalledWith(true));
+  });
+
+  it("puts a reset level back as text", () => {
+    renderDialog();
+    fireEvent.change(levelInput(), { target: { value: "" } });
+    fireEvent.click(reset());
+    expect(levelInput().value).toBe(String(DEFAULT_PARAMETERS.level));
+    expect(screen.queryByText("Whole number from 1 to 9")).toBeNull();
+  });
+});

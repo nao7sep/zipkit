@@ -11,23 +11,38 @@
 
 import { isSafePathComponent } from "zipkitsdk/types";
 import { useId, type CSSProperties, type ReactNode } from "react";
-import type { ArchiveParameters } from "../../../shared/spec";
+import { COMPRESSION_LEVEL_RANGE, type ArchiveParameters } from "../../../shared/spec";
 import { useI18n } from "../i18n/I18nContext";
 import { singleLine } from "../../../shared/textCleanup";
+import { parseWholeNumber, WholeNumberInput, WholeNumberIssue } from "./WholeNumberInput";
 
 export function OptionsPanel({
   options,
   onChange,
+  levelText,
+  onLevelText,
   disabled,
 }: {
   options: ArchiveParameters;
   /** Every edit reaches the parent that owns its saving policy. */
   onChange: (o: ArchiveParameters) => void;
+  /** The compression level as typed, held by the parent, which also holds back
+   *  its action while the text is not a level. */
+  levelText: string;
+  onLevelText: (text: string) => void;
   disabled: boolean;
 }) {
   const { t, rich } = useI18n();
   const manifestNameMissing = !isSafePathComponent(options.manifestName);
   const manifestIssueId = useId();
+  const levelIssueId = useId();
+  const levelInvalid = parseWholeNumber(levelText, COMPRESSION_LEVEL_RANGE) === null;
+  // Only a level in range is committed; the one committed last stays in force.
+  function typeLevel(text: string) {
+    onLevelText(text);
+    const level = parseWholeNumber(text, COMPRESSION_LEVEL_RANGE);
+    if (level !== null && level !== options.level) set("level", level);
+  }
   const set = <K extends keyof ArchiveParameters>(key: K, value: ArchiveParameters[K]) =>
     onChange({ ...options, [key]: value });
 
@@ -85,15 +100,15 @@ export function OptionsPanel({
 
       <Section title={t("options.archive")}>
         <Field label={t("options.level")}>
-          <input
-            type="number"
-            min={1}
-            max={9}
-            value={options.level}
-            onChange={(e) => set("level", Number(e.target.value))}
+          <WholeNumberInput
+            text={levelText}
+            range={COMPRESSION_LEVEL_RANGE}
+            onText={typeLevel}
+            issueId={levelIssueId}
             style={{ width: "3.5rem" }}
           />
         </Field>
+        {levelInvalid && <WholeNumberIssue id={levelIssueId} range={COMPRESSION_LEVEL_RANGE} style={S.issue} />}
         <Field label={t("options.symlinks")}>
           <select
             style={S.select}

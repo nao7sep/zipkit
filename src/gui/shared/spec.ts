@@ -141,11 +141,23 @@ export interface GuiSettings {
   cardRowLimit: number;
 }
 
+/** The whole numbers a typed number field accepts, which its owner checks too. */
+export interface WholeNumberRange {
+  readonly min: number;
+  readonly max: number;
+}
+
+export function isWholeNumberIn(value: unknown, range: WholeNumberRange): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= range.min && value <= range.max;
+}
+
+/** The deflate levels a job may take. */
+export const COMPRESSION_LEVEL_RANGE: WholeNumberRange = { min: 1, max: 9 };
 /** The range a Status card's item limit may take. */
-export const CARD_ROW_LIMIT_RANGE = { min: 0, max: 100 } as const;
+export const CARD_ROW_LIMIT_RANGE: WholeNumberRange = { min: 0, max: 100 };
 
 export function isCardRowLimit(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= CARD_ROW_LIMIT_RANGE.min && value <= CARD_ROW_LIMIT_RANGE.max;
+  return isWholeNumberIn(value, CARD_ROW_LIMIT_RANGE);
 }
 
 /** The config file's set keys. */

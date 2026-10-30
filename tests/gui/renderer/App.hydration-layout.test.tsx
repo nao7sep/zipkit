@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
-import { App } from "../../../src/gui/renderer/src/App";
+import { App, LAYOUT_KEYBOARD_SAVE_DELAY_MS } from "../../../src/gui/renderer/src/App";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
 import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-engine.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
@@ -175,21 +175,40 @@ describe("pane-layout persistence results", () => {
     expect(setLayout).toHaveBeenCalledWith({ ...DEFAULT_LAYOUT, jobsWidth: width });
   });
 
-  it("saves a keyboard resize once on release, and each release without waiting for the previous save", async () => {
+  it("saves a keyboard resize once, a short delay after the last step", async () => {
     const setLayout = vi.fn<ZipKitGuiApi["setLayout"]>().mockReturnValue(new Promise<void>(() => {}));
     renderApp(api({ setLayout }));
     const splitter = await screen.findByRole("separator", { name: "Resize Jobs pane" });
 
-    fireEvent.keyDown(splitter, { key: "ArrowRight" });
-    fireEvent.keyDown(splitter, { key: "ArrowRight", repeat: true });
-    expect(setLayout).not.toHaveBeenCalled();
-    fireEvent.keyUp(splitter, { key: "ArrowRight" });
-    fireEvent.keyDown(splitter, { key: "ArrowRight" });
-    fireEvent.keyUp(splitter, { key: "ArrowRight" });
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(splitter, { key: "ArrowRight" });
+      fireEvent.keyDown(splitter, { key: "ArrowRight", repeat: true });
+      fireEvent.keyUp(splitter, { key: "ArrowRight" });
+      vi.advanceTimersByTime(LAYOUT_KEYBOARD_SAVE_DELAY_MS - 1);
+      // Another press within the delay pushes the save back.
+      fireEvent.keyDown(splitter, { key: "ArrowRight" });
+      fireEvent.keyUp(splitter, { key: "ArrowRight" });
+      vi.advanceTimersByTime(LAYOUT_KEYBOARD_SAVE_DELAY_MS - 1);
+      expect(setLayout).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+    } finally {
+      vi.useRealTimers();
+    }
 
-    // Main writes them in the order they arrive (layout.ts), so the newest is what stays on disk.
-    const widths = setLayout.mock.calls.map(([layout]) => layout.jobsWidth);
-    expect(widths).toEqual([DEFAULT_LAYOUT.jobsWidth + 32, DEFAULT_LAYOUT.jobsWidth + 48]);
+    expect(setLayout).toHaveBeenCalledExactlyOnceWith({ ...DEFAULT_LAYOUT, jobsWidth: DEFAULT_LAYOUT.jobsWidth + 48 });
+  });
+
+  it("saves stepped layout before a drag that is then cancelled", async () => {
+    const setLayout = vi.fn<ZipKitGuiApi["setLayout"]>().mockResolvedValue(undefined);
+    renderApp(api({ setLayout }));
+    const splitter = await screen.findByRole("separator", { name: "Resize Jobs pane" });
+
+    fireEvent.keyDown(splitter, { key: "ArrowRight" });
+    fireEvent.keyUp(splitter, { key: "ArrowRight" });
+    fireEvent.mouseDown(splitter, { clientX: 100 });
+    expect(setLayout).toHaveBeenCalledExactlyOnceWith({ ...DEFAULT_LAYOUT, jobsWidth: DEFAULT_LAYOUT.jobsWidth + 16 });
+    fireEvent(window, new Event("blur"));
   });
 });
 

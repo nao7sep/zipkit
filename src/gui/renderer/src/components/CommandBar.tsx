@@ -33,7 +33,9 @@ const CLASS: Partial<Record<JobCommand, string>> = {
   "remove-archive": "danger",
 };
 
-export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCommand) => void }) {
+/** `createHeld` disables Create and Try again while a field they would use is
+ *  invalid; the pane says why beside the bar. */
+export function CommandBar({ job, onCommand, createHeld = false }: { job: Job; onCommand: (c: JobCommand) => void; createHeld?: boolean }) {
   const { t } = useI18n();
   const commands = jobCommands(job);
   // The destructive commands take a row of their own below the everyday ones,
@@ -83,7 +85,7 @@ export function CommandBar({ job, onCommand }: { job: Job; onCommand: (c: JobCom
       {[everyday, destructive].filter((row) => row.length > 0).map((row, i) => (
         <div key={i} style={S.row}>
           {row.map((c) => (
-            <button key={c} className={CLASS[c]} onClick={() => onCommand(c)}>
+            <button key={c} className={CLASS[c]} disabled={createHeld && (c === "create" || c === "retry")} onClick={() => onCommand(c)}>
               {t(LABEL[c])}
             </button>
           ))}

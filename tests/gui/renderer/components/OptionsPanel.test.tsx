@@ -19,7 +19,7 @@ Object.defineProperty(window, "zipkit", {
 
 describe("OptionsPanel field rows", () => {
   it("lets a label wrap and its select shrink, in a row that wraps", () => {
-    render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={vi.fn()} disabled={false} />);
+    render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={vi.fn()} levelText={String(DEFAULT_OPTIONS.level)} onLevelText={vi.fn()} disabled={false} />);
     const select = screen.getByRole("combobox", { name: "Symlinks" });
     const row = select.closest("label")!;
     const label = row.firstElementChild as HTMLElement;

@@ -21,15 +21,16 @@
  */
 
 import { isSafePathComponent } from "zipkitsdk/types";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { BUILT_IN_EXCLUSIONS } from "../../../shared/exclusions";
 import { cleanExclusions, ExclusionList, patternInvalid } from "./ExclusionList";
 import { useTablist } from "../useTablist";
 import type { CSSProperties } from "react";
 import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
+import { parseWholeNumber, WholeNumberInput, WholeNumberIssue } from "./WholeNumberInput";
 import { useConfirm } from "./DialogHost";
-import { CARD_ROW_LIMIT_RANGE, changedSettings, DEFAULT_PARAMETERS, displayZones, isCardRowLimit, type ArchiveParameters, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import { CARD_ROW_LIMIT_RANGE, changedSettings, COMPRESSION_LEVEL_RANGE, DEFAULT_PARAMETERS, displayZones, type ArchiveParameters, type GuiSettings, type ThemePreference } from "../../../shared/spec";
 import type { SystemChoices } from "../../../shared/api";
 import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
@@ -58,11 +59,11 @@ function builtInFontStack(): string {
   return getComputedStyle(document.documentElement).getPropertyValue("--font-ui-default").trim();
 }
 
-/** The fields that can be made invalid from the UI: the compression level, the
- *  manifest name and the exclusion patterns. */
+/** The parameters that can be made invalid from the UI: the manifest name and
+ *  the exclusion patterns. The typed numbers are checked as text, since the
+ *  draft only ever takes a valid one. */
 function isValid(o: ArchiveParameters): boolean {
-  return Number.isInteger(o.level) && o.level >= 1 && o.level <= 9 &&
-    isSafePathComponent(o.manifestName) && !o.exclusions.some(patternInvalid);
+  return isSafePathComponent(o.manifestName) && !o.exclusions.some(patternInvalid);
 }
 
 const TABS = ["general", "parameters", "exclusions"] as const;
@@ -90,6 +91,10 @@ export function SettingsDialog({
   const { t, language } = useI18n();
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
+  // The typed numbers as typed; each commits to the draft only while valid.
+  const [levelText, setLevelText] = useState(String(settings.defaults.level));
+  const [rowLimitText, setRowLimitText] = useState(String(settings.cardRowLimit));
+  const rowLimitIssueId = useId();
   const [fontStack] = useState(builtInFontStack);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -104,11 +109,14 @@ export function SettingsDialog({
   // What Save would store: blank pattern rows dropped and the rest trimmed, so
   // a row added and left blank neither dirties the draft nor reaches disk.
   const saved: GuiSettings = { ...draft, defaults: { ...draft.defaults, exclusions: cleanExclusions(draft.defaults.exclusions) } };
-  const dirty = Object.keys(changedSettings(settings, saved)).length > 0;
+  // A number typed but not valid is an edit too, so closing asks before dropping it.
+  const numbersValid = parseWholeNumber(levelText, COMPRESSION_LEVEL_RANGE) !== null &&
+    parseWholeNumber(rowLimitText, CARD_ROW_LIMIT_RANGE) !== null;
+  const dirty = Object.keys(changedSettings(settings, saved)).length > 0 || !numbersValid;
   // Quit asks before discarding unsaved edits, so main follows whether there are any.
   useEffect(() => { window.zipkit.reportSettingsDraft(dirty); }, [dirty]);
   useEffect(() => () => window.zipkit.reportSettingsDraft(false), []);
-  const canSave = dirty && isValid(draft.defaults) && isCardRowLimit(draft.cardRowLimit);
+  const canSave = dirty && numbersValid && isValid(draft.defaults);
 
   async function save() {
     setSaving(true);
@@ -130,6 +138,12 @@ export function SettingsDialog({
   // preferences, not tuned built-ins, so they stay as they are.
   function resetDefaultParameters() {
     setDraft({ ...draft, defaults: { ...DEFAULT_PARAMETERS, exclusions: draft.defaults.exclusions } });
+    setLevelText(String(DEFAULT_PARAMETERS.level));
+  }
+  function typeRowLimit(text: string) {
+    setRowLimitText(text);
+    const limit = parseWholeNumber(text, CARD_ROW_LIMIT_RANGE);
+    if (limit !== null) setDraft({ ...draft, cardRowLimit: limit });
   }
   function resetExclusions() {
     setDraft({ ...draft, defaults: { ...draft.defaults, exclusions: BUILT_IN_EXCLUSIONS.map((p) => ({ ...p })) } });
@@ -274,16 +288,17 @@ export function SettingsDialog({
         <div style={S.fontField}>
           <label style={S.inlineField}>
             <span style={S.fontLabel}>{t("settings.cardRowLimit")}</span>
-            <input
-              type="number"
-              min={CARD_ROW_LIMIT_RANGE.min}
-              max={CARD_ROW_LIMIT_RANGE.max}
-              value={draft.cardRowLimit}
+            <WholeNumberInput
+              text={rowLimitText}
+              range={CARD_ROW_LIMIT_RANGE}
+              onText={typeRowLimit}
+              issueId={rowLimitIssueId}
               disabled={saving}
-              onChange={(e) => setDraft({ ...draft, cardRowLimit: Number(e.target.value) })}
               style={S.limitInput}
             />
           </label>
+          {parseWholeNumber(rowLimitText, CARD_ROW_LIMIT_RANGE) === null &&
+            <WholeNumberIssue id={rowLimitIssueId} range={CARD_ROW_LIMIT_RANGE} style={S.issue} />}
           <span style={S.fontHint}>{t("settings.cardRowLimitHint")}</span>
         </div>
       </div>
@@ -297,6 +312,8 @@ export function SettingsDialog({
           <OptionsPanel
             options={draft.defaults}
             onChange={(o) => setDraft({ ...draft, defaults: o })}
+            levelText={levelText}
+            onLevelText={setLevelText}
             disabled={saving}
           />
           <div style={S.resetRow}>
@@ -349,4 +366,5 @@ const S: Record<string, CSSProperties> = {
   inlineField: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.35rem 0.75rem" },
   limitInput: { width: "5rem" },
   error: { margin: "1rem 0 0" },
+  issue: { margin: 0 },
 };

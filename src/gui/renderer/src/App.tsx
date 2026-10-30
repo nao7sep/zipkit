@@ -20,7 +20,7 @@ import type { MessageKey } from "../../shared/i18n/catalogues";
 import type { LanguagePreference } from "../../shared/i18n/languages";
 import { isEditable, removesOriginals, verifies, type OriginalsAction } from "../../shared/queue";
 import { multiline } from "../../shared/textCleanup";
-import { DEFAULT_PARAMETERS, DEFAULT_SETTINGS, newJobOptions, parametersEqual, parametersOf, type ArchiveParameters, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
+import { COMPRESSION_LEVEL_RANGE, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, newJobOptions, parametersEqual, parametersOf, type ArchiveParameters, type GuiOptions, type GuiSettings, type ThemePreference } from "../../shared/spec";
 import {
   ARCHIVE_MIN_WIDTH,
   BODY_MIN_HEIGHT,
@@ -60,6 +60,7 @@ import { InputList } from "./components/InputList";
 import { JobListbox } from "./components/JobListbox";
 import { ShellNotice } from "./components/ShellNotice";
 import { OptionsPanel } from "./components/OptionsPanel";
+import { parseWholeNumber } from "./components/WholeNumberInput";
 import { DirectoryField } from "./components/DirectoryField";
 import { Pane } from "./components/Pane";
 import { ReceiverResultNotice } from "./components/ReceiverResultNotice";
@@ -121,6 +122,14 @@ function runConfirmation(job: Job, t: Translator): ConfirmOptions | null {
   return null;
 }
 
+/** How long after the last arrow step a divider's new layout is saved. */
+export const LAYOUT_KEYBOARD_SAVE_DELAY_MS = 500;
+
+/** Whether a job's typed level holds back Create: it is set and not a level. */
+function levelHeldBack(levelDraft: string | null): boolean {
+  return levelDraft !== null && parseWholeNumber(levelDraft, COMPRESSION_LEVEL_RANGE) === null;
+}
+
 export function App() {
   const t = useI18n();
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -167,6 +176,9 @@ export function App() {
   const [jobsResult, setJobsResult] = useState<ReceiverResult | null>(null);
   const [inputResults, setInputResults] = useState<Record<string, ReceiverResult>>({});
   const [jobResults, setJobResults] = useState<Record<string, ReceiverResultDetails>>({});
+  // A compression level typed into a job but not yet committed, by job, so it
+  // survives moving to another job and back (unsaved-edits conventions).
+  const [levelDrafts, setLevelDrafts] = useState<Record<string, string>>({});
   const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [recordsOpenFailed, setRecordsOpenFailed] = useState(false);
@@ -441,6 +453,7 @@ export function App() {
     if (!selected) return;
     const cmds = jobCommands(selected);
     if (!cmds.includes("create") && !cmds.includes("retry")) return;
+    if (levelHeldBack(levelDrafts[selected.id] ?? null)) return;
     (document.activeElement as HTMLElement | null)?.blur?.();
     const ask = runConfirmation(selected, t);
     if (ask && !(await confirm(ask))) return;
@@ -470,6 +483,31 @@ export function App() {
       window.zipkit.reportError("persist pane layout", reportableError(error));
     });
   }
+  // Arrow presses step a divider one after another, so the keyboard's layout is
+  // saved a short delay after the last step, and each step pushes it back
+  // (unsaved-edits conventions, Saving while the user works). A divider stepped
+  // just before the window closes can lose that last layout, which is optional
+  // state at close.
+  const keyboardSave = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function holdKeyboardSave(): void {
+    if (keyboardSave.current !== null) clearTimeout(keyboardSave.current);
+    keyboardSave.current = null;
+  }
+  function scheduleKeyboardSave(): void {
+    holdKeyboardSave();
+    keyboardSave.current = setTimeout(() => {
+      keyboardSave.current = null;
+      persistLayout(intentRef.current);
+    }, LAYOUT_KEYBOARD_SAVE_DELAY_MS);
+  }
+  // A drag starting meanwhile saves the stepped layout first, so cancelling the
+  // drag cannot take it with it.
+  function flushKeyboardSave(): void {
+    if (keyboardSave.current === null) return;
+    holdKeyboardSave();
+    persistLayout(intentRef.current);
+  }
+  useEffect(() => holdKeyboardSave, []);
   // The Jobs|Archive handle: drag right widens Jobs. The Archive|Progress handle
   // (rendered inside the middle column) drags right to widen Archive (narrow
   // Progress). A drag sets the user's intent (clamped only into the per-column
@@ -481,18 +519,22 @@ export function App() {
       value={intent.jobsWidth}
       min={LAYOUT_BOUNDS.jobsWidth.min}
       max={LAYOUT_BOUNDS.jobsWidth.max}
-      onDragStart={() => (dragBase.current = intentRef.current)}
+      onDragStart={() => {
+        flushKeyboardSave();
+        dragBase.current = intentRef.current;
+      }}
       onDragDelta={(dx) =>
         setIntent(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
       }
       onDragEnd={() => persistLayout(intentRef.current)}
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
+        holdKeyboardSave();
         const next = clampLayout({ ...intentRef.current, jobsWidth: intentRef.current.jobsWidth + dx });
         intentRef.current = next;
         setIntent(next);
       }}
-      onKeyboardCommit={() => persistLayout(intentRef.current)}
+      onKeyboardCommit={scheduleKeyboardSave}
     />
   );
   const progressSplitter = (
@@ -502,7 +544,10 @@ export function App() {
       min={LAYOUT_BOUNDS.progressWidth.min}
       max={LAYOUT_BOUNDS.progressWidth.max}
       direction={-1}
-      onDragStart={() => (dragBase.current = intentRef.current)}
+      onDragStart={() => {
+        flushKeyboardSave();
+        dragBase.current = intentRef.current;
+      }}
       onDragDelta={(dx) =>
         setIntent(
           clampLayout({ ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx }),
@@ -511,11 +556,12 @@ export function App() {
       onDragEnd={() => persistLayout(intentRef.current)}
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
+        holdKeyboardSave();
         const next = clampLayout({ ...intentRef.current, progressWidth: intentRef.current.progressWidth - dx });
         intentRef.current = next;
         setIntent(next);
       }}
-      onKeyboardCommit={() => persistLayout(intentRef.current)}
+      onKeyboardCommit={scheduleKeyboardSave}
     />
   );
 
@@ -634,6 +680,12 @@ export function App() {
             splitter={progressSplitter}
             inputResult={inputResults[selected.id] ?? null}
             operationResult={jobResults[selected.id] ?? null}
+            levelDraft={levelDrafts[selected.id] ?? null}
+            onLevelDraft={(text) => setLevelDrafts((current) => {
+              if (text !== null) return { ...current, [selected.id]: text };
+              if (!(selected.id in current)) return current;
+              const next = { ...current }; delete next[selected.id]; return next;
+            })}
             onOperationResult={(result) => setJobResults((current) => {
               if (result) return { ...current, [selected.id]: result };
               const next = { ...current }; delete next[selected.id]; return next;
@@ -685,6 +737,8 @@ function JobView({
   onInputResult,
   operationResult,
   onOperationResult,
+  levelDraft,
+  onLevelDraft,
 }: {
   job: Job;
   defaults: ArchiveParameters;
@@ -694,6 +748,9 @@ function JobView({
   onInputResult: (outcome: ReceiverOutcome) => void;
   operationResult: ReceiverResultDetails | null;
   onOperationResult: (result: ReceiverResultDetails | null) => void;
+  /** The compression level as typed when it is not the committed one's own text. */
+  levelDraft: string | null;
+  onLevelDraft: (text: string | null) => void;
 }) {
   const t = useI18n();
   // Keyed by job id in the parent, so this remounts per job: local option draft and
@@ -724,7 +781,15 @@ function JobView({
     if (editable) return;
     setOpts(job.options);
     setUseSettingsIntent(parametersEqual(job.options, defaults));
+    onLevelDraft(null);
   }, [editable, job.options, defaults]);
+  // Only a valid level reaches the queue, and Create waits for one.
+  const levelText = levelDraft ?? String(opts.level);
+  const levelInvalid = levelHeldBack(levelDraft);
+  function typeLevel(text: string) {
+    const level = parseWholeNumber(text, COMPRESSION_LEVEL_RANGE);
+    onLevelDraft(level !== null && String(level) === text ? null : text);
+  }
 
   // A newer read of the job's plan supersedes this one.
   useEffect(() => {
@@ -805,7 +870,10 @@ function JobView({
   function toggleUseDefaults(checked: boolean) {
     setUseSettingsIntent(checked);
     if (!checked) setParamsOpen(true);
-    if (checked) commitOptions({ ...opts, ...parametersOf(defaults) });
+    if (checked) {
+      onLevelDraft(null);
+      commitOptions({ ...opts, ...parametersOf(defaults) });
+    }
   }
 
   // No confirmation here: choosing what happens after creating only edits the
@@ -1074,7 +1142,8 @@ function JobView({
           {scanBlocksRemoval(job) && (
             <p style={S.caution}>{t.t("op.scanIncomplete")}</p>
           )}
-          <CommandBar job={job} onCommand={onCommand} />
+          {levelInvalid && <p style={S.caution}>{t.t("op.levelInvalid")}</p>}
+          <CommandBar job={job} onCommand={onCommand} createHeld={levelInvalid} />
           {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
           {advisories.map((line, index) => (
             <p key={index} style={{ ...S.caution, color: severityColor(line.level) }}>{line.text}</p>
@@ -1112,7 +1181,13 @@ function JobView({
           </label>
         </div>
         <div id={`parameters-${job.id}`} hidden={!paramsOpen}>
-          <OptionsPanel options={opts} onChange={(parameters) => commitOptions({ ...opts, ...parameters })} disabled={useDefaults || !editable} />
+          <OptionsPanel
+            options={opts}
+            onChange={(parameters) => commitOptions({ ...opts, ...parameters })}
+            levelText={levelText}
+            onLevelText={typeLevel}
+            disabled={useDefaults || !editable}
+          />
         </div>
 
         {/* A ZIP comment may span lines, so this is a multiline field cleaned on
