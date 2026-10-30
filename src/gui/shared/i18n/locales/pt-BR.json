@@ -326,7 +326,7 @@
   "dest.setFileName": "(defina um nome de arquivo)",
   "dest.besideInput": "(ao lado da entrada)",
   "op.manifestNeeded": "Ative “Incluir manifesto”. O arquivo compactado é verificado com ele antes de os originais serem removidos.",
-  "op.levelInvalid": "Criar arquivo compactado aguarda um nível de compressão válido em Parâmetros.",
+  "op.levelInvalid": "“{command}” aguarda um nível de compressão válido em Parâmetros.",
   "op.scanIncomplete": "Não foi possível ler uma pasta, então o conteúdo dela não está no arquivo compactado e seria perdido ao remover os originais. Torne a pasta legível ou mantenha os originais.",
   "report.planLoadFailed": "Não foi possível carregar o plano deste trabalho. O trabalho não foi alterado; tente novamente.",
   "report.retryPlan": "Recarregar o plano",

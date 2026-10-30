@@ -326,7 +326,7 @@
   "dest.setFileName": "(imposta un nome di file)",
   "dest.besideInput": "(accanto all’input)",
   "op.manifestNeeded": "Attiva «Includi manifesto». L’archivio viene verificato in base a esso prima che gli originali vengano rimossi.",
-  "op.levelInvalid": "Crea archivio attende un livello di compressione valido in Parametri.",
+  "op.levelInvalid": "«{command}» attende un livello di compressione valido in Parametri.",
   "op.scanIncomplete": "Impossibile leggere una cartella: il suo contenuto non è nell’archivio e andrebbe perso rimuovendo gli originali. Rendi leggibile la cartella o conserva gli originali.",
   "report.planLoadFailed": "Impossibile caricare il piano di questa operazione. L’operazione non è cambiata; riprova.",
   "report.retryPlan": "Ricarica il piano",

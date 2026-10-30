@@ -176,6 +176,13 @@ export function App() {
   // A compression level typed into a job but not yet committed, by job, so it
   // survives moving to another job and back (unsaved-edits conventions).
   const [levelDrafts, setLevelDrafts] = useState<Record<string, string>>({});
+  // A removed job's typed level goes with it, whatever removed it.
+  useEffect(() => {
+    setLevelDrafts((current) => {
+      const kept = Object.entries(current).filter(([id]) => jobs.some((job) => job.id === id));
+      return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept);
+    });
+  }, [jobs]);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [recordsOpenFailed, setRecordsOpenFailed] = useState(false);
@@ -750,6 +757,8 @@ function JobView({
   // Only a valid level reaches the queue, and Create waits for one.
   const levelText = levelDraft ?? String(opts.level);
   const levelInvalid = levelHeldBack(levelDraft);
+  // The reason names the held command the bar shows, if it shows one.
+  const heldCommand = levelInvalid ? jobCommands(job).find((c) => c === "create" || c === "retry") : undefined;
   function typeLevel(text: string) {
     const level = parseWholeNumber(text, COMPRESSION_LEVEL_RANGE);
     onLevelDraft(level !== null && String(level) === text ? null : text);
@@ -1106,7 +1115,9 @@ function JobView({
           {scanBlocksRemoval(job) && (
             <p style={S.caution}>{t.t("op.scanIncomplete")}</p>
           )}
-          {levelInvalid && <p style={S.caution}>{t.t("op.levelInvalid")}</p>}
+          {heldCommand && (
+            <p style={S.caution}>{t.t("op.levelInvalid", { command: t.t(heldCommand === "retry" ? "command.retry" : "command.create") })}</p>
+          )}
           <CommandBar job={job} onCommand={onCommand} createHeld={levelInvalid} />
           {operationResult && <ReceiverResultNotice result={operationResult} onDismiss={() => onOperationResult(null)} />}
           {advisories.map((line, index) => (

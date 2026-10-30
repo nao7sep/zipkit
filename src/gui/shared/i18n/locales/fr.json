@@ -326,7 +326,7 @@
   "dest.setFileName": "(indiquez un nom de fichier)",
   "dest.besideInput": "(à côté de l’entrée)",
   "op.manifestNeeded": "Activez «\u00a0Intégrer le manifeste\u00a0». L’archive est vérifiée à l’aide de celui-ci avant que les originaux soient retirés.",
-  "op.levelInvalid": "Créer l’archive attend un niveau de compression valide dans Paramètres.",
+  "op.levelInvalid": "«\u00a0{command}\u00a0» attend un niveau de compression valide dans Paramètres.",
   "op.scanIncomplete": "Un dossier n’a pas pu être lu\u00a0: son contenu n’est pas dans l’archive et serait perdu si les originaux étaient retirés. Rendez le dossier lisible ou conservez les originaux.",
   "report.planLoadFailed": "Le plan de cette tâche n’a pas pu être chargé. La tâche est inchangée\u00a0; réessayez.",
   "report.retryPlan": "Recharger le plan",

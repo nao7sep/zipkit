@@ -46,12 +46,14 @@ describe("a job that finishes mid-edit", () => {
   let root: Root | null = null;
   let container: HTMLDivElement;
   const updateJob = vi.fn(async () => {});
+  const runJob = vi.fn(async () => {});
   let pushQueue: (jobs: Job[]) => void = () => {};
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     updateJob.mockReset().mockResolvedValue(undefined);
+    runJob.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(window, "zipkit", {
       configurable: true,
       value: {
@@ -71,6 +73,8 @@ describe("a job that finishes mid-edit", () => {
         onEvents: () => () => {},
         onProgress: () => () => {},
         updateJob,
+        runJob,
+        platform: "darwin",
         reportError: vi.fn(),
       },
     });
@@ -113,8 +117,12 @@ describe("a job that finishes mid-edit", () => {
       .find((node) => node.textContent?.includes("Compression level"))!;
     return label.querySelector<HTMLInputElement>("input")!;
   };
-  const create = (): HTMLButtonElement => [...container.querySelectorAll("button")]
-    .find((node) => node.textContent === "Create archive") as HTMLButtonElement;
+  const button = (name: string): HTMLButtonElement => [...container.querySelectorAll("button")]
+    .find((node) => node.textContent === name) as HTMLButtonElement;
+  const create = (): HTMLButtonElement => button("Create archive");
+  const pressCreateShortcut = () => act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+  });
 
   it("sends a checkbox change at once", async () => {
     await renderApp();
@@ -168,7 +176,7 @@ describe("a job that finishes mid-edit", () => {
       expect(level().value).toBe(typed);
       expect(level().getAttribute("aria-invalid")).toBe("true");
       expect(container.textContent).toContain("Whole number from 1 to 9");
-      expect(container.textContent).toContain("Create archive waits until the compression level under Parameters is valid.");
+      expect(container.textContent).toContain("“Create archive” waits until the compression level under Parameters is valid.");
       expect(create().disabled).toBe(true);
     }
     expect(updateJob).not.toHaveBeenCalled();
@@ -191,5 +199,41 @@ describe("a job that finishes mid-edit", () => {
     expect(level().value).toBe("12");
     expect(create().disabled).toBe(true);
     expect(updateJob).not.toHaveBeenCalled();
+  });
+
+  it("holds the Create shortcut back while the typed level is not one", async () => {
+    await renderApp();
+    await openJob("job-1");
+    await act(async () => typeInto(level(), ""));
+
+    await pressCreateShortcut();
+    expect(runJob).not.toHaveBeenCalled();
+
+    await act(async () => typeInto(level(), "5"));
+    await pressCreateShortcut();
+    expect(runJob).toHaveBeenCalledOnce();
+  });
+
+  it("names Try again as the held command on a failed job", async () => {
+    await renderApp();
+    await act(async () => pushQueue([{ ...readyJob, state: "failed" }, otherJob]));
+    await openJob("job-1");
+    await act(async () => typeInto(level(), "0"));
+
+    expect(button("Try again").disabled).toBe(true);
+    expect(container.textContent).toContain("“Try again” waits until the compression level under Parameters is valid.");
+    expect(container.textContent).not.toContain("“Create archive”");
+  });
+
+  it("forgets a removed job's typed level", async () => {
+    await renderApp();
+    await openJob("job-1");
+    await act(async () => typeInto(level(), "12"));
+
+    await act(async () => pushQueue([otherJob]));
+    await act(async () => pushQueue([readyJob, otherJob]));
+    await openJob("job-1");
+    expect(level().value).toBe(String(CUSTOM_OPTIONS.level));
+    expect(create().disabled).toBe(false);
   });
 });

@@ -326,7 +326,7 @@
   "dest.setFileName": "(파일 이름을 설정하십시오)",
   "dest.besideInput": "(입력과 같은 위치)",
   "op.manifestNeeded": "“매니페스트 포함”을 켜십시오. 원본을 제거하기 전에 아카이브를 매니페스트와 대조해 검증합니다.",
-  "op.levelInvalid": "매개변수의 압축 수준이 올바르면 아카이브를 만들 수 있습니다.",
+  "op.levelInvalid": "매개변수의 압축 수준이 올바르면 “{command}”을(를) 사용할 수 있습니다.",
   "op.scanIncomplete": "폴더를 읽을 수 없어 그 내용이 아카이브에 없으므로, 원본을 제거하면 잃게 됩니다. 폴더를 읽을 수 있게 하거나 원본을 유지하십시오.",
   "report.planLoadFailed": "이 작업의 계획을 불러올 수 없습니다. 작업은 변경되지 않았습니다. 다시 시도하십시오.",
   "report.retryPlan": "계획 다시 불러오기",

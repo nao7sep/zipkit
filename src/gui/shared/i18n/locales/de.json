@@ -326,7 +326,7 @@
   "dest.setFileName": "(Dateinamen festlegen)",
   "dest.besideInput": "(neben der Eingabe)",
   "op.manifestNeeded": "Aktivieren Sie „Manifest einbetten“. Das Archiv wird damit geprüft, bevor die Originale entfernt werden.",
-  "op.levelInvalid": "Archiv erstellen ist erst möglich, wenn die Kompressionsstufe unter Parameter gültig ist.",
+  "op.levelInvalid": "„{command}“ ist erst möglich, wenn die Kompressionsstufe unter Parameter gültig ist.",
   "op.scanIncomplete": "Ein Ordner konnte nicht gelesen werden. Sein Inhalt fehlt im Archiv und ginge verloren, wenn die Originale entfernt würden. Machen Sie den Ordner lesbar oder behalten Sie die Originale.",
   "report.planLoadFailed": "Der Plan dieses Auftrags konnte nicht geladen werden. Der Auftrag ist unverändert; versuchen Sie es erneut.",
   "report.retryPlan": "Plan erneut laden",
