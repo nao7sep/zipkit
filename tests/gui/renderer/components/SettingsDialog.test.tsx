@@ -338,7 +338,8 @@ describe("SettingsDialog manifest name", () => {
 
   it("allows correcting an invalid manifest name while the manifest is disabled", () => {
     const onSave = renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifest: false, manifestName: "a/b" } });
-    fireEvent.click(screen.getByRole("tab", { name: "New job parameters" }));
+    // The tab's name also says it has a field to fix.
+    fireEvent.click(screen.getByRole("tab", { name: "New job parameters Has a field to fix" }));
     const field = screen.getByLabelText("Manifest name (when enabled)") as HTMLInputElement;
     expect(field.disabled).toBe(false);
     expect(field.getAttribute("aria-invalid")).toBe("true");
@@ -468,5 +469,47 @@ describe("SettingsDialog number fields", () => {
     fireEvent.click(reset());
     expect(levelInput().value).toBe(String(DEFAULT_PARAMETERS.level));
     expect(screen.queryByText("Whole number from 1 to 9")).toBeNull();
+  });
+});
+
+describe("SettingsDialog held Save across tabs", () => {
+  const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${name}`) });
+  const marked = (name: string) => within(tab(name)).queryByRole("img", { name: "Has a field to fix" }) !== null;
+  const save = () => screen.getByText("Save") as HTMLButtonElement;
+
+  it("marks the tab holding an invalid number and names it beside Save from any tab", () => {
+    renderDialog();
+    fireEvent.click(tab("New job parameters"));
+    fireEvent.change(levelInput(), { target: { value: "" } });
+    fireEvent.click(tab("General"));
+
+    expect(save().disabled).toBe(true);
+    expect(marked("New job parameters")).toBe(true);
+    expect(marked("General")).toBe(false);
+    expect(marked("Exclusion patterns")).toBe(false);
+    const reason = screen.getByText("Save waits for a fix on New job parameters.");
+    expect(save().getAttribute("aria-describedby")).toBe(reason.id);
+
+    fireEvent.change(screen.getByLabelText("Items a Status card lists before folding"), { target: { value: "x" } });
+    expect(marked("General")).toBe(true);
+    expect(screen.getByText("Save waits for a fix on General, New job parameters.")).toBeTruthy();
+  });
+
+  it("marks an unsafe manifest name's tab and clears the mark once fixed", () => {
+    renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifestName: "a/b" } });
+    expect(marked("New job parameters")).toBe(true);
+    expect(screen.getByText("Save waits for a fix on New job parameters.")).toBeTruthy();
+    fireEvent.click(tab("New job parameters"));
+    fireEvent.change(screen.getByLabelText("Manifest name (when enabled)"), { target: { value: "record.json" } });
+    expect(marked("New job parameters")).toBe(false);
+    expect(screen.queryByText(/^Save waits/)).toBeNull();
+    expect(save().disabled).toBe(false);
+  });
+
+  it("marks the exclusion patterns' tab for a regex that does not compile", () => {
+    renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, exclusions: [{ pattern: "(", match: "regex", target: "both", ignoreCase: false }] } });
+    expect(marked("Exclusion patterns")).toBe(true);
+    expect(screen.getByText("Save waits for a fix on Exclusion patterns.")).toBeTruthy();
+    expect(save().disabled).toBe(true);
   });
 });

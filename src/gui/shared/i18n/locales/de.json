@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "Jeder neue Auftrag beginnt mit diesen Werten. Ein Auftrag kann seine eigenen ändern.",
   "settings.saving": "Wird gespeichert\u00a0…",
   "settings.saveFailed": "Die Einstellungen wurden nicht gespeichert. Ihre Änderungen sind noch offen; versuchen Sie erneut zu speichern.",
+  "settings.saveHeld": "Speichern wartet auf eine Korrektur unter {tabs}.",
+  "settings.tabHasIssue": "Enthält ein zu korrigierendes Feld",
   "settings.savedApplyFailed": "Die Einstellungen wurden gespeichert, aber die Oberfläche konnte nicht vollständig aktualisiert werden. Starten Sie ZipKit neu, um sie anzuwenden.",
   "settings.discardTitle": "Änderungen verwerfen?",
   "settings.discardMessage": "Sie haben nicht gespeicherte Änderungen. Verwerfen und schließen?",

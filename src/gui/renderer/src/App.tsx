@@ -122,9 +122,6 @@ function runConfirmation(job: Job, t: Translator): ConfirmOptions | null {
   return null;
 }
 
-/** How long after the last arrow step a divider's new layout is saved. */
-export const LAYOUT_KEYBOARD_SAVE_DELAY_MS = 500;
-
 /** Whether a job's typed level holds back Create: it is set and not a level. */
 function levelHeldBack(levelDraft: string | null): boolean {
   return levelDraft !== null && parseWholeNumber(levelDraft, COMPRESSION_LEVEL_RANGE) === null;
@@ -483,31 +480,6 @@ export function App() {
       window.zipkit.reportError("persist pane layout", reportableError(error));
     });
   }
-  // Arrow presses step a divider one after another, so the keyboard's layout is
-  // saved a short delay after the last step, and each step pushes it back
-  // (unsaved-edits conventions, Saving while the user works). A divider stepped
-  // just before the window closes can lose that last layout, which is optional
-  // state at close.
-  const keyboardSave = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function holdKeyboardSave(): void {
-    if (keyboardSave.current !== null) clearTimeout(keyboardSave.current);
-    keyboardSave.current = null;
-  }
-  function scheduleKeyboardSave(): void {
-    holdKeyboardSave();
-    keyboardSave.current = setTimeout(() => {
-      keyboardSave.current = null;
-      persistLayout(intentRef.current);
-    }, LAYOUT_KEYBOARD_SAVE_DELAY_MS);
-  }
-  // A drag starting meanwhile saves the stepped layout first, so cancelling the
-  // drag cannot take it with it.
-  function flushKeyboardSave(): void {
-    if (keyboardSave.current === null) return;
-    holdKeyboardSave();
-    persistLayout(intentRef.current);
-  }
-  useEffect(() => holdKeyboardSave, []);
   // The Jobs|Archive handle: drag right widens Jobs. The Archive|Progress handle
   // (rendered inside the middle column) drags right to widen Archive (narrow
   // Progress). A drag sets the user's intent (clamped only into the per-column
@@ -519,22 +491,18 @@ export function App() {
       value={intent.jobsWidth}
       min={LAYOUT_BOUNDS.jobsWidth.min}
       max={LAYOUT_BOUNDS.jobsWidth.max}
-      onDragStart={() => {
-        flushKeyboardSave();
-        dragBase.current = intentRef.current;
-      }}
+      onDragStart={() => (dragBase.current = intentRef.current)}
       onDragDelta={(dx) =>
         setIntent(clampLayout({ ...dragBase.current, jobsWidth: dragBase.current.jobsWidth + dx }))
       }
       onDragEnd={() => persistLayout(intentRef.current)}
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
-        holdKeyboardSave();
         const next = clampLayout({ ...intentRef.current, jobsWidth: intentRef.current.jobsWidth + dx });
         intentRef.current = next;
         setIntent(next);
       }}
-      onKeyboardCommit={scheduleKeyboardSave}
+      onKeyboardCommit={() => persistLayout(intentRef.current)}
     />
   );
   const progressSplitter = (
@@ -544,10 +512,7 @@ export function App() {
       min={LAYOUT_BOUNDS.progressWidth.min}
       max={LAYOUT_BOUNDS.progressWidth.max}
       direction={-1}
-      onDragStart={() => {
-        flushKeyboardSave();
-        dragBase.current = intentRef.current;
-      }}
+      onDragStart={() => (dragBase.current = intentRef.current)}
       onDragDelta={(dx) =>
         setIntent(
           clampLayout({ ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx }),
@@ -556,12 +521,11 @@ export function App() {
       onDragEnd={() => persistLayout(intentRef.current)}
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
-        holdKeyboardSave();
         const next = clampLayout({ ...intentRef.current, progressWidth: intentRef.current.progressWidth - dx });
         intentRef.current = next;
         setIntent(next);
       }}
-      onKeyboardCommit={scheduleKeyboardSave}
+      onKeyboardCommit={() => persistLayout(intentRef.current)}
     />
   );
 

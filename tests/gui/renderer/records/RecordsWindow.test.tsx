@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecordsApp, RecordsWindow } from "../../../../src/gui/renderer/src/records/RecordsWindow";
+import { SPLITTER_KEY_COMMIT_DELAY_MS } from "../../../../src/gui/renderer/src/components/Splitter";
 import type { ZipKitGuiApi } from "../../../../src/gui/shared/api";
 import { BODY_PADDING, RECORDS_DETAIL_MIN_WIDTH, RECORDS_LIST_WIDTH, SPLITTER_WIDTH } from "../../../../src/gui/shared/layout";
 import type { RecordDetail, RecordsPage, RecordsQuery, RecordSummary } from "../../../../src/gui/shared/records";
@@ -635,17 +636,20 @@ describe("RecordsWindow", () => {
     expect(listColumn()).toBe(`${RECORDS_LIST_WIDTH.max}px`);
   });
 
-  it("moves the list 16 px per arrow press and saves once, when the key is released", async () => {
+  it("moves the list 16 px per arrow press and saves once, a short delay after the last", async () => {
     await mount();
     const splitter = document.querySelector<HTMLElement>('[role="separator"]')!;
     const press = (type: "keydown" | "keyup", repeat = false) =>
       act(async () => { splitter.dispatchEvent(new KeyboardEvent(type, { key: "ArrowRight", bubbles: true, repeat })); });
 
+    vi.useFakeTimers();
     await press("keydown");
     await press("keydown", true);
-    expect(listColumn()).toBe(`${RECORDS_LIST_WIDTH.default + 32}px`);
-    expect(saveRecordsListWidth).not.toHaveBeenCalled();
     await press("keyup");
+    expect(listColumn()).toBe(`${RECORDS_LIST_WIDTH.default + 32}px`);
+    await act(async () => { vi.advanceTimersByTime(SPLITTER_KEY_COMMIT_DELAY_MS - 1); });
+    expect(saveRecordsListWidth).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(1); });
 
     expect(saveRecordsListWidth).toHaveBeenCalledExactlyOnceWith(RECORDS_LIST_WIDTH.default + 32);
   });

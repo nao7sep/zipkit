@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "Ogni nuova operazione parte da questi valori. Un’operazione può modificare i propri.",
   "settings.saving": "Salvataggio…",
   "settings.saveFailed": "Le impostazioni non sono state salvate. Le tue modifiche sono ancora aperte; riprova a salvare.",
+  "settings.saveHeld": "Il salvataggio attende una correzione in {tabs}.",
+  "settings.tabHasIssue": "Contiene un campo da correggere",
   "settings.savedApplyFailed": "Le impostazioni sono state salvate, ma l’interfaccia non è stata aggiornata completamente. Riavvia ZipKit per applicarle.",
   "settings.discardTitle": "Scartare le modifiche?",
   "settings.discardMessage": "Hai modifiche non salvate. Scartarle e chiudere?",

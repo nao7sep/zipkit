@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "Chaque nouvelle tâche commence avec ces valeurs. Une tâche peut modifier les siennes.",
   "settings.saving": "Enregistrement…",
   "settings.saveFailed": "Les réglages n’ont pas été enregistrés. Vos modifications sont toujours ouvertes\u00a0; réessayez d’enregistrer.",
+  "settings.saveHeld": "L’enregistrement attend une correction dans {tabs}.",
+  "settings.tabHasIssue": "Contient un champ à corriger",
   "settings.savedApplyFailed": "Les réglages ont été enregistrés, mais l’interface n’a pas pu être entièrement mise à jour. Redémarrez ZipKit pour les appliquer.",
   "settings.discardTitle": "Abandonner les modifications\u00a0?",
   "settings.discardMessage": "Des modifications ne sont pas enregistrées. Les abandonner et fermer\u00a0?",

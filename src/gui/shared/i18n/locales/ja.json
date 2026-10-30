@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "新しいジョブはすべてこの値で始まります。ジョブごとに変更できます。",
   "settings.saving": "保存中…",
   "settings.saveFailed": "設定を保存できませんでした。変更内容はまだ残っています。もう一度保存してください。",
+  "settings.saveHeld": "{tabs}の項目を直すまで保存できません。",
+  "settings.tabHasIssue": "直す項目があります",
   "settings.savedApplyFailed": "設定は保存されましたが、画面にすべて反映できませんでした。ZipKitを再起動すると反映されます。",
   "settings.discardTitle": "変更を破棄しますか？",
   "settings.discardMessage": "保存していない変更があります。破棄して閉じますか？",

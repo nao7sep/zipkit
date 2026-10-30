@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "새 작업은 모두 이 값으로 시작합니다. 작업마다 따로 바꿀 수 있습니다.",
   "settings.saving": "저장 중…",
   "settings.saveFailed": "설정을 저장하지 못했습니다. 변경 사항은 아직 남아 있습니다. 다시 저장해 보십시오.",
+  "settings.saveHeld": "{tabs}의 항목을 고쳐야 저장할 수 있습니다.",
+  "settings.tabHasIssue": "고칠 항목이 있습니다",
   "settings.savedApplyFailed": "설정은 저장되었지만 화면에 모두 반영하지 못했습니다. ZipKit을 다시 시작하여 적용하세요.",
   "settings.discardTitle": "변경 사항을 버리시겠습니까?",
   "settings.discardMessage": "저장하지 않은 변경 사항이 있습니다. 버리고 닫으시겠습니까?",

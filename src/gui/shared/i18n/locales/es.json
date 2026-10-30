@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "Cada trabajo nuevo empieza con estos valores. Un trabajo puede cambiar los suyos.",
   "settings.saving": "Guardando…",
   "settings.saveFailed": "No se guardó la configuración. Tus cambios siguen abiertos; vuelve a intentar guardarlos.",
+  "settings.saveHeld": "Guardar espera una corrección en {tabs}.",
+  "settings.tabHasIssue": "Tiene un campo que corregir",
   "settings.savedApplyFailed": "Los ajustes se guardaron, pero la interfaz no pudo actualizarse por completo. Reinicia ZipKit para aplicarlos.",
   "settings.discardTitle": "¿Descartar los cambios?",
   "settings.discardMessage": "Tienes cambios sin guardar. ¿Descartarlos y cerrar?",

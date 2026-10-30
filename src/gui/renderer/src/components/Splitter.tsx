@@ -4,16 +4,20 @@
  * (so the parent recomputes the adjacent column's width and clamps it), and
  * reports the end (so the parent persists). It is also a focusable ARIA separator:
  * arrows move it by 16px and Home/End move to its bounds through the same parent
- * width authority, and the keyboard's moves are committed once, when the key is
- * released or focus leaves (the fleet's Records splitter behavior, as BigMouth's),
- * so a held arrow does not save on every repeat.
+ * width authority. Arrow presses step it one after another, so the keyboard's
+ * moves are committed a short delay after the last one, each move pushing the
+ * commit back (unsaved-edits conventions, Saving while the user works); a drag
+ * starting meanwhile commits them first, so cancelling the drag cannot take
+ * them with it. A move made just before the window closes can lose that last
+ * commit, which is optional layout at close.
  */
 
 import { useEffect, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 
 /** How far one arrow press moves a splitter. */
 export const SPLITTER_KEY_STEP = 16;
-const MOVE_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
+/** How long after the last keyboard move a splitter commits its position. */
+export const SPLITTER_KEY_COMMIT_DELAY_MS = 500;
 
 export function Splitter({
   onDragStart,
@@ -33,7 +37,8 @@ export function Splitter({
   onDragEnd: () => void;
   onDragCancel: () => void;
   onKeyboardDelta: (dx: number) => void;
-  /** The keyboard's moves since the last commit are done: persist them. */
+  /** The keyboard's moves since the last commit are done: persist them. Called
+   *  `SPLITTER_KEY_COMMIT_DELAY_MS` after the last move, or as a drag starts. */
   onKeyboardCommit: () => void;
   value: number;
   min: number;
@@ -43,18 +48,38 @@ export function Splitter({
   direction?: 1 | -1;
 }) {
   const clearGestureRef = useRef<((commit: boolean, notify: boolean) => void) | null>(null);
-  const keyMoved = useRef(false);
+  const keyCommit = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The latest callback, for a timer set during an earlier render.
+  const commitRef = useRef(onKeyboardCommit);
+  commitRef.current = onKeyboardCommit;
 
   useEffect(
     () => () => {
       clearGestureRef.current?.(false, false);
+      if (keyCommit.current !== null) clearTimeout(keyCommit.current);
     },
     [],
   );
 
+  function scheduleKeyboardCommit() {
+    if (keyCommit.current !== null) clearTimeout(keyCommit.current);
+    keyCommit.current = setTimeout(() => {
+      keyCommit.current = null;
+      commitRef.current();
+    }, SPLITTER_KEY_COMMIT_DELAY_MS);
+  }
+
+  function flushKeyboardCommit() {
+    if (keyCommit.current === null) return;
+    clearTimeout(keyCommit.current);
+    keyCommit.current = null;
+    onKeyboardCommit();
+  }
+
   function onMouseDown(e: ReactMouseEvent) {
     e.preventDefault();
     clearGestureRef.current?.(false, true);
+    flushKeyboardCommit();
     const startX = e.clientX;
     onDragStart();
     const move = (ev: MouseEvent) => onDragDelta(ev.clientX - startX);
@@ -100,14 +125,8 @@ export function Splitter({
     else if (e.key === "End") delta = ((direction === 1 ? max : min) - value) / direction;
     if (delta === null) return;
     e.preventDefault();
-    keyMoved.current = true;
     onKeyboardDelta(delta);
-  }
-
-  function commitKeyboard() {
-    if (!keyMoved.current) return;
-    keyMoved.current = false;
-    onKeyboardCommit();
+    scheduleKeyboardCommit();
   }
 
   return (
@@ -120,10 +139,6 @@ export function Splitter({
       aria-valuenow={value}
       tabIndex={0}
       onKeyDown={onKeyDown}
-      onKeyUp={(e) => {
-        if (MOVE_KEYS.has(e.key)) commitKeyboard();
-      }}
-      onBlur={commitKeyboard}
       onMouseDown={onMouseDown}
       style={S.splitter}
     >

@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "Every new job starts with these. A job can change its own.",
   "settings.saving": "Saving…",
   "settings.saveFailed": "Settings were not saved. Your changes are still open; try saving again.",
+  "settings.saveHeld": "Save waits for a fix on {tabs}.",
+  "settings.tabHasIssue": "Has a field to fix",
   "settings.savedApplyFailed": "Settings were saved, but the interface could not fully update. Restart ZipKit to apply them.",
   "settings.discardTitle": "Discard changes?",
   "settings.discardMessage": "You have unsaved changes. Discard them and close?",

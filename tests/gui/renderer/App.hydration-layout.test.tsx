@@ -3,7 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
-import { App, LAYOUT_KEYBOARD_SAVE_DELAY_MS } from "../../../src/gui/renderer/src/App";
+import { App } from "../../../src/gui/renderer/src/App";
+import { SPLITTER_KEY_COMMIT_DELAY_MS } from "../../../src/gui/renderer/src/components/Splitter";
 import { DialogHost } from "../../../src/gui/renderer/src/components/DialogHost";
 import { createQueueEngine, type EngineDeps } from "../../../src/gui/main/queue-engine.js";
 import { CommandAdmission } from "../../../src/gui/main/command-admission.js";
@@ -185,11 +186,11 @@ describe("pane-layout persistence results", () => {
       fireEvent.keyDown(splitter, { key: "ArrowRight" });
       fireEvent.keyDown(splitter, { key: "ArrowRight", repeat: true });
       fireEvent.keyUp(splitter, { key: "ArrowRight" });
-      vi.advanceTimersByTime(LAYOUT_KEYBOARD_SAVE_DELAY_MS - 1);
+      vi.advanceTimersByTime(SPLITTER_KEY_COMMIT_DELAY_MS - 1);
       // Another press within the delay pushes the save back.
       fireEvent.keyDown(splitter, { key: "ArrowRight" });
       fireEvent.keyUp(splitter, { key: "ArrowRight" });
-      vi.advanceTimersByTime(LAYOUT_KEYBOARD_SAVE_DELAY_MS - 1);
+      vi.advanceTimersByTime(SPLITTER_KEY_COMMIT_DELAY_MS - 1);
       expect(setLayout).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
     } finally {

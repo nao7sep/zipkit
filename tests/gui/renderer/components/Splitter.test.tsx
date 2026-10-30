@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { Splitter } from "../../../../src/gui/renderer/src/components/Splitter";
+import { Splitter, SPLITTER_KEY_COMMIT_DELAY_MS } from "../../../../src/gui/renderer/src/components/Splitter";
 
 afterEach(cleanup);
 
@@ -33,25 +33,51 @@ describe("Splitter keyboard resizing", () => {
     expect(onKeyboardDelta.mock.calls.map(([delta]) => delta)).toEqual([16, -16, -100, 180]);
   });
 
-  it("commits the keyboard's moves once, when the key is released or focus leaves", () => {
-    const onKeyboardCommit = vi.fn();
-    render(
-      <Splitter label="Resize Jobs pane" value={300} min={200} max={480}
-        onDragStart={vi.fn()} onDragDelta={vi.fn()} onDragEnd={vi.fn()} onDragCancel={vi.fn()}
-        onKeyboardDelta={vi.fn()} onKeyboardCommit={onKeyboardCommit} />,
-    );
-    const splitter = screen.getByRole("separator");
-    fireEvent.keyDown(splitter, { key: "ArrowRight" });
-    fireEvent.keyDown(splitter, { key: "ArrowRight", repeat: true });
-    expect(onKeyboardCommit).not.toHaveBeenCalled();
-    fireEvent.keyUp(splitter, { key: "ArrowRight" });
-    expect(onKeyboardCommit).toHaveBeenCalledTimes(1);
-    fireEvent.keyUp(splitter, { key: "ArrowRight" });
-    fireEvent.blur(splitter);
-    expect(onKeyboardCommit).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(splitter, { key: "End" });
-    fireEvent.blur(splitter);
-    expect(onKeyboardCommit).toHaveBeenCalledTimes(2);
+  it("commits the keyboard's moves once, a short delay after the last, each move pushing it back", () => {
+    vi.useFakeTimers();
+    try {
+      const onKeyboardCommit = vi.fn();
+      render(
+        <Splitter label="Resize Jobs pane" value={300} min={200} max={480}
+          onDragStart={vi.fn()} onDragDelta={vi.fn()} onDragEnd={vi.fn()} onDragCancel={vi.fn()}
+          onKeyboardDelta={vi.fn()} onKeyboardCommit={onKeyboardCommit} />,
+      );
+      const splitter = screen.getByRole("separator");
+      fireEvent.keyDown(splitter, { key: "ArrowRight" });
+      fireEvent.keyDown(splitter, { key: "ArrowRight", repeat: true });
+      fireEvent.keyUp(splitter, { key: "ArrowRight" });
+      fireEvent.blur(splitter);
+      vi.advanceTimersByTime(SPLITTER_KEY_COMMIT_DELAY_MS - 1);
+      fireEvent.keyDown(splitter, { key: "End" });
+      vi.advanceTimersByTime(SPLITTER_KEY_COMMIT_DELAY_MS - 1);
+      expect(onKeyboardCommit).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onKeyboardCommit).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(SPLITTER_KEY_COMMIT_DELAY_MS * 2);
+      expect(onKeyboardCommit).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("commits pending keyboard moves before a drag starts", () => {
+    vi.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      render(
+        <Splitter label="Resize Jobs pane" value={300} min={200} max={480}
+          onDragStart={() => calls.push("drag")} onDragDelta={vi.fn()} onDragEnd={vi.fn()} onDragCancel={vi.fn()}
+          onKeyboardDelta={vi.fn()} onKeyboardCommit={() => calls.push("commit")} />,
+      );
+      const splitter = screen.getByRole("separator");
+      fireEvent.keyDown(splitter, { key: "ArrowLeft" });
+      fireEvent.mouseDown(splitter, { clientX: 10 });
+      fireEvent(window, new Event("blur"));
+      vi.advanceTimersByTime(SPLITTER_KEY_COMMIT_DELAY_MS);
+      expect(calls).toEqual(["commit", "drag"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("maps Home/End to physical bounds for a reverse-width pane", () => {

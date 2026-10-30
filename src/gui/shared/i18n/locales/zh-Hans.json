@@ -556,6 +556,8 @@
   "settings.defaultParametersHint": "每个新任务都从这些值开始。各任务可以单独修改。",
   "settings.saving": "正在保存…",
   "settings.saveFailed": "设置未能保存。你的更改仍然保留，请再次尝试保存。",
+  "settings.saveHeld": "请先更正{tabs}中的项目，然后才能保存。",
+  "settings.tabHasIssue": "有需要更正的项目",
   "settings.savedApplyFailed": "设置已保存，但界面未能完全更新。请重启 ZipKit 以应用设置。",
   "settings.discardTitle": "放弃更改？",
   "settings.discardMessage": "你有未保存的更改。要放弃这些更改并关闭吗？",

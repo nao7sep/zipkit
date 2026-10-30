@@ -30,7 +30,7 @@ import { ModalShell } from "./ModalShell";
 import { OptionsPanel } from "./OptionsPanel";
 import { parseWholeNumber, WholeNumberInput, WholeNumberIssue } from "./WholeNumberInput";
 import { useConfirm } from "./DialogHost";
-import { CARD_ROW_LIMIT_RANGE, changedSettings, COMPRESSION_LEVEL_RANGE, DEFAULT_PARAMETERS, displayZones, type ArchiveParameters, type GuiSettings, type ThemePreference } from "../../../shared/spec";
+import { CARD_ROW_LIMIT_RANGE, changedSettings, COMPRESSION_LEVEL_RANGE, DEFAULT_PARAMETERS, displayZones, type GuiSettings, type ThemePreference } from "../../../shared/spec";
 import type { SystemChoices } from "../../../shared/api";
 import { singleLine } from "../../../shared/textCleanup";
 import { reportableError } from "../externalDropBoundary";
@@ -59,13 +59,6 @@ function builtInFontStack(): string {
   return getComputedStyle(document.documentElement).getPropertyValue("--font-ui-default").trim();
 }
 
-/** The parameters that can be made invalid from the UI: the manifest name and
- *  the exclusion patterns. The typed numbers are checked as text, since the
- *  draft only ever takes a valid one. */
-function isValid(o: ArchiveParameters): boolean {
-  return isSafePathComponent(o.manifestName) && !o.exclusions.some(patternInvalid);
-}
-
 const TABS = ["general", "parameters", "exclusions"] as const;
 type SettingsTab = (typeof TABS)[number];
 const TAB_LABELS: Readonly<Record<SettingsTab, MessageKey>> = {
@@ -88,7 +81,7 @@ export function SettingsDialog({
   onSave: (settings: GuiSettings) => Promise<void>;
   onClose: () => void;
 }) {
-  const { t, language } = useI18n();
+  const { t, list, language } = useI18n();
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
   // The typed numbers as typed; each commits to the draft only while valid.
@@ -116,7 +109,18 @@ export function SettingsDialog({
   // Quit asks before discarding unsaved edits, so main follows whether there are any.
   useEffect(() => { window.zipkit.reportSettingsDraft(dirty); }, [dirty]);
   useEffect(() => () => window.zipkit.reportSettingsDraft(false), []);
-  const canSave = dirty && numbersValid && isValid(draft.defaults);
+  // Which tabs hold a field Save cannot take: the typed numbers, checked as text
+  // since the draft only ever takes a valid one, the manifest name and the
+  // exclusion patterns. Save never waits without saying why where the user is:
+  // each such tab is marked, and a line beside Save names them.
+  const tabIssues: Readonly<Record<SettingsTab, boolean>> = {
+    general: parseWholeNumber(rowLimitText, CARD_ROW_LIMIT_RANGE) === null,
+    parameters: parseWholeNumber(levelText, COMPRESSION_LEVEL_RANGE) === null || !isSafePathComponent(draft.defaults.manifestName),
+    exclusions: draft.defaults.exclusions.some(patternInvalid),
+  };
+  const heldBy = TABS.filter((value) => tabIssues[value]);
+  const saveHeldId = useId();
+  const canSave = dirty && heldBy.length === 0;
 
   async function save() {
     setSaving(true);
@@ -185,8 +189,18 @@ export function SettingsDialog({
       footer={
         // Initial focus is named on Cancel (modal-dialog conventions), never Save.
         <>
+          {heldBy.length > 0 && (
+            <span id={saveHeldId} style={S.saveHeld}>
+              {t("settings.saveHeld", { tabs: list(heldBy.map((value) => t(TAB_LABELS[value]))) })}
+            </span>
+          )}
           <button data-modal-autofocus disabled={saving} onClick={() => void requestClose()}>{t("common.cancel")}</button>
-          <button className="accent" disabled={!canSave || saving} onClick={() => void save()}>
+          <button
+            className="accent"
+            disabled={!canSave || saving}
+            aria-describedby={heldBy.length > 0 ? saveHeldId : undefined}
+            onClick={() => void save()}
+          >
             {t(saving ? "settings.saving" : "common.save")}
           </button>
         </>
@@ -196,6 +210,7 @@ export function SettingsDialog({
         {TABS.map((value) => (
           <button key={value} {...tablist.tabProps(value)} style={value === tab ? { ...S.tab, ...S.tabActive } : S.tab}>
             {t(TAB_LABELS[value])}
+            {tabIssues[value] && <span role="img" aria-label={t("settings.tabHasIssue")} style={S.tabIssue}>!</span>}
           </button>
         ))}
       </div>
@@ -347,6 +362,23 @@ const S: Record<string, CSSProperties> = {
   // The tab strip stays at the top; its labels never wrap or clip.
   tabs: { display: "flex", flexWrap: "wrap", gap: "0.25rem", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" },
   tab: { whiteSpace: "nowrap", background: "transparent", borderColor: "transparent", color: "var(--text-2)" },
+  // An error mark beside a tab's name, in the error colour, with a shape so it
+  // does not rely on colour alone.
+  tabIssue: {
+    display: "inline-grid",
+    placeItems: "center",
+    width: "1.1em",
+    height: "1.1em",
+    marginInlineStart: "0.4em",
+    borderRadius: "50%",
+    background: "var(--status-error)",
+    color: "var(--surface)",
+    fontSize: "0.8em",
+    fontWeight: 700,
+    lineHeight: 1,
+  },
+  // Takes the footer's free space before the buttons, wrapping there when long.
+  saveHeld: { flex: "1 1 auto", minWidth: 0, alignSelf: "center", fontSize: "0.85em" },
   tabActive: { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)", fontWeight: 600 },
   sectionHint: { margin: "0 0 0.75rem", fontSize: "0.8rem", color: "var(--text-2)" },
   resetRow: { marginTop: "1rem" },
