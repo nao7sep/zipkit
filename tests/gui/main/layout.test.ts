@@ -32,6 +32,7 @@ import {
 } from "../../../src/gui/shared/layout.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
 import { managedEntries } from "../../helpers/managedEntries.js";
+import { LABEL_FIT_LAYOUT } from "../../../scripts/label-fit-data.mjs";
 
 // The default layout as the file holds it: the main window's panes and the
 // Records window's list pane.
@@ -59,6 +60,14 @@ describe("parseLayout", () => {
 
   it("rejects a missing layout so the loader can preserve it", () => {
     expect(() => parseLayout({})).toThrow(/layout/);
+  });
+
+  it("reads the layout label-fit seeds as every pane at its minimum", () => {
+    expect(parseLayout(JSON.parse(JSON.stringify(LABEL_FIT_LAYOUT)))).toEqual({
+      jobsWidth: LAYOUT_BOUNDS.jobsWidth.min,
+      statusWidth: LAYOUT_BOUNDS.statusWidth.min,
+      recordsListWidth: RECORDS_LIST_WIDTH.min,
+    });
   });
 });
 
