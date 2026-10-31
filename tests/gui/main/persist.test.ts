@@ -23,19 +23,15 @@ import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
 import { managedEntries } from "../../helpers/managedEntries.js";
+import { headed, headedText } from "../../helpers/fileHeader.js";
 import { SAVE } from "../../helpers/intents.js";
 
 describe("parseQueue", () => {
-  it("round-trips serialized jobs with no format marker", () => {
+  it("round-trips serialized jobs behind the file header", () => {
     const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     const root = JSON.parse(serializeQueue(jobs));
-    expect(root).toEqual({ jobs });
+    expect(root).toEqual(headed("queue", { jobs }));
     expect(parseQueue(root)).toEqual({ jobs, skipped: 0 });
-  });
-
-  it("reads a leftover format marker or version key as unknown", () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
-    expect(parseQueue({ formatVersion: 3, version: 1, jobs })).toEqual({ jobs, skipped: 0 });
   });
 
   it("defaults missing option fields over DEFAULT_OPTIONS", () => {
@@ -103,7 +99,7 @@ describe("queue file location and persistence", () => {
     // files (backups.sqlite3 + its WAL sidecars) are the one other expected presence and are filtered
     // out here; that they never carry a `.tmp` is what this still proves.
     expect(managedEntries(root)).toEqual(["queue.json"]);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ jobs });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs }));
     expect((await loadQueue()).value).toEqual({ jobs, skipped: 0 });
   });
 
@@ -167,14 +163,14 @@ describe("queue file location and persistence", () => {
     await saveQueue(jobs);
 
     expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ jobs });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs }));
     expect(managedEntries(root).sort()).toEqual(["queue.json", quarantined].sort());
   });
 
   it("an unreadable job sets the whole original aside and restores its readable siblings", async () => {
     const file = path.join(root, "queue.json");
     const good = { id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS };
-    const bytes = JSON.stringify({ jobs: [good, { id: "", inputs: ["/y"] }] });
+    const bytes = headedText("queue", { jobs: [good, { id: "", inputs: ["/y"] }] });
     writeFileSync(file, bytes);
     const loaded = await loadQueue();
     expect(loaded.value).toEqual({ jobs: [good], skipped: 1 });
@@ -183,24 +179,36 @@ describe("queue file location and persistence", () => {
     expect(existsSync(file)).toBe(false);
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
     await saveQueue(loaded.value.jobs);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ jobs: [good] });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs: [good] }));
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 
   it("a queue whose every job is unreadable is set aside and starts empty", async () => {
-    const bytes = JSON.stringify({ jobs: [{ id: "", inputs: ["/x"] }] });
+    const bytes = headedText("queue", { jobs: [{ id: "", inputs: ["/x"] }] });
     writeFileSync(path.join(root, "queue.json"), bytes);
     const loaded = await loadQueue();
     expect(loaded.value).toEqual({ jobs: [], skipped: 1 });
     expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 
-  it("loads a queue with a leftover format marker as current and leaves it in place", async () => {
+  it("leaves a queue of a newer format where it is, starts empty, and never saves over it", async () => {
     const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
-    const bytes = JSON.stringify({ formatVersion: 2, jobs });
+    const bytes = JSON.stringify({ ...headed("queue", { jobs }), format: { owner: "zipkit", kind: "queue", version: 2 } });
     writeFileSync(path.join(root, "queue.json"), bytes);
-    expect(await loadQueue()).toEqual({ value: { jobs, skipped: 0 }, quarantinedTo: null, missing: false });
+    expect(await loadQueue()).toEqual({ value: { jobs: [], skipped: 0 }, quarantinedTo: null, missing: false, newer: true });
+    await expect(saveQueue(jobs)).rejects.toThrow(/newer format/);
     expect(readFileSync(path.join(root, "queue.json"), "utf8")).toBe(bytes);
+  });
+
+  it.each([
+    ["no header", { jobs: [] }],
+    ["another kind", { format: { owner: "zipkit", kind: "config", version: 1 }, jobs: [] }],
+  ])("sets aside a queue with %s", async (_case, document) => {
+    const bytes = JSON.stringify(document);
+    writeFileSync(path.join(root, "queue.json"), bytes);
+    const loaded = await loadQueue();
+    expect(loaded.value).toEqual({ jobs: [], skipped: 0 });
+    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
   });
 });
 

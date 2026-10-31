@@ -202,15 +202,14 @@ describe("manifest", () => {
 
   it("embeds manifest by default and returns the complete record", async () => {
     const proj = await makeTree();
-    const result = await new ZipKit({ app: { name: "ZipKit", version: "9.9.9" } }).create({ inputs: [proj], output: path.join(dir, "d.zip") });
+    const result = await new ZipKit({ caller: { name: "zipkit", version: "9.9.9" } }).create({ inputs: [proj], output: path.join(dir, "d.zip") });
 
     // Embedded by default.
     const names = readZip(await readFile(result.output)).entries.map((e) => e.name);
     expect(names).toContain("zipkit.json");
 
     // The full structured record is returned regardless.
-    expect(written(result).manifest.app).toEqual({ name: "ZipKit", version: "9.9.9" });
-    expect(written(result).manifest.writer).toMatchObject({ name: "zipkitsdk" });
+    expect(written(result).manifest.writer).toMatchObject({ name: "zipkitsdk", caller: { name: "zipkit", version: "9.9.9" } });
     expect(written(result).manifest.timeZone).toBeTypeOf("string");
     expect(Array.isArray(written(result).manifest.findings)).toBe(true);
     const a = written(result).manifest.entries.find((e) => e.archivePath === "a.txt");

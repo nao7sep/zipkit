@@ -22,7 +22,7 @@ import type { Logger } from "../log/logger.ts";
 import { Meter } from "../progress.ts";
 import { finding } from "../registry.ts";
 import type { Finding, ProgressCounts, VerifiedEntry, VerifyData } from "../types.ts";
-import { MANIFEST_FORMAT, MANIFEST_FORMAT_VERSION } from "../write/manifest.ts";
+import { checkManifestFormat, MANIFEST_FORMAT_VERSION } from "../header.ts";
 import { createManifestReader, type ManifestReading } from "./manifestReader.ts";
 import { localHeaderMismatch, parseZip, readEntryData, type ParsedZip, type ReadEntry, type EntryReadResult } from "./zipReader.ts";
 
@@ -93,9 +93,9 @@ function compactRecord(record: ManifestRecord): ManifestRecord {
 
 /** Find and read the embedded manifest `name` among an open archive's entries,
  *  one record at a time. Absent is `manifest.missing`; unparseable, without a
- *  `formatVersion` or `entries` list, or holding a malformed or repeated record
- *  is `manifest.invalid`; one a newer ZipKit wrote is `manifest.newer`, never
- *  read as this build's format. */
+ *  ZipKit manifest's format header or an `entries` list, or holding a malformed
+ *  or repeated record is `manifest.invalid`; one a newer format version is
+ *  `manifest.newer`, never read as this build's format. */
 async function loadManifest(
   archive: VolumeFile,
   entries: ReadEntry[],
@@ -128,19 +128,13 @@ async function loadManifest(
     if (err instanceof ZipKitError) throw err;
     throw new ZipKitError("manifest.invalid", `manifest ${name} is not valid JSON`, { cause: err, subject: name });
   }
-  // A document without a format name predates it; one that names another
-  // format is not a ZipKit manifest, whatever it holds.
-  if (reading.format !== undefined && reading.format !== MANIFEST_FORMAT) {
-    throw new ZipKitError("manifest.invalid", `${name} is not a ZipKit manifest`, { subject: name });
-  }
-  const formatVersion = reading.formatVersion;
-  if (typeof formatVersion !== "number" || !Number.isInteger(formatVersion) || formatVersion < 1) {
-    throw new ZipKitError("manifest.invalid", `manifest ${name} has no valid formatVersion`, { subject: name });
-  }
-  if (formatVersion > MANIFEST_FORMAT_VERSION) {
+  // The header alone decides whether this is a manifest this build reads.
+  const verdict = checkManifestFormat(reading.format);
+  if ("invalid" in verdict) throw new ZipKitError("manifest.invalid", `manifest ${name} ${verdict.invalid}`, { subject: name });
+  if ("newer" in verdict) {
     throw new ZipKitError(
       "manifest.newer",
-      `manifest ${name} has format version ${formatVersion}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
+      `manifest ${name} has format version ${verdict.newer}, newer than this build's ${MANIFEST_FORMAT_VERSION}`,
       { subject: name },
     );
   }

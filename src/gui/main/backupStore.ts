@@ -23,6 +23,7 @@ import { Worker } from "node:worker_threads";
 import { storageRoot } from "./storage.js";
 import { log } from "./runtime.js";
 import { errorInfo } from "./log.js";
+import { APP_PACKAGE, APP_VERSION } from "../shared/identity.js";
 import type { BackupsRequest, BackupsResponse, BackupsWorkerData } from "./backups-worker.js";
 
 /** The store file under the resolved storage root. Computed when the thread starts (not frozen into a
@@ -77,7 +78,7 @@ function disable(message: string, error: unknown): void {
 function ensureWorker(): Worker {
   if (worker) return worker;
   file = storeFile();
-  const created = new Worker(workerUrl(), { workerData: { database: file, session: log.session } satisfies BackupsWorkerData });
+  const created = new Worker(workerUrl(), { workerData: { database: file, session: log.session, writer: { name: APP_PACKAGE, version: APP_VERSION } } satisfies BackupsWorkerData });
   // The thread never keeps the process alive; closeBackupStore is what waits for it.
   created.unref();
   created.on("message", (response: BackupsResponse) => {

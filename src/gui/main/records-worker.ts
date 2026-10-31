@@ -3,8 +3,8 @@
  * Records): the main process posts each record and each read here, so a slow or
  * locked database never holds the interface. It answers every write with
  * `written` or `failed`; the main process keeps the fallback file. Its only
- * imports at run time are Node built-ins (the shared records types are erased),
- * so the tests run this source as it is.
+ * imports at run time are Node built-ins and the file header helper (the shared
+ * records types are erased), so the tests run this source as it is.
  */
 
 import { mkdirSync } from "node:fs";
@@ -12,9 +12,12 @@ import path from "node:path";
 import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
 import { parentPort, workerData } from "node:worker_threads";
 import type { RecordDetail, RecordKind, RecordsPage, RecordsQuery, RecordSummary } from "../shared/records.js";
+import { openDatabaseHeader, type FileWriter } from "./file-header.ts";
 
 export interface RecordsWorkerData {
   database: string;
+  /** Who writes the database's header rows. */
+  writer: FileWriter;
 }
 
 /** One log line. `session` is the launch's start; `jobId` is the queue job the
@@ -228,9 +231,11 @@ class RecordsStore {
   #statements: Statements | null = null;
   #openFailure: unknown = null;
   readonly #database: string;
+  readonly #writer: FileWriter;
 
-  constructor(database: string) {
+  constructor(database: string, writer: FileWriter) {
     this.#database = database;
+    this.#writer = writer;
   }
 
   /** Opened on the first request, so a process that never logs creates no
@@ -243,6 +248,7 @@ class RecordsStore {
       mkdirSync(path.dirname(this.#database), { recursive: true });
       // The app's only connection to the file: no busy timeout, nothing to wait for.
       db = new DatabaseSync(this.#database);
+      openDatabaseHeader(db, this.#database, "records", this.#writer);
       db.exec("PRAGMA journal_mode = WAL");
       db.exec(SCHEMA);
       this.#db = db;
@@ -324,8 +330,8 @@ function answer(store: RecordsStore, request: Exclude<RecordsRequest, { type: "c
 
 if (parentPort) {
   const port = parentPort;
-  const { database } = workerData as RecordsWorkerData;
-  const store = new RecordsStore(database);
+  const { database, writer } = workerData as RecordsWorkerData;
+  const store = new RecordsStore(database, writer);
   const reply = (response: RecordsResponse): void => port.postMessage(response);
   let writeFailure: Record<string, unknown> | null = null;
   port.on("message", (request: RecordsRequest) => {

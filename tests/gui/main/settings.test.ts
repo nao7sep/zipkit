@@ -9,6 +9,7 @@ import { storageRoot } from "../../../src/gui/main/storage.js";
 import { DEFAULT_PARAMETERS, DEFAULT_SETTINGS } from "../../../src/gui/shared/spec";
 import { singleLine } from "../../../src/gui/shared/textCleanup";
 import { managedEntries } from "../../helpers/managedEntries.js";
+import { headed, headedText } from "../../helpers/fileHeader.js";
 
 import * as settings from "../../../src/gui/main/settings";
 import { record } from "../../../src/gui/main/backupStore.js";
@@ -31,9 +32,10 @@ const CUSTOM = {
 };
 
 describe("settings sets", () => {
-  it("round-trips whole settings with no format marker", () => {
+  it("round-trips whole settings behind the file header", () => {
     expect(settings.parseSettings(JSON.parse(settings.serializeSettings(CUSTOM)))).toEqual(CUSTOM);
-    expect(JSON.parse(settings.serializeSettings(CUSTOM))).toEqual(CUSTOM);
+    expect(JSON.parse(settings.serializeSettings(CUSTOM))).toEqual(headed("config", CUSTOM));
+    expect(Object.keys(JSON.parse(settings.serializeSettings(CUSTOM))).slice(0, 2)).toEqual(["format", "writer"]);
   });
 
   it("keeps a saved display zone and reverts only an unknown one, logging it", () => {
@@ -104,10 +106,6 @@ describe("settings sets", () => {
     expect(vi.mocked(logger.warn).mock.calls.map((call) => call[1]?.key).sort()).toEqual(["language", "theme", "uiFontFamily"]);
   });
 
-  it("accepts a version key or a leftover format marker as unknown", () => {
-    expect(settings.parseSettings({ version: 99, language: "ja" })).toEqual({ ...DEFAULT_SETTINGS, language: "ja" });
-    expect(settings.parseSettings({ formatVersion: 2, language: "ja" })).toEqual({ ...DEFAULT_SETTINGS, language: "ja" });
-  });
 });
 
 describe("settings file location and persistence", () => {
@@ -124,7 +122,7 @@ describe("settings file location and persistence", () => {
   });
 
   const readStored = () => JSON.parse(readFileSync(settings.settingsFile(), "utf8"));
-  const stored = (sets: Record<string, unknown>) => sets;
+  const stored = (sets: Record<string, unknown>) => headed("config", sets);
 
   it("resolves config.json separately from layout and queue", () => {
     expect(settings.settingsFile()).toBe(path.join(storageRoot(), "config.json"));
@@ -133,7 +131,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("loads a fresh home without writing config.json", async () => {
-    expect(await settings.loadSettings()).toEqual({ value: DEFAULT_SETTINGS, missing: true, quarantinedTo: null });
+    expect(await settings.loadSettings()).toEqual({ value: DEFAULT_SETTINGS, missing: true, quarantinedTo: null, newer: false });
     expect(existsSync(settings.settingsFile())).toBe(false);
     expect(readdirSync(root)).toEqual([]);
   });
@@ -152,13 +150,13 @@ describe("settings file location and persistence", () => {
   });
 
   it("writes the file from the settings it is given, every set that differs", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ language: "de", uiFontFamily: "Menlo" }));
+    writeFileSync(settings.settingsFile(), headedText("config", { language: "de", uiFontFamily: "Menlo" }));
     await settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "dark" });
     expect(readStored()).toEqual(stored({ theme: "dark" }));
   });
 
-  it("drops a format marker, version, unknown sets and unknown newJobParameters members on the next write", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ formatVersion: 1, version: 99, retired: true, newJobParameters: { ...CUSTOM.newJobParameters, unknown: "drop" } }));
+  it("drops unknown sets and unknown newJobParameters members on the next write", async () => {
+    writeFileSync(settings.settingsFile(), headedText("config", { retired: true, newJobParameters: { ...CUSTOM.newJobParameters, unknown: "drop" } }));
     const loaded = (await settings.loadSettings()).value;
     expect(loaded.newJobParameters).toEqual(CUSTOM.newJobParameters);
     await settings.saveSettings({ ...loaded, theme: "light" });
@@ -172,7 +170,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("removes a stored copy identical to the built-in and keeps the file with no sets", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ newJobParameters: DEFAULT_PARAMETERS }));
+    writeFileSync(settings.settingsFile(), headedText("config", { newJobParameters: DEFAULT_PARAMETERS }));
     await settings.saveSettings(DEFAULT_SETTINGS);
     expect(readStored()).toEqual(stored({}));
   });
@@ -197,17 +195,17 @@ describe("settings file location and persistence", () => {
   });
 
   it("a malformed set remains in place and only falls back for that set", async () => {
-    const bytes = JSON.stringify({ newJobParameters: 5, theme: "dark" });
+    const bytes = headedText("config", { newJobParameters: 5, theme: "dark" });
     writeFileSync(settings.settingsFile(), bytes);
     const logger = warningLog();
-    expect(await settings.loadSettings(logger)).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null });
+    expect(await settings.loadSettings(logger)).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null, newer: false });
     expect(readFileSync(settings.settingsFile(), "utf8")).toBe(bytes);
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
   it("an invalid default reverts alone, and the next unrelated save keeps the authored ones", async () => {
     const authored = { ...DEFAULT_PARAMETERS, strict: true, symlinks: "follow" as const };
-    writeFileSync(settings.settingsFile(), JSON.stringify({ newJobParameters: { ...authored, level: 42 } }));
+    writeFileSync(settings.settingsFile(), headedText("config", { newJobParameters: { ...authored, level: 42 } }));
     const loaded = (await settings.loadSettings()).value;
     expect(loaded.newJobParameters).toEqual(authored);
     await settings.saveSettings({ ...loaded, theme: "dark" });
@@ -215,17 +213,17 @@ describe("settings file location and persistence", () => {
   });
 
   it("a set that read as its built-in loses its key at the next save", async () => {
-    writeFileSync(settings.settingsFile(), '{"newJobParameters":5}');
+    writeFileSync(settings.settingsFile(), headedText("config", { newJobParameters: 5 }));
     const loaded = (await settings.loadSettings()).value;
     await settings.saveSettings({ ...loaded, theme: "dark" });
     expect(readStored()).toEqual(stored({ theme: "dark" }));
   });
 
   it("main keeps the loaded and saved settings: a later change on disk is not read back", async () => {
-    writeFileSync(settings.settingsFile(), '{"theme":"dark"}');
+    writeFileSync(settings.settingsFile(), headedText("config", { theme: "dark" }));
     await settings.loadSettings();
     expect(settings.currentSettings()).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
-    writeFileSync(settings.settingsFile(), '{"theme":"light"}');
+    writeFileSync(settings.settingsFile(), headedText("config", { theme: "light" }));
     expect(settings.currentSettings().theme).toBe("dark");
     expect(await settings.saveSettings(CUSTOM)).toEqual(CUSTOM);
     expect(settings.currentSettings()).toEqual(CUSTOM);
@@ -238,16 +236,30 @@ describe("settings file location and persistence", () => {
     expect(settings.currentSettings()).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
   });
 
-  it.each(['{"formatVersion":0,"theme":"dark"}', '{"formatVersion":"1","theme":"dark"}', '{"formatVersion":2,"theme":"dark"}'])
-    ("loads a file with a leftover format marker as current and drops the marker on the next save: %s", async (bytes) => {
-      writeFileSync(settings.settingsFile(), bytes);
-      const loaded = await settings.loadSettings();
-      expect(loaded).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null });
-      await settings.saveSettings({ ...loaded.value, language: "ja" });
-      expect(readStored()).toEqual({ theme: "dark", language: "ja" });
-    });
+  it("reads a file by its format header alone, whatever its writer says", async () => {
+    writeFileSync(settings.settingsFile(), JSON.stringify({ ...headed("config", { theme: "dark" }), writer: { name: "elsewhere", version: 3 } }));
+    expect(await settings.loadSettings()).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null, newer: false });
+  });
 
-  it.each(["{ not json", "[]", "null", "5"])("sets an unreadable file aside without replacing it: %s", async (bytes) => {
+  it("leaves a file of a newer format where it is, uses the built-ins, and never saves over it", async () => {
+    const bytes = JSON.stringify({ ...headed("config", { theme: "dark" }), format: { owner: "zipkit", kind: "config", version: 2 } });
+    writeFileSync(settings.settingsFile(), bytes);
+    const loaded = await settings.loadSettings();
+    expect(loaded).toEqual({ value: DEFAULT_SETTINGS, missing: false, quarantinedTo: null, newer: true });
+    await expect(settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "light" })).rejects.toThrow(/newer format/);
+    expect(readFileSync(settings.settingsFile(), "utf8")).toBe(bytes);
+    expect(readdirSync(root)).toEqual(["config.json"]);
+  });
+
+  it.each([
+    "{ not json", "[]", "null", "5",
+    '{"theme":"dark"}',
+    '{"format":"config","theme":"dark"}',
+    '{"format":{"owner":"otherapp","kind":"config","version":1},"theme":"dark"}',
+    '{"format":{"owner":"zipkit","kind":"queue","version":1},"theme":"dark"}',
+    '{"format":{"owner":"zipkit","kind":"config","version":0},"theme":"dark"}',
+    '{"format":{"owner":"zipkit","kind":"config"},"theme":"dark"}',
+  ])("sets an unreadable file aside without replacing it: %s", async (bytes) => {
     const file = settings.settingsFile();
     writeFileSync(file, bytes);
     const logger = warningLog();

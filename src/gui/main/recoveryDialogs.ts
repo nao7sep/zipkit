@@ -14,9 +14,12 @@ export interface StartupQuarantines {
   settingsQuarantinedTo: string | null;
   queueQuarantinedTo: string | null;
   queueJobsRestored: number;
+  /** A store left in place because it names a newer format: its path, or null. */
+  settingsNewer?: string | null;
+  queueNewer?: string | null;
 }
 
-/** Build accurate user-facing reports for stores that were set aside. */
+/** Build accurate user-facing reports for stores that were set aside or left as a newer format. */
 export function buildRecoveryDialogs(quarantines: StartupQuarantines): RecoveryDialog[] {
   const dialogs: RecoveryDialog[] = [];
 
@@ -37,6 +40,13 @@ export function buildRecoveryDialogs(quarantines: StartupQuarantines): RecoveryD
           title: "recovery.queueTitle",
           message: message("recovery.queueMessage", { file: quarantines.queueQuarantinedTo }),
         });
+  }
+
+  if (quarantines.settingsNewer) {
+    dialogs.push({ title: "recovery.newerTitle", message: message("recovery.settingsNewerMessage", { file: quarantines.settingsNewer }) });
+  }
+  if (quarantines.queueNewer) {
+    dialogs.push({ title: "recovery.newerTitle", message: message("recovery.queueNewerMessage", { file: quarantines.queueNewer }) });
   }
 
   return dialogs;

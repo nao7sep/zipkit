@@ -1,6 +1,9 @@
 {
-  "format": "zipkit.manifest",
-  "formatVersion": 1,
+  "format": {
+    "owner": "zipkit",
+    "kind": "manifest",
+    "version": 1
+  },
   "policy": {
     "exclusions": [
       {

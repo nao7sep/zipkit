@@ -15,7 +15,7 @@ it("marks a write failure before the next mailbox message, without disabling rea
   const seed = createAppLog(database, path.join(dir, "logs"));
   await seed.records({ op: "sessions" });
   await seed.close();
-  const worker = new Worker(new URL("../../../src/gui/main/records-worker.ts", import.meta.url), { workerData: { database } });
+  const worker = new Worker(new URL("../../../src/gui/main/records-worker.ts", import.meta.url), { workerData: { database, writer: { name: "zipkit", version: "1.0.0" } } });
   const lock = new DatabaseSync(database);
   const replies: RecordsResponse[] = [];
   worker.on("message", (response: RecordsResponse) => replies.push(response));

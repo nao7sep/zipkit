@@ -92,18 +92,17 @@ describe("buildManifest", () => {
     }
   });
 
-  it("opens with what the document is, the SDK that wrote it, the calling app, time and format", () => {
-    const doc = buildManifest(plan, DEFAULT_POLICY, [], { createdNs: 0n, timeZone: "UTC", app: { name: "ZipKit", version: "1.2.3" } });
-    expect(Object.keys(doc).slice(0, 6)).toEqual(["about", "writer", "app", "createdAtUtc", "format", "formatVersion"]);
-    expect(doc.format).toBe("zipkit.manifest");
+  it("opens with the format header, then what the document is, where its SDK lives and when it was made", () => {
+    const doc = buildManifest(plan, DEFAULT_POLICY, [], { createdNs: 0n, timeZone: "UTC", caller: { name: "zipkit", version: "1.2.3" } });
+    expect(Object.keys(doc).slice(0, 5)).toEqual(["format", "writer", "about", "repository", "createdAtUtc"]);
+    expect(doc.format).toEqual({ owner: "zipkit", kind: "manifest", version: 1 });
+    expect(doc.writer).toEqual({ name: "zipkitsdk", version: VERSION, caller: { name: "zipkit", version: "1.2.3" } });
     expect(doc.about).toMatch(/^zipkitsdk wrote this manifest/);
     expect(doc.about).not.toContain("ZipKit");
-    expect(doc.writer).toEqual({ name: "zipkitsdk", version: VERSION, repository: "https://github.com/nao7sep/zipkit" });
-    expect(doc.app).toEqual({ name: "ZipKit", version: "1.2.3" });
+    expect(doc.repository).toBe("https://github.com/nao7sep/zipkit");
     expect(doc.createdAtUtc).toEqual({ ns: "0", iso: "1970-01-01T00:00:00.000Z" });
-    expect(doc.formatVersion).toBe(1);
-    // No app named, none recorded.
-    expect(buildManifest(plan, DEFAULT_POLICY, [], { createdNs: 0n, timeZone: "UTC" })).not.toHaveProperty("app");
+    // No caller named, none recorded.
+    expect(buildManifest(plan, DEFAULT_POLICY, [], { createdNs: 0n, timeZone: "UTC" }).writer).toEqual({ name: "zipkitsdk", version: VERSION });
   });
 
   it("records the time zone once and exclusion patterns by id and text, never by note", () => {

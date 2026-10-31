@@ -213,15 +213,15 @@ export function validateCallOptions(options: unknown): void {
   }
 }
 
-const INSTANCE_OPTIONS = new Set(["policy", "app", "chunkSize", "debug", "trash"]);
+const INSTANCE_OPTIONS = new Set(["policy", "caller", "chunkSize", "debug", "trash"]);
 
 const programSchema = z.strictObject({ name: z.string().min(1).max(256), version: z.string().min(1).max(256).optional() });
 
 /** The app a caller names for its manifests: a name and an optional version,
  *  each short enough that the manifest's size stays bounded. */
-export function validateApp(app: unknown): Program {
-  const result = programSchema.safeParse(app);
-  if (!result.success) throw new ZipKitError("options.invalid", `invalid app: ${formatZodError(result.error)}`);
+export function validateCaller(caller: unknown): Program {
+  const result = programSchema.safeParse(caller);
+  if (!result.success) throw new ZipKitError("options.invalid", `invalid caller: ${formatZodError(result.error)}`);
   return result.data as Program;
 }
 

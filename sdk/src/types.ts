@@ -202,9 +202,9 @@ export interface ArchiveSpec {
 
 export interface ZipKitOptions {
   policy?: DeepPartial<ArchivePolicy>;
-  /** The app calling the SDK, recorded in every manifest it writes beside the
-   *  SDK itself; each string at most 256 characters. */
-  app?: Program;
+  /** The app calling the SDK, recorded as the caller in every manifest it writes;
+   *  each string at most 256 characters. */
+  caller?: Program;
   /**
    * Whether `debug` events reach `onEvent`. Off by
    * default: they are a developer's firehose, not an end user's record.
@@ -552,8 +552,7 @@ export type RecordedPolicy = Omit<ArchivePolicy, "timeZone" | "exclusions"> & {
   exclusions: Omit<ExclusionPattern, "note">[];
 };
 
-/** The program a manifest names: the SDK that wrote it, or the app that
- *  called the SDK. */
+/** The app a manifest names as the SDK's caller. */
 export interface Program {
   name: string;
   version?: string;
@@ -572,18 +571,17 @@ export interface ExtremeEntry {
  * `zipkit.json` unless disabled.
  */
 export interface Manifest {
+  /** What the document is: ZipKit's manifest, at its format version (file-identity conventions). */
+  format: { owner: "zipkit"; kind: "manifest"; version: number };
+  /** The SDK that wrote it, and the app that called it when the caller named itself
+   *  (`ZipKitOptions.caller`). Written for people; no reader reads it. */
+  writer: { name: string; version: string; caller?: Program };
   /** A plain-language sentence saying what the document is, for a recipient
    *  who opens it without knowing ZipKit. */
-  about: string; // identity
-  /** The SDK that wrote it: `zipkitsdk` with its version and repository. */
-  writer: Program & { version: string; repository: string }; // provenance
-  /** The app that called the SDK, when the caller named it (`ZipKitOptions.app`). */
-  app?: Program;
+  about: string;
+  /** Where the SDK that wrote it is published. */
+  repository: string;
   createdAtUtc: UtcTime;
-  /** What kind of document this is, beside its version: always `zipkit.manifest`. */
-  format: "zipkit.manifest";
-  /** The document's layout version; raised when a reader must tell layouts apart. */
-  formatVersion: number;
   /** The IANA zone the DOS local-time fields were rendered in. */
   timeZone: string;
   /** The archive comment, present only when one was set. */

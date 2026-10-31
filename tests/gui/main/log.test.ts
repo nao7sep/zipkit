@@ -8,6 +8,8 @@
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { databaseHeader, seedDatabase } from "../../helpers/fileHeader.js";
+import { APP_VERSION } from "../../../src/gui/shared/identity.js";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAppLog, errorInfo } from "../../../src/gui/main/log.js";
@@ -155,23 +157,42 @@ describe("createAppLog", () => {
   });
 });
 
-describe("existing records databases open as they are", () => {
-  it.each([
-    ["an earlier build's format marker", "PRAGMA user_version = 1"],
-    ["a higher marker", "PRAGMA user_version = 7"],
-    ["no marker and a table of its own", "CREATE TABLE kept (x)"],
-  ])("writes into a database with %s", async (_case, setup) => {
+describe("the records database's file header", () => {
+  it("is written with a new database, and its writer rows are rewritten on the next open", async () => {
     const dir = tempDir();
     const database = path.join(dir, "records.sqlite3");
-    const db = new DatabaseSync(database);
-    db.exec(setup);
-    db.close();
-
+    seedDatabase(database, 1, { "format.owner": "zipkit", "format.kind": "records", "writer.name": "elsewhere" });
     const log = createAppLog(database, path.join(dir, "logs"));
     log.info("kept");
     await log.close();
-
     expect(rows(database).map((row) => row.message)).toEqual(["kept"]);
+    expect(databaseHeader(database).rows).toEqual({ "format.kind": "records", "format.owner": "zipkit", "writer.name": "zipkit", "writer.version": APP_VERSION });
+
+    const fresh = path.join(dir, "fresh.sqlite3");
+    const second = createAppLog(fresh, path.join(dir, "logs"));
+    second.info("first");
+    await second.close();
+    expect(databaseHeader(fresh)).toEqual({ version: 1, rows: { "format.kind": "records", "format.owner": "zipkit", "writer.name": "zipkit", "writer.version": APP_VERSION } });
+  });
+
+  it.each([
+    ["no header", 1, undefined],
+    ["another owner", 1, { "format.owner": "otherapp", "format.kind": "records" }],
+    ["another kind", 1, { "format.owner": "zipkit", "format.kind": "backups" }],
+    ["a newer format version", 2, { "format.owner": "zipkit", "format.kind": "records" }],
+  ] as const)("leaves a database with %s as it is and writes to the fallback file", async (_case, version, header) => {
+    const dir = tempDir();
+    const database = path.join(dir, "records.sqlite3");
+    const logs = path.join(dir, "logs");
+    seedDatabase(database, version, header);
+    const before = databaseHeader(database);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const log = createAppLog(database, logs, new Date("2026-06-14T05:25:48.123Z"));
+    log.info("kept");
+    await log.close();
+    stderrSpy.mockRestore();
+    expect(databaseHeader(database)).toEqual(before);
+    expect(readFileSync(path.join(logs, "20260614-052548-utc.log"), "utf8")).toContain("kept");
   });
 });
 

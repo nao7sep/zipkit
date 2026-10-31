@@ -10,3 +10,6 @@ export const APP_NAME = "ZipKit";
 /** package.json's version, injected by electron.vite.config.ts as a build define. */
 declare const __APP_VERSION__: string;
 export const APP_VERSION = __APP_VERSION__;
+
+/** package.json's name: the writer of every file the app serializes itself. */
+export const APP_PACKAGE = "zipkit";

@@ -46,7 +46,7 @@ export interface WriteDeps {
   /** The caller's `onProgress`, for how far the write has got. */
   onProgress?: ((counts: ProgressCounts) => void) | undefined;
   /** The calling app, recorded in the manifest when it named itself. */
-  app?: Program | undefined;
+  caller?: Program | undefined;
 }
 
 /** What each streamed entry contributed, gathered for the manifest record. */
@@ -333,7 +333,7 @@ export async function writeArchive(plan: PlanData, deps: WriteDeps): Promise<Wri
       if (s.sha256 !== undefined) input.sha256 = s.sha256;
       return input;
     });
-    const manifest = buildManifest(plan, policy, manifestEntries, { createdNs, timeZone, comment, app: deps.app });
+    const manifest = buildManifest(plan, policy, manifestEntries, { createdNs, timeZone, comment, caller: deps.caller });
 
     if (policy.manifest !== false) {
       // A ZIP is a container, so the manifest rides inside it rather than as a

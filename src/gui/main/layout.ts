@@ -58,7 +58,7 @@ export function parseLayout(root: Record<string, unknown>): StoredLayout {
 
 /** Serialize a layout to file text. Pure. */
 export function serializeLayout(layout: StoredLayout): string {
-  return managedJsonText({
+  return managedJsonText("layout", {
     layout: { ...clampLayout(layout), recordsListWidth: clampRecordsListWidth(layout.recordsListWidth) },
   });
 }
@@ -72,7 +72,7 @@ const saves = newestSave((layout: StoredLayout) =>
  *  set aside or reported beyond a log line, and the next save replaces it. */
 export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<StoredLayout>> {
   // No window exists yet, so no save can be waiting on this assignment.
-  const load = await loadManagedJson(layoutFile(), parseLayout, freshLayout, logger, { setAsideInvalid: false });
+  const load = await loadManagedJson(layoutFile(), "layout", parseLayout, freshLayout, logger, { setAsideInvalid: false });
   current = { ...load.value };
   return load;
 }

@@ -6,13 +6,14 @@ import { record } from "./backupStore.js";
 import { InvalidManagedJsonError, parseJsonObject } from "./managed-json-envelope.js";
 import { writeManagedText, type ManagedWriteOptions } from "./managed-write.js";
 import { nullLog, type AppLog } from "./log.js";
+import { checkHeader, NewerFormatError, withHeader, type FileKind } from "./file-header.js";
+import { APP_PACKAGE, APP_VERSION } from "../shared/identity.js";
 
 export { InvalidManagedJsonError, isPlainObject } from "./managed-json-envelope.js";
 
-/** A managed document's text: the store's own keys, with no format marker (a leftover
- *  `formatVersion` or `version` key is ignored on load and dropped by the next save). */
-export function managedJsonText(body: Record<string, unknown>): string {
-  return JSON.stringify(body, null, 2);
+/** A managed document's text: the file header, then the store's own keys. */
+export function managedJsonText(kind: FileKind, body: Record<string, unknown>): string {
+  return JSON.stringify(withHeader(kind, { name: APP_PACKAGE, version: APP_VERSION }, body), null, 2);
 }
 
 /** `yyyymmdd-hhmmss-utc`. Seconds are enough (timestamp conventions): one ZipKit instance runs at
@@ -46,6 +47,9 @@ export interface ManagedJsonLoad<T> {
   value: T;
   quarantinedTo: string | null;
   missing: boolean;
+  /** The file names a later format version: it stays as it is, no save replaces it, and the
+   *  defaults are used meanwhile. */
+  newer: boolean;
 }
 
 export interface ManagedJsonLoadOptions<T> {
@@ -58,10 +62,11 @@ export interface ManagedJsonLoadOptions<T> {
 }
 
 /** Load at startup without ever returning defaults while unreadable bytes remain at the live path.
- *  The document must be a JSON object; `parse` reads the store's own keys from it. A failure to set
- *  the file aside propagates, leaving the live bytes untouched. */
+ *  The document must be a JSON object whose header names `kind`; `parse` reads the store's own keys
+ *  from it. A failure to set the file aside propagates, leaving the live bytes untouched. */
 export async function loadManagedJson<T>(
   file: string,
+  kind: FileKind,
   parse: (root: Record<string, unknown>) => T,
   onDefault: () => T,
   logger: AppLog = nullLog,
@@ -72,27 +77,34 @@ export async function loadManagedJson<T>(
     text = await readFile(file, { encoding: "utf8" });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { value: onDefault(), quarantinedTo: null, missing: true };
+      return { value: onDefault(), quarantinedTo: null, missing: true, newer: false };
     }
     throw err;
   }
   const store = path.basename(file);
   let value: T;
   try {
-    value = parse(parseJsonObject(text, store));
+    const root = parseJsonObject(text, store);
+    checkHeader(root, kind, store);
+    value = parse(root);
   } catch (err) {
+    if (err instanceof NewerFormatError) {
+      // Not damage: the file stays where it is, and the save admission refuses to replace it.
+      logger.warn("managed file is from a newer format; leaving it as it is and using defaults", { file, error: err.message });
+      return { value: onDefault(), quarantinedTo: null, missing: false, newer: true };
+    }
     if (!(err instanceof InvalidManagedJsonError)) throw err;
     if (options.setAsideInvalid === false) {
       logger.warn("unreadable managed file; using defaults until the next save replaces it", { file, error: err.message });
-      return { value: onDefault(), quarantinedTo: null, missing: false };
+      return { value: onDefault(), quarantinedTo: null, missing: false, newer: false };
     }
     // Setting aside is outside the parse catch, so its failure propagates.
-    return { value: onDefault(), quarantinedTo: await setAside(file, logger, new Date()), missing: false };
+    return { value: onDefault(), quarantinedTo: await setAside(file, logger, new Date()), missing: false, newer: false };
   }
   if (options.incomplete?.(value)) {
-    return { value, quarantinedTo: await setAside(file, logger, new Date()), missing: false };
+    return { value, quarantinedTo: await setAside(file, logger, new Date()), missing: false, newer: false };
   }
-  return { value, quarantinedTo: null, missing: false };
+  return { value, quarantinedTo: null, missing: false, newer: false };
 }
 
 /**

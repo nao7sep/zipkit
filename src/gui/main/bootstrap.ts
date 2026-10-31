@@ -20,14 +20,14 @@ import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
 import { beginQueueQuit, cancelRunningJobAndWait, closeQueueEdits, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
 import { settingsDraftOpen, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
-import { loadSettings } from "./settings.js";
+import { loadSettings, settingsFile } from "./settings.js";
 import { applyTimeZonePreference, mainTranslator, onLanguageChanged, settleLanguage, settledTranslator } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
 import { errorInfo } from "./log.js";
 import { clearMainWindow, ensureMainWindow, getMainWindow, log, sendQueueSaved } from "./runtime.js";
 import { minWindowHeight, minWindowWidth } from "../shared/layout.js";
 import { layoutWritesSettled, loadLayout } from "./layout.js";
-import { loadQueue } from "./persist.js";
+import { loadQueue, queueFile } from "./persist.js";
 import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js";
 import { askDiscardSettingsDraft, askQueueNotSaved, askSettingsNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
@@ -214,6 +214,8 @@ app.whenReady().then(async () => {
     settingsQuarantinedTo,
     queueQuarantinedTo: queueLoad.quarantinedTo,
     queueJobsRestored: queueLoad.value.jobs.length,
+    settingsNewer: settingsLoad.newer ? settingsFile() : null,
+    queueNewer: queueLoad.newer ? queueFile() : null,
   })) {
     const { t } = mainTranslator();
     await showAppMessageDialog({

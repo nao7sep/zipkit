@@ -228,11 +228,19 @@ describe("writeManagedJson", () => {
       expect(readdirSync(root)).toEqual(["queue.json"]);
     });
 
-  it("replaces a live file that still carries a leftover format marker", async () => {
+  it("replaces a live file of the current format, whatever its writer", async () => {
     const file = path.join(root, "queue.json");
-    writeFileSync(file, '{"formatVersion":7,"jobs":[]}');
+    writeFileSync(file, '{"format":{"owner":"zipkit","kind":"queue","version":1},"writer":{"name":"elsewhere"},"jobs":[]}');
     await writeManagedJson(file, '{"jobs":[]}', { record: false });
     expect(readFileSync(file, "utf8")).toBe('{"jobs":[]}');
+  });
+
+  it.each([false, true])("never replaces a live file of a newer format (unreadable bytes disposable: %s)", async (replaceUnreadable) => {
+    const file = path.join(root, "layout.json");
+    const newer = '{"format":{"owner":"zipkit","kind":"layout","version":2},"layout":{}}';
+    writeFileSync(file, newer);
+    await expect(writeManagedJson(file, '{"layout":{}}', { record: false, replaceUnreadable })).rejects.toThrow(/newer format/);
+    expect(readFileSync(file, "utf8")).toBe(newer);
   });
 
   it("replaces unreadable bytes only when the store says they are disposable", async () => {

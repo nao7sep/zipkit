@@ -11,12 +11,11 @@ import Assembler from "stream-json/core/assembler.js";
 import { getManyValues, isMany, none } from "stream-chain/defs.js";
 import type { Token } from "stream-json/core/parser.js";
 
-/** What reading found: the format version as written, the records, and the
+/** What reading found: the format header as written, the records, and the
  *  first problem with the document's shape, decided by the caller in order. */
 export interface ManifestReading {
-  /** The `format` name, `undefined` when absent and `null` when not a string. */
+  /** The top-level `format` value as written, `undefined` when absent. */
   format: unknown;
-  formatVersion: unknown;
   /** False when `entries` was absent or not a list. */
   hasEntries: boolean;
   records: unknown[];
@@ -32,12 +31,14 @@ export type AcceptRecord = (record: unknown) => { keep: unknown } | { refuse: st
 export function createManifestReader(accept: AcceptRecord) {
   const parse = parser({ streamValues: false });
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  const reading: ManifestReading = { format: undefined, formatVersion: undefined, hasEntries: false, records: [], problem: null };
+  const reading: ManifestReading = { format: undefined, hasEntries: false, records: [], problem: null };
   // 0 before the root object, 1 inside it, 2 inside its `entries` list.
   let depth = 0;
   let closed = false;
   let key: string | null = null;
   let record: Assembler | null = null;
+  // The top-level `format` header while it is being assembled.
+  let header: Assembler | null = null;
   // Open containers of a value this reader does not need, skipped unparsed.
   let skipping = 0;
 
@@ -52,6 +53,11 @@ export function createManifestReader(accept: AcceptRecord) {
   }
 
   function consume(token: Token): void {
+    if (header) {
+      header.consume(token);
+      if (header.done) { reading.format = header.current; header = null; }
+      return;
+    }
     if (record) {
       record.consume(token);
       if (record.done) { take(record.current); record = null; }
@@ -74,9 +80,12 @@ export function createManifestReader(accept: AcceptRecord) {
       if (key === "entries" && token.name === "startArray") {
         reading.hasEntries = true;
         depth = 2;
+      } else if (key === "format" && token.name === "startObject") {
+        header = new Assembler();
+        header.consume(token);
       } else {
-        if (key === "formatVersion") reading.formatVersion = token.name === "numberValue" ? Number(token.value) : null;
-        if (key === "format") reading.format = token.name === "stringValue" ? token.value : null;
+        // Anything but an object is no header; the caller refuses it.
+        if (key === "format") reading.format = "value" in token ? token.value : null;
         if (key === "entries") reading.hasEntries = false;
         if (opens(token)) skipping = 1;
       }

@@ -38,7 +38,7 @@ import {
   requireAbsolute,
   requireAbsoluteList,
   validateCallOptions,
-  validateApp,
+  validateCaller,
   validateInstanceOptionKeys,
   validateRemovalRequest,
   validateTrash,
@@ -78,7 +78,7 @@ const DEFAULT_CHUNK_SIZE = 65536;
 
 export class ZipKit {
   readonly #policy: DeepPartial<ArchivePolicy> | undefined;
-  readonly #app: Program | undefined;
+  readonly #caller: Program | undefined;
   readonly #chunkSize: number;
   /** Whether the once-per-instance startup event has been delivered yet. */
   #startupLogged = false;
@@ -90,7 +90,7 @@ export class ZipKit {
   constructor(options: ZipKitOptions = {}) {
     validateInstanceOptionKeys(options);
     this.#policy = options.policy ? validatePolicy(options.policy) : undefined;
-    this.#app = options.app !== undefined ? validateApp(options.app) : undefined;
+    this.#caller = options.caller !== undefined ? validateCaller(options.caller) : undefined;
     this.#chunkSize =
       options.chunkSize !== undefined ? validateChunkSize(options.chunkSize) : DEFAULT_CHUNK_SIZE;
     this.#debug = validateDebug(options.debug);
@@ -278,7 +278,7 @@ export class ZipKit {
   /** The shared write path of `write()` and `create()`. */
   #write(plan: PlanData, run: Run): Promise<WriteData | PlanData> {
     return writeArchive(plan, {
-      logger: run.logger, chunkSize: this.#chunkSize, signal: run.signal, volume: run.volume, onProgress: run.onProgress, app: this.#app,
+      logger: run.logger, chunkSize: this.#chunkSize, signal: run.signal, volume: run.volume, onProgress: run.onProgress, caller: this.#caller,
     });
   }
 

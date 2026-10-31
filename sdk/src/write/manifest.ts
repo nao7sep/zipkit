@@ -32,19 +32,14 @@ import type {
   RecordedPolicy,
   UtcTime,
 } from "../types.ts";
-import { VERSION } from "../version.ts";
+import { manifestFormat, manifestWriter } from "../header.ts";
 
 const ABOUT =
   "zipkitsdk wrote this manifest when it created the archive. It lists every entry with its " +
   "original name, size, CRC-32 and times, the entries left out and why, and what was found " +
   "and fixed. A verifier reads it to confirm the archive is complete and unchanged.";
-/** The SDK that writes every manifest. */
-export const WRITER: Manifest["writer"] = { name: "zipkitsdk", version: VERSION, repository: "https://github.com/nao7sep/zipkit" };
-/** The manifest's format name, recorded beside its version so the document
- *  says what it is; a reader refuses a document that names another. */
-export const MANIFEST_FORMAT = "zipkit.manifest";
-/** The manifest's format version (store-recovery conventions); a reader refuses a newer one. */
-export const MANIFEST_FORMAT_VERSION = 1;
+/** Where the SDK that wrote the manifest is published, for a recipient who wants to know more. */
+const REPOSITORY = "https://github.com/nao7sep/zipkit";
 
 export interface ManifestEntryInput {
   writeEntry: WriteEntry;
@@ -152,7 +147,7 @@ export interface ManifestHeader {
   timeZone: string;
   comment?: string | undefined;
   /** The calling app, when it named itself. */
-  app?: Program | undefined;
+  caller?: Program | undefined;
 }
 
 export function buildManifest(
@@ -161,14 +156,13 @@ export function buildManifest(
   entries: ManifestEntryInput[],
   header: ManifestHeader,
 ): Manifest {
-  const { createdNs, timeZone, comment, app } = header;
+  const { createdNs, timeZone, comment, caller } = header;
   const document: Manifest = {
+    format: manifestFormat(),
+    writer: manifestWriter(caller),
     about: ABOUT,
-    writer: WRITER,
-    ...(app !== undefined ? { app } : {}),
+    repository: REPOSITORY,
     createdAtUtc: utcTime(createdNs),
-    format: MANIFEST_FORMAT,
-    formatVersion: MANIFEST_FORMAT_VERSION,
     // The IANA zone the archive's DOS local-time fields were rendered in, so the
     // lossy local field stays interpretable.
     timeZone,

@@ -175,10 +175,10 @@ describe("call options and arguments", () => {
     const zip = new ZipKit();
     const invalid = { name: "ZipKitError", kind: "invalid" };
     expect(() => new ZipKit({ colour: "red" } as never)).toThrow(invalidError);
-    expect(() => new ZipKit({ app: { name: "" } })).toThrow(invalidError);
-    expect(() => new ZipKit({ app: { name: "x".repeat(257) } })).toThrow(invalidError);
-    expect(() => new ZipKit({ app: { name: "App", build: 1 } as never })).toThrow(invalidError);
-    expect(() => new ZipKit({ app: { name: "App", version: "1.0.0" } })).not.toThrow();
+    expect(() => new ZipKit({ caller: { name: "" } })).toThrow(invalidError);
+    expect(() => new ZipKit({ caller: { name: "x".repeat(257) } })).toThrow(invalidError);
+    expect(() => new ZipKit({ caller: { name: "App", build: 1 } as never })).toThrow(invalidError);
+    expect(() => new ZipKit({ caller: { name: "App", version: "1.0.0" } })).not.toThrow();
     await expect(zip.plan({ inputs: ["/a"] }, { signal: { aborted: false } as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.verify({ archive: "/a.zip" }, { onEvent: "log" as never })).rejects.toMatchObject({ code: "options.invalid" });
     await expect(zip.verify({ archive: "/a.zip", manifest: "yes" as never })).rejects.toMatchObject({ code: "request.invalid" });

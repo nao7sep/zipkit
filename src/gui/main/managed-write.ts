@@ -10,7 +10,8 @@ import { chmod, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises
 import path from "node:path";
 import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from "node:worker_threads";
 import { nanoid } from "nanoid";
-import { parseJsonObject } from "./managed-json-envelope.ts";
+import { InvalidManagedJsonError, parseJsonObject } from "./managed-json-envelope.ts";
+import { isNewerFormat } from "./file-header.ts";
 import { StepTimeout } from "./step-timeout.ts";
 
 export interface ManagedWriteOptions {
@@ -28,7 +29,7 @@ export interface ManagedWriteOptions {
  * first so the replace keeps it (content-lifecycle conventions). Content identical to what is on
  * disk is not written again (content-lifecycle conventions). A live file that does not parse as a
  * JSON object is never overwritten (store-recovery conventions) unless `replaceUnreadable` says its
- * bytes are disposable. Resolves `true` when the file was written, `false` when it already held
+ * bytes are disposable; one whose header names a later format version is never overwritten. Resolves `true` when the file was written, `false` when it already held
  * these bytes or was absent and `createAbsent` is false; throws on failure.
  */
 export async function writeManagedText(file: string, bytes: Buffer, options: ManagedWriteOptions = {}): Promise<boolean> {
@@ -39,8 +40,8 @@ export async function writeManagedText(file: string, bytes: Buffer, options: Man
     throw error;
   });
   // The one check before the rename replaces the file: a live file ZipKit cannot read is
-  // never overwritten.
-  if (current !== null && options.replaceUnreadable !== true) parseJsonObject(current.toString("utf8"), file);
+  // never overwritten, and one from a newer format never, even where unreadable bytes may be.
+  if (current !== null) admit(current, file, options.replaceUnreadable === true);
   if (current === null ? options.createAbsent === false : current.equals(bytes)) return false;
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   let owned = false;
@@ -64,6 +65,18 @@ export async function writeManagedText(file: string, bytes: Buffer, options: Man
     throw err;
   }
   return true;
+}
+
+/** Throw unless the live bytes may be replaced. */
+function admit(current: Buffer, file: string, replaceUnreadable: boolean): void {
+  let root: Record<string, unknown>;
+  try {
+    root = parseJsonObject(current.toString("utf8"), file);
+  } catch (error) {
+    if (replaceUnreadable && error instanceof InvalidManagedJsonError) return;
+    throw error;
+  }
+  if (isNewerFormat(root)) throw new InvalidManagedJsonError(file, "it is from a newer format and is left as it is");
 }
 
 /** What the managed-write thread is given. */

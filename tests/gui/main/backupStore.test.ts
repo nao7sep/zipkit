@@ -27,6 +27,8 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { databaseHeader, seedDatabase } from "../../helpers/fileHeader.js";
+import { APP_VERSION } from "../../../src/gui/shared/identity.js";
 
 // Capturing logger swapped in for runtime.log so warn/ error lines are asserted exactly and nothing is
 // written to the real session log. Hoisted so the vi.mock factory can close over it.
@@ -276,22 +278,45 @@ describe("best-effort: a record failure never throws, logs one warn, and does no
   });
 });
 
-describe("existing stores open as they are", () => {
-  it.each([
-    ["an earlier build's format marker", "PRAGMA user_version = 1"],
-    ["a higher marker", "PRAGMA user_version = 7"],
-    ["no marker and a table of its own", "CREATE TABLE kept (x)"],
-  ])("records into a store with %s", async (_case, setup) => {
-    const db = new DatabaseSync(path.join(root, "backups.sqlite3"));
-    db.exec(setup);
-    db.close();
+describe("the store's file header", () => {
+  const database = () => path.join(root, "backups.sqlite3");
+  const header = (rows: Record<string, string> = {}) => ({ "format.owner": "zipkit", "format.kind": "backups", ...rows });
 
+  it("is written with a new store", async () => {
     const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
     await record(path.join(root, "config.json"), Buffer.from("a", "utf8"));
     await closeBackupStore();
+    expect(databaseHeader(database())).toEqual({
+      version: 1,
+      rows: { "format.kind": "backups", "format.owner": "zipkit", "writer.name": "zipkit", "writer.version": APP_VERSION },
+    });
+  });
 
+  it("is read by its format alone, and its writer rows are rewritten", async () => {
+    seedDatabase(database(), 1, header({ "writer.name": "elsewhere", "writer.version": "0" }));
+    const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
+    await record(path.join(root, "config.json"), Buffer.from("a", "utf8"));
+    await closeBackupStore();
     expect(readRows(root)).toHaveLength(1);
+    expect(databaseHeader(database()).rows).toMatchObject({ "writer.name": "zipkit", "writer.version": APP_VERSION });
     expect(logCalls.warn).toHaveLength(0);
+  });
+
+  it.each([
+    ["no header", 1, undefined],
+    ["no format version", 0, { "format.owner": "zipkit", "format.kind": "backups" }],
+    ["another owner", 1, { "format.owner": "otherapp", "format.kind": "backups" }],
+    ["another kind", 1, { "format.owner": "zipkit", "format.kind": "records" }],
+    ["a newer format version", 2, { "format.owner": "zipkit", "format.kind": "backups" }],
+  ] as const)("leaves a store with %s as it is and records nothing", async (_case, version, rows) => {
+    seedDatabase(database(), version, rows);
+    const before = databaseHeader(database());
+    const { record, closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
+    await expect(record(path.join(root, "config.json"), Buffer.from("a", "utf8"))).resolves.toBeUndefined();
+    await closeBackupStore();
+    expect(databaseHeader(database())).toEqual(before);
+    expect(logCalls.warn).toHaveLength(1);
+    expect(logCalls.warn[0]!.message).toMatch(/could not open/i);
   });
 });
 

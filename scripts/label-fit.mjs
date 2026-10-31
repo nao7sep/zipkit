@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
-import { LABEL_FIT_LAYOUT } from "./label-fit-data.mjs";
+import { LABEL_FIT_LAYOUT, labelFitConfig, labelFitQueue } from "./label-fit-data.mjs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 if (!existsSync(join(repo, "out/main/index.js"))) {
@@ -34,9 +34,9 @@ for (const language of languages) {
     mkdirSync(data, { recursive: true });
     mkdirSync(input, { recursive: true });
     writeFileSync(join(input, "notes.txt"), "label fit\n");
-    writeFileSync(join(data, "config.json"), JSON.stringify({ language, theme: "light" }));
+    writeFileSync(join(data, "config.json"), JSON.stringify(labelFitConfig(language)));
     writeFileSync(join(data, "layout.json"), JSON.stringify(LABEL_FIT_LAYOUT));
-    writeFileSync(join(data, "queue.json"), JSON.stringify({ jobs: [{ id: "fit", inputs: [input], options: {} }] }));
+    writeFileSync(join(data, "queue.json"), JSON.stringify(labelFitQueue(input)));
     const result = join(work, "result.json");
     const run = spawnSync(electronPath, [join(repo, "scripts/label-fit-main.mjs")], {
       env: { ...process.env, ZIPKIT_DATA_DIR: data, LABEL_FIT_RESULT: result, LABEL_FIT_USER_DATA: join(work, "user-data") },

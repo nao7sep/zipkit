@@ -14,6 +14,7 @@ import { discardSettingsSubmission, saveSettingsBeforeSessionEnd, settleSettings
 import { currentSettings } from "../../../src/gui/main/settings.js";
 import { appAdmission } from "../../../src/gui/main/command-admission.js";
 import { eventually } from "../../helpers/eventually.js";
+import { headed } from "../../helpers/fileHeader.js";
 
 beforeEach(() => {
   appAdmission.reopen();
@@ -102,7 +103,7 @@ it("Windows takeover publishes the same captured packet and preserves absent-def
   effects.write.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
   const save = submitSettings(DEFAULT_SETTINGS);
   saveSettingsBeforeSessionEnd(321);
-  expect(effects.sync).toHaveBeenCalledWith(expect.stringMatching(/config.json$/), "{}", 321, undefined, { createAbsent: false });
+  expect(effects.sync).toHaveBeenCalledWith(expect.stringMatching(/config.json$/), JSON.stringify(headed("config"), null, 2), 321, undefined, { createAbsent: false });
   finish();
   await save;
   effects.sync.mockClear();

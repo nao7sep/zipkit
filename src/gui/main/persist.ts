@@ -21,7 +21,7 @@ import { parseGuiOptions } from "./settings.js";
  *  into a module constant at import time) so `ZIPKIT_DATA_DIR` is read after the
  *  environment is set, per the convention's caution against import-time
  *  resolution. */
-function queueFile(): string {
+export function queueFile(): string {
   return path.join(storageRoot(), "queue.json");
 }
 
@@ -80,7 +80,7 @@ export function parseQueue(root: Record<string, unknown>, logger: AppLog = nullL
 
 /** Serialize resumable jobs to queue-file text. Pure. */
 export function serializeQueue(jobs: SavedJob[]): string {
-  return managedJsonText({ jobs });
+  return managedJsonText("queue", { jobs });
 }
 
 /** Load the persisted resumable jobs. Returns an empty list when there is simply
@@ -93,6 +93,7 @@ export function serializeQueue(jobs: SavedJob[]): string {
 export async function loadQueue(logger: AppLog = nullLog): Promise<ManagedJsonLoad<QueueRead>> {
   return loadManagedJson(
     queueFile(),
+    "queue",
     (root) => parseQueue(root, logger),
     () => ({ jobs: [], skipped: 0 }),
     logger,

@@ -32,7 +32,10 @@ import {
 } from "../../../src/gui/shared/layout.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
 import { managedEntries } from "../../helpers/managedEntries.js";
-import { LABEL_FIT_LAYOUT } from "../../../scripts/label-fit-data.mjs";
+import { LABEL_FIT_LAYOUT, labelFitConfig, labelFitQueue } from "../../../scripts/label-fit-data.mjs";
+import { loadSettings } from "../../../src/gui/main/settings.js";
+import { loadQueue } from "../../../src/gui/main/persist.js";
+import { headed, headedText } from "../../helpers/fileHeader.js";
 
 // The default layout as the file holds it: the main window's panes and the
 // Records window's list pane.
@@ -60,14 +63,6 @@ describe("parseLayout", () => {
 
   it("rejects a missing layout so the loader can preserve it", () => {
     expect(() => parseLayout({})).toThrow(/layout/);
-  });
-
-  it("reads the layout label-fit seeds as every pane at its minimum", () => {
-    expect(parseLayout(JSON.parse(JSON.stringify(LABEL_FIT_LAYOUT)))).toEqual({
-      jobsWidth: LAYOUT_BOUNDS.jobsWidth.min,
-      statusWidth: LAYOUT_BOUNDS.statusWidth.min,
-      recordsListWidth: RECORDS_LIST_WIDTH.min,
-    });
   });
 });
 
@@ -97,7 +92,7 @@ describe("serializeLayout", () => {
     const layout = { jobsWidth: 260, statusWidth: 420, recordsListWidth: 450 };
     const serialized = serializeLayout(layout);
     expect(parseLayout(JSON.parse(serialized))).toEqual(layout);
-    expect(JSON.parse(serialized)).toEqual({ layout });
+    expect(JSON.parse(serialized)).toEqual(headed("layout", { layout }));
   });
 
   it("clamps on write too, so a bad value can never be persisted", () => {
@@ -189,7 +184,7 @@ describe("layout file reset and ordered saves", () => {
 
   it.each([{ jobsWidth: "wide" }, { recordsListWidth: "wide" }])("falls back for wrong-shaped widths, leaving the file for the next save: %j", async (layout) => {
     const file = path.join(root, "layout.json");
-    writeFileSync(file, JSON.stringify({ layout }));
+    writeFileSync(file, headedText("layout", { layout }));
     const loaded = await loadLayout();
     expect(loaded.value).toEqual(DEFAULT_STORED);
     expect(loaded.quarantinedTo).toBeNull();
@@ -232,10 +227,39 @@ describe("layout file reset and ordered saves", () => {
     expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 250, statusWidth: 300, recordsListWidth: 420 });
   });
 
-  it("loads a layout with a leftover format marker as current", async () => {
-    writeFileSync(path.join(root, "layout.json"), JSON.stringify({ formatVersion: 9, layout: { jobsWidth: 300 } }));
+  it("reads the layout label-fit seeds as every pane at its minimum", async () => {
+    writeFileSync(path.join(root, "layout.json"), JSON.stringify(LABEL_FIT_LAYOUT));
+    expect((await loadLayout()).value).toEqual({
+      jobsWidth: LAYOUT_BOUNDS.jobsWidth.min,
+      statusWidth: LAYOUT_BOUNDS.statusWidth.min,
+      recordsListWidth: RECORDS_LIST_WIDTH.min,
+    });
+  });
+
+  it("reads label-fit's seeded settings and job as the app's own", async () => {
+    writeFileSync(path.join(root, "config.json"), JSON.stringify(labelFitConfig("de")));
+    writeFileSync(path.join(root, "queue.json"), JSON.stringify(labelFitQueue("/tmp/fit")));
+    expect(await loadSettings()).toMatchObject({ value: { language: "de", theme: "light" }, quarantinedTo: null, newer: false });
+    expect(await loadQueue()).toMatchObject({ value: { jobs: [{ id: "fit", inputs: ["/tmp/fit"] }], skipped: 0 }, quarantinedTo: null });
+  });
+
+  it("uses the default layout for one without a header, and replaces it on the next save", async () => {
+    const file = path.join(root, "layout.json");
+    writeFileSync(file, JSON.stringify({ layout: { jobsWidth: 300 } }));
     const loaded = await loadLayout();
-    expect(loaded.value).toEqual({ ...DEFAULT_STORED, jobsWidth: 300 });
+    expect(loaded.value).toEqual(DEFAULT_STORED);
     expect(loaded.quarantinedTo).toBeNull();
+    await saveLayout({ jobsWidth: 300, statusWidth: DEFAULT_STORED.statusWidth });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ ...DEFAULT_STORED, jobsWidth: 300 });
+  });
+
+  it("leaves a layout of a newer format where it is and never saves over it", async () => {
+    const file = path.join(root, "layout.json");
+    const bytes = JSON.stringify({ format: { owner: "zipkit", kind: "layout", version: 2 }, layout: { jobsWidth: 300 } });
+    writeFileSync(file, bytes);
+    const loaded = await loadLayout();
+    expect(loaded).toMatchObject({ value: DEFAULT_STORED, newer: true });
+    await expect(saveLayout({ jobsWidth: 320, statusWidth: DEFAULT_STORED.statusWidth })).rejects.toThrow(/newer format/);
+    expect(readFileSync(file, "utf8")).toBe(bytes);
   });
 });

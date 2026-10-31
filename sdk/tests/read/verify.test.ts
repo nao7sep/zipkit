@@ -14,10 +14,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ZipKit } from "../../src/index.ts";
 import { Volume } from "../../src/internal/volume.ts";
 import { fileSystemWith } from "../helpers/volume.ts";
-import { MANIFEST_FORMAT_VERSION } from "../../src/write/manifest.ts";
+import { manifestFormat, MANIFEST_FORMAT_VERSION } from "../../src/header.ts";
 import { buildZipFile, type BuildOptions, type EntryWithData } from "../helpers/writeZip.ts";
 
 const Y2020_NS = 1_577_836_800_000_000_000n;
+/** The header every manifest this build reads starts with. */
+const HEADER = { format: manifestFormat(), writer: { name: "zipkitsdk", version: "1.0.0" } };
 
 const writerOptions: BuildOptions = {
   zip64: false,
@@ -164,7 +166,7 @@ describe("integrity on any zip", () => {
 
 describe("against the embedded manifest", () => {
   it("reads a manifest whatever size it declares, refusing data that disagrees with it", async () => {
-    const archive = await writeArchive([fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [] }))]);
+    const archive = await writeArchive([fileEntry("zipkit.json", JSON.stringify({ ...HEADER, entries: [] }))]);
     await patchCentral(archive, 24, 64 * 1024 * 1024 + 1);
     await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "archive.size-mismatch" });
   });
@@ -174,7 +176,7 @@ describe("against the embedded manifest", () => {
       ? { ...fileEntry("folder", ""), type, mode: 0o40755 }
       : { ...fileEntry("link", "target.txt"), type, mode: type === "symlink" ? 0o120777 : 0o644 };
     const record = { ...manifestRecord(entry), type: type === "file" ? "symlink" : "file" };
-    const archive = await writeArchive([entry, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [record] }))]);
+    const archive = await writeArchive([entry, fileEntry("zipkit.json", JSON.stringify({ ...HEADER, entries: [record] }))]);
     const report = await new ZipKit().verify({ archive, manifest: true });
     expect(report.ok).toBe(false);
     expect(report.summary.manifestMismatched).toBe(1);
@@ -198,7 +200,7 @@ describe("against the embedded manifest", () => {
     const aData = Buffer.from("alpha", "utf8");
     // The manifest claims a.txt (real sha) and a phantom c.txt, and omits the real b.txt.
     const manifest = {
-      formatVersion: MANIFEST_FORMAT_VERSION,
+      ...HEADER,
       entries: [
         manifestRecord(fileEntry("a.txt", "alpha"), createHash("sha256").update(aData).digest("hex")),
         manifestRecord(fileEntry("c.txt", "gamma"), "de".repeat(32)),
@@ -229,28 +231,40 @@ describe("against the embedded manifest", () => {
     await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "manifest.missing", subject: "zipkit.json" });
   });
 
-  it("refuses a document that names another format, and reads one that names none", async () => {
+  it("reads a manifest by its format header alone, whatever its writer says", async () => {
     const a = fileEntry("a.txt", "alpha");
-    const named = (format?: string) => writeArchive([a, fileEntry("zipkit.json", JSON.stringify({
-      ...(format === undefined ? {} : { format }), formatVersion: MANIFEST_FORMAT_VERSION, entries: [manifestRecord(a)],
+    const archive = await writeArchive([a, fileEntry("zipkit.json", JSON.stringify({
+      format: manifestFormat(), writer: { name: "another tool", version: 7, caller: "nobody" }, entries: [manifestRecord(a)],
     }))]);
-    expect((await new ZipKit().verify({ archive: await named("zipkit.manifest"), manifest: true })).ok).toBe(true);
-    expect((await new ZipKit().verify({ archive: await named(), manifest: true })).ok).toBe(true);
-    await expect(new ZipKit().verify({ archive: await named("other.thing"), manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
+    expect((await new ZipKit().verify({ archive, manifest: true })).ok).toBe(true);
+    const unwritten = await writeArchive([a, fileEntry("zipkit.json", JSON.stringify({ format: manifestFormat(), entries: [manifestRecord(a)] }))]);
+    expect((await new ZipKit().verify({ archive: unwritten, manifest: true })).ok).toBe(true);
   });
 
-  it("refuses a manifest a newer ZipKit wrote, leaving the archive as it is", async () => {
-    const manifest = { formatVersion: MANIFEST_FORMAT_VERSION + 1, entries: [{ archivePath: "a.txt" }] };
+  it.each([
+    ["no header", {}],
+    ["a format name in place of the header", { format: "zipkit.manifest" }],
+    ["another owner", { format: { owner: "otherapp", kind: "manifest", version: 1 } }],
+    ["another kind", { format: { owner: "zipkit", kind: "config", version: 1 } }],
+    ["no owner", { format: { kind: "manifest", version: 1 } }],
+  ])("refuses a manifest with %s", async (_case, identity) => {
+    const a = fileEntry("a.txt", "alpha");
+    const archive = await writeArchive([a, fileEntry("zipkit.json", JSON.stringify({ ...identity, entries: [manifestRecord(a)] }))]);
+    await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
+  });
+
+  it("refuses a manifest of a newer format version, leaving the archive as it is", async () => {
+    const manifest = { ...HEADER, format: { ...manifestFormat(), version: MANIFEST_FORMAT_VERSION + 1 }, entries: [{ archivePath: "a.txt" }] };
     const archive = await writeArchive([fileEntry("a.txt", "alpha"), fileEntry("zipkit.json", JSON.stringify(manifest))]);
     const before = await readFile(archive);
     await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ kind: "invalid", code: "manifest.newer" });
     expect((await readFile(archive)).equals(before)).toBe(true);
   });
 
-  it.each([undefined, 0, 1.5, "1"])("rejects a manifest without a positive integer format version: %j", async (formatVersion) => {
+  it.each([undefined, 0, 1.5, "1"])("rejects a manifest without a positive integer format version: %j", async (version) => {
     const archive = await writeArchive([
       fileEntry("a.txt", "alpha"),
-      fileEntry("zipkit.json", JSON.stringify({ formatVersion, entries: [{ archivePath: "a.txt" }] })),
+      fileEntry("zipkit.json", JSON.stringify({ format: { owner: "zipkit", kind: "manifest", version }, entries: [{ archivePath: "a.txt" }] })),
     ]);
     await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
   });
@@ -277,7 +291,7 @@ describe("manifest size and CRC-32", () => {
 
   async function verify(entries: EntryWithData[], records: object[], opts?: Partial<BuildOptions>) {
     const archive = await writeArchive(
-      [...entries, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: records }))],
+      [...entries, fileEntry("zipkit.json", JSON.stringify({ ...HEADER, entries: records }))],
       opts,
     );
     return new ZipKit().verify({ archive, manifest: true });
@@ -327,7 +341,7 @@ describe("manifest size and CRC-32", () => {
   it("rejects a manifest that records one path twice or holds no entries list", async () => {
     const a = fileEntry("a.txt", "alpha");
     await expect(verify([a], [recordFor(a), recordFor(a)])).rejects.toMatchObject({ code: "manifest.invalid" });
-    const archive = await writeArchive([a, fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION }))]);
+    const archive = await writeArchive([a, fileEntry("zipkit.json", JSON.stringify(HEADER))]);
     await expect(new ZipKit().verify({ archive, manifest: true })).rejects.toMatchObject({ code: "manifest.invalid" });
   });
 
@@ -335,7 +349,7 @@ describe("manifest size and CRC-32", () => {
     const a = fileEntry("a.txt", "alpha");
     const archive = await writeArchive([
       a,
-      fileEntry("zipkit.json", JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [{ ...recordFor(a), size: 999 }] })),
+      fileEntry("zipkit.json", JSON.stringify({ ...HEADER, entries: [{ ...recordFor(a), size: 999 }] })),
     ]);
     const report = await new ZipKit().verify({ archive });
     expect(report.ok).toBe(true);
@@ -456,7 +470,7 @@ describe("per-failure logging", () => {
     // The manifest claims a.txt with a WRONG sha (→ mismatch) and a phantom
     // c.txt (→ missing), and omits the real b.txt (→ extra).
     const manifest = {
-      formatVersion: MANIFEST_FORMAT_VERSION,
+      ...HEADER,
       entries: [
         manifestRecord(fileEntry("a.txt", "alpha"), createHash("sha256").update("not-alpha").digest("hex")),
         manifestRecord(fileEntry("c.txt", "gamma"), "de".repeat(32)),
@@ -516,7 +530,7 @@ describe("directory data integrity", () => {
 
 describe("single manifest data pass", () => {
   it("reuses CRC and progress from parsing a deflated manifest, retaining local-header checks", async () => {
-    const document = JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [], note: "x".repeat(100000) });
+    const document = JSON.stringify({ ...HEADER, entries: [], note: "x".repeat(100000) });
     const archive = await writeArchive([{ ...fileEntry("zipkit.json", document), method: "deflate" }]);
     const bytes = await readFile(archive);
     const dataStart = 30 + bytes.readUInt16LE(26) + bytes.readUInt16LE(28);
@@ -545,7 +559,7 @@ describe("single manifest data pass", () => {
   });
 
   it("reports the manifest's CRC failure even when its JSON still parses", async () => {
-    const document = JSON.stringify({ formatVersion: MANIFEST_FORMAT_VERSION, entries: [], note: "alpha" });
+    const document = JSON.stringify({ ...HEADER, entries: [], note: "alpha" });
     const archive = await writeArchive([fileEntry("zipkit.json", document)]);
     const bytes = await readFile(archive);
     bytes[bytes.indexOf(Buffer.from("alpha"))] = "A".charCodeAt(0);

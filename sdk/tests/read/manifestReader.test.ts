@@ -13,15 +13,15 @@ async function read(text: string, size: number, accept: AcceptRecord = keepAll) 
 
 describe("createManifestReader", () => {
   const doc = {
-    about: "x", formatVersion: 1, policy: { exclusions: [{ pattern: "*.tmp" }] },
+    format: { owner: "zipkit", kind: "manifest", version: 1 }, about: "x", policy: { exclusions: [{ pattern: "*.tmp" }] },
     entries: [{ archivePath: "café/é.txt", size: 3, mtime: { ns: "1" } }, { archivePath: "b", size: 0, mtime: { ns: "2" } }],
     excluded: [{ archivePath: "x", reason: "pattern .DS_Store" }],
     findings: [{ rule: "r", message: "m" }],
   };
 
-  it.each([1, 3, 7, 4096])("reads the format version and every record, fed %i bytes at a time", async (size) => {
+  it.each([1, 3, 7, 4096])("reads the format header and every record, fed %i bytes at a time", async (size) => {
     const reading = await read(JSON.stringify(doc, null, 2), size);
-    expect(reading.formatVersion).toBe(1);
+    expect(reading.format).toEqual({ owner: "zipkit", kind: "manifest", version: 1 });
     expect(reading.hasEntries).toBe(true);
     expect(reading.records).toEqual(doc.entries);
     expect(reading.problem).toBeNull();
@@ -37,11 +37,12 @@ describe("createManifestReader", () => {
   });
 
   it("reports a record that is not an object, and entries that are not a list", async () => {
-    expect((await read(JSON.stringify({ formatVersion: 1, entries: [5] }), 4, (r) => (typeof r === "object" ? { keep: r } : { refuse: "not an object" }))).problem).toBe("not an object");
-    const nested = await read(JSON.stringify({ formatVersion: 1, entries: [[1, [2]], { archivePath: "after" }] }), 3);
+    expect((await read(JSON.stringify({ entries: [5] }), 4, (r) => (typeof r === "object" ? { keep: r } : { refuse: "not an object" }))).problem).toBe("not an object");
+    const nested = await read(JSON.stringify({ entries: [[1, [2]], { archivePath: "after" }] }), 3);
     expect(nested.records).toEqual([[], { archivePath: "after" }]);
-    expect((await read(JSON.stringify({ formatVersion: 1, entries: {} }), 4)).hasEntries).toBe(false);
-    expect((await read(JSON.stringify({ formatVersion: "1", entries: [] }), 4)).formatVersion).toBeNull();
+    expect((await read(JSON.stringify({ entries: {} }), 4)).hasEntries).toBe(false);
+    expect((await read(JSON.stringify({ format: "zipkit.manifest", entries: [] }), 4)).format).toBe("zipkit.manifest");
+    expect((await read(JSON.stringify({ entries: [] }), 4)).format).toBeUndefined();
   });
 
   it.each(["[]", "{\"entries\": [", "{} {}", "{\"a\": tru}"])("refuses text that is not one JSON object: %s", async (text) => {

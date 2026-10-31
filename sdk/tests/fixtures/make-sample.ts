@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ZipKit } from "../../src/index.ts";
-import { MANIFEST_FORMAT_VERSION } from "../../src/write/manifest.ts";
+import { MANIFEST_FORMAT_VERSION } from "../../src/header.ts";
 import { makeSampleTree, manifestEssentials, SAMPLE_POLICY } from "./sample-tree.ts";
 import { readManifest } from "../helpers/manifest.ts";
 

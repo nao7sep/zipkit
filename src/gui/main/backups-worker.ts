@@ -3,8 +3,8 @@
  * process posts each managed-text write here, so a slow or locked database never
  * holds the interface. It answers every record with `recorded` (written, or
  * skipped as unchanged) or `failed`, naming whether the store could not be opened
- * or the record itself failed. It imports only Node built-ins, so the tests run
- * this source as it is.
+ * or the record itself failed. It imports only Node built-ins and the file header
+ * helper, so the tests run this source as it is.
  *
  * SQLite binding: Node's built-in `node:sqlite`, not better-sqlite3, which is a
  * native addon that must be rebuilt against Electron's Node ABI on every Electron
@@ -17,11 +17,14 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { parentPort, workerData } from "node:worker_threads";
+import { openDatabaseHeader, type FileWriter } from "./file-header.ts";
 
 export interface BackupsWorkerData {
   database: string;
   /** This launch's session: each path keeps one row per session. */
   session: string;
+  /** Who writes the database's header rows. */
+  writer: FileWriter;
 }
 
 /** One managed-text write: the full absolute `path` as written, the exact
@@ -80,10 +83,12 @@ class BackupsStore {
   #openFailure: unknown = null;
   readonly #database: string;
   readonly #session: string;
+  readonly #writer: FileWriter;
 
-  constructor(database: string, session: string) {
+  constructor(database: string, session: string, writer: FileWriter) {
     this.#database = database;
     this.#session = session;
+    this.#writer = writer;
   }
 
   /** Opened on the first record, so a session that saves nothing creates no
@@ -101,6 +106,7 @@ class BackupsStore {
       mkdirSync(path.dirname(this.#database), { recursive: true });
       // The app's only connection to the file: no busy timeout, nothing to wait for.
       db = new DatabaseSync(this.#database);
+      openDatabaseHeader(db, this.#database, "backups", this.#writer);
       db.exec("PRAGMA journal_mode = WAL");
       db.exec(TABLE);
       db.exec(INDEXES);
@@ -159,8 +165,8 @@ class BackupsStore {
 
 if (parentPort) {
   const port = parentPort;
-  const { database, session } = workerData as BackupsWorkerData;
-  const store = new BackupsStore(database, session);
+  const { database, session, writer } = workerData as BackupsWorkerData;
+  const store = new BackupsStore(database, session, writer);
   const reply = (response: BackupsResponse): void => port.postMessage(response);
   port.on("message", (request: BackupsRequest) => {
     if (request.type === "close") {

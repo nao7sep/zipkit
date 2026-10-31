@@ -9,7 +9,7 @@
 
 import { ZipKit, type PathState, type PlanData, type RemovalMethod, type VerifyRequest } from "zipkitsdk";
 import type { LogEvent, ProgressCounts } from "zipkitsdk/types";
-import { APP_NAME, APP_VERSION } from "../shared/identity.js";
+import { APP_PACKAGE, APP_VERSION } from "../shared/identity.js";
 import { buildSpec, type GuiOptions } from "../shared/spec.js";
 import type { InputEntry } from "../shared/queue.js";
 import type { VerifyReport } from "../shared/api.js";
@@ -34,7 +34,7 @@ function verifyRequest(archive: string, manifestName: string | null): VerifyRequ
  *  every event itself, and the originals go to the Trash through `trash`, the
  *  platform's as Electron provides it. */
 export function appZipKit(trash?: (target: string) => Promise<void>): ZipKit {
-  return new ZipKit({ app: { name: APP_NAME, version: APP_VERSION }, debug: process.env.ZIPKIT_DEBUG === "1", trash });
+  return new ZipKit({ caller: { name: APP_PACKAGE, version: APP_VERSION }, debug: process.env.ZIPKIT_DEBUG === "1", trash });
 }
 
 /** The verbs the queue engine uses, in the app's terms. */

@@ -116,7 +116,7 @@ export function parseSettings(root: Record<string, unknown>, logger: AppLog = nu
 }
 
 export function serializeSettings(stored: Partial<GuiSettings>): string {
-  return managedJsonText(stored);
+  return managedJsonText("config", stored);
 }
 
 let current: GuiSettings = freshSettings();
@@ -128,7 +128,7 @@ export function currentSettings(): GuiSettings {
 
 /** Load config.json once, at startup, before any window exists. */
 export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJsonLoad<GuiSettings>> {
-  const load = await loadManagedJson(settingsFile(), (root) => parseSettings(root, logger), freshSettings, logger);
+  const load = await loadManagedJson(settingsFile(), "config", (root) => parseSettings(root, logger), freshSettings, logger);
   current = load.value;
   return load;
 }
