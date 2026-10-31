@@ -78,7 +78,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     getRecordsListWidth: vi.fn(async () => 380),
     saveRecordsListWidth: vi.fn(async (width: number) => width),
     onRecordsChanged: vi.fn(() => () => {}),
-    appInfo: vi.fn(async () => ({ name: "ZipKit", version: "0.1.0" })),
+    appInfo: vi.fn(async () => ({ name: "ZipKit", version: "1.0.0" })),
     openExternal: vi.fn(),
     reportError: vi.fn(),
     ...overrides,

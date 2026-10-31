@@ -37,7 +37,7 @@ describe("AboutDialog", () => {
   it("retains authored About load and link failures without exposing diagnostics", async () => {
     const appInfo = vi.fn()
       .mockRejectedValueOnce(new Error("EACCES /private/tmp/ZIPKIT_ABOUT_SENTINEL"))
-      .mockResolvedValueOnce({ name: "ZipKit", version: "0.1.0" });
+      .mockResolvedValueOnce({ name: "ZipKit", version: "1.0.0" });
     const openExternal = vi.fn(async () => { throw new Error("browser ZIPKIT_LINK_SENTINEL"); });
     const reportError = vi.fn();
     Object.defineProperty(window, "zipkit", { configurable: true, value: { appInfo, openExternal, reportError } });
@@ -47,7 +47,7 @@ describe("AboutDialog", () => {
     expect(loadAlert.textContent).toContain("App information could not be loaded");
     expect(loadAlert.textContent).not.toContain("ZIPKIT_ABOUT_SENTINEL");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText("Version 0.1.0")).toBeTruthy();
+    expect(await screen.findByText("Version 1.0.0")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Repository" }));
     const linkAlert = await screen.findByRole("alert");
@@ -66,7 +66,7 @@ describe("AboutDialog", () => {
       .mockReturnValueOnce(issues.promise);
     const reportError = vi.fn();
     Object.defineProperty(window, "zipkit", { configurable: true, value: {
-      appInfo: vi.fn(async () => ({ name: "ZipKit", version: "0.1.0" })),
+      appInfo: vi.fn(async () => ({ name: "ZipKit", version: "1.0.0" })),
       openExternal,
       reportError,
     } });

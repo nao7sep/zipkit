@@ -1,7 +1,7 @@
 {
   "name": "zipkit",
   "productName": "ZipKit",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "npm@12.2.0",
   "description": "Make ZIP archives on a Mac that open cleanly on Windows: fix file names, leave out OS-only files, and verify the result.",
@@ -74,7 +74,7 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "yaml": "^2.9.1",
-    "zipkitsdk": "0.1.0"
+    "zipkitsdk": "1.0.0"
   },
   "allowScripts": {
     "electron-winstaller@5.4.0": true,

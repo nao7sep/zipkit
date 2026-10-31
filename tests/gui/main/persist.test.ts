@@ -33,7 +33,7 @@ describe("parseQueue", () => {
     expect(parseQueue(root)).toEqual({ jobs, skipped: 0 });
   });
 
-  it("reads a leftover format marker or 0.1.0 version key as unknown", () => {
+  it("reads a leftover format marker or version key as unknown", () => {
     const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     expect(parseQueue({ formatVersion: 3, version: 1, jobs })).toEqual({ jobs, skipped: 0 });
   });

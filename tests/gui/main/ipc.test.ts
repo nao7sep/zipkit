@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({
-  app: { getName: vi.fn(() => "ZipKit"), getVersion: vi.fn(() => "0.1.0") },
+  app: { getName: vi.fn(() => "ZipKit"), getVersion: vi.fn(() => "1.0.0") },
   BrowserWindow: { getAllWindows: () => [], fromWebContents: vi.fn(() => null) },
   dialog: { showOpenDialog: vi.fn() },
   ipcMain: {

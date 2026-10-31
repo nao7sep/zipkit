@@ -1,7 +1,7 @@
 /**
  * Writes the saved sample for the current manifest format: the archive the
  * SDK makes from the sample tree, and what its manifest must keep saying.
- * Run it once when a format version is introduced (`npx tsx
+ * Run it once when a format version is introduced (`node
  * tests/fixtures/make-sample.ts` in the package); a saved sample is never
  * regenerated for a version already released, because it is the evidence of
  * what that version wrote.

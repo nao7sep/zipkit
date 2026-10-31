@@ -10,7 +10,7 @@ import { nullLog, type AppLog } from "./log.js";
 export { InvalidManagedJsonError, isPlainObject } from "./managed-json-envelope.js";
 
 /** A managed document's text: the store's own keys, with no format marker (a leftover
- *  `formatVersion` or 0.1.0 `version` key is ignored on load and dropped by the next save). */
+ *  `formatVersion` or `version` key is ignored on load and dropped by the next save). */
 export function managedJsonText(body: Record<string, unknown>): string {
   return JSON.stringify(body, null, 2);
 }

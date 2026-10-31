@@ -1,6 +1,6 @@
 {
   "name": "zipkitsdk",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "ZipKit's SDK: make ZIP archives that open cleanly on any system, fixing file names, leaving out OS-only files and verifying the result.",
   "license": "GPL-3.0-or-later",

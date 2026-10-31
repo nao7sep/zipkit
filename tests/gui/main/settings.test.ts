@@ -104,7 +104,7 @@ describe("settings sets", () => {
     expect(vi.mocked(logger.warn).mock.calls.map((call) => call[1]?.key).sort()).toEqual(["language", "theme", "uiFontFamily"]);
   });
 
-  it("accepts a 0.1.0 version key or a leftover format marker as unknown", () => {
+  it("accepts a version key or a leftover format marker as unknown", () => {
     expect(settings.parseSettings({ version: 99, language: "ja" })).toEqual({ ...DEFAULT_SETTINGS, language: "ja" });
     expect(settings.parseSettings({ formatVersion: 2, language: "ja" })).toEqual({ ...DEFAULT_SETTINGS, language: "ja" });
   });
