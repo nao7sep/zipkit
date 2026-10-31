@@ -11,7 +11,7 @@ import path from "node:path";
 import { MessageChannel, Worker, receiveMessageOnPort, type MessagePort } from "node:worker_threads";
 import { nanoid } from "nanoid";
 import { InvalidManagedJsonError, parseJsonObject } from "./managed-json-envelope.ts";
-import { isNewerFormat } from "./file-header.ts";
+import { checkHeader, isNewerFormat, type FileKind } from "./file-header.ts";
 import { StepTimeout } from "./step-timeout.ts";
 
 export interface ManagedWriteOptions {
@@ -21,6 +21,9 @@ export interface ManagedWriteOptions {
   /** True for a store whose damaged bytes hold nothing worth keeping (layout.json), so a save
    *  replaces them instead of being refused. */
   replaceUnreadable?: boolean;
+  /** The store's kind: a live file that is not this kind at this build's version is never
+   *  replaced, unless `replaceUnreadable` lets its unreadable bytes go. */
+  kind?: FileKind;
 }
 
 /**
@@ -41,7 +44,7 @@ export async function writeManagedText(file: string, bytes: Buffer, options: Man
   });
   // The one check before the rename replaces the file: a live file ZipKit cannot read is
   // never overwritten, and one from a newer format never, even where unreadable bytes may be.
-  if (current !== null) admit(current, file, options.replaceUnreadable === true);
+  if (current !== null) admit(current, file, options.replaceUnreadable === true, options.kind);
   if (current === null ? options.createAbsent === false : current.equals(bytes)) return false;
   const tmp = path.join(dir, `${path.parse(file).name}-${nanoid()}.tmp`);
   let owned = false;
@@ -68,7 +71,7 @@ export async function writeManagedText(file: string, bytes: Buffer, options: Man
 }
 
 /** Throw unless the live bytes may be replaced. */
-function admit(current: Buffer, file: string, replaceUnreadable: boolean): void {
+function admit(current: Buffer, file: string, replaceUnreadable: boolean, kind: FileKind | undefined): void {
   let root: Record<string, unknown>;
   try {
     root = parseJsonObject(current.toString("utf8"), file);
@@ -77,6 +80,7 @@ function admit(current: Buffer, file: string, replaceUnreadable: boolean): void 
     throw error;
   }
   if (isNewerFormat(root)) throw new InvalidManagedJsonError(file, "it is from a newer format and is left as it is");
+  if (kind !== undefined && !replaceUnreadable) checkHeader(root, kind, file);
 }
 
 /** What the managed-write thread is given. */

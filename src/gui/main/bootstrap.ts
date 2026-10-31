@@ -14,13 +14,16 @@ import { APP_VERSION } from "../shared/identity.js";
 import { OPEN_ABOUT_CHANNEL } from "../shared/api.js";
 import { applyThemePreference, followOsThemeChanges } from "./theme.js";
 import path from "node:path";
-import { buildRecoveryDialogs } from "./recoveryDialogs.js";
+import { buildStartupNotices } from "./startupNotices.js";
+import type { Translator, MessageValues } from "../shared/i18n/translate.js";
+import type { MessageKey } from "../shared/i18n/catalogues.js";
+import { inspectDatabase, LaunchRefusal, type Refusal } from "./refusals.js";
 import { loadRendererPage } from "./renderer-page.js";
 import { notifyRecordsChanged } from "./records-window.js";
 import { registerIpc } from "./ipc.js";
 import { beginQueueQuit, cancelRunningJobAndWait, closeQueueEdits, flushQueue, hasRunningJob, registerQueueIpc, restoreQueue, saveQueueBeforeSessionEnd, resumeQueueAfterCancelledQuit } from "./queue.js";
 import { settingsDraftOpen, settleSettingsSave, saveSettingsBeforeSessionEnd } from "./settings-save.js";
-import { loadSettings, settingsFile } from "./settings.js";
+import { loadSettings } from "./settings.js";
 import { applyTimeZonePreference, mainTranslator, onLanguageChanged, settleLanguage, settledTranslator } from "./i18n.js";
 import { installAppMenu } from "./menu.js";
 import { errorInfo } from "./log.js";
@@ -32,7 +35,7 @@ import { notifyStartupFailure, showAppMessageDialog } from "./startup-dialog.js"
 import { askDiscardSettingsDraft, askQueueNotSaved, askSettingsNotSaved, confirmQuitDuringWrite } from "./quit-confirm-dialog.js";
 import { configureWindowActivity } from "./windowActivity.js";
 import { createQuitControl, endSessionNow, finishStartupHalt, stopFlushAndExit, type QuitStep } from "./quit.js";
-import { closeBackupStore } from "./backupStore.js";
+import { closeBackupStore, storeFile } from "./backupStore.js";
 import { configureWindowMinimum } from "./window-minimum.js";
 import { forceExitProcess } from "./force-exit.js";
 import { mainWindowOptions } from "./window-options.js";
@@ -130,14 +133,28 @@ function activateMainWindow(): void {
   focusWindow(createWindow());
 }
 
+/** What the startup failure says: each refused file and why, a file that could not be read, or the
+ *  general halt. */
+function startupFailure(error: unknown, t: Translator["t"]): [MessageKey, MessageValues?] {
+  if (error instanceof LaunchRefusal) {
+    const files = error.refusals
+      .map((refusal) => t(refusal.reason === "newer" ? "startup.refusedNewer" : "startup.refusedUnreadable", { file: refusal.file }))
+      .join("\n");
+    return ["startup.refused", { files }];
+  }
+  const file = (error as { path?: unknown } | null)?.path;
+  return typeof file === "string" ? ["startup.haltedFile", { file }] : ["startup.halted"];
+}
+
 // Any startup failure reaches the user and halts. The diagnostic stays in the
 // log; the app-authored dialog carries stable recovery guidance.
 async function reportStartupHalt(error: unknown): Promise<void> {
   log.error("startup halted", { error: errorInfo(error) });
   await finishStartupHalt({
     present: async () => {
-      installAppMenu(await settledTranslator(), menuActions);
-      await notifyStartupFailure("startup.halted");
+      const translator = await settledTranslator();
+      installAppMenu(translator, menuActions);
+      await notifyStartupFailure(...startupFailure(error, translator.t));
     },
     closeBackups: (drain) => closeBackupStore(drain),
     closeLog: () => log.close(),
@@ -183,24 +200,28 @@ app.whenReady().then(async () => {
   registerQueueIpc();
   log.onStored(notifyRecordsChanged);
 
-  // Load every store before any window exists, so the renderer can never save
-  // over an unreadable file before it is set aside, and a failure to set one
-  // aside halts here. These are the only reads: main keeps the settings and the
-  // layout from now on. Each load returns its own set-aside outcome; layout is
-  // disposable view state and its recovery stays log-only.
+  // Load every store before any window exists. These are the only reads: main
+  // keeps the settings and the layout from now on. A newer file of any kind, or
+  // an unreadable settings or queue file, stops the launch before anything is
+  // written; an unreadable layout takes its defaults, and an unreadable records
+  // or backups database stays off for the session with a notice.
   const settingsLoad = await loadSettings(log);
-  const { quarantinedTo: settingsQuarantinedTo } = settingsLoad;
+  const layoutLoad = await loadLayout(log);
+  const queueLoad = await loadQueue(log);
+  const records = inspectDatabase(log.database, "records");
+  const backups = inspectDatabase(storeFile(), "backups");
+  const refusals = [settingsLoad.refused, layoutLoad.refused, queueLoad.refused, records, backups]
+    .filter((refusal): refusal is Refusal => refusal !== null && (refusal.reason === "newer" || (refusal !== records && refusal !== backups)));
+  if (refusals.length > 0) throw new LaunchRefusal(refusals);
   // The saved theme reaches the title bar, the renderer's prefers-color-scheme,
-  // and the recovery dialogs before the window exists, so launch never shows the
-  // OS appearance and then switches. A halt before this point follows the OS.
+  // and the notices before the window exists, so launch never shows the OS
+  // appearance and then switches. A halt before this point follows the OS.
   await settleLanguage(settingsLoad.value.language, logLanguageError);
   applyThemePreference(settingsLoad.value.theme);
   followOsThemeChanges();
   applyTimeZonePreference(settingsLoad.value.timeZone);
   installAppMenu(mainTranslator(), menuActions);
   onLanguageChanged((translator) => installAppMenu(translator, menuActions));
-  await loadLayout(log);
-  const queueLoad = await loadQueue(log);
 
   windowCreationReady = true;
   const initialWindow = createWindow();
@@ -210,18 +231,17 @@ app.whenReady().then(async () => {
   }
   restoreQueue(queueLoad.value.jobs);
 
-  for (const recoveryDialog of buildRecoveryDialogs({
-    settingsQuarantinedTo,
-    queueQuarantinedTo: queueLoad.quarantinedTo,
-    queueJobsRestored: queueLoad.value.jobs.length,
-    settingsNewer: settingsLoad.newer ? settingsFile() : null,
-    queueNewer: queueLoad.newer ? queueFile() : null,
+  for (const notice of buildStartupNotices({
+    queueJobsKept: queueLoad.value.kept.length,
+    queueFile: queueFile(),
+    recordsOff: records?.file ?? null,
+    backupsOff: backups?.file ?? null,
   })) {
     const { t } = mainTranslator();
     await showAppMessageDialog({
       owner: initialWindow,
-      title: t(recoveryDialog.title),
-      message: t(recoveryDialog.message.key, recoveryDialog.message.values),
+      title: t(notice.title),
+      message: t(notice.message.key, notice.message.values),
       button: "ok",
     });
   }

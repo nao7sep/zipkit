@@ -2,8 +2,8 @@
  * time, the newest submission waiting behind it, and a failed one stays for Retry. Unsubmitted
  * modal edits never enter this owner. */
 import { BrowserWindow } from "electron";
-import { changedSettings, DEFAULT_SETTINGS, type GuiSettings } from "../shared/spec.js";
-import { checkedSettings, currentSettings, saveSettings, serializeSettings, settingsFile } from "./settings.js";
+import type { GuiSettings } from "../shared/spec.js";
+import { checkedSettings, currentSettings, saveSettings, serializeSettings, settingsFile, storedSettings, admitSettingsSave } from "./settings.js";
 import { writeManagedTextWithin } from "./managed-write.js";
 import { applyThemePreference } from "./theme.js";
 import { applyLanguagePreference, applyTimeZonePreference, mainTranslator } from "./i18n.js";
@@ -69,7 +69,8 @@ async function publish(packet: GuiSettings): Promise<void> {
 export function saveSettingsBeforeSessionEnd(boundMs: number): void {
   const submitted = saves.unsaved();
   if (!submitted) return;
-  const stored = changedSettings(DEFAULT_SETTINGS, submitted);
+  admitSettingsSave();
+  const stored = storedSettings(submitted);
   writeManagedTextWithin(settingsFile(), serializeSettings(stored), boundMs, undefined,
-    { createAbsent: Object.keys(stored).length > 0 });
+    { createAbsent: Object.keys(stored).length > 0, kind: "config" });
 }

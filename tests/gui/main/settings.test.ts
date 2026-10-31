@@ -111,9 +111,11 @@ describe("settings sets", () => {
 describe("settings file location and persistence", () => {
   let root: string;
   const prev = process.env.ZIPKIT_DATA_DIR;
-  beforeEach(() => {
+  beforeEach(async () => {
     root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
     process.env.ZIPKIT_DATA_DIR = root;
+    // Main always loads before it saves; a load of the empty root starts each test from nothing kept.
+    await settings.loadSettings();
   });
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
@@ -131,7 +133,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("loads a fresh home without writing config.json", async () => {
-    expect(await settings.loadSettings()).toEqual({ value: DEFAULT_SETTINGS, missing: true, quarantinedTo: null, newer: false });
+    expect(await settings.loadSettings()).toEqual({ value: DEFAULT_SETTINGS, missing: true, refused: null });
     expect(existsSync(settings.settingsFile())).toBe(false);
     expect(readdirSync(root)).toEqual([]);
   });
@@ -155,12 +157,15 @@ describe("settings file location and persistence", () => {
     expect(readStored()).toEqual(stored({ theme: "dark" }));
   });
 
-  it("drops unknown sets and unknown newJobParameters members on the next write", async () => {
-    writeFileSync(settings.settingsFile(), headedText("config", { retired: true, newJobParameters: { ...CUSTOM.newJobParameters, unknown: "drop" } }));
+  it("keeps unknown sets and unknown newJobParameters members on every write", async () => {
+    writeFileSync(settings.settingsFile(), headedText("config", { later: { a: 1 }, newJobParameters: { ...CUSTOM.newJobParameters, later: "kept" } }));
     const loaded = (await settings.loadSettings()).value;
     expect(loaded.newJobParameters).toEqual(CUSTOM.newJobParameters);
     await settings.saveSettings({ ...loaded, theme: "light" });
-    expect(readStored()).toEqual(stored({ newJobParameters: CUSTOM.newJobParameters, theme: "light" }));
+    expect(readStored()).toEqual(stored({ later: { a: 1 }, newJobParameters: { ...CUSTOM.newJobParameters, later: "kept" }, theme: "light" }));
+    // Changing the parameters writes the new values and still keeps the member this build does not know.
+    await settings.saveSettings({ ...loaded, theme: "light", newJobParameters: { ...CUSTOM.newJobParameters, level: 3 } });
+    expect(readStored()).toEqual(stored({ later: { a: 1 }, newJobParameters: { later: "kept", ...CUSTOM.newJobParameters, level: 3 }, theme: "light" }));
   });
 
   it("a reset removes newJobParameters and keeps other stored sets", async () => {
@@ -198,25 +203,30 @@ describe("settings file location and persistence", () => {
     const bytes = headedText("config", { newJobParameters: 5, theme: "dark" });
     writeFileSync(settings.settingsFile(), bytes);
     const logger = warningLog();
-    expect(await settings.loadSettings(logger)).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null, newer: false });
+    expect(await settings.loadSettings(logger)).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, refused: null });
     expect(readFileSync(settings.settingsFile(), "utf8")).toBe(bytes);
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
-  it("an invalid default reverts alone, and the next unrelated save keeps the authored ones", async () => {
+  it("an invalid member reverts alone in use, and the file keeps it as written until the parameters change", async () => {
     const authored = { ...DEFAULT_PARAMETERS, strict: true, symlinks: "follow" as const };
     writeFileSync(settings.settingsFile(), headedText("config", { newJobParameters: { ...authored, level: 42 } }));
     const loaded = (await settings.loadSettings()).value;
     expect(loaded.newJobParameters).toEqual(authored);
     await settings.saveSettings({ ...loaded, theme: "dark" });
-    expect(readStored()).toEqual(stored({ newJobParameters: authored, theme: "dark" }));
+    expect(readStored()).toEqual(stored({ newJobParameters: { ...authored, level: 42 }, theme: "dark" }));
+    await settings.saveSettings({ ...loaded, theme: "dark", newJobParameters: { ...authored, level: 3 } });
+    expect(readStored()).toEqual(stored({ newJobParameters: { ...authored, level: 3 }, theme: "dark" }));
   });
 
-  it("a set that read as its built-in loses its key at the next save", async () => {
-    writeFileSync(settings.settingsFile(), headedText("config", { newJobParameters: 5 }));
+  it("an invalid set is kept as written while the user leaves it alone", async () => {
+    writeFileSync(settings.settingsFile(), headedText("config", { newJobParameters: 5, theme: "sepia" }));
     const loaded = (await settings.loadSettings()).value;
-    await settings.saveSettings({ ...loaded, theme: "dark" });
-    expect(readStored()).toEqual(stored({ theme: "dark" }));
+    expect(loaded).toEqual(DEFAULT_SETTINGS);
+    await settings.saveSettings({ ...loaded, language: "ja" });
+    expect(readStored()).toEqual(stored({ newJobParameters: 5, theme: "sepia", language: "ja" }));
+    await settings.saveSettings({ ...loaded, language: "ja", theme: "dark" });
+    expect(readStored()).toEqual(stored({ newJobParameters: 5, theme: "dark", language: "ja" }));
   });
 
   it("main keeps the loaded and saved settings: a later change on disk is not read back", async () => {
@@ -238,16 +248,16 @@ describe("settings file location and persistence", () => {
 
   it("reads a file by its format header alone, whatever its writer says", async () => {
     writeFileSync(settings.settingsFile(), JSON.stringify({ ...headed("config", { theme: "dark" }), writer: { name: "elsewhere", version: 3 } }));
-    expect(await settings.loadSettings()).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null, newer: false });
+    expect(await settings.loadSettings()).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, refused: null });
   });
 
-  it("leaves a file of a newer format where it is, uses the built-ins, and never saves over it", async () => {
+  it("refuses a file of a newer format and never saves over it", async () => {
+    const file = settings.settingsFile();
     const bytes = JSON.stringify({ ...headed("config", { theme: "dark" }), format: { owner: "zipkit", kind: "config", version: 2 } });
-    writeFileSync(settings.settingsFile(), bytes);
-    const loaded = await settings.loadSettings();
-    expect(loaded).toEqual({ value: DEFAULT_SETTINGS, missing: false, quarantinedTo: null, newer: true });
-    await expect(settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "light" })).rejects.toThrow(/newer format/);
-    expect(readFileSync(settings.settingsFile(), "utf8")).toBe(bytes);
+    writeFileSync(file, bytes);
+    expect(await settings.loadSettings()).toEqual({ value: DEFAULT_SETTINGS, missing: false, refused: { file, reason: "newer" } });
+    await expect(settings.saveSettings({ ...DEFAULT_SETTINGS, theme: "light" })).rejects.toThrow(/refused at launch/);
+    expect(readFileSync(file, "utf8")).toBe(bytes);
     expect(readdirSync(root)).toEqual(["config.json"]);
   });
 
@@ -259,19 +269,13 @@ describe("settings file location and persistence", () => {
     '{"format":{"owner":"zipkit","kind":"queue","version":1},"theme":"dark"}',
     '{"format":{"owner":"zipkit","kind":"config","version":0},"theme":"dark"}',
     '{"format":{"owner":"zipkit","kind":"config"},"theme":"dark"}',
-  ])("sets an unreadable file aside without replacing it: %s", async (bytes) => {
+  ])("refuses an unreadable file and never saves over it: %s", async (bytes) => {
     const file = settings.settingsFile();
     writeFileSync(file, bytes);
-    const logger = warningLog();
-    const loaded = await settings.loadSettings(logger);
-    expect(loaded.value).toEqual(DEFAULT_SETTINGS);
-    expect(existsSync(file)).toBe(false);
-    expect(readdirSync(root)).toHaveLength(1);
-    expect(loaded.quarantinedTo).toMatch(/config-\d{8}-\d{6}-utc\.invalid$/);
-    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    await settings.saveSettings({ ...loaded.value, theme: "light" });
-    expect(readStored()).toEqual(stored({ theme: "light" }));
-    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
+    const loaded = await settings.loadSettings(warningLog());
+    expect(loaded).toEqual({ value: DEFAULT_SETTINGS, missing: false, refused: { file, reason: "unreadable" } });
+    await expect(settings.saveSettings({ ...loaded.value, theme: "light" })).rejects.toThrow();
+    expect(readFileSync(file, "utf8")).toBe(bytes);
+    expect(readdirSync(root)).toEqual(["config.json"]);
   });
 });

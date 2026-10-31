@@ -31,9 +31,11 @@ const m = vi.hoisted(() => {
     logClose: fn(async () => {}),
     forceExitProcess: fn(),
     showAppMessageDialog: fn(async () => {}),
-    loadSettings: fn(async () => ({ value: { theme: "system", language: "en", timeZone: "system" }, quarantinedTo: undefined })),
+    loadSettings: fn(async (): Promise<{ value: Record<string, string>; missing: boolean; refused: { file: string; reason: string } | null }> => ({ value: { theme: "system", language: "en", timeZone: "system" }, missing: false, refused: null })),
     settleLanguage: fn(async (_value: string, _onError: unknown) => {}),
-    settledTranslator: fn(async () => ({ t: (key: string) => key })),
+    settledTranslator: fn(async () => ({ t: (key: string, values?: Record<string, unknown>) => (values ? `${key} ${JSON.stringify(values)}` : key) })),
+    notifyStartupFailure: fn(async () => {}),
+    inspectDatabase: fn((_file: unknown, _kind?: unknown): unknown => null),
     installAppMenu: fn((_translator: unknown, _actions?: { about?: () => void }) => {}),
   };
 });
@@ -61,7 +63,8 @@ vi.mock("electron", async () => {
 });
 
 vi.mock("../../../src/gui/main/theme.js", () => ({ applyThemePreference: vi.fn(), followOsThemeChanges: vi.fn() }));
-vi.mock("../../../src/gui/main/recoveryDialogs.js", () => ({ buildRecoveryDialogs: () => [] }));
+vi.mock("../../../src/gui/main/startupNotices.js", () => ({ buildStartupNotices: () => [] }));
+vi.mock("../../../src/gui/main/refusals.js", async (importOriginal) => ({ ...await importOriginal<typeof import("../../../src/gui/main/refusals.js")>(), inspectDatabase: m.inspectDatabase }));
 vi.mock("../../../src/gui/main/renderer-page.js", () => ({ loadRendererPage: async () => {} }));
 vi.mock("../../../src/gui/main/records-window.js", () => ({ notifyRecordsChanged: vi.fn() }));
 vi.mock("../../../src/gui/main/ipc.js", () => ({ registerIpc: vi.fn() }));
@@ -93,14 +96,14 @@ vi.mock("../../../src/gui/main/runtime.js", () => {
     sendQueueSaved: vi.fn(),
   };
 });
-vi.mock("../../../src/gui/main/layout.js", () => ({ layoutWritesSettled: m.layoutWritesSettled, loadLayout: async () => {} }));
-vi.mock("../../../src/gui/main/persist.js", () => ({ loadQueue: async () => ({ value: { jobs: [] }, quarantinedTo: undefined }) }));
-vi.mock("../../../src/gui/main/startup-dialog.js", () => ({ notifyStartupFailure: vi.fn(async () => {}), showAppMessageDialog: m.showAppMessageDialog }));
+vi.mock("../../../src/gui/main/layout.js", () => ({ layoutWritesSettled: m.layoutWritesSettled, loadLayout: async () => ({ value: {}, missing: true, refused: null }) }));
+vi.mock("../../../src/gui/main/persist.js", () => ({ loadQueue: async () => ({ value: { jobs: [], kept: [] }, missing: true, refused: null }), queueFile: () => "/tmp/queue.json" }));
+vi.mock("../../../src/gui/main/startup-dialog.js", () => ({ notifyStartupFailure: m.notifyStartupFailure, showAppMessageDialog: m.showAppMessageDialog }));
 vi.mock("../../../src/gui/main/quit-confirm-dialog.js", () => ({
   askDiscardSettingsDraft: vi.fn(async () => true), askQueueNotSaved: m.askQueueNotSaved, askSettingsNotSaved: m.askSettingsNotSaved, confirmQuitDuringWrite: m.confirmQuitDuringWrite,
 }));
 vi.mock("../../../src/gui/main/windowActivity.js", () => ({ configureWindowActivity: vi.fn() }));
-vi.mock("../../../src/gui/main/backupStore.js", () => ({ closeBackupStore: m.closeBackupStore }));
+vi.mock("../../../src/gui/main/backupStore.js", () => ({ closeBackupStore: m.closeBackupStore, storeFile: () => "/tmp/backups.sqlite3" }));
 vi.mock("../../../src/gui/main/window-minimum.js", () => ({ configureWindowMinimum: vi.fn() }));
 vi.mock("../../../src/gui/main/force-exit.js", () => ({ forceExitProcess: m.forceExitProcess }));
 vi.mock("../../../src/gui/main/window-options.js", () => ({ mainWindowOptions: () => ({}) }));
@@ -256,5 +259,32 @@ describe("settings admission before startup surfaces", () => {
     expect(m.installAppMenu).toHaveBeenCalledOnce();
     expect(m.settleLanguage).not.toHaveBeenCalled();
     expect(m.windows).toHaveLength(0);
+  });
+
+  it("stops the launch on every refused file, naming each and why, with no window and nothing saved", async () => {
+    Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+    m.loadSettings.mockResolvedValueOnce({ value: { theme: "system", language: "system", timeZone: "system" }, missing: false, refused: { file: "/data/config.json", reason: "unreadable" } });
+    m.inspectDatabase.mockImplementation((file: unknown) => (String(file).endsWith("backups.sqlite3") ? { file, reason: "newer" } : null));
+    await import("../../../src/gui/main/bootstrap.js");
+    await eventually(() => expect(m.app.exit).toHaveBeenCalledWith(1));
+    expect(m.notifyStartupFailure).toHaveBeenCalledOnce();
+    const [key, values] = m.notifyStartupFailure.mock.calls[0] as unknown as [string, { files: string }];
+    expect(key).toBe("startup.refused");
+    expect(values.files.split("\n")).toEqual([
+      'startup.refusedUnreadable {"file":"/data/config.json"}',
+      'startup.refusedNewer {"file":"/tmp/backups.sqlite3"}',
+    ]);
+    expect(m.windows).toHaveLength(0);
+    expect(m.settleLanguage).not.toHaveBeenCalled();
+    m.inspectDatabase.mockImplementation(() => null);
+  });
+
+  it("starts with an unreadable records database switched off rather than stopping", async () => {
+    Object.defineProperty(process, "platform", { ...platform, value: "darwin" });
+    m.inspectDatabase.mockImplementation((file: unknown) => (file === "unused" ? { file, reason: "unreadable" } : null));
+    await import("../../../src/gui/main/bootstrap.js");
+    await eventually(() => expect(m.windows).toHaveLength(1));
+    expect(m.notifyStartupFailure).not.toHaveBeenCalled();
+    m.inspectDatabase.mockImplementation(() => null);
   });
 });

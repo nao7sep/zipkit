@@ -1,16 +1,9 @@
 /**
- * Pins the invariant the shared managed-JSON loader centralizes: an unreadable file is set aside by
- * one rename OUTSIDE the read's failure handling, so a failure to set it aside PROPAGATES rather than
- * being swallowed into "return the defaults". The swallowed-failure bug this guards against is the
- * storage-path convention's forbidden "silently reset over a corrupt file": if the rename throws (a
- * transient lock, an AV hold, a permission hiccup) and the loader caught it and returned defaults,
- * the corrupt bytes would still sit at the store path and the very next save would overwrite them —
- * the user's recoverable original gone with no `.invalid` copy.
- *
- * config.json and queue.json are set aside; layout.json holds no authored work and only falls back.
- * The failure is injected once, at `node:fs/promises`' `rename`; the mock delegates every other fs
- * call to the real implementation, so the real writeFile/mkdir/readFile used to set each case up
- * still hit the throwaway root.
+ * Pins what the shared managed-JSON loader and writer promise (store-recovery conventions): a refused
+ * file, newer or unreadable, is reported and left exactly as it is, bytes, mode and modified time;
+ * layout.json holds no authored work, so its unreadable bytes only fall back and are replaced. The
+ * writer's faults are injected at `node:fs/promises`; the mock delegates every other call to the
+ * real implementation, so the real files used to set each case up still hit the throwaway root.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -93,7 +86,7 @@ function resetFaults(): void {
   stageFault.close = null;
 }
 
-describe("loadManagedJson: a failure to set aside propagates, never resets over corrupt bytes", () => {
+describe("loadManagedJson: a refused file is reported and left exactly as it is", () => {
   // Each store's load resolves its file under the ZIPKIT_DATA_DIR-relocated throwaway root, matching the
   // other file-I/O suites (settings/layout/persist).
   let root: string;
@@ -108,42 +101,34 @@ describe("loadManagedJson: a failure to set aside propagates, never resets over 
     if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
     else process.env.ZIPKIT_DATA_DIR = prev;
     resetFaults();
-    vi.useRealTimers();
     await rm(root, { recursive: true, force: true });
   });
 
-  it("config.json: the load throws and leaves the corrupt bytes in place (nothing set aside, no reset)", async () => {
-    const file = path.join(root, "config.json");
-    const corruptBytes = "{ not json";
-    writeFileSync(file, corruptBytes, "utf8");
-    armedRenameError.current = new Error("EBUSY: set-aside blocked");
+  it.each([
+    ["config.json", () => loadSettings()],
+    ["queue.json", () => loadQueue()],
+  ] as const)("%s: an unreadable file is refused with its bytes, mode, inode and modified time as they were", async (name, load) => {
+    const file = path.join(root, name);
+    writeFileSync(file, "corrupt original");
+    chmodSync(file, 0o640);
+    utimesSync(file, new Date("2000-01-01T00:00:00Z"), new Date("2001-01-01T00:00:00Z"));
+    const before = statSync(file);
 
-    await expect(loadSettings()).rejects.toThrow("EBUSY");
+    const loaded = await load();
 
-    // The corrupt file is untouched — not moved aside, not overwritten, and no `.invalid` created —
-    // so a later run (once the lock clears) can still set it aside and preserve the original bytes.
-    expect(readdirSync(root)).toEqual(["config.json"]);
-    expect(readFileSync(file, "utf8")).toBe(corruptBytes);
+    expect(loaded.refused).toEqual({ file, reason: "unreadable" });
+    expect(readdirSync(root)).toEqual([name]);
+    expect(readFileSync(file, "utf8")).toBe("corrupt original");
+    const after = statSync(file);
+    expect([after.ino, after.mtimeMs, after.mode]).toEqual([before.ino, before.mtimeMs, before.mode]);
   });
 
-  it("queue.json: the load throws and leaves the corrupt bytes in place (nothing set aside, no reset)", async () => {
-    const file = path.join(root, "queue.json");
-    const corruptBytes = "{ not json";
-    writeFileSync(file, corruptBytes, "utf8");
-    armedRenameError.current = new Error("EPERM: set-aside blocked");
-
-    await expect(loadQueue()).rejects.toThrow("EPERM");
-
-    expect(readdirSync(root)).toEqual(["queue.json"]);
-    expect(readFileSync(file, "utf8")).toBe(corruptBytes);
-  });
-
-  it("layout.json: a damaged file falls back to the default layout, is not set aside, and the next save replaces it", async () => {
+  it("layout.json: a damaged file falls back to the default layout with no refusal, and the next save replaces it", async () => {
     const file = path.join(root, "layout.json");
     writeFileSync(file, "not json", "utf8");
 
     const load = await loadLayout();
-    expect(load.quarantinedTo).toBeNull();
+    expect(load.refused).toBeNull();
     expect(load.value).toMatchObject(DEFAULT_LAYOUT);
     expect(readdirSync(root)).toEqual(["layout.json"]);
 
@@ -152,49 +137,10 @@ describe("loadManagedJson: a failure to set aside propagates, never resets over 
     expect(readdirSync(root)).toEqual(["layout.json"]);
   });
 
-  it("the propagated failure is the rename's own error, so the caller logs the real cause", async () => {
-    // The loader must not repackage or swallow the error — the caller's session log needs the
-    // actual EBUSY/EACCES cause to diagnose why the corrupt file could not be set aside.
-    const file = path.join(root, "config.json");
-    writeFileSync(file, "{ not json", "utf8");
-    const injected = new Error("EBUSY: set-aside blocked");
-    armedRenameError.current = injected;
-
-    await expect(loadSettings()).rejects.toBe(injected);
-  });
-
-  it("sets the original aside by one rename that keeps its bytes, mode and modified time, under a seconds stamp", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-01-02T03:04:05.006Z"));
-    const file = path.join(root, "config.json");
-    writeFileSync(file, "corrupt original");
-    chmodSync(file, 0o640);
-    utimesSync(file, new Date("2000-01-01T00:00:00Z"), new Date("2001-01-01T00:00:00Z"));
-    const before = statSync(file);
-
-    const loaded = await loadSettings();
-
-    expect(loaded.quarantinedTo).toBe(path.join(root, "config-20260102-030405-utc.invalid"));
-    expect(readdirSync(root)).toEqual(["config-20260102-030405-utc.invalid"]);
-    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe("corrupt original");
-    expect(statSync(loaded.quarantinedTo!).ino).toBe(before.ino);
-    expect(statSync(loaded.quarantinedTo!).mtimeMs).toBe(before.mtimeMs);
-    if (process.platform !== "win32") expect(statSync(loaded.quarantinedTo!).mode & 0o777).toBe(0o640);
-  });
-
-  it("never replaces an earlier copy under the same name: the load fails and both files stay as they were", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-01-02T03:04:05.006Z"));
-    const file = path.join(root, "config.json");
-    const earlier = path.join(root, "config-20260102-030405-utc.invalid");
-    writeFileSync(earlier, "earlier original");
-    writeFileSync(file, "second corrupt original");
-
-    await expect(loadSettings()).rejects.toMatchObject({ code: "EEXIST" });
-
-    expect(readFileSync(earlier, "utf8")).toBe("earlier original");
-    expect(readFileSync(file, "utf8")).toBe("second corrupt original");
-    expect(readdirSync(root).sort()).toEqual(["config-20260102-030405-utc.invalid", "config.json"]);
+  it("layout.json: a newer file is refused all the same", async () => {
+    const file = path.join(root, "layout.json");
+    writeFileSync(file, '{"format":{"owner":"zipkit","kind":"layout","version":2},"layout":{}}');
+    expect((await loadLayout()).refused).toEqual({ file, reason: "newer" });
   });
 
   it("a non-ENOENT read failure propagates instead of being treated as absence", async () => {

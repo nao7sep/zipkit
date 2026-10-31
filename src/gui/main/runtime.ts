@@ -105,6 +105,7 @@ export function sendQueueSaved(saved: boolean): void {
 /** An SDK failure as the window gets it: the code, its kind and the app's copy. */
 export function toGuiError(err: unknown): GuiError {
   if (!isZipKitError(err)) return { kind: "internal", code: "unknown", presentation: message("error.verifyIncomplete") };
+  if (err.code === "manifest.newer") return { kind: err.kind, code: err.code, presentation: message("error.manifestNewer") };
   return { kind: err.kind, code: err.code, presentation: message(READ_FAILURES.test(err.code) ? "error.readFailed" : "error.verifyIncomplete") };
 }
 

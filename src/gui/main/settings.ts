@@ -1,14 +1,16 @@
 /** Settings are whole user copies of independent sets; absent sets use code defaults.
- * Reads never create a config file. Invalid sets fall back independently, while
- * unreadable documents follow the shared managed-store set-aside path. Main holds
- * the settings in memory from the startup load on; every reader gets that copy,
- * and only a save changes it.
+ * Reads never create a config file. An invalid set falls back on its own while the
+ * file keeps it as written, and keys this build does not know are kept too, so a
+ * save never drops what it does not understand (config-sets conventions). A newer
+ * or unreadable file is refused and stops the launch. Main holds the settings in
+ * memory from the startup load on; every reader gets that copy, and only a save
+ * changes it.
  */
 
 import path from "node:path";
 import { isSafePathComponent, exclusionIssue } from "zipkitsdk/types";
 import { storageRoot } from "./storage.js";
-import { changedSettings, DEFAULT_OPTIONS, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, PARAMETER_KEYS, SETTINGS_KEYS, THEME_PREFERENCES, type ArchiveParameters, type GuiOptions, type GuiSettings } from "../shared/spec.js";
+import { changedSettings, DEFAULT_OPTIONS, parametersEqual, DEFAULT_PARAMETERS, DEFAULT_SETTINGS, PARAMETER_KEYS, SETTINGS_KEYS, THEME_PREFERENCES, type ArchiveParameters, type GuiOptions, type GuiSettings } from "../shared/spec.js";
 import { isLanguage } from "../shared/i18n/languages.js";
 import { COMPRESSION_LEVEL_RANGE, isCardRowLimit, isDisplayZone, isWholeNumberIn } from "../shared/spec.js";
 import { singleLine } from "../shared/textCleanup.js";
@@ -115,11 +117,71 @@ export function parseSettings(root: Record<string, unknown>, logger: AppLog = nu
   return effectiveSettings(root, logger);
 }
 
-export function serializeSettings(stored: Partial<GuiSettings>): string {
+export function serializeSettings(stored: Record<string, unknown>): string {
   return managedJsonText("config", stored);
 }
 
 let current: GuiSettings = freshSettings();
+
+/** What the loaded file held that this build does not take as written: keys it does not know, and
+ *  sets whose value it could not use in full, each as written; and the settings as loaded, so a save
+ *  can tell a set the user changed from one that still stands as the file had it. */
+let kept: { unknownKeys: Record<string, unknown>; sets: Partial<Record<keyof GuiSettings, unknown>>; loaded: GuiSettings } = {
+  unknownKeys: {},
+  sets: {},
+  loaded: freshSettings(),
+};
+
+const HEADER_KEYS = new Set(["format", "writer"]);
+
+/** The loaded file was refused: no save may reach it (store-recovery conventions). */
+let refusedFile: string | null = null;
+
+/** Throw when the loaded config.json was refused, so no save path reaches it. */
+export function admitSettingsSave(): void {
+  if (refusedFile !== null) throw new Error(`${refusedFile} was refused at launch and is not saved over`);
+}
+
+/** Whether a set's value as written is not exactly what the reader took from it. */
+function setNotTakenAsWritten(key: keyof GuiSettings, value: unknown, taken: GuiSettings): boolean {
+  if (key !== "newJobParameters") return value !== taken[key];
+  if (!isPlainObject(value)) return true;
+  const known = PARAMETER_CHECKS.map(([member]) => member as string);
+  return Object.keys(value).some((member) => !known.includes(member))
+    || PARAMETER_CHECKS.some(([member, valid]) => value[member] !== undefined && !valid(value[member]));
+}
+
+function keptFrom(root: Record<string, unknown>, loaded: GuiSettings): typeof kept {
+  const unknownKeys: Record<string, unknown> = {};
+  const sets: Partial<Record<keyof GuiSettings, unknown>> = {};
+  for (const [key, value] of Object.entries(root)) {
+    if (HEADER_KEYS.has(key)) continue;
+    if (!(SETTINGS_KEYS as readonly string[]).includes(key)) unknownKeys[key] = value;
+    else if (setNotTakenAsWritten(key as keyof GuiSettings, value, loaded)) sets[key as keyof GuiSettings] = value;
+  }
+  return { unknownKeys, sets, loaded };
+}
+
+function sameSet(key: keyof GuiSettings, a: GuiSettings, b: GuiSettings): boolean {
+  return key === "newJobParameters" ? parametersEqual(a.newJobParameters, b.newJobParameters) : a[key] === b[key];
+}
+
+/** What config.json holds for these settings: each set that differs from its built-in, a set kept
+ *  as written while the user has not changed it, unknown parameter members beside a changed set,
+ *  and every unknown key. */
+export function storedSettings(effective: GuiSettings): Record<string, unknown> {
+  const stored: Record<string, unknown> = { ...kept.unknownKeys, ...changedSettings(DEFAULT_SETTINGS, effective) };
+  for (const [key, value] of Object.entries(kept.sets) as [keyof GuiSettings, unknown][]) {
+    if (sameSet(key, effective, kept.loaded)) {
+      stored[key] = value;
+    } else if (key === "newJobParameters" && isPlainObject(value)) {
+      const known = PARAMETER_CHECKS.map(([member]) => member as string);
+      const unknownMembers = Object.fromEntries(Object.entries(value).filter(([member]) => !known.includes(member)));
+      if (Object.keys(unknownMembers).length > 0) stored[key] = { ...unknownMembers, ...effective.newJobParameters };
+    }
+  }
+  return stored;
+}
 
 /** The settings as last loaded or saved. */
 export function currentSettings(): GuiSettings {
@@ -128,8 +190,15 @@ export function currentSettings(): GuiSettings {
 
 /** Load config.json once, at startup, before any window exists. */
 export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJsonLoad<GuiSettings>> {
-  const load = await loadManagedJson(settingsFile(), "config", (root) => parseSettings(root, logger), freshSettings, logger);
+  let read: typeof kept | null = null;
+  const load = await loadManagedJson(settingsFile(), "config", (root) => {
+    const settings = parseSettings(root, logger);
+    read = keptFrom(root, settings);
+    return settings;
+  }, freshSettings, logger);
   current = load.value;
+  kept = read ?? { unknownKeys: {}, sets: {}, loaded: load.value };
+  refusedFile = load.refused?.file ?? null;
   return load;
 }
 
@@ -149,11 +218,12 @@ export function checkedSettings(settings: GuiSettings, logger: AppLog = nullLog)
 }
 
 export async function saveSettings(settings: GuiSettings, logger: AppLog = nullLog): Promise<GuiSettings> {
+  admitSettingsSave();
   const effective = checkedSettings(settings, logger);
-  const stored = changedSettings(DEFAULT_SETTINGS, effective);
+  const stored = storedSettings(effective);
   // Settings that are all built-in leave no file behind; identical bytes are not rewritten.
   // config.json holds the user's own settings, so each launch's last saved copy is backed up.
-  await writeManagedJson(settingsFile(), serializeSettings(stored), { createAbsent: Object.keys(stored).length > 0, record: true });
+  await writeManagedJson(settingsFile(), serializeSettings(stored), { createAbsent: Object.keys(stored).length > 0, record: true, kind: "config" });
   current = effective;
   return effective;
 }

@@ -108,8 +108,8 @@ export function saveQueueBeforeSessionEnd(boundMs: number): void {
 }
 
 /** Re-plan the jobs startup loaded from the queue file, each one fresh. Startup
- *  loads the file before any window exists, so nothing the window does can save
- *  over an unreadable file before it is set aside. */
+ *  loads the file before any window exists and stops on a refused one, so no
+ *  window ever saves over it. */
 export function restoreQueue(saved: SavedJob[]): void {
   log.info("queue restored", { jobs: saved.length });
   engine.restore(saved);

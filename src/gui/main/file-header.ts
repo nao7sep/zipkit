@@ -83,38 +83,46 @@ export class DatabaseHeaderError extends Error {
   }
 }
 
+/** What a database's header says: a new empty database, this kind at version 1, a newer
+ *  version, or nothing this build reads. Reads only. */
+export type DatabaseVerdict = "new" | "current" | { newer: number } | { unreadable: string };
+
+export function databaseVerdict(db: DatabaseSync, kind: FileKind): DatabaseVerdict {
+  const version = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  const tables = (db.prepare("SELECT count(*) AS n FROM sqlite_master").get() as { n: number }).n;
+  if (version === 0 && tables === 0) return "new";
+  if (version > FORMAT_VERSION) return { newer: version };
+  if (version !== FORMAT_VERSION) return { unreadable: "has no valid format version" };
+  const hasHeader = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'file_header'").get() !== undefined;
+  if (!hasHeader) return { unreadable: "has no file header" };
+  const value = (key: string): unknown => (db.prepare("SELECT value FROM file_header WHERE key = ?").get(key) as { value: unknown } | undefined)?.value;
+  if (value("format.owner") !== FILE_OWNER || value("format.kind") !== kind) return { unreadable: `does not hold ${FILE_OWNER} ${kind}` };
+  return "current";
+}
+
 /** Check, or on a new empty database create, the header of a database opened for writing, and
  *  rewrite its writer rows. Runs before anything else touches the file, so a database this build
  *  cannot read is left exactly as it was. */
 export function openDatabaseHeader(db: DatabaseSync, database: string, kind: FileKind, writer: FileWriter): void {
-  const version = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-  const tables = (db.prepare("SELECT count(*) AS n FROM sqlite_master").get() as { n: number }).n;
-  if (version === 0 && tables === 0) {
-    db.exec("BEGIN IMMEDIATE");
-    try {
+  const verdict = databaseVerdict(db, kind);
+  if (typeof verdict === "object") {
+    if ("newer" in verdict) throw new DatabaseHeaderError(database, `has format version ${verdict.newer}, newer than this build's ${FORMAT_VERSION}`, true);
+    throw new DatabaseHeaderError(database, verdict.unreadable);
+  }
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (verdict === "new") {
       db.exec("CREATE TABLE file_header (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-      const insert = db.prepare("INSERT INTO file_header (key, value) VALUES (?, ?)");
-      insert.run("format.owner", FILE_OWNER);
-      insert.run("format.kind", kind);
-      insert.run("writer.name", writer.name);
-      insert.run("writer.version", writer.version);
+      db.prepare("INSERT INTO file_header (key, value) VALUES (?, ?)").run("format.owner", FILE_OWNER);
+      db.prepare("INSERT INTO file_header (key, value) VALUES (?, ?)").run("format.kind", kind);
       db.exec(`PRAGMA user_version = ${FORMAT_VERSION}`);
-      db.exec("COMMIT");
-    } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
     }
-    return;
+    const upsert = db.prepare("INSERT INTO file_header (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value");
+    upsert.run("writer.name", writer.name);
+    upsert.run("writer.version", writer.version);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
   }
-  if (version > FORMAT_VERSION) throw new DatabaseHeaderError(database, `has format version ${version}, newer than this build's ${FORMAT_VERSION}`, true);
-  if (version !== FORMAT_VERSION) throw new DatabaseHeaderError(database, "has no valid format version");
-  const hasHeader = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'file_header'").get() !== undefined;
-  if (!hasHeader) throw new DatabaseHeaderError(database, "has no file header");
-  const value = (key: string): unknown => (db.prepare("SELECT value FROM file_header WHERE key = ?").get(key) as { value: unknown } | undefined)?.value;
-  if (value("format.owner") !== FILE_OWNER || value("format.kind") !== kind) {
-    throw new DatabaseHeaderError(database, `does not hold ${FILE_OWNER} ${kind}`);
-  }
-  const upsert = db.prepare("INSERT INTO file_header (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value");
-  upsert.run("writer.name", writer.name);
-  upsert.run("writer.version", writer.version);
 }

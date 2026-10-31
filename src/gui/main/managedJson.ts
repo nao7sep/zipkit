@@ -1,6 +1,6 @@
 /** Shared safe loading and atomic writing for the GUI's managed JSON stores. */
 
-import { lstat, readFile, rename } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { record } from "./backupStore.js";
 import { InvalidManagedJsonError, parseJsonObject } from "./managed-json-envelope.js";
@@ -8,6 +8,7 @@ import { writeManagedText, type ManagedWriteOptions } from "./managed-write.js";
 import { nullLog, type AppLog } from "./log.js";
 import { checkHeader, NewerFormatError, withHeader, type FileKind } from "./file-header.js";
 import { APP_PACKAGE, APP_VERSION } from "../shared/identity.js";
+import type { Refusal } from "./refusals.js";
 
 export { InvalidManagedJsonError, isPlainObject } from "./managed-json-envelope.js";
 
@@ -16,95 +17,60 @@ export function managedJsonText(kind: FileKind, body: Record<string, unknown>): 
   return JSON.stringify(withHeader(kind, { name: APP_PACKAGE, version: APP_VERSION }, body), null, 2);
 }
 
-/** `yyyymmdd-hhmmss-utc`. Seconds are enough (timestamp conventions): one ZipKit instance runs at
- *  a time, and it sets a store aside at most once per launch. */
-function setAsideStamp(now: Date): string {
-  return now.toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "").replace("T", "-") + "-utc";
-}
 
-/** Move an unreadable store aside by one rename in its own directory, so its bytes and modified
- *  time stay as they were. An earlier copy under the same name is never replaced: the clash fails
- *  the load like any other failure to set aside, and the live bytes stay where they are. rename()
- *  itself would replace, so absence is checked first; with one instance, loading before any window
- *  exists, nothing in ZipKit can take the name in between. */
-async function setAside(file: string, logger: AppLog, now: Date): Promise<string> {
-  const target = path.join(path.dirname(file), `${path.parse(file).name}-${setAsideStamp(now)}.invalid`);
-  const taken = await lstat(target).then(() => true, (error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  });
-  if (taken) throw Object.assign(new Error(`cannot set ${file} aside: ${target} already exists`), { code: "EEXIST" });
-  await rename(file, target);
-  logger.warn("set aside an unreadable managed file", { original: file, setAside: target });
-  return target;
-}
-
-/** A load's parsed value plus where an unreadable original was set aside (null when the file was
- *  fine or absent). Each load reports its own outcome to its caller — there is no shared journal, so
- *  a reporting surface can never drain empty because it ran before the loads, and an unreported
- *  outcome is visible in the caller's code rather than rotting in a global. */
+/** A load's parsed value, whether the file was absent, and why it was refused when it was. Each load
+ *  reports its own outcome to its caller, which decides what a refusal does. */
 export interface ManagedJsonLoad<T> {
   value: T;
-  quarantinedTo: string | null;
   missing: boolean;
-  /** The file names a later format version: it stays as it is, no save replaces it, and the
-   *  defaults are used meanwhile. */
-  newer: boolean;
+  /** The file was refused; `value` is then the defaults, and nothing replaces the file unless the
+   *  store is disposable and its unreadable bytes may go. */
+  refused: Refusal | null;
 }
 
-export interface ManagedJsonLoadOptions<T> {
-  /** False for a store whose damaged bytes hold nothing worth keeping (layout.json): it falls back
-   *  to its default with a log line, and its next save replaces the bytes. */
-  setAsideInvalid?: boolean;
-  /** Whether a parsed value left part of the file unread (a queue job that could not be read): the
-   *  original is then set aside whole while the readable part is used. */
-  incomplete?: (value: T) => boolean;
+export interface ManagedJsonLoadOptions {
+  /** True for a store whose unreadable bytes hold nothing worth keeping (layout.json): it falls back
+   *  to its default with a log line and no refusal, and its next save replaces the bytes. A newer
+   *  file is refused all the same. */
+  disposable?: boolean;
 }
 
-/** Load at startup without ever returning defaults while unreadable bytes remain at the live path.
- *  The document must be a JSON object whose header names `kind`; `parse` reads the store's own keys
- *  from it. A failure to set the file aside propagates, leaving the live bytes untouched. */
+/** Load at startup. The document must be a JSON object whose header names `kind`; `parse` reads the
+ *  store's own keys from it, throwing {@link InvalidManagedJsonError} for what it cannot read. A
+ *  refused file is reported and left exactly as it is. Read errors other than absence propagate. */
 export async function loadManagedJson<T>(
   file: string,
   kind: FileKind,
   parse: (root: Record<string, unknown>) => T,
   onDefault: () => T,
   logger: AppLog = nullLog,
-  options: ManagedJsonLoadOptions<T> = {},
+  options: ManagedJsonLoadOptions = {},
 ): Promise<ManagedJsonLoad<T>> {
   let text: string;
   try {
     text = await readFile(file, { encoding: "utf8" });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { value: onDefault(), quarantinedTo: null, missing: true, newer: false };
-    }
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { value: onDefault(), missing: true, refused: null };
     throw err;
   }
   const store = path.basename(file);
-  let value: T;
   try {
     const root = parseJsonObject(text, store);
     checkHeader(root, kind, store);
-    value = parse(root);
+    return { value: parse(root), missing: false, refused: null };
   } catch (err) {
     if (err instanceof NewerFormatError) {
-      // Not damage: the file stays where it is, and the save admission refuses to replace it.
-      logger.warn("managed file is from a newer format; leaving it as it is and using defaults", { file, error: err.message });
-      return { value: onDefault(), quarantinedTo: null, missing: false, newer: true };
+      logger.warn("managed file is from a newer format; refusing it", { file, error: err.message });
+      return { value: onDefault(), missing: false, refused: { file, reason: "newer" } };
     }
     if (!(err instanceof InvalidManagedJsonError)) throw err;
-    if (options.setAsideInvalid === false) {
+    if (options.disposable === true) {
       logger.warn("unreadable managed file; using defaults until the next save replaces it", { file, error: err.message });
-      return { value: onDefault(), quarantinedTo: null, missing: false, newer: false };
+      return { value: onDefault(), missing: false, refused: null };
     }
-    // Setting aside is outside the parse catch, so its failure propagates.
-    return { value: onDefault(), quarantinedTo: await setAside(file, logger, new Date()), missing: false, newer: false };
+    logger.warn("unreadable managed file; refusing it", { file, error: err.message });
+    return { value: onDefault(), missing: false, refused: { file, reason: "unreadable" } };
   }
-  if (options.incomplete?.(value)) {
-    return { value, quarantinedTo: await setAside(file, logger, new Date()), missing: false, newer: false };
-  }
-  return { value, quarantinedTo: null, missing: false, newer: false };
 }
 
 /**

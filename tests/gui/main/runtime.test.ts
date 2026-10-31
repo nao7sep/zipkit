@@ -133,4 +133,9 @@ describe("GUI error presentation", () => {
     const write = new ZipKitError("write.source-changed", "x");
     expect(toGuiError(write).presentation).toEqual({ key: "error.verifyIncomplete" });
   });
+
+  it("says a manifest of a newer format needs that version, not that the archive is unreadable", () => {
+    const newer = new ZipKitError("manifest.newer", "manifest zipkit.json has format version 2");
+    expect(toGuiError(newer)).toMatchObject({ code: "manifest.newer", presentation: { key: "error.manifestNewer" } });
+  });
 });

@@ -29,7 +29,7 @@ import type { BackupsRequest, BackupsResponse, BackupsWorkerData } from "./backu
 /** The store file under the resolved storage root. Computed when the thread starts (not frozen into a
  *  module constant at import time) so `ZIPKIT_DATA_DIR` is read after the environment is set, per the
  *  storage-path convention's caution against import-time resolution. */
-function storeFile(): string {
+export function storeFile(): string {
   return path.join(storageRoot(), "backups.sqlite3");
 }
 

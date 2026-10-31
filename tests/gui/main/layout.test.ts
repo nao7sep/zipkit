@@ -148,7 +148,7 @@ describe("layout file reset and ordered saves", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("a corrupt layout.json falls back to the default layout with one log line, and nothing is set aside", async () => {
+  it("a corrupt layout.json falls back to the default layout with one log line and no refusal", async () => {
     const file = path.join(root, "layout.json");
     const corruptBytes = "not json";
     writeFileSync(file, corruptBytes, "utf8");
@@ -160,10 +160,10 @@ describe("layout file reset and ordered saves", () => {
       error() {},
     };
 
-    const { value: layout, quarantinedTo } = await loadLayout(logger);
+    const { value: layout, refused } = await loadLayout(logger);
 
     expect(layout).toEqual(DEFAULT_STORED);
-    expect(quarantinedTo).toBeNull();
+    expect(refused).toBeNull();
     expect(readdirSync(root)).toEqual(["layout.json"]);
     expect(readFileSync(file, "utf8")).toBe(corruptBytes);
     expect(warnings).toHaveLength(1);
@@ -187,7 +187,7 @@ describe("layout file reset and ordered saves", () => {
     writeFileSync(file, headedText("layout", { layout }));
     const loaded = await loadLayout();
     expect(loaded.value).toEqual(DEFAULT_STORED);
-    expect(loaded.quarantinedTo).toBeNull();
+    expect(loaded.refused).toBeNull();
     expect(readdirSync(root)).toEqual(["layout.json"]);
   });
 
@@ -239,8 +239,8 @@ describe("layout file reset and ordered saves", () => {
   it("reads label-fit's seeded settings and job as the app's own", async () => {
     writeFileSync(path.join(root, "config.json"), JSON.stringify(labelFitConfig("de")));
     writeFileSync(path.join(root, "queue.json"), JSON.stringify(labelFitQueue("/tmp/fit")));
-    expect(await loadSettings()).toMatchObject({ value: { language: "de", theme: "light" }, quarantinedTo: null, newer: false });
-    expect(await loadQueue()).toMatchObject({ value: { jobs: [{ id: "fit", inputs: ["/tmp/fit"] }], skipped: 0 }, quarantinedTo: null });
+    expect(await loadSettings()).toMatchObject({ value: { language: "de", theme: "light" }, refused: null });
+    expect(await loadQueue()).toMatchObject({ value: { jobs: [{ id: "fit", inputs: ["/tmp/fit"] }], kept: [] }, refused: null });
   });
 
   it("uses the default layout for one without a header, and replaces it on the next save", async () => {
@@ -248,7 +248,7 @@ describe("layout file reset and ordered saves", () => {
     writeFileSync(file, JSON.stringify({ layout: { jobsWidth: 300 } }));
     const loaded = await loadLayout();
     expect(loaded.value).toEqual(DEFAULT_STORED);
-    expect(loaded.quarantinedTo).toBeNull();
+    expect(loaded.refused).toBeNull();
     await saveLayout({ jobsWidth: 300, statusWidth: DEFAULT_STORED.statusWidth });
     expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ ...DEFAULT_STORED, jobsWidth: 300 });
   });
@@ -258,7 +258,7 @@ describe("layout file reset and ordered saves", () => {
     const bytes = JSON.stringify({ format: { owner: "zipkit", kind: "layout", version: 2 }, layout: { jobsWidth: 300 } });
     writeFileSync(file, bytes);
     const loaded = await loadLayout();
-    expect(loaded).toMatchObject({ value: DEFAULT_STORED, newer: true });
+    expect(loaded).toMatchObject({ value: DEFAULT_STORED, refused: { reason: "newer" } });
     await expect(saveLayout({ jobsWidth: 320, statusWidth: DEFAULT_STORED.statusWidth })).rejects.toThrow(/newer format/);
     expect(readFileSync(file, "utf8")).toBe(bytes);
   });

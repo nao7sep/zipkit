@@ -69,10 +69,11 @@ const saves = newestSave((layout: StoredLayout) =>
 
 /** Load the persisted layout once, at startup; the default layout if there is no file or it is
  *  damaged. Layout is disposable view state (store-recovery conventions), so a damaged file is not
- *  set aside or reported beyond a log line, and the next save replaces it. */
+ *  reported beyond a log line, and the next save replaces it; a newer one is refused, for the launch
+ *  to stop on, and no save replaces it. */
 export async function loadLayout(logger: AppLog = nullLog): Promise<ManagedJsonLoad<StoredLayout>> {
   // No window exists yet, so no save can be waiting on this assignment.
-  const load = await loadManagedJson(layoutFile(), "layout", parseLayout, freshLayout, logger, { setAsideInvalid: false });
+  const load = await loadManagedJson(layoutFile(), "layout", parseLayout, freshLayout, logger, { disposable: true });
   current = { ...load.value };
   return load;
 }

@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,7 +18,6 @@ import {
   serializeQueue,
   toResumable,
 } from "../../../src/gui/main/persist.js";
-import type { AppLog } from "../../../src/gui/main/log.js";
 import type { Job } from "../../../src/gui/shared/queue.js";
 import { DEFAULT_OPTIONS } from "../../../src/gui/shared/spec.js";
 import { closeBackupStore } from "../../../src/gui/main/backupStore.js";
@@ -31,7 +30,7 @@ describe("parseQueue", () => {
     const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
     const root = JSON.parse(serializeQueue(jobs));
     expect(root).toEqual(headed("queue", { jobs }));
-    expect(parseQueue(root)).toEqual({ jobs, skipped: 0 });
+    expect(parseQueue(root)).toEqual({ jobs, kept: [] });
   });
 
   it("defaults missing option fields over DEFAULT_OPTIONS", () => {
@@ -51,7 +50,7 @@ describe("parseQueue", () => {
     };
     const read = parseQueue(root);
     expect(read.jobs.map((job) => job.id)).toEqual(["a", "b", "d"]);
-    expect(read.skipped).toBe(2);
+    expect(read.kept).toEqual([{ inputs: ["/y"] }, { id: "c", inputs: ["/c"], options: { level: "high" } }]);
   });
 
   it("rejects a non-array jobs field as a whole", () => {
@@ -59,12 +58,12 @@ describe("parseQueue", () => {
     expect(() => parseQueue({})).toThrow(/jobs/);
   });
 
-  it("skips an empty job ID and a repeated one, keeping the first", () => {
+  it("keeps an empty job ID and a repeated one as written, restoring the first", () => {
     const entry = { inputs: ["/x"], options: DEFAULT_OPTIONS };
-    expect(parseQueue({ jobs: [{ id: "", ...entry }] })).toEqual({ jobs: [], skipped: 1 });
+    expect(parseQueue({ jobs: [{ id: "", ...entry }] })).toEqual({ jobs: [], kept: [{ id: "", ...entry }] });
     const repeated = parseQueue({ jobs: [{ id: "a", ...entry, inputs: ["/first"] }, { id: "a", ...entry, inputs: ["/second"] }] });
     expect(repeated.jobs).toEqual([{ id: "a", ...entry, inputs: ["/first"] }]);
-    expect(repeated.skipped).toBe(1);
+    expect(repeated.kept).toEqual([{ id: "a", ...entry, inputs: ["/second"] }]);
   });
 });
 
@@ -75,9 +74,11 @@ describe("queue file location and persistence", () => {
   let root: string;
   const prev = process.env.ZIPKIT_DATA_DIR;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     root = mkdtempSync(path.join(tmpdir(), "zipkit-home-"));
     process.env.ZIPKIT_DATA_DIR = root;
+    // Main always loads before it saves; a load of the empty root starts each test unrefused.
+    await loadQueue();
   });
   afterEach(async () => {
     if (prev === undefined) delete process.env.ZIPKIT_DATA_DIR;
@@ -100,7 +101,7 @@ describe("queue file location and persistence", () => {
     // out here; that they never carry a `.tmp` is what this still proves.
     expect(managedEntries(root)).toEqual(["queue.json"]);
     expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs }));
-    expect((await loadQueue()).value).toEqual({ jobs, skipped: 0 });
+    expect((await loadQueue()).value).toEqual({ jobs, kept: [] });
   });
 
   it("saves the queue before returning for the end of a session, through the same atomic write", async () => {
@@ -109,7 +110,7 @@ describe("queue file location and persistence", () => {
     saveQueueWithin(jobs, 10_000);
 
     expect(managedEntries(root)).toEqual(["queue.json"]);
-    expect((await loadQueue()).value).toEqual({ jobs, skipped: 0 });
+    expect((await loadQueue()).value).toEqual({ jobs, kept: [] });
   });
 
   it("throws when the session-end save fails", () => {
@@ -122,93 +123,46 @@ describe("queue file location and persistence", () => {
   });
 
   it("loads an empty queue when no file exists under the root", async () => {
-    expect((await loadQueue()).value).toEqual({ jobs: [], skipped: 0 });
-  });
-
-  it("sets a corrupt queue.json aside (bytes intact) and returns an empty queue", async () => {
-    const file = path.join(root, "queue.json");
-    const corruptBytes = "{ not json";
-    writeFileSync(file, corruptBytes, "utf8");
-    const warnings: { message: string; fields?: Record<string, unknown> }[] = [];
-    const logger: AppLog = {
-      debug() {},
-      info() {},
-      warn: (message, fields) => warnings.push({ message, fields }),
-      error() {},
-    };
-
-    const { value, quarantinedTo } = await loadQueue(logger);
-
-    expect(value).toEqual({ jobs: [], skipped: 0 });
-    expect(existsSync(file)).toBe(false); // moved aside, not left in place
-    const entries = readdirSync(root);
-    expect(entries).toHaveLength(1);
-    const quarantined = entries[0]!;
-    expect(quarantined).toMatch(/^queue-\d{8}-\d{6}-utc\.invalid$/);
-    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(corruptBytes);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]?.fields?.original).toBe(file);
-    expect(warnings[0]?.fields?.setAside).toBe(path.join(root, quarantined));
-    expect(quarantinedTo).toBe(path.join(root, quarantined));
-  });
-
-  it("a save after setting aside writes a fresh queue.json and never touches the set-aside copy", async () => {
-    const file = path.join(root, "queue.json");
-    writeFileSync(file, "{ not json", "utf8");
-    await loadQueue();
-    const quarantined = readdirSync(root).find((name) => name.endsWith(".invalid"))!;
-    const before = readFileSync(path.join(root, quarantined), "utf8");
-
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
-    await saveQueue(jobs);
-
-    expect(readFileSync(path.join(root, quarantined), "utf8")).toBe(before);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs }));
-    expect(managedEntries(root).sort()).toEqual(["queue.json", quarantined].sort());
-  });
-
-  it("an unreadable job sets the whole original aside and restores its readable siblings", async () => {
-    const file = path.join(root, "queue.json");
-    const good = { id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS };
-    const bytes = headedText("queue", { jobs: [good, { id: "", inputs: ["/y"] }] });
-    writeFileSync(file, bytes);
-    const loaded = await loadQueue();
-    expect(loaded.value).toEqual({ jobs: [good], skipped: 1 });
-    // Every job, the unreadable one included, stays on disk in the set-aside copy until the next
-    // save writes the readable ones back to queue.json.
-    expect(existsSync(file)).toBe(false);
-    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
-    await saveQueue(loaded.value.jobs);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs: [good] }));
-    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
-  });
-
-  it("a queue whose every job is unreadable is set aside and starts empty", async () => {
-    const bytes = headedText("queue", { jobs: [{ id: "", inputs: ["/x"] }] });
-    writeFileSync(path.join(root, "queue.json"), bytes);
-    const loaded = await loadQueue();
-    expect(loaded.value).toEqual({ jobs: [], skipped: 1 });
-    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
-  });
-
-  it("leaves a queue of a newer format where it is, starts empty, and never saves over it", async () => {
-    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
-    const bytes = JSON.stringify({ ...headed("queue", { jobs }), format: { owner: "zipkit", kind: "queue", version: 2 } });
-    writeFileSync(path.join(root, "queue.json"), bytes);
-    expect(await loadQueue()).toEqual({ value: { jobs: [], skipped: 0 }, quarantinedTo: null, missing: false, newer: true });
-    await expect(saveQueue(jobs)).rejects.toThrow(/newer format/);
-    expect(readFileSync(path.join(root, "queue.json"), "utf8")).toBe(bytes);
+    expect((await loadQueue()).value).toEqual({ jobs: [], kept: [] });
   });
 
   it.each([
-    ["no header", { jobs: [] }],
-    ["another kind", { format: { owner: "zipkit", kind: "config", version: 1 }, jobs: [] }],
-  ])("sets aside a queue with %s", async (_case, document) => {
-    const bytes = JSON.stringify(document);
-    writeFileSync(path.join(root, "queue.json"), bytes);
+    ["not JSON", "{ not json"],
+    ["no header", JSON.stringify({ jobs: [] })],
+    ["another kind", JSON.stringify({ format: { owner: "zipkit", kind: "config", version: 1 }, jobs: [] })],
+    ["no job list", headedText("queue", { jobs: "x" })],
+  ])("refuses a queue file with %s, leaves it as it is, and never saves over it", async (_case, bytes) => {
+    const file = path.join(root, "queue.json");
+    writeFileSync(file, bytes);
     const loaded = await loadQueue();
-    expect(loaded.value).toEqual({ jobs: [], skipped: 0 });
-    expect(readFileSync(loaded.quarantinedTo!, "utf8")).toBe(bytes);
+    expect(loaded).toEqual({ value: { jobs: [], kept: [] }, missing: false, refused: { file, reason: "unreadable" } });
+    await expect(saveQueue([{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }])).rejects.toThrow();
+    expect(readFileSync(file, "utf8")).toBe(bytes);
+    expect(readdirSync(root)).toEqual(["queue.json"]);
+  });
+
+  it("refuses a queue of a newer format and never saves over it", async () => {
+    const file = path.join(root, "queue.json");
+    const jobs = [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS }];
+    const bytes = JSON.stringify({ ...headed("queue", { jobs }), format: { owner: "zipkit", kind: "queue", version: 2 } });
+    writeFileSync(file, bytes);
+    expect(await loadQueue()).toEqual({ value: { jobs: [], kept: [] }, missing: false, refused: { file, reason: "newer" } });
+    await expect(saveQueue(jobs)).rejects.toThrow(/refused at launch/);
+    expect(readFileSync(file, "utf8")).toBe(bytes);
+  });
+
+  it("restores the readable jobs and writes the unreadable ones back after them on every save", async () => {
+    const file = path.join(root, "queue.json");
+    const good = { id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS };
+    const unreadable = { id: "", inputs: ["/y"], later: true };
+    writeFileSync(file, headedText("queue", { jobs: [unreadable, good] }));
+    const loaded = await loadQueue();
+    expect(loaded).toMatchObject({ value: { jobs: [good], kept: [unreadable] }, refused: null });
+    const added = { id: "b", inputs: ["/z"], options: DEFAULT_OPTIONS };
+    await saveQueue([good, added]);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs: [good, added, unreadable] }));
+    await saveQueue([]);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(headed("queue", { jobs: [unreadable] }));
   });
 });
 

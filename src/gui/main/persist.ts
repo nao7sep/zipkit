@@ -3,10 +3,10 @@
  * inputs and options — never the transient run state or the run's intent;
  * restored jobs are re-planned fresh and verify and keep their originals. The file lives under zipkit's storage root (`ZIPKIT_DATA_DIR`
  * or `~/.zipkit`, resolved in one place by the SDK's {@link storageRoot}, beside
- * the records database). Parsing defaults absent option fields but skips malformed
- * jobs and repeated durable identities, so the readable jobs carry on while the
- * original file, with every job in it, is set aside rather than silently dropped
- * or aliased.
+ * the records database). Parsing defaults absent option fields. A malformed job,
+ * or one that repeats an earlier job's identity, is not restored but kept exactly
+ * as written, and every save writes it back after the live jobs, so nothing the
+ * file held is dropped or aliased.
  */
 
 import path from "node:path";
@@ -32,10 +32,10 @@ export function toResumable(jobs: Job[]): SavedJob[] {
     .map((j) => ({ id: j.id, inputs: j.inputs, options: j.options }));
 }
 
-/** The queue file's readable jobs, and how many it held that could not be read. */
+/** The queue file's readable jobs, and the entries it held that could not be read, as written. */
 export interface QueueRead {
   jobs: SavedJob[];
-  skipped: number;
+  kept: unknown[];
 }
 
 /** One saved job, or an error naming what makes it unreadable. */
@@ -56,14 +56,14 @@ function parseJob(entry: unknown, ids: Set<string>): SavedJob {
 }
 
 /** Read resumable jobs from the queue file's root object, defaulting absent option fields. A job
- *  that cannot be read, or repeats an earlier job's ID, is skipped and counted; a file whose `jobs`
- *  is not a list is unreadable as a whole. */
+ *  that cannot be read, or repeats an earlier job's ID, is kept as written; a file whose `jobs` is
+ *  not a list is unreadable as a whole. */
 export function parseQueue(root: Record<string, unknown>, logger: AppLog = nullLog): QueueRead {
   if (!Array.isArray(root.jobs)) throw new InvalidManagedJsonError("queue.json", "jobs must be an array");
 
   const jobs: SavedJob[] = [];
+  const kept: unknown[] = [];
   const ids = new Set<string>();
-  let skipped = 0;
   for (const [index, entry] of root.jobs.entries()) {
     try {
       const job = parseJob(entry, ids);
@@ -71,34 +71,41 @@ export function parseQueue(root: Record<string, unknown>, logger: AppLog = nullL
       jobs.push(job);
     } catch (err) {
       if (!(err instanceof InvalidManagedJsonError)) throw err;
-      skipped++;
-      logger.warn("skipped an unreadable saved job", { index, error: err.message });
+      kept.push(entry);
+      logger.warn("kept an unreadable saved job as written", { index, error: err.message });
     }
   }
-  return { jobs, skipped };
+  return { jobs, kept };
 }
 
-/** Serialize resumable jobs to queue-file text. Pure. */
-export function serializeQueue(jobs: SavedJob[]): string {
-  return managedJsonText("queue", { jobs });
+/** Serialize resumable jobs to queue-file text, the unreadable entries the file held after them. Pure. */
+export function serializeQueue(jobs: SavedJob[], kept: readonly unknown[] = []): string {
+  return managedJsonText("queue", { jobs: [...jobs, ...kept] });
 }
 
-/** Load the persisted resumable jobs. Returns an empty list when there is simply
- *  no file yet (the normal first-run case); a genuine read error is thrown so the
- *  caller can log it through the session log rather than swallowing it. A file
- *  that cannot be read at all is set aside before returning an empty queue; one
- *  with unreadable jobs is set aside whole, and its readable jobs are returned,
- *  so each job is kept on disk until the next save writes the readable ones.
- *  Failures to set aside and non-ENOENT read errors propagate. */
+/** The unreadable entries the loaded file held, written back by every save. */
+let keptJobs: readonly unknown[] = [];
+/** The loaded file was refused: no save may reach it (store-recovery conventions). */
+let refusedFile: string | null = null;
+
+function admitSave(): void {
+  if (refusedFile !== null) throw new Error(`${refusedFile} was refused at launch and is not saved over`);
+}
+
+/** Load the persisted resumable jobs once, at startup. An absent file is an empty queue (the normal
+ *  first run); a newer or unreadable file is refused and left as it is, for the launch to stop on.
+ *  Read errors other than absence propagate. */
 export async function loadQueue(logger: AppLog = nullLog): Promise<ManagedJsonLoad<QueueRead>> {
-  return loadManagedJson(
+  const load = await loadManagedJson(
     queueFile(),
     "queue",
     (root) => parseQueue(root, logger),
-    () => ({ jobs: [], skipped: 0 }),
+    () => ({ jobs: [], kept: [] }),
     logger,
-    { incomplete: (read) => read.skipped > 0 },
   );
+  keptJobs = load.value.kept;
+  refusedFile = load.refused?.file ?? null;
+  return load;
 }
 
 /** Persist resumable jobs through the shared managed-text atomic write (temp file + rename), so a crash
@@ -106,12 +113,14 @@ export async function loadQueue(logger: AppLog = nullLog): Promise<ManagedJsonLo
  *  rather than holding any (developer decision), so it is not backed up. Throws on failure; the
  *  caller logs it through the session log. */
 export async function saveQueue(jobs: SavedJob[]): Promise<void> {
-  await writeManagedJson(queueFile(), serializeQueue(jobs));
+  admitSave();
+  await writeManagedJson(queueFile(), serializeQueue(jobs, keptJobs), { kind: "queue" });
 }
 
 /** Persist resumable jobs before returning, within `boundMs`, for the end of a Windows session,
  *  which follows as soon as its handler returns. The same atomic write runs on its own thread
  *  (managed-write.ts). Throws when the write failed or did not finish in time. */
 export function saveQueueWithin(jobs: SavedJob[], boundMs: number): void {
-  writeManagedTextWithin(queueFile(), serializeQueue(jobs), boundMs);
+  admitSave();
+  writeManagedTextWithin(queueFile(), serializeQueue(jobs, keptJobs), boundMs, undefined, { kind: "queue" });
 }
