@@ -215,9 +215,9 @@ export function validateCallOptions(options: unknown): void {
 
 const INSTANCE_OPTIONS = new Set(["policy", "caller", "chunkSize", "debug", "trash"]);
 
-const programSchema = z.strictObject({ name: z.string().min(1).max(256), version: z.string().min(1).max(256).optional() });
+const programSchema = z.strictObject({ name: z.string().min(1).max(256), version: z.string().min(1).max(256) });
 
-/** The app a caller names for its manifests: a name and an optional version,
+/** The app a caller names for its manifests: a name and a version,
  *  each short enough that the manifest's size stays bounded. */
 export function validateCaller(caller: unknown): Program {
   const result = programSchema.safeParse(caller);

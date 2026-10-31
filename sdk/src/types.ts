@@ -555,7 +555,7 @@ export type RecordedPolicy = Omit<ArchivePolicy, "timeZone" | "exclusions"> & {
 /** The app a manifest names as the SDK's caller. */
 export interface Program {
   name: string;
-  version?: string;
+  version: string;
 }
 
 /** A file entry singled out for its modification time — the oldest or newest in
