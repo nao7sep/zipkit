@@ -59,4 +59,21 @@ describe("buildRecoveryDialogs", () => {
     expect(message).toContain("restored the jobs it could read");
     expect(message).not.toContain("empty queue");
   });
+
+  it("says a settings or queue file from a newer format was left as it is", () => {
+    const dialogs = buildRecoveryDialogs({
+      settingsQuarantinedTo: null,
+      queueQuarantinedTo: null,
+      queueJobsRestored: 0,
+      settingsNewer: "/tmp/.zipkit/config.json",
+      queueNewer: "/tmp/.zipkit/queue.json",
+    });
+
+    expect(dialogs.map((dialog) => t(dialog.title))).toEqual(["Saved file from a newer ZipKit", "Saved file from a newer ZipKit"]);
+    const [settings, queue] = dialogs.map((dialog) => t(dialog.message.key, dialog.message.values));
+    expect(settings).toContain("/tmp/.zipkit/config.json is from a newer version of ZipKit");
+    expect(settings).toContain("default settings");
+    expect(queue).toContain("/tmp/.zipkit/queue.json is from a newer version of ZipKit");
+    expect(queue).toContain("empty queue");
+  });
 });
