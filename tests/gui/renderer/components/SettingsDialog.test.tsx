@@ -33,7 +33,7 @@ Object.defineProperty(window, "zipkit", {
  *  a chosen UI font, a chosen theme, and a chosen language — so a reset's reach
  *  is visible on each. */
 const CUSTOM: GuiSettings = {
-  defaults: { ...DEFAULT_PARAMETERS, level: 9, exclude: false },
+  newJobParameters: { ...DEFAULT_PARAMETERS, level: 9, exclude: false },
   uiFontFamily: "Iosevka, monospace",
   theme: "dark",
   language: "fr",
@@ -70,11 +70,11 @@ describe("SettingsDialog theme", () => {
     expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, theme: "light" });
   });
 
-  it("leaves the theme alone when the default parameters are reset", () => {
+  it("leaves the theme alone when the parameters are reset", () => {
     const onSave = renderDialog();
     fireEvent.click(reset());
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_PARAMETERS });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, newJobParameters: DEFAULT_PARAMETERS });
   });
 });
 
@@ -103,7 +103,7 @@ describe("SettingsDialog UI font", () => {
 describe("SettingsDialog reset", () => {
   it("a reset that changes nothing leaves Save disabled and closes without asking", async () => {
     const onClose = vi.fn();
-    render(<SettingsDialog system={SYSTEM} settings={{ ...CUSTOM, defaults: DEFAULT_PARAMETERS }} onSave={vi.fn()} onClose={onClose} />);
+    render(<SettingsDialog system={SYSTEM} settings={{ ...CUSTOM, newJobParameters: DEFAULT_PARAMETERS }} onSave={vi.fn()} onClose={onClose} />);
     fireEvent.click(reset());
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText("Cancel"));
@@ -115,7 +115,7 @@ describe("SettingsDialog reset", () => {
     fireEvent.click(reset());
     fireEvent.change(levelInput(), { target: { value: "4" } });
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...DEFAULT_PARAMETERS, level: 4 } });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, newJobParameters: { ...DEFAULT_PARAMETERS, level: 4 } });
   });
 
   it("saves a changed language independently", () => {
@@ -142,7 +142,7 @@ describe("SettingsDialog reset", () => {
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledWith({
       ...CUSTOM,
-      defaults: { ...CUSTOM.defaults, symlinks: "follow", emptyDirs: "prune" },
+      newJobParameters: { ...CUSTOM.newJobParameters, symlinks: "follow", emptyDirs: "prune" },
     });
   });
 
@@ -174,7 +174,7 @@ describe("SettingsDialog reset", () => {
     // ...and in what Save hands over.
     fireEvent.click(screen.getByText("Save"));
     expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_PARAMETERS });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, newJobParameters: DEFAULT_PARAMETERS });
   });
 
   it("keeps a font edited in the same session (the reset never blanks the field)", () => {
@@ -184,7 +184,7 @@ describe("SettingsDialog reset", () => {
 
     expect(fontInput().value).toBe("Menlo");
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: DEFAULT_PARAMETERS, uiFontFamily: "Menlo" });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, newJobParameters: DEFAULT_PARAMETERS, uiFontFamily: "Menlo" });
   });
 
   it("cleans the font field on blur", () => {
@@ -337,7 +337,7 @@ describe("SettingsDialog manifest name", () => {
   });
 
   it("allows correcting an invalid manifest name while the manifest is disabled", () => {
-    const onSave = renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifest: false, manifestName: "a/b" } });
+    const onSave = renderDialog({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, manifest: false, manifestName: "a/b" } });
     // The tab's name also says it has a field to fix.
     fireEvent.click(screen.getByRole("tab", { name: "New job parameters Has a field to fix" }));
     const field = screen.getByLabelText("Manifest name (when enabled)") as HTMLInputElement;
@@ -347,14 +347,14 @@ describe("SettingsDialog manifest name", () => {
     fireEvent.change(field, { target: { value: "record.json" } });
     expect(field.getAttribute("aria-invalid")).toBeNull();
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifest: false, manifestName: "record.json" } });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, manifest: false, manifestName: "record.json" } });
   });
 });
 
 describe("SettingsDialog exclusion patterns", () => {
   it("holds Save for a folder glob targeting files and names the correction on its field", () => {
     const exclusions = [{ pattern: "initial", match: "glob" as const, target: "file" as const, ignoreCase: false }];
-    const onSave = renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, exclusions } });
+    const onSave = renderDialog({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, exclusions } });
     fireEvent.click(screen.getByRole("tab", { name: "Exclusion patterns" }));
     const field = screen.getByLabelText("Pattern 1");
     fireEvent.change(field, { target: { value: " cache/ " } });
@@ -366,7 +366,7 @@ describe("SettingsDialog exclusion patterns", () => {
     fireEvent.change(screen.getByLabelText("What pattern 1 applies to"), { target: { value: "dir" } });
     expect(field.getAttribute("aria-invalid")).toBeNull();
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave.mock.calls[0]![0].defaults.exclusions).toEqual([{ pattern: "cache/", match: "glob", target: "dir", ignoreCase: false }]);
+    expect(onSave.mock.calls[0]![0].newJobParameters.exclusions).toEqual([{ pattern: "cache/", match: "glob", target: "dir", ignoreCase: false }]);
   });
 
   it("edits the whole list, drops a blank row, and holds Save for a regex that does not compile", () => {
@@ -392,7 +392,7 @@ describe("SettingsDialog exclusion patterns", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Move pattern 3 up" }));
     fireEvent.click(within(panel).getByRole("button", { name: "Move pattern 2 up" }));
     fireEvent.click(screen.getByText("Save"));
-    expect(onSave.mock.calls[0]![0].defaults.exclusions).toEqual([
+    expect(onSave.mock.calls[0]![0].newJobParameters.exclusions).toEqual([
       { pattern: "\\.log$", match: "regex", target: "both", ignoreCase: false },
       expect.objectContaining({ pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: true }),
     ]);
@@ -409,7 +409,7 @@ describe("SettingsDialog exclusion patterns", () => {
     expect(note.value).toBe("Finder’s view settings for a folder. Finder creates it again.");
     fireEvent.change(within(panel).getByLabelText("Note on pattern 2"), { target: { value: "  Mine  " } });
     fireEvent.click(screen.getByText("Save"));
-    const saved = onSave.mock.calls[0]![0].defaults.exclusions;
+    const saved = onSave.mock.calls[0]![0].newJobParameters.exclusions;
     // The description is the catalogue's for the pattern's id, so it is saved as no note at all.
     expect(saved[0]).toEqual({ id: "macos.ds-store", pattern: ".DS_Store", match: "glob", target: "both", ignoreCase: false });
     expect(saved[1].note).toBe("Mine");
@@ -441,7 +441,7 @@ describe("SettingsDialog number fields", () => {
     fireEvent.change(levelInput(), { target: { value: "2" } });
     expect(screen.queryByText("Whole number from 1 to 9")).toBeNull();
     fireEvent.click(save());
-    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, defaults: { ...CUSTOM.defaults, level: 2 } });
+    expect(onSave).toHaveBeenCalledWith({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, level: 2 } });
   });
 
   it("keeps a typed row limit that is not one, says what it takes and holds Save", () => {
@@ -496,7 +496,7 @@ describe("SettingsDialog held Save across tabs", () => {
   });
 
   it("marks an unsafe manifest name's tab and clears the mark once fixed", () => {
-    renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifestName: "a/b" } });
+    renderDialog({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, manifestName: "a/b" } });
     expect(marked("New job parameters")).toBe(true);
     expect(screen.getByText("Save waits for a fix on New job parameters.")).toBeTruthy();
     fireEvent.click(tab("New job parameters"));
@@ -507,7 +507,7 @@ describe("SettingsDialog held Save across tabs", () => {
   });
 
   it("marks the exclusion patterns' tab for a regex that does not compile", () => {
-    renderDialog({ ...CUSTOM, defaults: { ...CUSTOM.defaults, exclusions: [{ pattern: "(", match: "regex", target: "both", ignoreCase: false }] } });
+    renderDialog({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, exclusions: [{ pattern: "(", match: "regex", target: "both", ignoreCase: false }] } });
     expect(marked("Exclusion patterns")).toBe(true);
     expect(screen.getByText("Save waits for a fix on Exclusion patterns.")).toBeTruthy();
     expect(save().disabled).toBe(true);

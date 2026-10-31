@@ -91,7 +91,7 @@ describe("resolvePolicy", () => {
     expect(resolved.compression.store).toEqual([".txt", ".bin", ".iso"]);
   });
 
-  it("fills metadata defaults — name and hash on — for a partial metadata object", () => {
+  it("fills manifest defaults — name and hash on — for a partial manifest object", () => {
     const resolved = resolvePolicy(undefined, { manifest: {} });
     expect(resolved.manifest).toEqual({ name: "zipkit.json", hash: true });
   });
@@ -101,7 +101,7 @@ describe("resolvePolicy", () => {
     expect(resolved.manifest).toEqual({ name: "zipkit.json", hash: false });
   });
 
-  it("keeps metadata disabled when set to false", () => {
+  it("keeps manifest disabled when set to false", () => {
     expect(resolvePolicy(undefined, { manifest: false }).manifest).toBe(false);
   });
 

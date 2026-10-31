@@ -28,7 +28,7 @@ const SAME_AS_ENGLISH: Partial<Record<Language, readonly string[]>> = {
     "details.factManifest",
     "details.showList",
     "details.factFormat",
-    "pane.details",
+    "pane.status",
     "options.manifest",
     "log.debug",
     "log.info",

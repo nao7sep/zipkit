@@ -43,14 +43,14 @@ describe("derived window minimum", () => {
     const expected =
       LAYOUT_BOUNDS.jobsWidth.min +
       ARCHIVE_MIN_WIDTH +
-      LAYOUT_BOUNDS.progressWidth.min +
+      LAYOUT_BOUNDS.statusWidth.min +
       2 * SPLITTER_WIDTH +
       2 * BODY_PADDING;
     expect(minWindowWidth()).toBe(expected);
     // And it genuinely reserves the center pane (regression guard for the bug
     // where a window min covered the side panes but not the binding pane).
     expect(minWindowWidth()).toBeGreaterThanOrEqual(
-      LAYOUT_BOUNDS.jobsWidth.min + ARCHIVE_MIN_WIDTH + LAYOUT_BOUNDS.progressWidth.min,
+      LAYOUT_BOUNDS.jobsWidth.min + ARCHIVE_MIN_WIDTH + LAYOUT_BOUNDS.statusWidth.min,
     );
   });
 
@@ -61,29 +61,29 @@ describe("derived window minimum", () => {
 
 describe("clampLayoutToWidth", () => {
   /** Width the center Archive pane gets for a given body width and side widths. */
-  function archiveWidth(width: number, l: { jobsWidth: number; progressWidth: number }): number {
-    return width - l.jobsWidth - l.progressWidth - 2 * SPLITTER_WIDTH - 2 * BODY_PADDING;
+  function archiveWidth(width: number, l: { jobsWidth: number; statusWidth: number }): number {
+    return width - l.jobsWidth - l.statusWidth - 2 * SPLITTER_WIDTH - 2 * BODY_PADDING;
   }
 
   it("keeps the center pane at >= its minimum across a width sweep", () => {
     // Start from a layout that would overflow a narrow body if left unclamped.
-    const greedy = { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max };
+    const greedy = { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, statusWidth: LAYOUT_BOUNDS.statusWidth.max };
     for (let width = minWindowWidth(); width <= minWindowWidth() + 1200; width += 37) {
       const out = clampLayoutToWidth(greedy, width);
       expect(archiveWidth(width, out)).toBeGreaterThanOrEqual(ARCHIVE_MIN_WIDTH);
       // Columns never drop below their own minimums.
       expect(out.jobsWidth).toBeGreaterThanOrEqual(LAYOUT_BOUNDS.jobsWidth.min);
-      expect(out.progressWidth).toBeGreaterThanOrEqual(LAYOUT_BOUNDS.progressWidth.min);
+      expect(out.statusWidth).toBeGreaterThanOrEqual(LAYOUT_BOUNDS.statusWidth.min);
     }
   });
 
   it("at exactly minWindowWidth, all three panes equal their minimums", () => {
     const out = clampLayoutToWidth(
-      { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max },
+      { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, statusWidth: LAYOUT_BOUNDS.statusWidth.max },
       minWindowWidth(),
     );
     expect(out.jobsWidth).toBe(LAYOUT_BOUNDS.jobsWidth.min);
-    expect(out.progressWidth).toBe(LAYOUT_BOUNDS.progressWidth.min);
+    expect(out.statusWidth).toBe(LAYOUT_BOUNDS.statusWidth.min);
     expect(archiveWidth(minWindowWidth(), out)).toBe(ARCHIVE_MIN_WIDTH);
   });
 
@@ -93,12 +93,12 @@ describe("clampLayoutToWidth", () => {
     const out = clampLayoutToWidth({ ...DEFAULT_LAYOUT, jobsWidth: 5000 }, width);
     expect(archiveWidth(width, out)).toBeGreaterThanOrEqual(ARCHIVE_MIN_WIDTH);
     // The non-dragged side (Progress) yields first, down to its minimum.
-    expect(out.progressWidth).toBe(LAYOUT_BOUNDS.progressWidth.min);
+    expect(out.statusWidth).toBe(LAYOUT_BOUNDS.statusWidth.min);
   });
 
   it("dragging Progress wide stops before crossing the center minimum", () => {
     const width = minWindowWidth() + 100;
-    const out = clampLayoutToWidth({ ...DEFAULT_LAYOUT, progressWidth: 5000 }, width);
+    const out = clampLayoutToWidth({ ...DEFAULT_LAYOUT, statusWidth: 5000 }, width);
     expect(archiveWidth(width, out)).toBeGreaterThanOrEqual(ARCHIVE_MIN_WIDTH);
   });
 
@@ -113,7 +113,7 @@ describe("clampLayoutToWidth", () => {
     // sub-minimum or negative column.
     const out = clampLayoutToWidth(DEFAULT_LAYOUT, minWindowWidth() - 200);
     expect(out.jobsWidth).toBe(LAYOUT_BOUNDS.jobsWidth.min);
-    expect(out.progressWidth).toBe(LAYOUT_BOUNDS.progressWidth.min);
+    expect(out.statusWidth).toBe(LAYOUT_BOUNDS.statusWidth.min);
   });
 
   it("falls back to the bounds clamp when the width is not finite", () => {
@@ -126,13 +126,13 @@ describe("clampLayoutToWidth", () => {
     // the display grid clampLayoutToWidth(intent, containerWidth). That map must be
     // pure: clamping for a narrow window narrows what's shown but leaves the intent
     // object untouched, so re-growing the window returns the panes to the intent.
-    const intent = { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max };
+    const intent = { jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, statusWidth: LAYOUT_BOUNDS.statusWidth.max };
     const snapshot = { ...intent };
 
     // Display on a too-narrow window: shown widths collapse toward the minimums…
     const small = clampLayoutToWidth(intent, minWindowWidth());
     expect(small.jobsWidth).toBe(LAYOUT_BOUNDS.jobsWidth.min);
-    expect(small.progressWidth).toBe(LAYOUT_BOUNDS.progressWidth.min);
+    expect(small.statusWidth).toBe(LAYOUT_BOUNDS.statusWidth.min);
     expect(small).not.toBe(intent); // a fresh object, not the intent itself
     expect(intent).toEqual(snapshot); // …but the intent is unchanged
 

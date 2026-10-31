@@ -54,7 +54,7 @@ describe("validateSpec", () => {
   });
 
   it("rejects an invalid policy enum value", () => {
-    expect(() => validateSpec({ inputs: ["/a"], policy: { junk: "weird" } as never })).toThrow(invalidError);
+    expect(() => validateSpec({ inputs: ["/a"], policy: { symlinks: "weird" } as never })).toThrow(invalidError);
   });
 
   it("rejects an invalid regex filter pattern with an invalid error", () => {
@@ -91,7 +91,7 @@ describe("safe single-component fields", () => {
   // The invalid-char replacement is substituted into a segment after the
   // traversal pass, so a separator or `..` would re-introduce absolute/escaping
   // entry names. It is held to the same single-safe-component standard as the
-  // metadata file name.
+  // manifest file name.
   it.each(["/", "\\", "..", ".", "", "a/b", "../x", "<", "na:me"])(
     "rejects an unsafe names.invalidCharReplacement %j",
     (replacement) => {
@@ -111,13 +111,13 @@ describe("safe single-component fields", () => {
   );
 
   it.each(["a/b", "a/../b", "..", ".", "with/slash", "dir/zipkit.json", "CON", "bad:name.json"])(
-    "rejects an unsafe metadata.name %j",
+    "rejects an unsafe manifest.name %j",
     (name) => {
       expect(() => validatePolicy({ manifest: { name } } as never)).toThrow(invalidError);
     },
   );
 
-  it.each(["zipkit.json", "record.json", "記録.json"])("accepts a safe metadata.name %j", (name) => {
+  it.each(["zipkit.json", "record.json", "記録.json"])("accepts a safe manifest.name %j", (name) => {
     expect(() => validatePolicy({ manifest: { name } } as never)).not.toThrow();
   });
 });

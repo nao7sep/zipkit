@@ -48,7 +48,6 @@ function parseJob(entry: unknown, ids: Set<string>): SavedJob {
   if (!Array.isArray(j.inputs) || j.inputs.length === 0 || !j.inputs.every((p) => typeof p === "string" && p !== "")) {
     throw new InvalidManagedJsonError("queue.json", "job inputs must be a non-empty array of non-empty strings");
   }
-  // An `intent` an earlier build saved is ignored and drops out on the next save.
   return {
     id: j.id,
     inputs: j.inputs as string[],

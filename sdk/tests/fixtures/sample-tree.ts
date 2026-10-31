@@ -1,6 +1,6 @@
 /**
  * The source tree behind the saved sample archives: names that exercise the
- * fixes (a decomposed name, a character Windows forbids), OS junk, an empty
+ * fixes (a decomposed name, a character Windows forbids), files only an OS uses, an empty
  * file, a file stored uncompressed and nested folders, all with one fixed
  * modification time so what is written depends on the tree alone.
  */

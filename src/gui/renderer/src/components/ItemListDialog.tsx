@@ -13,9 +13,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ModalShell } from "./ModalShell";
 import { ReportRowView } from "./ReportRowView";
 import { useI18n } from "../i18n/I18nContext";
-import { rowsByPath, type DetailsCard, type ReportRow } from "../view";
+import { rowsByPath, type StatusCard, type ReportRow } from "../view";
 
-export function ItemListDialog({ card, onClose }: { card: DetailsCard; onClose: () => void }) {
+export function ItemListDialog({ card, onClose }: { card: StatusCard; onClose: () => void }) {
   const t = useI18n();
   const rows = useMemo(() => rowsByPath(card.rows, t.locale), [card.rows, t.locale]);
   return (

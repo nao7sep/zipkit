@@ -133,7 +133,7 @@ describe("processSegment (all fix)", () => {
     });
   }
 
-  it("records a nameFix chain for the metadata", () => {
+  it("records a nameFix chain for the manifest", () => {
     const result = processSegment("a:b. ", allFix());
     expect(result.nameFixes.map((t) => t.rule)).toEqual([
       "name.invalid-char",

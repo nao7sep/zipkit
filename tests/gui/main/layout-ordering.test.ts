@@ -33,25 +33,25 @@ afterEach(async () => {
 });
 
 it("overlapping window patches keep each other's fields, in the order they were sent", async () => {
-  await writeFile(path.join(root, "layout.json"), serializeLayout({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 }));
+  await writeFile(path.join(root, "layout.json"), serializeLayout({ jobsWidth: 300, statusWidth: 360, recordsListWidth: 500 }));
   await loadLayout();
-  const pane = saveLayout({ jobsWidth: 320, progressWidth: 380 });
+  const pane = saveLayout({ jobsWidth: 320, statusWidth: 380 });
   const records = saveRecordsListWidth(420);
   await layoutWritesSettled();
   await Promise.all([pane, records]);
   expect(JSON.parse(await readFile(path.join(root, "layout.json"), "utf8")).layout)
-    .toEqual({ jobsWidth: 320, progressWidth: 380, recordsListWidth: 420 });
+    .toEqual({ jobsWidth: 320, statusWidth: 380, recordsListWidth: 420 });
   expect(recordsListWidth()).toBe(420);
 });
 
 it("keeps a Records width whose save failed, and writes it with the next pane save", async () => {
-  await writeFile(path.join(root, "layout.json"), serializeLayout({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 }));
+  await writeFile(path.join(root, "layout.json"), serializeLayout({ jobsWidth: 300, statusWidth: 360, recordsListWidth: 500 }));
   await loadLayout();
   const failure = new Error("save failed");
   controls.writeFailure = failure;
   await expect(saveRecordsListWidth(420)).rejects.toBe(failure);
   expect(recordsListWidth()).toBe(420);
-  await saveLayout({ jobsWidth: 320, progressWidth: 380 });
+  await saveLayout({ jobsWidth: 320, statusWidth: 380 });
   expect(JSON.parse(await readFile(path.join(root, "layout.json"), "utf8")).layout)
-    .toEqual({ jobsWidth: 320, progressWidth: 380, recordsListWidth: 420 });
+    .toEqual({ jobsWidth: 320, statusWidth: 380, recordsListWidth: 420 });
 });

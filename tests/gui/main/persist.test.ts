@@ -43,10 +43,10 @@ describe("parseQueue", () => {
     expect(parseQueue(root).jobs[0]?.options).toEqual({ ...DEFAULT_OPTIONS, level: 9 });
   });
 
-  it("skips and counts malformed entries, keeping the readable jobs in order whatever intent they carried", () => {
+  it("skips and counts malformed entries, keeping the readable jobs in order", () => {
     const root = {
       jobs: [
-        { id: "a", inputs: ["/x"], intent: "weird" },
+        { id: "a", inputs: ["/x"] },
         { id: "b", inputs: ["/b"] },
         { inputs: ["/y"] },
         { id: "c", inputs: ["/c"], options: { level: "high" } },
@@ -56,11 +56,6 @@ describe("parseQueue", () => {
     const read = parseQueue(root);
     expect(read.jobs.map((job) => job.id)).toEqual(["a", "b", "d"]);
     expect(read.skipped).toBe(2);
-  });
-
-  it("ignores an intent an earlier build saved: every restored job starts at the safest choice", () => {
-    const root = { jobs: [{ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS, intent: "archive-and-trash" }] };
-    expect(parseQueue(root).jobs[0]).toEqual({ id: "a", inputs: ["/x"], options: DEFAULT_OPTIONS });
   });
 
   it("rejects a non-array jobs field as a whole", () => {

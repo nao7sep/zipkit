@@ -85,7 +85,7 @@ export function SettingsDialog({
   const confirm = useConfirm();
   const [draft, setDraft] = useState<GuiSettings>(settings);
   // The typed numbers as typed; each commits to the draft only while valid.
-  const [levelText, setLevelText] = useState(String(settings.defaults.level));
+  const [levelText, setLevelText] = useState(String(settings.newJobParameters.level));
   const [rowLimitText, setRowLimitText] = useState(String(settings.cardRowLimit));
   const rowLimitIssueId = useId();
   const [fontStack] = useState(builtInFontStack);
@@ -97,11 +97,11 @@ export function SettingsDialog({
   // A quit Retry can commit while this editor remains open. Clear the obsolete
   // failure message without replacing any newer, unsubmitted draft edits.
   useEffect(() => { setSaveError(false); },
-    [settings.defaults, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone, settings.confirmJobRemoval, settings.cardRowLimit]);
+    [settings.newJobParameters, settings.uiFontFamily, settings.theme, settings.language, settings.timeZone, settings.confirmJobRemoval, settings.cardRowLimit]);
 
   // What Save would store: blank pattern rows dropped and the rest trimmed, so
   // a row added and left blank neither dirties the draft nor reaches disk.
-  const saved: GuiSettings = { ...draft, defaults: { ...draft.defaults, exclusions: cleanExclusions(draft.defaults.exclusions) } };
+  const saved: GuiSettings = { ...draft, newJobParameters: { ...draft.newJobParameters, exclusions: cleanExclusions(draft.newJobParameters.exclusions) } };
   // A number typed but not valid is an edit too, so closing asks before dropping it.
   const numbersValid = parseWholeNumber(levelText, COMPRESSION_LEVEL_RANGE) !== null &&
     parseWholeNumber(rowLimitText, CARD_ROW_LIMIT_RANGE) !== null;
@@ -115,8 +115,8 @@ export function SettingsDialog({
   // each such tab is marked, and a line beside Save names them.
   const tabIssues: Readonly<Record<SettingsTab, boolean>> = {
     general: parseWholeNumber(rowLimitText, CARD_ROW_LIMIT_RANGE) === null,
-    parameters: parseWholeNumber(levelText, COMPRESSION_LEVEL_RANGE) === null || !isSafePathComponent(draft.defaults.manifestName),
-    exclusions: draft.defaults.exclusions.some(patternInvalid),
+    parameters: parseWholeNumber(levelText, COMPRESSION_LEVEL_RANGE) === null || !isSafePathComponent(draft.newJobParameters.manifestName),
+    exclusions: draft.newJobParameters.exclusions.some(patternInvalid),
   };
   const heldBy = TABS.filter((value) => tabIssues[value]);
   const saveHeldId = useId();
@@ -140,8 +140,8 @@ export function SettingsDialog({
   // parameters, or the exclusion patterns, go back to the initial values ZipKit
   // ships with. The language, the theme and the UI font are the user's
   // preferences, not tuned built-ins, so they stay as they are.
-  function resetDefaultParameters() {
-    setDraft({ ...draft, defaults: { ...DEFAULT_PARAMETERS, exclusions: draft.defaults.exclusions } });
+  function resetParameters() {
+    setDraft({ ...draft, newJobParameters: { ...DEFAULT_PARAMETERS, exclusions: draft.newJobParameters.exclusions } });
     setLevelText(String(DEFAULT_PARAMETERS.level));
   }
   function typeRowLimit(text: string) {
@@ -150,7 +150,7 @@ export function SettingsDialog({
     if (limit !== null) setDraft({ ...draft, cardRowLimit: limit });
   }
   function resetExclusions() {
-    setDraft({ ...draft, defaults: { ...draft.defaults, exclusions: BUILT_IN_EXCLUSIONS.map((p) => ({ ...p })) } });
+    setDraft({ ...draft, newJobParameters: { ...draft.newJobParameters, exclusions: BUILT_IN_EXCLUSIONS.map((p) => ({ ...p })) } });
   }
 
   // One close guard for every dismissal path (Cancel button, Escape, backdrop):
@@ -323,16 +323,16 @@ export function SettingsDialog({
             plainly covers these and nothing above (config-sets conventions,
             Reset: one control per group, named for it). */}
         <section>
-          <p style={S.sectionHint}>{t("settings.defaultParametersHint")}</p>
+          <p style={S.sectionHint}>{t("settings.newJobParametersHint")}</p>
           <OptionsPanel
-            options={draft.defaults}
-            onChange={(o) => setDraft({ ...draft, defaults: o })}
+            options={draft.newJobParameters}
+            onChange={(o) => setDraft({ ...draft, newJobParameters: o })}
             levelText={levelText}
             onLevelText={setLevelText}
             disabled={saving}
           />
           <div style={S.resetRow}>
-            <button style={S.resetDefaultParameters} disabled={saving} onClick={resetDefaultParameters}>
+            <button style={S.resetButton} disabled={saving} onClick={resetParameters}>
               {t("settings.resetParameters")}
             </button>
           </div>
@@ -343,12 +343,12 @@ export function SettingsDialog({
       <div {...tablist.panelProps("exclusions")} hidden={tab !== "exclusions"}>
         <p style={S.sectionHint}>{t("exclusions.hint")}</p>
         <ExclusionList
-          patterns={draft.defaults.exclusions}
-          onChange={(exclusions) => setDraft({ ...draft, defaults: { ...draft.defaults, exclusions } })}
+          patterns={draft.newJobParameters.exclusions}
+          onChange={(exclusions) => setDraft({ ...draft, newJobParameters: { ...draft.newJobParameters, exclusions } })}
           disabled={saving}
         />
         <div style={S.resetRow}>
-          <button style={S.resetDefaultParameters} disabled={saving} onClick={resetExclusions}>
+          <button style={S.resetButton} disabled={saving} onClick={resetExclusions}>
             {t("exclusions.reset")}
           </button>
         </div>
@@ -383,7 +383,7 @@ const S: Record<string, CSSProperties> = {
   sectionHint: { margin: "0 0 0.75rem", fontSize: "0.8rem", color: "var(--text-2)" },
   resetRow: { marginTop: "1rem" },
   // A button's caption never wraps.
-  resetDefaultParameters: { whiteSpace: "nowrap" },
+  resetButton: { whiteSpace: "nowrap" },
   themeField: { display: "flex", flexDirection: "column", gap: "0.35rem", margin: "0 0 1rem", padding: 0, border: "none", minWidth: 0 },
   themeLegend: { fontWeight: 600, padding: 0, marginBottom: "0.35rem" },
   themeOptions: { display: "flex", flexWrap: "wrap", gap: "0.35rem 1.25rem" },

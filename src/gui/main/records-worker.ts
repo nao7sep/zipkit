@@ -154,7 +154,7 @@ export function readRecordsPage(db: DatabaseSync, query: RecordsQuery, pageSize:
       where.push("session_utc = ?");
       params.push(query.session);
     }
-    if (query.level === "attention") {
+    if (query.level === "warningsAndErrors") {
       where.push("level IN ('warn', 'error')");
     } else if (query.level !== null) {
       where.push("level = ?");

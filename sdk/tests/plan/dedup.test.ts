@@ -40,7 +40,7 @@ describe("applyDedup", () => {
 
   it("does not seed the seen-set from an already-excluded entry", () => {
     const items = [
-      workItem({ archivePath: "a.txt", absolutePath: "/src/a.txt", excluded: true, excludeReason: "junk" }),
+      workItem({ archivePath: "a.txt", absolutePath: "/src/a.txt", excluded: true, excludeReason: "pattern .DS_Store" }),
       workItem({ archivePath: "a.txt", absolutePath: "/src/a.txt" }),
     ];
     applyDedup(items);

@@ -18,7 +18,7 @@ const samples: LogEventBody[] = [
   { event: "scan.dir", path: "a/b" },
   { event: "scan.done", entries: 3, prunedDirs: 1 },
   { event: "plan.done", total: 3, included: 2, excluded: 1, renamed: 0, warnings: 0, errors: 0, writable: true },
-  { event: "entry.excluded", path: "x", reason: "junk" },
+  { event: "entry.excluded", path: "x", reason: "pattern .DS_Store" },
   { event: "entry.renamed", path: "a", from: "à" },
   { event: "entry.flagged", rule: "name.nfd", path: "p", severity: "info" },
   { event: "write.start", entries: 1 },

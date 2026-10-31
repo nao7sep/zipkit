@@ -39,15 +39,15 @@ const DEFAULT_STORED = { ...DEFAULT_LAYOUT, recordsListWidth: RECORDS_LIST_WIDTH
 
 describe("parseLayout", () => {
   it("reads a stored layout", () => {
-    const root = { layout: { jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 } };
-    expect(parseLayout(root)).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 });
+    const root = { layout: { jobsWidth: 300, statusWidth: 360, recordsListWidth: 500 } };
+    expect(parseLayout(root)).toEqual({ jobsWidth: 300, statusWidth: 360, recordsListWidth: 500 });
   });
 
   it("clamps out-of-bounds widths into the allowed range", () => {
-    const root = { layout: { jobsWidth: 10000, progressWidth: 1, recordsListWidth: 1 } };
+    const root = { layout: { jobsWidth: 10000, statusWidth: 1, recordsListWidth: 1 } };
     expect(parseLayout(root)).toEqual({
       jobsWidth: LAYOUT_BOUNDS.jobsWidth.max,
-      progressWidth: LAYOUT_BOUNDS.progressWidth.min,
+      statusWidth: LAYOUT_BOUNDS.statusWidth.min,
       recordsListWidth: RECORDS_LIST_WIDTH.min,
     });
   });
@@ -70,32 +70,32 @@ describe("persisted bounds feed the derived window minimum", () => {
     expect(minWindowWidth()).toBe(
       LAYOUT_BOUNDS.jobsWidth.min +
         ARCHIVE_MIN_WIDTH +
-        LAYOUT_BOUNDS.progressWidth.min +
+        LAYOUT_BOUNDS.statusWidth.min +
         2 * SPLITTER_WIDTH +
         2 * BODY_PADDING,
     );
     // A persisted layout clamped to its minimum side widths still fits the center
     // pane at the window minimum (no persisted state can violate the invariant).
-    const minSides = parseLayout({ layout: { jobsWidth: 0, progressWidth: 0 } });
+    const minSides = parseLayout({ layout: { jobsWidth: 0, statusWidth: 0 } });
     const centerAtMin =
-      minWindowWidth() - minSides.jobsWidth - minSides.progressWidth - 2 * SPLITTER_WIDTH - 2 * BODY_PADDING;
+      minWindowWidth() - minSides.jobsWidth - minSides.statusWidth - 2 * SPLITTER_WIDTH - 2 * BODY_PADDING;
     expect(centerAtMin).toBe(ARCHIVE_MIN_WIDTH);
   });
 });
 
 describe("serializeLayout", () => {
   it("round-trips through parseLayout", () => {
-    const layout = { jobsWidth: 260, progressWidth: 420, recordsListWidth: 450 };
+    const layout = { jobsWidth: 260, statusWidth: 420, recordsListWidth: 450 };
     const serialized = serializeLayout(layout);
     expect(parseLayout(JSON.parse(serialized))).toEqual(layout);
     expect(JSON.parse(serialized)).toEqual({ layout });
   });
 
   it("clamps on write too, so a bad value can never be persisted", () => {
-    const text = serializeLayout({ jobsWidth: -5, progressWidth: 99999, recordsListWidth: 99999 });
+    const text = serializeLayout({ jobsWidth: -5, statusWidth: 99999, recordsListWidth: 99999 });
     expect(parseLayout(JSON.parse(text))).toEqual({
       jobsWidth: LAYOUT_BOUNDS.jobsWidth.min,
-      progressWidth: LAYOUT_BOUNDS.progressWidth.max,
+      statusWidth: LAYOUT_BOUNDS.statusWidth.max,
       recordsListWidth: RECORDS_LIST_WIDTH.max,
     });
   });
@@ -107,7 +107,7 @@ describe("persists the intent, not the resize-clamped display", () => {
     // for DISPLAY against the live body width. So a wide intent saved on a big
     // window must survive in the file as-is — NOT collapsed to what a later, smaller
     // window would show. This pins that the persistence boundary stores the intent.
-    const intent = { ...DEFAULT_STORED, jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, progressWidth: LAYOUT_BOUNDS.progressWidth.max };
+    const intent = { ...DEFAULT_STORED, jobsWidth: LAYOUT_BOUNDS.jobsWidth.max, statusWidth: LAYOUT_BOUNDS.statusWidth.max };
 
     // What a shrunk window would DISPLAY (the clamped widths) — must NOT be persisted.
     const clampedForDisplay = clampLayoutToWidth(intent, minWindowWidth());
@@ -171,9 +171,9 @@ describe("layout file reset and ordered saves", () => {
     writeFileSync(file, "not json", "utf8");
     await loadLayout();
 
-    await saveLayout({ jobsWidth: 300, progressWidth: 360 });
+    await saveLayout({ jobsWidth: 300, statusWidth: 360 });
 
-    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ ...DEFAULT_STORED, jobsWidth: 300, progressWidth: 360 });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ ...DEFAULT_STORED, jobsWidth: 300, statusWidth: 360 });
     expect(managedEntries(root)).toEqual(["layout.json"]);
     expect(existsSync(path.join(root, "backups.sqlite3"))).toBe(false); // layout is volatile state: not recorded
   });
@@ -189,26 +189,26 @@ describe("layout file reset and ordered saves", () => {
 
   it("restores the Records list width saved before, and each window's save keeps the other's widths", async () => {
     const file = path.join(root, "layout.json");
-    writeFileSync(file, serializeLayout({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 }));
+    writeFileSync(file, serializeLayout({ jobsWidth: 300, statusWidth: 360, recordsListWidth: 500 }));
     await loadLayout();
     expect(recordsListWidth()).toBe(500);
-    expect(paneLayout()).toEqual({ jobsWidth: 300, progressWidth: 360 });
+    expect(paneLayout()).toEqual({ jobsWidth: 300, statusWidth: 360 });
 
     expect(await saveRecordsListWidth(9999)).toBe(RECORDS_LIST_WIDTH.max);
-    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 300, progressWidth: 360, recordsListWidth: RECORDS_LIST_WIDTH.max });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 300, statusWidth: 360, recordsListWidth: RECORDS_LIST_WIDTH.max });
 
-    await saveLayout({ jobsWidth: 320, progressWidth: 380 });
-    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 320, progressWidth: 380, recordsListWidth: RECORDS_LIST_WIDTH.max });
+    await saveLayout({ jobsWidth: 320, statusWidth: 380 });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 320, statusWidth: 380, recordsListWidth: RECORDS_LIST_WIDTH.max });
     expect(recordsListWidth()).toBe(RECORDS_LIST_WIDTH.max);
-    expect(paneLayout()).toEqual({ jobsWidth: 320, progressWidth: 380 });
+    expect(paneLayout()).toEqual({ jobsWidth: 320, statusWidth: 380 });
   });
 
   it("main keeps its copy: a change on disk after the load is not read back", async () => {
     const file = path.join(root, "layout.json");
-    writeFileSync(file, serializeLayout({ jobsWidth: 300, progressWidth: 360, recordsListWidth: 500 }));
+    writeFileSync(file, serializeLayout({ jobsWidth: 300, statusWidth: 360, recordsListWidth: 500 }));
     await loadLayout();
-    writeFileSync(file, serializeLayout({ jobsWidth: 250, progressWidth: 300, recordsListWidth: 400 }));
-    expect(paneLayout()).toEqual({ jobsWidth: 300, progressWidth: 360 });
+    writeFileSync(file, serializeLayout({ jobsWidth: 250, statusWidth: 300, recordsListWidth: 400 }));
+    expect(paneLayout()).toEqual({ jobsWidth: 300, statusWidth: 360 });
     expect(recordsListWidth()).toBe(500);
   });
 
@@ -217,10 +217,10 @@ describe("layout file reset and ordered saves", () => {
     await loadLayout();
     await Promise.all([
       saveRecordsListWidth(400),
-      saveLayout({ jobsWidth: 250, progressWidth: 300 }),
+      saveLayout({ jobsWidth: 250, statusWidth: 300 }),
       saveRecordsListWidth(420),
     ]);
-    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 250, progressWidth: 300, recordsListWidth: 420 });
+    expect(parseLayout(JSON.parse(readFileSync(file, "utf8")))).toEqual({ jobsWidth: 250, statusWidth: 300, recordsListWidth: 420 });
   });
 
   it("loads a layout with a leftover format marker as current", async () => {

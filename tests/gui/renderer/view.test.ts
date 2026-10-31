@@ -13,7 +13,7 @@ import {
   humanSentence,
   intentLabel,
   isCancelable,
-  detailsCards,
+  statusCards,
   namesOf,
   rowsByPath,
   jobCommands,
@@ -489,7 +489,7 @@ describe("planReport", () => {
       }),
       entry({ archivePath: "b/X", findings: [{ id: "collision.case:b/X", rule: "collision.case", severity: "error", path: "b/X", message: "case-only collision" }] }),
       entry({ archivePath: "b/CON_.txt", originalPath: "b/CON.txt", findings: [{ id: "name.reserved:b/CON.txt", rule: "name.reserved", severity: "info", path: "b/CON.txt", message: "suffixed", fix: { kind: "rename", to: "b/CON_.txt" } }] }),
-      entry({ archivePath: "a/.DS_Store", excluded: true, nameFixes: [], excludeReason: "junk: .DS_Store", findings: [{ id: "exclude.pattern:a/.DS_Store", rule: "exclude.pattern", severity: "info", path: "a/.DS_Store", message: "excluded by the junk preset" }] }),
+      entry({ archivePath: "a/.DS_Store", excluded: true, nameFixes: [], excludeReason: "pattern .DS_Store", findings: [{ id: "exclude.pattern:a/.DS_Store", rule: "exclude.pattern", severity: "info", path: "a/.DS_Store", message: "excluded by pattern .DS_Store" }] }),
       entry({ archivePath: "a/kept.txt" }),
     ]);
     expect(planReport(plan, en)).toEqual([
@@ -945,7 +945,7 @@ describe("jobCommands", () => {
 });
 
 
-describe("Details pane sections and orders", () => {
+describe("Status pane sections and orders", () => {
   const row = (path: string, changes: string[] = [], dir = false) => ({ path, changes, ...(dir ? { dir: true } : {}) });
 
   it("makes one card per kind, the ones that block first, and the archive first among the rest", () => {
@@ -956,7 +956,7 @@ describe("Details pane sections and orders", () => {
     const plan = { writable: false, summary: { total: 3, included: 2, excluded: 1, renamed: 0, warnings: 1, errors: 1, zip64: false, sourceBytes: 0 }, findings: [],
       entries: [entry("a/.DS_Store", "exclude.pattern", "info", true), entry("long", "path.too-long", "warning"), entry("A", "collision.case", "error")] };
     const done = job({ state: "done", output: "/out/a.zip", archiveStatus: "written", summary: plan.summary });
-    const cards = detailsCards(done, plan as never, { missing: ["m"], extra: [] }, en, 5);
+    const cards = statusCards(done, plan as never, { missing: ["m"], extra: [] }, en, 5);
     expect(cards.map((card) => [card.key, card.level, card.open])).toEqual([
       ["rule:collision.case", "error", true],
       ["verify:missing", "error", true],
@@ -966,8 +966,8 @@ describe("Details pane sections and orders", () => {
     ]);
     // A card with more rows than the limit folds to its count, whatever its level.
     const many = { ...plan, entries: Array.from({ length: 6 }, (_, i) => entry(`d${i}`, "collision.case", "error")) };
-    expect(detailsCards(job(), many as never, null, en, 5)[0]!.open).toBe(false);
-    expect(detailsCards(job(), many as never, null, en, 6)[0]!.open).toBe(true);
+    expect(statusCards(job(), many as never, null, en, 5)[0]!.open).toBe(false);
+    expect(statusCards(job(), many as never, null, en, 6)[0]!.open).toBe(true);
   });
 
   it("lists each item where it is on disk, a rename with only what it changed, and notes no duplicate as lost", () => {
@@ -982,7 +982,7 @@ describe("Details pane sections and orders", () => {
       planned("dup.txt", { excluded: true, excludeCode: "duplicate", excludeReason: "duplicate", findings: [{ id: "entry.duplicate:dup.txt", rule: "entry.duplicate", severity: "info", path: "dup.txt", message: "" }] }),
       planned("skip.tmp", { excluded: true, excludeCode: "filter", excludeReason: "excluded by *.tmp" }),
     ] };
-    const cards = detailsCards(job({ intent: TRASH }), plan as never, null, en, 5);
+    const cards = statusCards(job({ intent: TRASH }), plan as never, null, en, 5);
     const rows = Object.fromEntries(cards.map((card) => [card.key, card.rows]));
     expect(rows["rule:name.invalid-char"]).toEqual([expect.objectContaining({ path: "C:\\Users\\me\\proj\\a_b\\c_d.txt", from: "C:\\Users\\me\\proj\\a:b\\c:d.txt" })]);
     const filtered = cards.find((card) => card.key.startsWith("excluded:"))!;

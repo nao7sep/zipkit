@@ -38,10 +38,10 @@ describe("manifests of any size", () => {
       archivePath: `project/src/components/entry-${String(i).padStart(5, "0")}.ts`, size: 1024,
     }));
     const plan = planArchive(scanResult(entries), policy);
-    const metadata = buildManifest(plan, policy, fromInstructions(plan.instructions)!.writeEntries.map((writeEntry) => ({
+    const document = buildManifest(plan, policy, fromInstructions(plan.instructions)!.writeEntries.map((writeEntry) => ({
       writeEntry, crc32: 0xffffffff, compressedSize: 512, sha256: "a".repeat(64),
     })), { createdNs: Y2020_NS, timeZone: "UTC", comment: "a comment" });
-    expect([...manifestText(metadata)].join("")).toBe(JSON.stringify(metadata, null, 2));
+    expect([...manifestText(document)].join("")).toBe(JSON.stringify(document, null, 2));
     const empty = buildManifest(planArchive(scanResult([]), policy), policy, [], { createdNs: Y2020_NS, timeZone: "UTC" });
     expect([...manifestText(empty)].join("")).toBe(JSON.stringify(empty, null, 2));
   });

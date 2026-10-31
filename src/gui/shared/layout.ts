@@ -1,6 +1,6 @@
 /**
  * The persisted pane layout: the user-adjustable widths of the side columns
- * (Jobs on the left, Progress on the right); the middle Archive column flexes to
+ * (Jobs on the left, Status on the right); the middle Archive column flexes to
  * fill the rest. This is GUI layout state, independent of the top-level window.
  * Pure here (shared by the renderer's drag logic and the main-process store);
  * the file I/O lives in main/layout.ts.
@@ -18,18 +18,18 @@
 export interface PaneLayout {
   /** Width of the Jobs column, in CSS pixels. */
   jobsWidth: number;
-  /** Width of the Progress column, in CSS pixels. */
-  progressWidth: number;
+  /** Width of the Status column, in CSS pixels. */
+  statusWidth: number;
 }
 
 /** Min/max for each user-resizable side column, so a drag (or a stale file)
  *  can't make a column unusably thin or starve the flexible middle column. The
  *  jobs minimum holds the pane's title beside its Add button in every language
- *  (German is widest; `scripts/label-fit.mjs` measures it); the details minimum
+ *  (German is widest; `scripts/label-fit.mjs` measures it); the Status minimum
  *  keeps its section headings and one-line paths readable. */
 export const LAYOUT_BOUNDS = {
   jobsWidth: { min: 224, max: 480 },
-  progressWidth: { min: 300, max: 600 },
+  statusWidth: { min: 300, max: 600 },
 } as const;
 
 /** Minimum width of the center Archive column. Unlike the side columns it has no
@@ -54,7 +54,7 @@ export const BODY_PADDING = 10;
 export const HEADER_MIN_HEIGHT = 50;
 export const BODY_MIN_HEIGHT = 360;
 
-export const DEFAULT_LAYOUT: PaneLayout = { jobsWidth: 288, progressWidth: 340 };
+export const DEFAULT_LAYOUT: PaneLayout = { jobsWidth: 288, statusWidth: 340 };
 
 /**
  * The minimum window width, DERIVED from the pane minimums and the fixed chrome:
@@ -66,7 +66,7 @@ export function minWindowWidth(): number {
   return (
     LAYOUT_BOUNDS.jobsWidth.min +
     ARCHIVE_MIN_WIDTH +
-    LAYOUT_BOUNDS.progressWidth.min +
+    LAYOUT_BOUNDS.statusWidth.min +
     2 * SPLITTER_WIDTH +
     2 * BODY_PADDING
   );
@@ -95,10 +95,10 @@ function clamp(value: number, min: number, max: number): number {
 export function clampLayout(layout: PaneLayout): PaneLayout {
   return {
     jobsWidth: clamp(layout.jobsWidth, LAYOUT_BOUNDS.jobsWidth.min, LAYOUT_BOUNDS.jobsWidth.max),
-    progressWidth: clamp(
-      layout.progressWidth,
-      LAYOUT_BOUNDS.progressWidth.min,
-      LAYOUT_BOUNDS.progressWidth.max,
+    statusWidth: clamp(
+      layout.statusWidth,
+      LAYOUT_BOUNDS.statusWidth.min,
+      LAYOUT_BOUNDS.statusWidth.max,
     ),
   };
 }
@@ -128,25 +128,25 @@ export function clampLayoutToWidth(layout: PaneLayout, containerWidth: number): 
 
   // If even both minimums don't fit, hand back the minimums (the OS window
   // minimum is the real floor; don't go below a usable column).
-  const minSum = LAYOUT_BOUNDS.jobsWidth.min + LAYOUT_BOUNDS.progressWidth.min;
+  const minSum = LAYOUT_BOUNDS.jobsWidth.min + LAYOUT_BOUNDS.statusWidth.min;
   if (sideBudget <= minSum) {
-    return { jobsWidth: LAYOUT_BOUNDS.jobsWidth.min, progressWidth: LAYOUT_BOUNDS.progressWidth.min };
+    return { jobsWidth: LAYOUT_BOUNDS.jobsWidth.min, statusWidth: LAYOUT_BOUNDS.statusWidth.min };
   }
 
-  if (base.jobsWidth + base.progressWidth <= sideBudget) return base;
+  if (base.jobsWidth + base.statusWidth <= sideBudget) return base;
 
-  // The pair overflows the budget. Shrink Progress first (down to its minimum),
+  // The pair overflows the budget. Shrink Status first (down to its minimum),
   // then Jobs, so the side the user did NOT just drag yields first and the center
   // pane keeps its minimum.
-  let progressWidth = Math.max(
-    LAYOUT_BOUNDS.progressWidth.min,
+  let statusWidth = Math.max(
+    LAYOUT_BOUNDS.statusWidth.min,
     sideBudget - base.jobsWidth,
   );
   let jobsWidth = base.jobsWidth;
-  if (jobsWidth + progressWidth > sideBudget) {
-    jobsWidth = Math.max(LAYOUT_BOUNDS.jobsWidth.min, sideBudget - progressWidth);
+  if (jobsWidth + statusWidth > sideBudget) {
+    jobsWidth = Math.max(LAYOUT_BOUNDS.jobsWidth.min, sideBudget - statusWidth);
   }
-  return { jobsWidth, progressWidth };
+  return { jobsWidth, statusWidth };
 }
 
 /** One height for every one-line control: index.css's `--control-h`. */

@@ -1,6 +1,6 @@
 /**
  * The scan edge over a real temporary tree. Covers the I/O-heavy behaviors the
- * pure planner cannot exercise: forward-slash archive paths, junk-directory
+ * pure planner cannot exercise: forward-slash archive paths, excluded-directory
  * pruning during the walk, symlink handling across ignore/follow, the cycle
  * guard and input-tree escape rule, broken-link drop, a symlink given directly
  * as a top-level input, and the output-artifact self-exclusion.
@@ -135,7 +135,7 @@ describe("scan over a real tree", () => {
     expect(result.entries.find((e) => e.archivePath === "sub/b.txt")?.type).toBe("file");
   });
 
-  it("prunes excluded junk directories during the walk", async () => {
+  it("prunes directories an exclusion pattern matches during the walk", async () => {
     const proj = path.join(dir, "proj");
     await mkdir(path.join(proj, "__MACOSX"), { recursive: true });
     await writeFile(path.join(proj, "__MACOSX", "x.txt"), "junk");
@@ -343,7 +343,7 @@ describe("scan over a real tree", () => {
 });
 
 describe("folders whose names start with a dot", () => {
-  it("are walked like any other: nothing is skipped by its name (the junk list is applied when planning)", async () => {
+  it("are walked like any other: nothing is skipped by its name (the exclusion patterns are applied when planning)", async () => {
     const home = path.join(dir, "home");
     await mkdir(path.join(home, ".zipkit", "logs"), { recursive: true });
     await mkdir(path.join(home, ".config"));

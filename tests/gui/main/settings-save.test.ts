@@ -73,14 +73,14 @@ it("joins actual publication and broadcasts the commit", async () => {
 
 it("retries captured submitted values after failure, without taking later local edits", async () => {
   effects.write.mockRejectedValueOnce(new Error("full"));
-  const draft = { ...DEFAULT_SETTINGS, uiFontFamily: "Georgia", defaults: { ...DEFAULT_SETTINGS.defaults } };
+  const draft = { ...DEFAULT_SETTINGS, uiFontFamily: "Georgia", newJobParameters: { ...DEFAULT_SETTINGS.newJobParameters } };
   await expect(submitSettings(draft)).rejects.toThrow("full");
   draft.uiFontFamily = "unsubmitted";
-  draft.defaults.level = 1;
+  draft.newJobParameters.level = 1;
   await settleSettingsSave();
   expect(effects.write).toHaveBeenCalledTimes(2);
   expect(currentSettings().uiFontFamily).toBe("Georgia");
-  expect(currentSettings().defaults.level).toBe(DEFAULT_SETTINGS.defaults.level);
+  expect(currentSettings().newJobParameters.level).toBe(DEFAULT_SETTINGS.newJobParameters.level);
 });
 
 it("explicit discard retires a failed submission, and a replacement Save replaces it", async () => {
@@ -112,12 +112,12 @@ it("Windows takeover publishes the same captured packet and preserves absent-def
 
 it("Windows takeover saves a failed submission rather than subsequent edits to the draft", async () => {
   effects.write.mockRejectedValueOnce(new Error("disk full"));
-  const draft = { ...DEFAULT_SETTINGS, theme: "dark" as const, defaults: { ...DEFAULT_SETTINGS.defaults, level: 2 } };
+  const draft = { ...DEFAULT_SETTINGS, theme: "dark" as const, newJobParameters: { ...DEFAULT_SETTINGS.newJobParameters, level: 2 } };
   await expect(submitSettings(draft)).rejects.toThrow("disk full");
-  draft.defaults.level = 3;
+  draft.newJobParameters.level = 3;
   saveSettingsBeforeSessionEnd(250);
   const [, text, bound, , options] = effects.sync.mock.calls[0]!;
-  expect(JSON.parse(text)).toMatchObject({ theme: "dark", defaults: { level: 2 } });
+  expect(JSON.parse(text)).toMatchObject({ theme: "dark", newJobParameters: { level: 2 } });
   expect(bound).toBe(250);
   expect(options).toEqual({ createAbsent: true });
   expect(effects.apply).not.toHaveBeenCalled();

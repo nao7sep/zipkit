@@ -1,7 +1,7 @@
 /**
  * The pure planning pipeline, table-driven over synthetic scan entries
  * with no filesystem access. These tests lock the load-bearing
- * behaviours: junk exclusion, name fixing and renames, collision and traversal
+ * behaviours: the built-in exclusions, name fixing and renames, collision and traversal
  * errors that block, dedup, empty-file and empty-directory handling,
  * compression selection, the Zip64 verdict, timestamp flagging, symlink modes,
  * the per-rule name actions, and the output-existence gate.
@@ -185,7 +185,7 @@ describe("collisions", () => {
     expect(rules(p.findings)).toContain("collision.post-fix");
   });
 
-  it("errors when a real entry collides with the reserved metadata name", () => {
+  it("errors when a real entry collides with the reserved manifest name", () => {
     const p = plan([
       scanEntry({ archivePath: "zipkit.json", absolutePath: "/abs/1" }),
       scanEntry({ archivePath: "keep.txt", absolutePath: "/abs/2" }),
@@ -196,7 +196,7 @@ describe("collisions", () => {
     expect(f?.message).toContain("zipkit.json");
   });
 
-  it("permits the metadata name when metadata is disabled (no reservation)", () => {
+  it("permits the manifest name when manifest is disabled (no reservation)", () => {
     const p = plan([scanEntry({ archivePath: "zipkit.json", absolutePath: "/abs/1" })], {
       manifest: false,
     });

@@ -1810,10 +1810,10 @@ describe("the archive's recorded state and the job's history", () => {
 
 describe("changes made outside ZipKit to the originals and the archive", () => {
   const keys = (engine: QueueEngine) => (engine.snapshot()[0]?.history ?? []).map((entry) => entry.message.key);
-  const archiveAt = (archive: { state: "there" | "replaced" | "gone" | "unavailable" }) =>
+  const archiveAt = (archive: { state: "there" | "replaced" | "missing" | "unavailable" }) =>
     async (target: string) => {
       if (!target.endsWith(".zip")) return { kind: "present" as const, fingerprint: `1:${target}:1:1` };
-      if (archive.state === "gone") return { kind: "missing" as const };
+      if (archive.state === "missing") return { kind: "missing" as const };
       if (archive.state === "unavailable") return { kind: "unavailable" as const };
       return { kind: "present" as const, fingerprint: archive.state === "there" ? "1:1:10:1" : "1:2:10:1" };
     };
@@ -1886,7 +1886,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
   });
 
   it("leaves a file put in the archive's place alone, and lets the job create its archive again", async () => {
-    const archive = { state: "there" as "there" | "replaced" | "gone" | "unavailable" };
+    const archive = { state: "there" as "there" | "replaced" | "missing" | "unavailable" };
     const { deps, calls } = makeDeps({ pathState: archiveAt(archive) });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, SAVE);
@@ -1901,7 +1901,7 @@ describe("changes made outside ZipKit to the originals and the archive", () => {
   });
 
   it("waits, changing nothing, while the archive's drive is not connected, then picks up where it was", async () => {
-    const archive = { state: "there" as "there" | "replaced" | "gone" | "unavailable" };
+    const archive = { state: "there" as "there" | "replaced" | "missing" | "unavailable" };
     const { deps } = makeDeps({ pathState: archiveAt(archive) });
     const engine = createQueueEngine(deps);
     const id = engine.add(["/x"], DEFAULT_OPTIONS, { verify: true, originals: "keep" });

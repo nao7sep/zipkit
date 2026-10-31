@@ -1,5 +1,5 @@
 /**
- * The Details pane: the state of the selected job, its inputs and its archive,
+ * The Status pane: the state of the selected job, its inputs and its archive,
  * as it is now, one card per kind of thing, the ones that block first and
  * each coloured by how much it matters. While the job works, the step it is on
  * leads. A card lists names only, each once with how many items carry it,
@@ -16,18 +16,18 @@ import { useI18n } from "../i18n/I18nContext";
 import { ItemListDialog } from "./ItemListDialog";
 import {
   countsView,
-  detailsCards,
+  statusCards,
   progressHeading,
   progressLineText,
   progressRuns,
   severityColor,
-  type DetailsCard,
+  type StatusCard,
 } from "../view";
 
 
 /** Memoized: the window re-renders on every Progress batch, and the cards
  *  depend only on the job, the plan and the verification. */
-export const JobDetails = memo(function JobDetails({
+export const JobStatus = memo(function JobStatus({
   job,
   plan,
   verify,
@@ -46,8 +46,8 @@ export const JobDetails = memo(function JobDetails({
 }) {
   const t = useI18n();
   const verifyData = verify?.ok ? verify.data : null;
-  const cards = useMemo(() => detailsCards(job, plan, verifyData, t, rowLimit), [job, plan, verifyData, t, rowLimit]);
-  const [open, setOpen] = useState<DetailsCard | null>(null);
+  const cards = useMemo(() => statusCards(job, plan, verifyData, t, rowLimit), [job, plan, verifyData, t, rowLimit]);
+  const [open, setOpen] = useState<StatusCard | null>(null);
   const busy = job.state === "planning" || job.state === "running";
   const run = busy ? progressRuns(events).at(-1) : undefined;
   const measured = busy && counts ? countsView(counts, t) : null;
@@ -89,7 +89,7 @@ export const JobDetails = memo(function JobDetails({
   );
 });
 
-function Card({ card, onOpen }: { card: DetailsCard; onOpen: (card: DetailsCard) => void }) {
+function Card({ card, onOpen }: { card: StatusCard; onOpen: (card: StatusCard) => void }) {
   const t = useI18n();
   const color = card.level === "info" ? undefined : severityColor(card.level);
   const count = card.rows.length;

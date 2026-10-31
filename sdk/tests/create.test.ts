@@ -1,6 +1,6 @@
 /**
  * SDK integration over a real temporary tree. Exercises output
- * resolution, the scan → plan → write path, junk exclusion, the metadata file
+ * resolution, the scan → plan → write path, the built-in exclusions, the manifest
  * and its no-absolute-paths guarantee, the plan/inspect/write flow, the
  * overwrite gate, deterministic output, and content round-trip.
  */
@@ -75,7 +75,7 @@ describe("output resolution and round-trip", () => {
     );
   });
 
-  it("excludes junk by default", async () => {
+  it("leaves out what the built-in exclusions match by default", async () => {
     const proj = await makeTree();
     const result = await new ZipKit().create({ inputs: [proj] });
     const { entries } = readZip(await readFile(result.output));
@@ -116,8 +116,8 @@ it.skipIf(process.platform === "win32")("keeps an existing archive's permission 
   expect((await stat(output)).mode & 0o777).toBe(0o600);
 });
 
-describe("metadata", () => {
-  it("emits a metadata entry with relative paths, CRC, and SHA-256, and no absolute paths", async () => {
+describe("manifest", () => {
+  it("emits a manifest entry with relative paths, CRC, and SHA-256, and no absolute paths", async () => {
     const proj = await makeTree();
     const output = path.join(dir, "meta.zip");
     await new ZipKit().create({
@@ -138,7 +138,7 @@ describe("metadata", () => {
     expect(fileEntry.sha256).toBeTypeOf("string");
     expect(fileEntry.archivePath).toBe("a.txt");
 
-    // No absolute source path leaks anywhere in the serialized metadata.
+    // No absolute source path leaks anywhere in the serialized manifest.
     expect(meta!.content.toString("utf8")).not.toContain(dir);
   });
 
@@ -200,7 +200,7 @@ describe("metadata", () => {
     expect(kept.dosTime).toBe(15 << 11);
   });
 
-  it("embeds metadata by default and returns the complete record", async () => {
+  it("embeds manifest by default and returns the complete record", async () => {
     const proj = await makeTree();
     const result = await new ZipKit({ app: { name: "ZipKit", version: "9.9.9" } }).create({ inputs: [proj], output: path.join(dir, "d.zip") });
 
@@ -238,7 +238,7 @@ describe("metadata", () => {
       policy: { manifest: false },
     });
 
-    // No metadata entry in the archive.
+    // No manifest entry in the archive.
     const names = readZip(await readFile(result.output)).entries.map((e) => e.name);
     expect(names).not.toContain("zipkit.json");
     expect(names.sort()).toEqual(["a.txt", "sub/", "sub/b.bin"]);
@@ -283,7 +283,7 @@ describe("plan / inspect / write flow", () => {
     expect(written(result).bytes).toBeGreaterThan(0);
     expect(existsSync(output)).toBe(true);
     const { entries } = readZip(await readFile(output));
-    // The metadata document lists every written entry except the embedded
+    // The manifest document lists every written entry except the embedded
     // zipkit.json itself, which rides as the archive's final entry.
     expect(written(result).manifest.entries.length + 1).toBe(entries.length);
   });

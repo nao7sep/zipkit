@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "npm@12.2.0",
-  "description": "Make ZIP archives on a Mac that open cleanly on Windows: fix file names, drop Mac-only junk, and verify the result.",
+  "description": "Make ZIP archives on a Mac that open cleanly on Windows: fix file names, leave out OS-only files, and verify the result.",
   "license": "GPL-3.0-or-later",
   "author": {
     "name": "Yoshinao Inoguchi",

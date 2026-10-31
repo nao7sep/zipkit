@@ -199,11 +199,11 @@ describe("loadManagedJson: a failure to set aside propagates, never resets over 
 
   it("a non-ENOENT read failure propagates instead of being treated as absence", async () => {
     const file = path.join(root, "config.json");
-    writeFileSync(file, JSON.stringify({ defaults: {} }));
+    writeFileSync(file, JSON.stringify({ newJobParameters: {} }));
     const injected = Object.assign(new Error("EACCES: read blocked"), { code: "EACCES" });
     armedReadError.current = injected;
     await expect(loadSettings()).rejects.toBe(injected);
-    expect(readFileSync(file, "utf8")).toBe('{"defaults":{}}');
+    expect(readFileSync(file, "utf8")).toBe('{"newJobParameters":{}}');
   });
 });
 

@@ -22,7 +22,7 @@ export function settingsFile(): string {
 }
 
 function freshSettings(): GuiSettings {
-  return { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_PARAMETERS } };
+  return { ...DEFAULT_SETTINGS, newJobParameters: { ...DEFAULT_PARAMETERS } };
 }
 
 /** One exclusion pattern as the SDK takes it; a regex must compile. */
@@ -69,14 +69,12 @@ function effectiveSettings(root: Partial<Record<keyof GuiSettings, unknown>>, lo
     if (!Object.hasOwn(root, key)) continue;
     const value = root[key];
     switch (key) {
-      case "defaults":
+      case "newJobParameters":
         // Each parameter is independent of the others, so an invalid one reverts
-        // alone. Settings holds only the parameters: an output folder, overwrite
-        // choice or comment an earlier build saved here belongs to each job now
-        // and is not read.
+        // alone.
         if (isPlainObject(value)) {
           const reverted: string[] = [];
-          settings.defaults = Object.fromEntries(PARAMETER_CHECKS.map(([member, valid]) => {
+          settings.newJobParameters = Object.fromEntries(PARAMETER_CHECKS.map(([member, valid]) => {
             if (valid(value[member])) return [member, value[member]];
             reverted.push(member);
             return [member, DEFAULT_PARAMETERS[member as keyof ArchiveParameters]];
@@ -140,7 +138,7 @@ export async function loadSettings(logger: AppLog = nullLog): Promise<ManagedJso
  * cleaned (text-cleanup conventions). Returns the effective settings. */
 export function checkedSettings(settings: GuiSettings, logger: AppLog = nullLog): GuiSettings {
   for (const [key, valid] of PARAMETER_CHECKS) {
-    if (!valid(settings.defaults[key as keyof ArchiveParameters])) throw new Error(`Invalid archive parameter: ${key}`);
+    if (!valid(settings.newJobParameters[key as keyof ArchiveParameters])) throw new Error(`Invalid archive parameter: ${key}`);
   }
   const checked = effectiveSettings(settings, logger);
   const effective: GuiSettings = {

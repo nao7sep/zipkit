@@ -44,7 +44,7 @@ function freshLayout(): StoredLayout {
 export function parseLayout(root: Record<string, unknown>): StoredLayout {
   const layout = root.layout;
   if (!isPlainObject(layout)) throw new InvalidManagedJsonError("layout.json", "layout must be an object");
-  for (const key of ["jobsWidth", "progressWidth", "recordsListWidth"] as const) {
+  for (const key of ["jobsWidth", "statusWidth", "recordsListWidth"] as const) {
     if (layout[key] !== undefined && typeof layout[key] !== "number") {
       throw new InvalidManagedJsonError("layout.json", `layout.${key} must be a number`);
     }

@@ -82,12 +82,12 @@ function sameValue(a: unknown, b: unknown): boolean {
 }
 
 /** Whether two option states agree on every parameter, so a job still uses
- *  the defaults whatever its own destination, name and comment. */
+ *  the Settings parameters whatever its own destination, name and comment. */
 export function parametersEqual(a: ArchiveParameters, b: ArchiveParameters): boolean {
   return PARAMETER_KEYS.every((key) => sameValue(a[key], b[key]));
 }
 
-/** A new job's options: the default parameters, with nothing of its own yet. */
+/** A new job's options: the new-job parameters from Settings, with nothing of its own yet. */
 export function newJobOptions(defaults: ArchiveParameters): GuiOptions {
   const options = { ...DEFAULT_OPTIONS, ...parametersOf(defaults) };
   return { ...options, exclusions: options.exclusions.map((p) => ({ ...p })) };
@@ -121,7 +121,7 @@ export function isDisplayZone(value: unknown): value is string {
 /** The persisted GUI settings: the new-job option defaults plus app-level appearance. */
 export interface GuiSettings {
   /** The parameters every new job starts with. */
-  defaults: ArchiveParameters;
+  newJobParameters: ArchiveParameters;
   /** UI (chrome) font family. Family only; blank = the built-in default stack (the renderer's
    *  `--font-ui` variable). System fonts only — the renderer CSP forbids web fonts (`font-src 'self'`),
    *  and a free-text family naming installed fonts needs no `@font-face`. */
@@ -161,16 +161,16 @@ export function isCardRowLimit(value: unknown): value is number {
 }
 
 /** The config file's set keys. */
-export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "confirmJobRemoval", "cardRowLimit", "defaults"] as const satisfies readonly (keyof GuiSettings)[];
+export const SETTINGS_KEYS = ["language", "timeZone", "theme", "uiFontFamily", "confirmJobRemoval", "cardRowLimit", "newJobParameters"] as const satisfies readonly (keyof GuiSettings)[];
 
 /** The sets the draft changed from the saved settings. */
 export function changedSettings(before: GuiSettings, draft: GuiSettings): Partial<GuiSettings> {
-  const changed = SETTINGS_KEYS.filter((key) => (key === "defaults" ? !parametersEqual(before.defaults, draft.defaults) : before[key] !== draft[key]));
+  const changed = SETTINGS_KEYS.filter((key) => (key === "newJobParameters" ? !parametersEqual(before.newJobParameters, draft.newJobParameters) : before[key] !== draft[key]));
   return Object.fromEntries(changed.map((key) => [key, draft[key]])) as Partial<GuiSettings>;
 }
 
 export const DEFAULT_SETTINGS: GuiSettings = {
-  defaults: DEFAULT_PARAMETERS,
+  newJobParameters: DEFAULT_PARAMETERS,
   uiFontFamily: "",
   theme: "system",
   language: "system",

@@ -69,7 +69,7 @@ export interface JobCounts {
   counts: ProgressCounts | null;
 }
 
-/** How many of a job's newest events its Progress pane holds. */
+/** How many of a job's newest events its Status pane holds. */
 export const JOB_EVENT_LIMIT = 2000;
 
 /** A structured SDK fault surfaced to the renderer. `presentation` is authored

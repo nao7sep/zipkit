@@ -6,7 +6,7 @@
  * its Inputs (add/remove without rebuilding the job), its Parameters (the archive
  * knobs, gated by a "use the parameters from Settings" toggle), its Operation
  * (file name, output folder, overwrite, comment, intent, the full output-path checkpoint, then the
- * lifecycle buttons), and its Report. Right, this job's live Progress. Jobs are
+ * lifecycle buttons), and its Report. Right, this job's Status. Jobs are
  * planned in the background; each is created on demand and the engine runs them
  * one at a time. The view sequences queue commands and renders, it computes no
  * archive logic. Defaults for new jobs live in Settings (a draft form, saved on
@@ -64,7 +64,7 @@ import { parseWholeNumber } from "./components/WholeNumberInput";
 import { DirectoryField } from "./components/DirectoryField";
 import { Pane } from "./components/Pane";
 import { ReceiverResultNotice } from "./components/ReceiverResultNotice";
-import { JobDetails } from "./components/JobDetails";
+import { JobStatus } from "./components/JobStatus";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Splitter } from "./components/Splitter";
@@ -131,7 +131,7 @@ export function App() {
   const t = useI18n();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [defaults, setDefaults] = useState<ArchiveParameters>(DEFAULT_PARAMETERS);
+  const [newJobParameters, setNewJobParameters] = useState<ArchiveParameters>(DEFAULT_PARAMETERS);
   // The UI (chrome) font family. Blank = the built-in default stack (the index.css --font-ui var).
   const [uiFontFamily, setUiFontFamily] = useState<string>("");
   // The saved theme, kept only to seed the Settings draft: the main process
@@ -209,7 +209,7 @@ export function App() {
       window.zipkit.getSettings(),
       window.zipkit.getLayout(),
     ]).then(([settings, layout]) => {
-      setDefaults(settings.defaults);
+      setNewJobParameters(settings.newJobParameters);
       setUiFontFamily(settings.uiFontFamily);
       setTheme(settings.theme);
       setLanguage(settings.language);
@@ -330,7 +330,7 @@ export function App() {
   }
 
   function applySavedSettings(next: GuiSettings): void {
-    setDefaults(next.defaults);
+    setNewJobParameters(next.newJobParameters);
     setUiFontFamily(next.uiFontFamily);
     setTheme(next.theme);
     setLanguage(next.language);
@@ -347,7 +347,7 @@ export function App() {
     const admission = planInputAdmission([], inputs);
     if (admission.accepted.length === 0) return { changed: false, accepted: 0, result: null };
     try {
-      const id = await window.zipkit.addJob(admission.accepted, newJobOptions(defaults));
+      const id = await window.zipkit.addJob(admission.accepted, newJobOptions(newJobParameters));
       setSelectedId(id);
       setPullFocusId(id); // focus the new row once it renders (focus/selection policy)
       return {
@@ -471,7 +471,7 @@ export function App() {
   }
 
   // Latest-ref so the window-level key handler (subscribed once) always invokes the
-  // current closures — fresh defaults for Add, fresh selection for Create — without
+  // current closures — fresh new-job parameters for Add, fresh selection for Create — without
   // re-subscribing the listener on every render.
   const addJobRef = useRef(addJob);
   addJobRef.current = addJob;
@@ -487,9 +487,9 @@ export function App() {
       window.zipkit.reportError("persist pane layout", reportableError(error));
     });
   }
-  // The Jobs|Archive handle: drag right widens Jobs. The Archive|Progress handle
+  // The Jobs|Archive handle: drag right widens Jobs. The Archive|Status handle
   // (rendered inside the middle column) drags right to widen Archive (narrow
-  // Progress). A drag sets the user's intent (clamped only into the per-column
+  // Status). A drag sets the user's intent (clamped only into the per-column
   // bounds — the live width-aware clamp is applied for DISPLAY, not stored), and
   // persists it on release.
   const jobsSplitter = (
@@ -512,23 +512,23 @@ export function App() {
       onKeyboardCommit={() => persistLayout(intentRef.current)}
     />
   );
-  const progressSplitter = (
+  const statusSplitter = (
     <Splitter
-      label={t.t("pane.resizeProgress")}
-      value={intent.progressWidth}
-      min={LAYOUT_BOUNDS.progressWidth.min}
-      max={LAYOUT_BOUNDS.progressWidth.max}
+      label={t.t("pane.resizeStatus")}
+      value={intent.statusWidth}
+      min={LAYOUT_BOUNDS.statusWidth.min}
+      max={LAYOUT_BOUNDS.statusWidth.max}
       direction={-1}
       onDragStart={() => (dragBase.current = intentRef.current)}
       onDragDelta={(dx) =>
         setIntent(
-          clampLayout({ ...dragBase.current, progressWidth: dragBase.current.progressWidth - dx }),
+          clampLayout({ ...dragBase.current, statusWidth: dragBase.current.statusWidth - dx }),
         )
       }
       onDragEnd={() => persistLayout(intentRef.current)}
       onDragCancel={() => setIntent(dragBase.current)}
       onKeyboardDelta={(dx) => {
-        const next = clampLayout({ ...intentRef.current, progressWidth: intentRef.current.progressWidth - dx });
+        const next = clampLayout({ ...intentRef.current, statusWidth: intentRef.current.statusWidth - dx });
         intentRef.current = next;
         setIntent(next);
       }}
@@ -556,14 +556,14 @@ export function App() {
     );
   }
 
-  // Five tracks: Jobs | handle | Archive (flex) | handle | Progress. The center
+  // Five tracks: Jobs | handle | Archive (flex) | handle | Status. The center
   // track carries a real minimum (ARCHIVE_MIN_WIDTH) so the primary pane can
   // never collapse; the handle tracks and the body padding use the same px
   // constants the window minimum is derived from, so layout and minimum agree.
   const bodyStyle: CSSProperties = {
     ...S.body,
     padding: BODY_PADDING,
-    gridTemplateColumns: `${displayed.jobsWidth}px ${SPLITTER_WIDTH}px minmax(${ARCHIVE_MIN_WIDTH}px, 1fr) ${SPLITTER_WIDTH}px ${displayed.progressWidth}px`,
+    gridTemplateColumns: `${displayed.jobsWidth}px ${SPLITTER_WIDTH}px minmax(${ARCHIVE_MIN_WIDTH}px, 1fr) ${SPLITTER_WIDTH}px ${displayed.statusWidth}px`,
   };
 
   return (
@@ -646,9 +646,9 @@ export function App() {
           <JobView
             key={selected.id}
             job={selected}
-            defaults={defaults}
+            newJobParameters={newJobParameters}
             cardRowLimit={cardRowLimit}
-            splitter={progressSplitter}
+            splitter={statusSplitter}
             inputResult={inputResults[selected.id] ?? null}
             operationResult={jobResults[selected.id] ?? null}
             levelDraft={levelDrafts[selected.id] ?? null}
@@ -676,8 +676,8 @@ export function App() {
             <Pane title={t.t("pane.archive")} rootStyle={GROW}>
               <p style={S.muted}>{t.t("archive.empty")}</p>
             </Pane>
-            {progressSplitter}
-            <Pane title={t.t("pane.details")} rootStyle={GROW}>
+            {statusSplitter}
+            <Pane title={t.t("pane.status")} rootStyle={GROW}>
               <p style={S.muted}>{t.t("progress.noJob")}</p>
             </Pane>
           </>
@@ -687,7 +687,7 @@ export function App() {
 
       {dialog === "settings" && systemChoices && (
         <SettingsDialog
-          settings={{ defaults, uiFontFamily, theme, language, timeZone, confirmJobRemoval, cardRowLimit }}
+          settings={{ newJobParameters, uiFontFamily, theme, language, timeZone, confirmJobRemoval, cardRowLimit }}
           system={systemChoices}
           onSave={saveSettings}
           onClose={() => setDialog(null)}
@@ -701,7 +701,7 @@ export function App() {
 
 function JobView({
   job,
-  defaults,
+  newJobParameters,
   cardRowLimit,
   splitter,
   inputResult,
@@ -712,7 +712,7 @@ function JobView({
   onLevelDraft,
 }: {
   job: Job;
-  defaults: ArchiveParameters;
+  newJobParameters: ArchiveParameters;
   cardRowLimit: number;
   splitter: ReactNode;
   inputResult: ReceiverResult | null;
@@ -739,10 +739,10 @@ function JobView({
   const confirm = useConfirm();
   // Unticking keeps editing available even while values still match Settings.
   // A later Settings change updates this indicator without changing the job.
-  const [useSettingsIntent, setUseSettingsIntent] = useState(() => parametersEqual(job.options, defaults));
-  const useDefaults = useSettingsIntent && parametersEqual(opts, defaults);
+  const [useSettingsIntent, setUseSettingsIntent] = useState(() => parametersEqual(job.options, newJobParameters));
+  const useSettingsParameters = useSettingsIntent && parametersEqual(opts, newJobParameters);
   // Folded while the job uses the Settings' parameters; unticking unfolds.
-  const [paramsOpen, setParamsOpen] = useState(() => !parametersEqual(job.options, defaults));
+  const [paramsOpen, setParamsOpen] = useState(() => !parametersEqual(job.options, newJobParameters));
 
   // The one rule the engine also enforces: what this pane disables is exactly what
   // the engine refuses.
@@ -751,9 +751,9 @@ function JobView({
   useEffect(() => {
     if (editable) return;
     setOpts(job.options);
-    setUseSettingsIntent(parametersEqual(job.options, defaults));
+    setUseSettingsIntent(parametersEqual(job.options, newJobParameters));
     onLevelDraft(null);
-  }, [editable, job.options, defaults]);
+  }, [editable, job.options, newJobParameters]);
   // Only a valid level reaches the queue, and Create waits for one.
   const levelText = levelDraft ?? String(opts.level);
   const levelInvalid = levelHeldBack(levelDraft);
@@ -819,7 +819,7 @@ function JobView({
         error,
         () => {
           setOpts(job.options);
-          setUseSettingsIntent(parametersEqual(job.options, defaults));
+          setUseSettingsIntent(parametersEqual(job.options, newJobParameters));
         },
       );
     }
@@ -840,12 +840,12 @@ function JobView({
   // Unchecking enables editing (options unchanged until the user edits); re-checking
   // actually restores the Settings' parameters, so the box can never claim "defaults"
   // falsely. The job's own destination, name and comment stay as they are.
-  function toggleUseDefaults(checked: boolean) {
+  function toggleUseSettingsParameters(checked: boolean) {
     setUseSettingsIntent(checked);
     if (!checked) setParamsOpen(true);
     if (checked) {
       onLevelDraft(null);
-      commitOptions({ ...opts, ...parametersOf(defaults) });
+      commitOptions({ ...opts, ...parametersOf(newJobParameters) });
     }
   }
 
@@ -1148,9 +1148,9 @@ function JobView({
           <label style={S.defaultsToggle}>
             <input
               type="checkbox"
-              checked={useDefaults}
+              checked={useSettingsParameters}
               disabled={!editable}
-              onChange={(e) => toggleUseDefaults(e.target.checked)}
+              onChange={(e) => toggleUseSettingsParameters(e.target.checked)}
             />
             <span>{t.t("params.useSettings")}</span>
           </label>
@@ -1161,7 +1161,7 @@ function JobView({
             onChange={(parameters) => commitOptions({ ...opts, ...parameters })}
             levelText={levelText}
             onLevelText={typeLevel}
-            disabled={useDefaults || !editable}
+            disabled={useSettingsParameters || !editable}
           />
         </div>
 
@@ -1201,8 +1201,8 @@ function JobView({
 
       {splitter}
 
-      <Pane title={t.t("pane.details")} rootStyle={GROW}>
-        <JobDetails job={job} plan={plan} verify={verify} events={events} counts={counts} rowLimit={cardRowLimit} />
+      <Pane title={t.t("pane.status")} rootStyle={GROW}>
+        <JobStatus job={job} plan={plan} verify={verify} events={events} counts={counts} rowLimit={cardRowLimit} />
       </Pane>
     </>
   );

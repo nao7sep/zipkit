@@ -313,7 +313,7 @@ describe("records reads for the Records window", () => {
     expect(await page({ session: "2026-06-14T05:25:48.123Z" })).toEqual(["scan.symlink-unreadable", "scan.start"]);
     expect(await page({ kind: "log" })).toEqual(["verify failed", "app started"]);
     expect(await page({ kind: "job-event", level: "error" })).toEqual(["fault"]);
-    expect(await page({ level: "attention" })).toEqual(["verify failed", "scan.symlink-unreadable", "fault"]);
+    expect(await page({ level: "warningsAndErrors" })).toEqual(["verify failed", "scan.symlink-unreadable", "fault"]);
     expect(await page({ level: "info" })).toEqual(["app started", "scan.start"]);
     // Search reads every stored field, and its % and _ are literal.
     expect(await page({ search: "b.zip" })).toEqual(["verify failed"]);

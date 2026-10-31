@@ -9,7 +9,7 @@ describe("parseRecordsQuery", () => {
     const query = {
       session: "2026-06-15T01:00:00.000Z",
       kind: "job-event",
-      level: "attention",
+      level: "warningsAndErrors",
       search: "zip",
       after: { time: "2026-06-15T01:00:01.000Z", kind: "log", id: 7 },
     };
@@ -17,7 +17,7 @@ describe("parseRecordsQuery", () => {
   });
 
   it("offers Warnings and errors first, then each level from the loudest", () => {
-    expect(RECORD_LEVEL_FILTERS).toEqual(["attention", "error", "warn", "info", "debug"]);
+    expect(RECORD_LEVEL_FILTERS).toEqual(["warningsAndErrors", "error", "warn", "info", "debug"]);
   });
 
   it("refuses anything else, field by field", () => {

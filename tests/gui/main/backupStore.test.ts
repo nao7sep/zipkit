@@ -303,7 +303,7 @@ describe("write-through: a real managed save records the exact bytes after the r
 
     const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
 
-    await saveSettings({ ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 7 } });
+    await saveSettings({ ...DEFAULT_SETTINGS, newJobParameters: { ...DEFAULT_OPTIONS, level: 7 } });
     await closeBackupStore(); // the save does not wait for its record; closing does
 
     const file = path.join(root, "config.json");
@@ -322,7 +322,7 @@ describe("write-through: a real managed save records the exact bytes after the r
   it("a second saveSettings with identical settings records no new row", async () => {
     const { saveSettings } = await import("../../../src/gui/main/settings.js");
     const { DEFAULT_OPTIONS, DEFAULT_SETTINGS } = await import("../../../src/gui/shared/spec.js");
-    const settings = { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 3 } };
+    const settings = { ...DEFAULT_SETTINGS, newJobParameters: { ...DEFAULT_OPTIONS, level: 3 } };
 
     const { closeBackupStore } = await import("../../../src/gui/main/backupStore.js");
 

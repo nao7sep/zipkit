@@ -82,7 +82,7 @@ describe("pane-layout IPC", () => {
     mocks.saveLayout.mockRejectedValue(failure);
     const handler = mocks.handlers.get("zipkit:setLayout")!;
 
-    await expect(handler({}, { jobsWidth: 300, progressWidth: 360 })).rejects.toBe(failure);
+    await expect(handler({}, { jobsWidth: 300, statusWidth: 360 })).rejects.toBe(failure);
     expect(mocks.logError).toHaveBeenCalledWith(
       "failed to persist layout",
       expect.objectContaining({ error: expect.anything() }),
@@ -129,7 +129,7 @@ describe("settings IPC", () => {
   });
 
   it("answers from main's copy of the settings, without reading the file or showing anything", async () => {
-    const value = { defaults: {}, uiFontFamily: "", theme: "system", language: "system" };
+    const value = { newJobParameters: {}, uiFontFamily: "", theme: "system", language: "system" };
     mocks.currentSettings.mockReturnValue(value);
 
     expect(mocks.handlers.get("zipkit:getSettings")!({ sender: {} })).toBe(value);
@@ -154,8 +154,8 @@ describe("Records window IPC", () => {
   it("reads a checked query one page at a time", async () => {
     const page = { records: [], more: false };
     mocks.records.mockResolvedValue(page);
-    await expect(invoke("zipkit:readRecordsPage", { ...ALL, level: "attention" })).resolves.toBe(page);
-    expect(mocks.records).toHaveBeenCalledWith({ op: "page", query: { ...ALL, level: "attention" }, pageSize: 100 });
+    await expect(invoke("zipkit:readRecordsPage", { ...ALL, level: "warningsAndErrors" })).resolves.toBe(page);
+    expect(mocks.records).toHaveBeenCalledWith({ op: "page", query: { ...ALL, level: "warningsAndErrors" }, pageSize: 100 });
   });
 
   it("refuses a malformed query or record without reading, and records why", async () => {
@@ -192,8 +192,8 @@ describe("Records window IPC", () => {
   });
 
   it("answers the main window's layout from main's copy", async () => {
-    mocks.paneLayout.mockReturnValue({ jobsWidth: 300, progressWidth: 360 });
-    expect(invoke("zipkit:getLayout")).toEqual({ jobsWidth: 300, progressWidth: 360 });
+    mocks.paneLayout.mockReturnValue({ jobsWidth: 300, statusWidth: 360 });
+    expect(invoke("zipkit:getLayout")).toEqual({ jobsWidth: 300, statusWidth: 360 });
   });
 
   it("opens the Records window, recording a failure before it rejects", async () => {

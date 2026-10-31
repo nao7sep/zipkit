@@ -2,8 +2,8 @@
  * Selection pass (pass 2), tested directly against a stub matcher so the pass
  * itself is locked independent of the picomatch compiler. The first matching
  * rule excludes the entry, sets its `excludeReason` to the rule description, and
- * stops it being emitted; a junk-preset rule additionally emits its
- * `*.junk` info finding while a plain user rule emits none. A non-match leaves
+ * stops it being emitted, with one `exclude.pattern` info finding naming the
+ * pattern. A non-match leaves
  * the entry in, and an already-excluded entry is skipped.
  */
 

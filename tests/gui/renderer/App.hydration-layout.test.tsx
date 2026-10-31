@@ -43,7 +43,7 @@ function api(overrides: Partial<ZipKitGuiApi> = {}): ZipKitGuiApi {
     onWindowActivityChanged: vi.fn(() => () => {}),
     onSettingsChanged: vi.fn(() => () => {}),
     onOpenAbout: vi.fn(() => () => {}),
-    getSettings: vi.fn(async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const, timeZone: "system", confirmJobRemoval: false, cardRowLimit: 5 })),
+    getSettings: vi.fn(async () => ({ newJobParameters: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system" as const, language: "system" as const, timeZone: "system", confirmJobRemoval: false, cardRowLimit: 5 })),
     getLanguageEnvironment: vi.fn(async () => ({ language: "en" as const, locale: "en", timeZone: null })),
     onLanguageChanged: vi.fn(() => () => {}),
     getSystemChoices: vi.fn(async () => ({ appearance: "light" as const, language: "en" as const, timeZone: "UTC" })),
@@ -129,7 +129,7 @@ describe("required app hydration", () => {
     const getSettings = vi
       .fn<ZipKitGuiApi["getSettings"]>()
       .mockRejectedValueOnce(new Error("settings unavailable"))
-      .mockResolvedValueOnce({ defaults: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system", language: "system", timeZone: "system", confirmJobRemoval: false, cardRowLimit: 5 });
+      .mockResolvedValueOnce({ newJobParameters: DEFAULT_OPTIONS, uiFontFamily: "", theme: "system", language: "system", timeZone: "system", confirmJobRemoval: false, cardRowLimit: 5 });
     const unsubscribes = [vi.fn(), vi.fn()];
     const onQueue = vi
       .fn<ZipKitGuiApi["onQueue"]>()
@@ -385,11 +385,11 @@ describe("mounted run consent across queue projection changes", () => {
       fireEvent.click(await screen.findByRole("option"));
       // The job's own fields are editable while it uses the Settings' parameters,
       // and editing them leaves it on the defaults.
-      const useDefaults = await screen.findByRole("checkbox", { name: "Use the parameters from Settings" });
+      const useSettingsParameters = await screen.findByRole("checkbox", { name: "Use the parameters from Settings" });
       fireEvent.change(screen.getByRole("textbox", { name: "Comment" }), { target: { value: "last keystroke" } });
       fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "last-name" } });
       fireEvent.change(screen.getByRole("textbox", { name: /Output directory/ }), { target: { value: "/last-folder" } });
-      expect((useDefaults as HTMLInputElement).checked).toBe(true);
+      expect((useSettingsParameters as HTMLInputElement).checked).toBe(true);
       // No blur, navigation, renderer timer or planning wait is required.
       const held = engine.snapshot()[0]!;
       expect(held.options).toMatchObject({ comment: "last keystroke", fileName: "last-name", outputDir: "/last-folder" });
@@ -411,11 +411,11 @@ describe("mounted run consent across queue projection changes", () => {
       mounted = renderApp(bridge);
       fireEvent.click(await screen.findByRole("option"));
       fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "delivery" } });
-      const useDefaults = screen.getByRole("checkbox", { name: "Use the parameters from Settings" });
-      fireEvent.click(useDefaults);
+      const useSettingsParameters = screen.getByRole("checkbox", { name: "Use the parameters from Settings" });
+      fireEvent.click(useSettingsParameters);
       fireEvent.click(screen.getByRole("checkbox", { name: /Leave out what the exclusion patterns match/ }));
       expect(engine.snapshot()[0]?.options).toMatchObject({ exclude: false, fileName: "delivery" });
-      fireEvent.click(useDefaults);
+      fireEvent.click(useSettingsParameters);
       expect(engine.snapshot()[0]?.options).toEqual({ ...DEFAULT_OPTIONS, fileName: "delivery" });
     } finally { mounted?.unmount(); await engine.shutdown(); }
   });
@@ -535,7 +535,7 @@ describe("the Archive pane layout", () => {
     fireEvent.click(await screen.findByRole("option"));
     const checkbox = screen.getByRole("checkbox", { name: "Use the parameters from Settings" }) as HTMLInputElement;
     expect(checkbox.checked).toBe(true);
-    await act(async () => settingsChanged!({ ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 3 } }));
+    await act(async () => settingsChanged!({ ...DEFAULT_SETTINGS, newJobParameters: { ...DEFAULT_OPTIONS, level: 3 } }));
     expect(checkbox.checked).toBe(false);
     expect(bridge.updateJob).not.toHaveBeenCalled();
     expect(selected.options).toEqual(DEFAULT_OPTIONS);
@@ -544,7 +544,7 @@ describe("the Archive pane layout", () => {
     expect(checkbox.checked).toBe(true);
     fireEvent.click(checkbox);
     expect(checkbox.checked).toBe(false);
-    await act(async () => settingsChanged!({ ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_OPTIONS, level: 3 } }));
+    await act(async () => settingsChanged!({ ...DEFAULT_SETTINGS, newJobParameters: { ...DEFAULT_OPTIONS, level: 3 } }));
     await act(async () => settingsChanged!(DEFAULT_SETTINGS));
     expect(checkbox.checked).toBe(false);
   });

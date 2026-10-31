@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The Details pane and its full-list dialog: errors and warnings list their
+ * The Status pane and its full-list dialog: errors and warnings list their
  * first rows at once, exclusions fold into one line per reason and renames into
  * one line, every count opens the full list by path or by name, and the step a
  * working job is on shows while it works.
@@ -9,13 +9,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
-import { JobDetails } from "../../../../src/gui/renderer/src/components/JobDetails";
+import { JobStatus } from "../../../../src/gui/renderer/src/components/JobStatus";
 import * as view from "../../../../src/gui/renderer/src/view";
 
 // Counted, so a test can tell whether the sections were rebuilt.
 vi.mock("../../../../src/gui/renderer/src/view", async (original) => {
   const real = await original<typeof import("../../../../src/gui/renderer/src/view")>();
-  return { ...real, detailsCards: vi.fn(real.detailsCards) };
+  return { ...real, statusCards: vi.fn(real.statusCards) };
 });
 import type { Finding, Job, JobEvent, PlanData, PlannedEntry } from "../../../../src/gui/shared/api";
 import { DEFAULT_OPTIONS } from "../../../../src/gui/shared/spec";
@@ -54,15 +54,15 @@ const plan = (entries: PlannedEntry[] = []): PlanData => ({
 const entry = (archivePath: string, over: Partial<PlannedEntry> = {}): PlannedEntry => ({
   archivePath, originalPath: archivePath, diskPath: `/in/${archivePath}`, type: "file", method: "deflate", excluded: false, nameFixes: [], findings: [], ...over,
 });
-const junk = (path: string, type: "file" | "dir" = "file") =>
-  entry(path, { type, excluded: true, findings: [{ id: `exclude.pattern:${path}`, rule: "exclude.pattern", severity: "info", path, message: "junk" }] });
+const excluded = (path: string, type: "file" | "dir" = "file") =>
+  entry(path, { type, excluded: true, findings: [{ id: `exclude.pattern:${path}`, rule: "exclude.pattern", severity: "info", path, message: "excluded by pattern" }] });
 const blocking = (path: string) => entry(path, { findings: [{ id: `x.test:${path}`, rule: "x.test" as Finding["rule"], severity: "error", path, message: "Blocks the archive" }] });
 const show = (p: PlanData | null, over: Partial<Job> = {}, events: JobEvent[] = []) =>
-  render(<JobDetails job={job(over)} plan={p} verify={null} events={events} rowLimit={5} />);
+  render(<JobStatus job={job(over)} plan={p} verify={null} events={events} rowLimit={5} />);
 
-describe("JobDetails", () => {
+describe("JobStatus", () => {
   it("lists names only in a card, each once with its count, and only its count past the limit", () => {
-    show(plan([junk("a/.DS_Store"), junk("b/.DS_Store"), junk("c/Thumbs.db")]));
+    show(plan([excluded("a/.DS_Store"), excluded("b/.DS_Store"), excluded("c/Thumbs.db")]));
     const card = screen.getByRole("heading", { name: /^Left out by exclusion patterns\s*3$/ }).closest("section")!;
     expect(within(card).getAllByRole("listitem").map((item) => item.textContent)).toEqual([".DS_Store (2)", "Thumbs.db"]);
     cleanup();
@@ -85,7 +85,7 @@ describe("JobDetails", () => {
   });
 
   it("lists every item by its full path in Details, saying what they share once", () => {
-    show(plan([junk("x/.DS_Store"), junk("y/.DS_Store"), junk("w/Thumbs.db")]));
+    show(plan([excluded("x/.DS_Store"), excluded("y/.DS_Store"), excluded("w/Thumbs.db")]));
     fireEvent.click(screen.getByRole("button", { name: "Left out by exclusion patterns (3)" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/^What the exclusion patterns match is left out/)).toBeTruthy();
@@ -95,12 +95,12 @@ describe("JobDetails", () => {
     expect(within(dialog).queryByRole("checkbox")).toBeNull();
   });
 
-  it("says what is left out goes with the originals when they are to be removed, and raises anything but junk", () => {
-    show(plan([junk("a/.DS_Store"), entry("sock", { excluded: true, findings: [{ id: "entry.unsupported:sock", rule: "entry.unsupported", severity: "info", path: "sock", message: "socket" }] })]),
+  it("says what is left out goes with the originals when they are to be removed, and raises anything but what the patterns leave out", () => {
+    show(plan([excluded("a/.DS_Store"), entry("sock", { excluded: true, findings: [{ id: "entry.unsupported:sock", rule: "entry.unsupported", severity: "info", path: "sock", message: "socket" }] })]),
       { intent: { verify: true, originals: "trash" } });
     expect(screen.getAllByText("These go to the Trash with the originals, without being archived.")).toHaveLength(2);
     const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-    // The socket card is now a warning, so it comes before the junk card.
+    // The socket card is now a warning, so it comes before the pattern card.
     expect(titles[0]).toMatch(/^Special files left out/);
     expect(titles[1]).toMatch(/^Left out by exclusion patterns/);
   });
@@ -121,13 +121,13 @@ describe("JobDetails", () => {
   });
 
   it("lists by name what a verification found missing or unexpected, and each way the originals changed", () => {
-    render(<JobDetails job={job({ state: "done", originalsChanges: { missing: ["/Users/me/a/gone.txt"], added: ["/Users/me/a/new.txt"], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
+    render(<JobStatus job={job({ state: "done", originalsChanges: { missing: ["/Users/me/a/gone.txt"], added: ["/Users/me/a/new.txt"], changed: [], unlisted: [] } })} plan={plan()} events={[]} rowLimit={5} verify={{
       ok: true,
       data: { ok: false, missing: ["a/one.txt", "b/two.txt"], extra: ["stray.bin"], summary: { total: 2, crc32Failed: 0, unreadable: 0, localMismatched: 0, sha256Mismatched: 0, manifestMismatched: 0 } } as never,
     }} />);
     expect(screen.getByRole("heading", { name: /^Missing from the archive\s*2$/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /^Unexpected extra entries\s*1$/ })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /^Gone from the originals since archiving\s*1$/ })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^Missing from the originals since archiving\s*1$/ })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /^Added to the originals since archiving\s*1$/ })).toBeTruthy();
     for (const name of ["one.txt", "two.txt", "stray.bin", "gone.txt", "new.txt"]) expect(screen.getByText(name)).toBeTruthy();
   });
@@ -154,23 +154,23 @@ describe("JobDetails", () => {
   });
 
   it("measures a write that reports how far it has got, by bytes, and sweeps a step that does not", () => {
-    render(<JobDetails job={job({ state: "running" })} plan={plan()} verify={null} events={[]} rowLimit={5}
+    render(<JobStatus job={job({ state: "running" })} plan={plan()} verify={null} events={[]} rowLimit={5}
       counts={{ stage: "write", entriesDone: 3, entriesTotal: 12, bytesDone: 2_500_000, bytesTotal: 10_000_000 }} />);
     const bar = screen.getByRole("progressbar", { name: "Working" });
     expect(bar.getAttribute("aria-valuenow")).toBe("25");
     expect(screen.getByText("Items 3 of 12 · 2.5 MB of 10 MB")).toBeTruthy();
     cleanup();
-    render(<JobDetails job={job({ state: "running" })} plan={plan()} verify={null} events={[]} rowLimit={5} counts={null} />);
+    render(<JobStatus job={job({ state: "running" })} plan={plan()} verify={null} events={[]} rowLimit={5} counts={null} />);
     expect(screen.getByRole("progressbar", { name: "Working" }).hasAttribute("aria-valuenow")).toBe(false);
     cleanup();
     // Nothing is measured once the job is no longer working.
-    render(<JobDetails job={job({ state: "done" })} plan={plan()} verify={null} events={[]} rowLimit={5}
+    render(<JobStatus job={job({ state: "done" })} plan={plan()} verify={null} events={[]} rowLimit={5}
       counts={{ stage: "verify", entriesDone: 1, entriesTotal: 1, bytesDone: 0, bytesTotal: 0 }} />);
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
   it("draws only the rows near the view of a list with thousands of rows", () => {
-    show(plan(Array.from({ length: 5000 }, (_, i) => junk(`photos/${i}/.DS_Store`))));
+    show(plan(Array.from({ length: 5000 }, (_, i) => excluded(`photos/${i}/.DS_Store`))));
     fireEvent.click(screen.getByRole("button", { name: "Left out by exclusion patterns (5,000)" }));
     const drawn = within(screen.getByRole("dialog")).getAllByText(/^\/in\/photos\//).length;
     expect(drawn).toBeGreaterThan(0);
@@ -178,10 +178,10 @@ describe("JobDetails", () => {
   });
 
   it("is not rebuilt when its parent re-renders with the same job, plan and verification", () => {
-    const cards = vi.mocked(view.detailsCards);
+    const cards = vi.mocked(view.statusCards);
     const shown = job();
-    const report = plan([junk("a/.DS_Store")]);
-    const tree = (tick: number) => <div data-tick={tick}><JobDetails job={shown} plan={report} verify={null} events={[]} rowLimit={5} /></div>;
+    const report = plan([excluded("a/.DS_Store")]);
+    const tree = (tick: number) => <div data-tick={tick}><JobStatus job={shown} plan={report} verify={null} events={[]} rowLimit={5} /></div>;
     const { rerender } = render(tree(0));
     const first = cards.mock.calls.length;
     rerender(tree(1));

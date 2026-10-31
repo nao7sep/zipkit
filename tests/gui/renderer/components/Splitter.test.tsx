@@ -83,7 +83,7 @@ describe("Splitter keyboard resizing", () => {
   it("maps Home/End to physical bounds for a reverse-width pane", () => {
     const onKeyboardDelta = vi.fn();
     render(
-      <Splitter label="Resize Progress pane" value={320} min={240} max={600} direction={-1}
+      <Splitter label="Resize Status pane" value={320} min={240} max={600} direction={-1}
         onDragStart={vi.fn()} onDragDelta={vi.fn()} onDragEnd={vi.fn()}
         onDragCancel={vi.fn()}
         onKeyboardDelta={onKeyboardDelta} onKeyboardCommit={vi.fn()} />,

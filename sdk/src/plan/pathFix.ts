@@ -3,8 +3,8 @@
  * whole path rather than a single segment: strip absolute and drive-letter
  * prefixes (`path.absolute`), resolve `.`/`..` and reject paths that escape the
  * archive root (`path.traversal`). Rooting runs before selection so the matcher
- * sees a rooted path. Length diagnostics (`path.too-long`) run after name
- * transformations, against the paths recipients will receive.
+ * sees a rooted path. Length diagnostics (`path.too-long`) run after the name
+ * fixes, against the paths recipients will receive.
  *
  * Windows limits a full path to 260 characters, and an archive's entries land
  * below where the recipient extracts it: Windows' "Extract All" makes a folder

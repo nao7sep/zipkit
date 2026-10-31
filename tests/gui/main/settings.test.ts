@@ -21,7 +21,7 @@ function warningLog() {
 }
 
 const CUSTOM = {
-  defaults: { ...DEFAULT_PARAMETERS, level: 9, strict: true },
+  newJobParameters: { ...DEFAULT_PARAMETERS, level: 9, strict: true },
   uiFontFamily: "Iosevka, monospace",
   theme: "dark" as const,
   language: "pt-BR" as const,
@@ -48,11 +48,11 @@ describe("settings sets", () => {
     expect(settings.parseSettings({})).toEqual(DEFAULT_SETTINGS);
   });
 
-  it.each([null, 5, "text", [1]])("falls back for a defaults set that is not an object: %j", (defaults) => {
+  it.each([null, 5, "text", [1]])("falls back for a newJobParameters set that is not an object: %j", (newJobParameters) => {
     const logger = warningLog();
-    expect(settings.parseSettings({ defaults, theme: "dark" }, logger)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
+    expect(settings.parseSettings({ newJobParameters, theme: "dark" }, logger)).toEqual({ ...DEFAULT_SETTINGS, theme: "dark" });
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), { key: "defaults" });
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), { key: "newJobParameters" });
   });
 
   it.each([
@@ -66,47 +66,40 @@ describe("settings sets", () => {
     ["manifestName", "a/b"],
     ["exclusions", [{ pattern: "cache/", match: "glob", target: "file", ignoreCase: false }]],
   ] as const)("reverts only an invalid %s, keeping the authored parameters beside it", (member, bad) => {
-    const authored = CUSTOM.defaults;
+    const authored = CUSTOM.newJobParameters;
     const logger = warningLog();
-    expect(settings.parseSettings({ defaults: { ...authored, [member]: bad } }, logger).defaults)
+    expect(settings.parseSettings({ newJobParameters: { ...authored, [member]: bad } }, logger).newJobParameters)
       .toEqual({ ...authored, [member]: DEFAULT_PARAMETERS[member] });
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), { key: "defaults", members: [member] });
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), { key: "newJobParameters", members: [member] });
   });
 
   it("names every reverted member, absent ones included, in one warning", () => {
     const logger = warningLog();
-    expect(settings.parseSettings({ defaults: { level: 1 } }, logger).defaults)
+    expect(settings.parseSettings({ newJobParameters: { level: 1 } }, logger).newJobParameters)
       .toEqual({ ...DEFAULT_PARAMETERS, level: 1 });
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.warn).mock.calls[0]![1]?.members).toHaveLength(9);
   });
 
   it.each(["a/../b", "a/b", "CON", "bad:name.json"])("refuses an unsafe authored manifest name instead of reverting it: %s", (manifestName) => {
-    expect(() => settings.checkedSettings({ ...CUSTOM, defaults: { ...CUSTOM.defaults, manifestName } })).toThrow("Invalid archive parameter: manifestName");
+    expect(() => settings.checkedSettings({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, manifestName } })).toThrow("Invalid archive parameter: manifestName");
   });
 
   it("refuses a folder glob targeting files instead of reverting the exclusion list", () => {
     const exclusions = [{ pattern: "cache/", match: "glob" as const, target: "file" as const, ignoreCase: false }];
-    expect(() => settings.checkedSettings({ ...CUSTOM, defaults: { ...CUSTOM.defaults, exclusions } })).toThrow("Invalid archive parameter: exclusions");
+    expect(() => settings.checkedSettings({ ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, exclusions } })).toThrow("Invalid archive parameter: exclusions");
   });
 
   it("keeps a corrected safe manifest name while the manifest is disabled", () => {
-    const authored = { ...CUSTOM, defaults: { ...CUSTOM.defaults, manifest: false, manifestName: "record.json" } };
+    const authored = { ...CUSTOM, newJobParameters: { ...CUSTOM.newJobParameters, manifest: false, manifestName: "record.json" } };
     expect(settings.checkedSettings(authored)).toEqual(authored);
   });
 
-  it("does not read an output folder, overwrite choice or comment an earlier build saved as a default", () => {
+  it("invalid scalar sets warn independently without affecting valid new-job parameters", () => {
     const logger = warningLog();
-    const earlier = { ...CUSTOM.defaults, comment: "for the client", outputDir: "/Users/me/Archives", fileName: "delivery.zip", overwrite: true };
-    expect(settings.parseSettings({ defaults: earlier }, logger).defaults).toEqual(CUSTOM.defaults);
-    expect(logger.warn).not.toHaveBeenCalled();
-  });
-
-  it("invalid scalar sets warn independently without affecting valid defaults", () => {
-    const logger = warningLog();
-    expect(settings.parseSettings({ defaults: CUSTOM.defaults, uiFontFamily: 42, theme: "sepia", language: "unknown" }, logger))
-      .toEqual({ ...DEFAULT_SETTINGS, defaults: CUSTOM.defaults });
+    expect(settings.parseSettings({ newJobParameters: CUSTOM.newJobParameters, uiFontFamily: 42, theme: "sepia", language: "unknown" }, logger))
+      .toEqual({ ...DEFAULT_SETTINGS, newJobParameters: CUSTOM.newJobParameters });
     expect(logger.warn).toHaveBeenCalledTimes(3);
     expect(vi.mocked(logger.warn).mock.calls.map((call) => call[1]?.key).sort()).toEqual(["language", "theme", "uiFontFamily"]);
   });
@@ -145,11 +138,11 @@ describe("settings file location and persistence", () => {
     expect(readdirSync(root)).toEqual([]);
   });
 
-  it("changing one defaults member writes exactly the whole defaults set", async () => {
-    const defaults = { ...DEFAULT_PARAMETERS, level: 3 };
-    expect(await settings.saveSettings({ ...DEFAULT_SETTINGS, defaults })).toEqual({ ...DEFAULT_SETTINGS, defaults });
-    expect(readStored()).toEqual(stored({ defaults }));
-    expect((await settings.loadSettings()).value).toEqual({ ...DEFAULT_SETTINGS, defaults });
+  it("changing one new-job parameter writes exactly the whole newJobParameters set", async () => {
+    const newJobParameters = { ...DEFAULT_PARAMETERS, level: 3 };
+    expect(await settings.saveSettings({ ...DEFAULT_SETTINGS, newJobParameters })).toEqual({ ...DEFAULT_SETTINGS, newJobParameters });
+    expect(readStored()).toEqual(stored({ newJobParameters }));
+    expect((await settings.loadSettings()).value).toEqual({ ...DEFAULT_SETTINGS, newJobParameters });
     expect(managedEntries(root)).toEqual(["config.json"]);
   });
 
@@ -164,22 +157,22 @@ describe("settings file location and persistence", () => {
     expect(readStored()).toEqual(stored({ theme: "dark" }));
   });
 
-  it("drops a format marker, version, unknown sets and unknown defaults members on the next write", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ formatVersion: 1, version: 99, retired: true, defaults: { ...CUSTOM.defaults, unknown: "drop" } }));
+  it("drops a format marker, version, unknown sets and unknown newJobParameters members on the next write", async () => {
+    writeFileSync(settings.settingsFile(), JSON.stringify({ formatVersion: 1, version: 99, retired: true, newJobParameters: { ...CUSTOM.newJobParameters, unknown: "drop" } }));
     const loaded = (await settings.loadSettings()).value;
-    expect(loaded.defaults).toEqual(CUSTOM.defaults);
+    expect(loaded.newJobParameters).toEqual(CUSTOM.newJobParameters);
     await settings.saveSettings({ ...loaded, theme: "light" });
-    expect(readStored()).toEqual(stored({ defaults: CUSTOM.defaults, theme: "light" }));
+    expect(readStored()).toEqual(stored({ newJobParameters: CUSTOM.newJobParameters, theme: "light" }));
   });
 
-  it("a reset removes defaults and keeps other stored sets", async () => {
+  it("a reset removes newJobParameters and keeps other stored sets", async () => {
     await settings.saveSettings(CUSTOM);
-    expect(await settings.saveSettings({ ...CUSTOM, defaults: DEFAULT_PARAMETERS })).toEqual({ ...CUSTOM, defaults: DEFAULT_PARAMETERS });
+    expect(await settings.saveSettings({ ...CUSTOM, newJobParameters: DEFAULT_PARAMETERS })).toEqual({ ...CUSTOM, newJobParameters: DEFAULT_PARAMETERS });
     expect(readStored()).toEqual(stored({ uiFontFamily: CUSTOM.uiFontFamily, theme: CUSTOM.theme, language: CUSTOM.language, timeZone: CUSTOM.timeZone, confirmJobRemoval: false, cardRowLimit: 9 }));
   });
 
   it("removes a stored copy identical to the built-in and keeps the file with no sets", async () => {
-    writeFileSync(settings.settingsFile(), JSON.stringify({ defaults: DEFAULT_PARAMETERS }));
+    writeFileSync(settings.settingsFile(), JSON.stringify({ newJobParameters: DEFAULT_PARAMETERS }));
     await settings.saveSettings(DEFAULT_SETTINGS);
     expect(readStored()).toEqual(stored({}));
   });
@@ -204,7 +197,7 @@ describe("settings file location and persistence", () => {
   });
 
   it("a malformed set remains in place and only falls back for that set", async () => {
-    const bytes = JSON.stringify({ defaults: 5, theme: "dark" });
+    const bytes = JSON.stringify({ newJobParameters: 5, theme: "dark" });
     writeFileSync(settings.settingsFile(), bytes);
     const logger = warningLog();
     expect(await settings.loadSettings(logger)).toEqual({ value: { ...DEFAULT_SETTINGS, theme: "dark" }, missing: false, quarantinedTo: null });
@@ -214,15 +207,15 @@ describe("settings file location and persistence", () => {
 
   it("an invalid default reverts alone, and the next unrelated save keeps the authored ones", async () => {
     const authored = { ...DEFAULT_PARAMETERS, strict: true, symlinks: "follow" as const };
-    writeFileSync(settings.settingsFile(), JSON.stringify({ defaults: { ...authored, level: 42 } }));
+    writeFileSync(settings.settingsFile(), JSON.stringify({ newJobParameters: { ...authored, level: 42 } }));
     const loaded = (await settings.loadSettings()).value;
-    expect(loaded.defaults).toEqual(authored);
+    expect(loaded.newJobParameters).toEqual(authored);
     await settings.saveSettings({ ...loaded, theme: "dark" });
-    expect(readStored()).toEqual(stored({ defaults: authored, theme: "dark" }));
+    expect(readStored()).toEqual(stored({ newJobParameters: authored, theme: "dark" }));
   });
 
   it("a set that read as its built-in loses its key at the next save", async () => {
-    writeFileSync(settings.settingsFile(), '{"defaults":5}');
+    writeFileSync(settings.settingsFile(), '{"newJobParameters":5}');
     const loaded = (await settings.loadSettings()).value;
     await settings.saveSettings({ ...loaded, theme: "dark" });
     expect(readStored()).toEqual(stored({ theme: "dark" }));

@@ -65,7 +65,7 @@ describe("a job that finishes mid-edit", () => {
         onQueueSaved: () => () => {},
         onSettingsChanged: vi.fn(() => () => {}),
         onOpenAbout: vi.fn(() => () => {}),
-        getSettings: async () => ({ defaults: DEFAULT_OPTIONS, uiFontFamily: "" }),
+        getSettings: async () => ({ newJobParameters: DEFAULT_OPTIONS, uiFontFamily: "" }),
         getLayout: async () => DEFAULT_LAYOUT,
         getPlan: async () => null,
         refreshJob: async () => {},
@@ -106,7 +106,7 @@ describe("a job that finishes mid-edit", () => {
     });
   }
 
-  const junk = (): HTMLInputElement => {
+  const excludeSwitch = (): HTMLInputElement => {
     const label = [...container.querySelectorAll("label")]
       .find((node) => node.textContent?.includes("Leave out what the exclusion patterns match"))!;
     return label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
@@ -128,8 +128,8 @@ describe("a job that finishes mid-edit", () => {
     await renderApp();
     await openJob("job-1");
 
-    expect(junk().checked).toBe(true);
-    await act(async () => junk().click());
+    expect(excludeSwitch().checked).toBe(true);
+    await act(async () => excludeSwitch().click());
 
     expect(updateJob).toHaveBeenCalledWith("job-1", { options: { ...CUSTOM_OPTIONS, exclude: false } });
   });

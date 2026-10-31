@@ -45,7 +45,7 @@ let lastRun = 0;
 
 /** Start one Progress run for a job: the returned sink records each SDK event
  *  of that action under the job and one run id, then sends it to the window's
- *  Progress pane. The record is made whether or not a window is open: these
+ *  Status pane. The record is made whether or not a window is open: these
  *  records are the only durable copy of the SDK's events. Run ids count up in
  *  the launch, and a record's session tells launches apart. */
 /** The steps that begin without counts or with their own: the counts of the

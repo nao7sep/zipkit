@@ -14,11 +14,11 @@ export const RECORD_KINDS: readonly RecordKind[] = ["log", "job-event"];
 
 export const RECORD_LEVELS: readonly RecordLevel[] = ["error", "warn", "info", "debug"];
 
-/** What the level filter offers: a record's own level, or `attention`, every
+/** What the level filter offers: a record's own level, or `warningsAndErrors`, every
  *  record at `warn` or `error`. */
-export type RecordLevelFilter = "attention" | RecordLevel;
+export type RecordLevelFilter = "warningsAndErrors" | RecordLevel;
 
-export const RECORD_LEVEL_FILTERS: readonly RecordLevelFilter[] = ["attention", ...RECORD_LEVELS];
+export const RECORD_LEVEL_FILTERS: readonly RecordLevelFilter[] = ["warningsAndErrors", ...RECORD_LEVELS];
 
 /** How many summaries one page holds. */
 export const RECORDS_PAGE_SIZE = 100;

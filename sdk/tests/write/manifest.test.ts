@@ -199,14 +199,14 @@ describe("estimateManifestSize (Zip64 manifest bound)", () => {
     ];
 
     const excludedPlanned: PlannedEntry = {
-      archivePath: `junk/${"z".repeat(160)}`,
-      originalPath: `junk/${"z".repeat(160)}`,
-      diskPath: `/in/junk/${"z".repeat(160)}`,
+      archivePath: `excluded/${"z".repeat(160)}`,
+      originalPath: `excluded/${"z".repeat(160)}`,
+      diskPath: `/in/excluded/${"z".repeat(160)}`,
       type: "file",
       method: "store",
       excluded: true,
       excludeCode: "pattern",
-      excludeReason: "excluded by the junk preset",
+      excludeReason: "pattern .DS_Store",
       excludedBy: { id: "x".repeat(60), pattern: `**/${"p".repeat(120)}` },
       nameFixes: [],
       findings: [],

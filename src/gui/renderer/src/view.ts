@@ -809,9 +809,9 @@ export function stateTint(state: Job["state"]): string {
   }
 }
 
-/** One card of the Details pane: one kind of thing found about the job, its
+/** One card of the Status pane: one kind of thing found about the job, its
  *  inputs or its archive, coloured by how much it matters. */
-export interface DetailsCard {
+export interface StatusCard {
   key: string;
   title: string;
   level: Severity;
@@ -886,20 +886,20 @@ function entryRow(entry: PlannedEntry, renamed: boolean): Pick<ReportRow, "path"
 
 const LEVEL_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
 
-/** The Details pane's cards for a job: one per kind of finding, one per reason
+/** The Status pane's cards for a job: one per kind of finding, one per reason
  *  something is left out, what a verification found, how the originals
  *  changed when a removal was refused, and the archive itself once made, the
  *  ones that block first. When the originals are to be removed, what is left
  *  out goes with them unarchived, which each excluded card says; anything but
  *  what the exclusion patterns matched is then worth a look. */
-export function detailsCards(
+export function statusCards(
   job: Job,
   plan: PlanReport | null,
   verify: { missing: readonly string[]; extra: readonly string[] } | null,
   t: Translator,
   rowLimit: number,
-): DetailsCard[] {
-  const cards = new Map<string, DetailsCard & { excluded: boolean; patterned: boolean }>();
+): StatusCard[] {
+  const cards = new Map<string, StatusCard & { excluded: boolean; patterned: boolean }>();
   const card = (key: string, title: string, level: Severity, about?: MessageKey) => {
     let found = cards.get(key);
     if (!found) {
@@ -952,10 +952,10 @@ export function detailsCards(
 
   // What is left out leaves with the originals when they are removed.
   const removing = job.intent.originals !== "keep" && job.state !== "done" && job.state !== "failed";
-  const result: DetailsCard[] = [];
+  const result: StatusCard[] = [];
   for (const { excluded, patterned, ...c } of cards.values()) {
     if (c.rows.length === 0) continue;
-    const shown: DetailsCard = { ...c, names: namesOf(c.rows, t.locale) };
+    const shown: StatusCard = { ...c, names: namesOf(c.rows, t.locale) };
     const texts = new Set(c.rows.map((row) => row.changes.join(" ")));
     const [only] = texts;
     if (texts.size === 1 && only) shown.common = only;
@@ -971,7 +971,7 @@ export function detailsCards(
   const archive = archiveCard(job, t);
   if (archive) result.push(archive);
   // Most important first; within a level the archive leads, then the order found.
-  const rank = (c: DetailsCard): number => LEVEL_RANK[c.level] * 2 + (c.key === "archive" ? 0 : 1);
+  const rank = (c: StatusCard): number => LEVEL_RANK[c.level] * 2 + (c.key === "archive" ? 0 : 1);
   return result.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(({ c }) => c);
 }
 
@@ -993,7 +993,7 @@ const ARCHIVE_STATUS_KEYS: Record<NonNullable<Job["archiveStatus"]>, MessageKey>
 
 /** The archive a job made, as facts: what ZipKit knows of it now, where it is,
  *  how large, what it holds. Absent until there is one. */
-function archiveCard(job: Job, t: Translator): DetailsCard | null {
+function archiveCard(job: Job, t: Translator): StatusCard | null {
   if (!job.archiveStatus || !job.output) return null;
   const facts: Array<{ label: string; value: string }> = [
     { label: t.t("details.factStatus"), value: t.t(ARCHIVE_STATUS_KEYS[job.archiveStatus]) },

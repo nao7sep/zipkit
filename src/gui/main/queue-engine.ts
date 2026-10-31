@@ -911,16 +911,16 @@ export function createQueueEngine(deps: EngineDeps): QueueEngine {
         // left out of the recheck as well, so what was archived from them
         // is not read as missing; what remains must still match.
         const inputs = rec.job.entries!.filter(present).map((entry) => entry.path);
-        const gone = rec.job.entries!.filter((entry) => entry.kind === "missing").map((entry) => entry.path);
-        const { refusal, outcome: removed } = await removeAfterChecks(rec, output, inputs, method, signal, progressFor(id, method), gone);
+        const missing = rec.job.entries!.filter((entry) => entry.kind === "missing").map((entry) => entry.path);
+        const { refusal, outcome: removed } = await removeAfterChecks(rec, output, inputs, method, signal, progressFor(id, method), missing);
         if (refusal && signal.aborted) {
           result = { severity: "warning", message: message(trash ? "action.originalsTrashCancelled" : "action.originalsDeleteCancelled") };
           deps.log.info("removing originals cancelled", { jobId: id, method });
         } else if (refusal) {
           result = { severity: "error", message: refusalMessage(refusal, "action.archiveInsideOriginal") };
         } else if (trashConfirmed(removed)) {
-          result = { severity: "info", message: describeRemovalDone(removed, method, "action", gone.length) };
-          deps.log.info(trash ? "originals trashed" : "originals deleted", { jobId: id, count: removed.moved.length, gone: gone.length + (removed.gone?.length ?? 0) });
+          result = { severity: "info", message: describeRemovalDone(removed, method, "action", missing.length) };
+          deps.log.info(trash ? "originals trashed" : "originals deleted", { jobId: id, count: removed.moved.length, gone: missing.length + (removed.gone?.length ?? 0) });
         } else {
           result = { severity: "error", message: describeOriginalsRemoval(removed, method) };
           deps.log.error("removing originals not fully confirmed", { jobId: id, method, ...removed });

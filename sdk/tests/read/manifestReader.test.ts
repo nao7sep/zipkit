@@ -13,9 +13,9 @@ async function read(text: string, size: number, accept: AcceptRecord = keepAll) 
 
 describe("createManifestReader", () => {
   const doc = {
-    about: "x", formatVersion: 1, policy: { filters: [{ pattern: "*.tmp" }] },
+    about: "x", formatVersion: 1, policy: { exclusions: [{ pattern: "*.tmp" }] },
     entries: [{ archivePath: "café/é.txt", size: 3, mtime: { ns: "1" } }, { archivePath: "b", size: 0, mtime: { ns: "2" } }],
-    excluded: [{ archivePath: "x", reason: "junk" }],
+    excluded: [{ archivePath: "x", reason: "pattern .DS_Store" }],
     findings: [{ rule: "r", message: "m" }],
   };
 

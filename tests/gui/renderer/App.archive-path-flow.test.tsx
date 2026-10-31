@@ -94,7 +94,7 @@ it("plans the picked folder with the edited name after parameter reset and job r
   fireEvent.change(screen.getByRole("textbox", { name: "File name" }), { target: { value: "Client delivery.zip" } });
   fireEvent.click(screen.getByRole("checkbox", { name: "Use the parameters from Settings" }));
   expect(engine.snapshot().find((job) => job.id === id)?.options).toMatchObject({
-    outputDir: selected, fileName: "Client delivery.zip", level: DEFAULT_SETTINGS.defaults.level,
+    outputDir: selected, fileName: "Client delivery.zip", level: DEFAULT_SETTINGS.newJobParameters.level,
   });
   await open(other);
   await open(id);
